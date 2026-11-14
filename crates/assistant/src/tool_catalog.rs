@@ -42,7 +42,7 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_observe",
-            "观察真实截图、前台应用和带版本的控件ID。默认原生控件，树不足时本机OCR兜底；找不到文字可用ocr_mode=always补充OCR。成功GUI动作后自动返回新观察，不必重复取图。",
+            "读取当前手机画面、前台应用及控件ID。找不到文字时用 ocr_mode=always 补充识别。",
             json!({"include_ui_tree":{"type":"boolean"},"ocr_mode":{"type":"string","enum":["auto","always"]}}),
             vec![]
         ),
@@ -60,7 +60,7 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_tap",
-            "仅无匹配控件ID的图标/画布使用坐标兜底，须说明fallback_reason；有可点击控件时用phone_tap_element。坐标也会核对观察是否过期。",
+            "点击无匹配控件ID的图标或画布，说明使用坐标的原因。",
             json!({"x":{"type":"integer"},"y":{"type":"integer"},"fallback_reason":{"type":"string"}}),
             vec!["x", "y", "fallback_reason"]
         ),
@@ -169,7 +169,7 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "knowledge_write",
-            "保存Markdown知识文档。更新前用knowledge_read读取同主题文档，传回id和revision，保留仍有用的原文。related_ids省略时保留已有的关联。需要配图时用phone_observe或computer_observe，将本轮真实观察ID填入image_observation_id，图片会自动附到正文。只保留与主题有关且适合存档的画面。",
+            "保存 Markdown 文档。更新时传入 id 和 revision，省略 related_ids 保留关联。image_observation_id 附上本轮适合存档的设备截图。",
             json!({"id":{"type":"string"},"title":{"type":"string"},"content":{"type":"string"},"revision":{"type":"integer"},"related_ids":{"type":"array","items":{"type":"string"},"maxItems":50},"image_observation_id":{"type":"string"},"image_alt":{"type":"string","maxLength":140}}),
             vec!["title", "content"]
         ),
@@ -229,7 +229,7 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "task_finish",
-            "只有本轮目标已经有真实工具证据并通过复查时用completed结束；交付在手机或电脑生成的文件时用files给出真实设备ID与绝对路径，系统会保存到工作文件并附到当前回复。需要用户提供具体信息或解决真实阻碍时用needs_input暂停。",
+            "提交经核实的结果或实际阻碍。交付文件时，files 填设备ID及绝对路径，系统会存入工作文件并附到回复。",
             json!({"status":{"type":"string","enum":["completed","needs_input"]},"summary":{"type":"string","description":"给用户的一至三句交付结果：成果文件、关键核验结论或真实阻碍。"},"files":{"type":"array","items":{"type":"object","properties":{"device_id":{"type":"string"},"path":{"type":"string"}},"required":["device_id","path"],"additionalProperties":false}}}),
             vec!["status", "summary"]
         ),
@@ -249,7 +249,7 @@ pub(crate) fn tools() -> Value {
             ) {
                 let description = item["description"].as_str().unwrap();
                 item["description"] = json!(format!(
-                    "{description} 单次系统设置页面跳转或电脑输入即可满足整个目标时，同时填写completion_summary，系统会在收到真实回执和动作后画面后独立核验并结束。仍有动作、待查事实或文件交付时省略。"
+                    "{description} 这一次动作即可完成整个目标时填写 completion_summary。"
                 ));
                 item["parameters"]["properties"]["completion_summary"] = json!({"type":"string","maxLength":400,
                     "description":"核验通过后发给用户的一句结果。"});
@@ -259,7 +259,8 @@ pub(crate) fn tools() -> Value {
                     || name.starts_with("computer_")
                     || name.starts_with("device_")
             }) {
-                item["parameters"]["properties"]["intent"] = json!({"type":"string","description":"给用户看的简短下一步及理由，只描述准备做什么，不提前声称成功，不写隐藏思维链。"});
+                item["parameters"]["properties"]["intent"] =
+                    json!({"type":"string","description":"给用户看的下一步和理由。"});
                 if let Some(required) = item["parameters"]["required"].as_array_mut() {
                     required.push(json!("intent"));
                 }

@@ -199,7 +199,7 @@ impl Phone {
         Ok(())
     }
     async fn wait_boot(&mut self, stop: &mut watch::Receiver<bool>) -> Result<NativeAndroidBooted> {
-        let until = Instant::now() + Duration::from_secs(120);
+        let until = Instant::now() + self.plan.engine.boot_timeout();
         let adb = client(&self.plan);
         let mut attached = self.plan.engine == Engine::Goldfish;
         let mut root_requested = false;
@@ -288,12 +288,13 @@ impl Phone {
         }
     }
     pub async fn shutdown(&mut self) -> Result<()> {
-        if let Some(link) = self.link.as_mut() {
-            link.shutdown().await?;
-        }
-        self.link = None;
-        self.stop_emulator().await?;
-        stop_adb(&mut self.adb).await?;
+        let link = match self.link.take() {
+            Some(mut link) => link.shutdown().await,
+            None => Ok(()),
+        };
+        let emulator = self.stop_emulator().await;
+        let adb = stop_adb(&mut self.adb).await;
+        emulator.and(adb)?;
         #[cfg(target_os = "macos")]
         {
             self.relay = None;
@@ -303,7 +304,7 @@ impl Phone {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
         }
-        filesystem::sync_directory(Path::new(&self.plan.home))
+        filesystem::sync_directory(Path::new(&self.plan.home)).and(link)
     }
 }
 

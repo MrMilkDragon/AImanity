@@ -393,8 +393,8 @@
     },
     {
       "path": "apps/client/src-tauri/src/bootstrap/native_phone.rs",
-      "size": 7636,
-      "sha256": "8f7bd840378cd3fa96eddf5d1995daa38377c8e3f4bb8e4645d31ba4394f6a5c"
+      "size": 7693,
+      "sha256": "1de702f1cd450962b9b233aeb39f055fae3a856790032c41082e75b56e9f0d8e"
     },
     {
       "path": "apps/client/src-tauri/src/bootstrap/process.rs",
@@ -1843,8 +1843,8 @@
     },
     {
       "path": "crates/assistant/src/device_setup/mod.rs",
-      "size": 9541,
-      "sha256": "f1fa0b809535e1c972f9c6abe60772508b757d81e7c9b7ce20b45598b4110ade"
+      "size": 9565,
+      "sha256": "2b2b42f7cf59f324c8ee82910ee360aa758acb416bc6196376816c5c8ae1492a"
     },
     {
       "path": "crates/assistant/src/device_setup/policy.rs",
@@ -1853,8 +1853,8 @@
     },
     {
       "path": "crates/assistant/src/device_setup/rpc.rs",
-      "size": 4770,
-      "sha256": "467299608c2e2528213f45185888a73cfe7a8a14f5aa6e6d0987e90723568627"
+      "size": 4623,
+      "sha256": "4da1567263e3d50cf06b15abd5334362da7e1db2642be1ef8d4800d064d2444e"
     },
     {
       "path": "crates/assistant/src/device_setup/store.rs",
@@ -2113,8 +2113,8 @@
     },
     {
       "path": "crates/assistant/src/tool_catalog.rs",
-      "size": 18722,
-      "sha256": "fbf8912f0e3f87625221aeeddc0c76d4546380adf48ae12acfd1b3af7c1d5272"
+      "size": 17921,
+      "sha256": "3632f9211710d7929851eb6f91bd6c69b9cef4523e61b3d06d97121c63c3687d"
     },
     {
       "path": "crates/assistant/src/voice_input.rs",
@@ -2148,8 +2148,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 247226,
-      "sha256": "e2a48555bbb427df5a924963a5854f4e6c1198b3c3cb08eba53f8a3572ecc8be"
+      "size": 245202,
+      "sha256": "7b5946f671cbd606e75c7476339714cd97cf5a7621c9fff98e0eafd700da0151"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -2388,8 +2388,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/mod.rs",
-      "size": 6308,
-      "sha256": "832d29015643b643e6a5deba244868a979c65f9a299d64da7446c76a7f817d0c"
+      "size": 6524,
+      "sha256": "fdda5416c9049a909da288896fd2ee4f5d769965e9acecdfd84af41bf0a158a0"
     },
     {
       "path": "crates/host-runtime/src/android/resources.rs",
@@ -2428,8 +2428,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/session/process.rs",
-      "size": 13969,
-      "sha256": "8430825b5cdeefb231fda6b87e77836277f909af7d13772021b50ae33c7035d3"
+      "size": 14052,
+      "sha256": "c633b16bd9c855120987971aedf8b7199d11554717be7193522db267cf0714ea"
     },
     {
       "path": "crates/host-runtime/src/android/session/readiness.rs",

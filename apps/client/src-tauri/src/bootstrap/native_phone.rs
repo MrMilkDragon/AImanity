@@ -20,6 +20,13 @@ async fn launch(
     if cancel() {
         return Err("installation_cancelled".into());
     }
+    let engine = Engine::installed(std::path::Path::new(
+        &request
+            .phone
+            .as_ref()
+            .ok_or("android_session_phone")?
+            .sdk_root,
+    ));
     let mut command = Command::new(std::env::current_exe().map_err(|_| "android_session_program")?);
     command
         .arg("--android-session")
@@ -31,7 +38,7 @@ async fn launch(
     let mut child = command.spawn().map_err(|_| "android_session_start")?;
     // Always close both pipes before reaping: EOF unblocks the worker's stdin.
     // A missing/truncated reply cannot prove whether the phone already started.
-    let receipt = exchange(&mut child, &request, cancel).await;
+    let receipt = exchange(&mut child, &request, engine.boot_timeout(), cancel).await;
     tauri::async_runtime::spawn(async move {
         let _ = child.wait().await;
     });
@@ -39,20 +46,14 @@ async fn launch(
         receipt?,
         cancel(),
         !request.wsl_distribution.is_empty() || request.linux_vm.is_some(),
-        &Engine::installed(std::path::Path::new(
-            &request
-                .phone
-                .as_ref()
-                .ok_or("android_session_phone")?
-                .sdk_root,
-        ))
-        .serial(5564),
+        &engine.serial(5564),
     )
 }
 
 async fn exchange(
     child: &mut Child,
     request: &NativeAndroidStart,
+    boot_timeout: Duration,
     cancel: &dyn Fn() -> bool,
 ) -> Result<NativeAndroidSessionReply, &'static str> {
     let mut input = child
@@ -67,7 +68,7 @@ async fn exchange(
         .await
         .map_err(|_| "android_session_outcome_unknown")?;
     tokio::select! {
-            result=tokio::time::timeout(Duration::from_secs(150),native_ipc::read_bounded::<NativeAndroidSessionReply>(&mut output,512))=>result.map_err(|_|"android_session_outcome_unknown")?,
+            result=tokio::time::timeout(boot_timeout + Duration::from_secs(30),native_ipc::read_bounded::<NativeAndroidSessionReply>(&mut output,512))=>result.map_err(|_|"android_session_outcome_unknown")?,
             _=cancelled(cancel)=>{
                 native_ipc::write_bounded(&mut input,&NativeAndroidSessionControl{cancel_startup:true},512).await.map_err(|_|"android_session_outcome_unknown")?;
                 tokio::time::timeout(Duration::from_secs(20),native_ipc::read_bounded::<NativeAndroidSessionReply>(&mut output,512)).await.map_err(|_|"android_session_outcome_unknown")?

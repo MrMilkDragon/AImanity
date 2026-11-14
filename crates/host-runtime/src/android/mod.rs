@@ -1,6 +1,9 @@
 //! Offline Android resources and device creation. Preparation is not boot readiness.
 use crate::{Error, Installation, Result, control::Control};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 pub mod cli;
 mod device;
 pub mod input;
@@ -44,6 +47,13 @@ pub enum Engine {
 }
 
 impl Engine {
+    pub const fn boot_timeout(self) -> Duration {
+        Duration::from_secs(match self {
+            Self::Whpx => 180,
+            Self::Goldfish | Self::Avo => 120,
+        })
+    }
+
     fn avd_directory(self) -> &'static str {
         match self {
             Self::Goldfish => "avd",
