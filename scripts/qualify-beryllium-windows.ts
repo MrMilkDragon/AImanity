@@ -217,7 +217,7 @@ try {
   equal(login.status, 200, "workbench sign-in");
   const setCookie = login.headers.get("set-cookie");
   ok(setCookie, "workbench issued a session");
-  const cookie = setCookie.split(";", 1)[0]!;
+  let cookie = setCookie.split(";", 1)[0]!;
   const registry = await fetch(`${origin}/api/registry/state`, { method: "POST",
     headers: { cookie, "content-type": protocol, origin },
     body: toBinary(RegistryRequestSchema, create(RegistryRequestSchema)), signal: AbortSignal.timeout(10000) });
@@ -390,8 +390,21 @@ try {
     const launcher = android("shell", "cmd", "package", "resolve-activity", "--brief", "--user", "0", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME").toString();
     match(launcher, /dev\.aiphone\.home\/\.HomeActivity/);
     console.log("Beryllium phone default packages and paged Home verified");
+    const marker = crypto.randomUUID();
+    android("shell", `printf '%s' '${marker}' > /data/local/tmp/aimanity-quit.txt && sync`);
     const quit = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "beryllium-qualification/scripts/qualify-beryllium-windows-quit.ps1", "-AcceptanceRoot", root, "-ClientPid", String(app.pid)], {env, stdout: "inherit", stderr: "inherit", timeout: 600_000});
     equal(quit.exitCode, 0, "release both device processes on quit and resume on reopen");
+    const reopened = await fetch(`${origin}/api/auth/enter`, { method: "POST",
+      headers: { "content-type": protocol, origin }, body: new Uint8Array(), signal: AbortSignal.timeout(10000) });
+    equal(reopened.status, 200, "reopened workbench sign-in");
+    cookie = reopened.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
+    ok(cookie, "reopened workbench issued a session");
+    await Promise.all([
+      verifyFrame(`/api/desktop/media?device_id=${encodeURIComponent(desktop.id)}`, "Reopened Linux")
+        .then(passed => ok(passed, "reopened Linux JPEG stream")),
+      verifyAndroidFrame(`/api/phone/media/screen?device=${encodeURIComponent(phone.id)}`),
+    ]);
+    equal(android("shell", "cat", "/data/local/tmp/aimanity-quit.txt").toString(), marker, "Android data survives normal quit");
   }
 
   if (process.env.AIMANITY_QA_BERYLLIUM_UPGRADE === "1") {

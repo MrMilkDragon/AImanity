@@ -1,13 +1,13 @@
-name: Windows Beryllium offline installer and clean restart
+name: Beryllium signed Windows final offline acceptance
 on:
   push:
-    branches: [codex/beryllium-windows-build]
+    branches: [codex/beryllium-final-windows]
     paths: [.github/workflows/windows-beryllium-build.yml]
 permissions:
   contents: read
   actions: read
 env:
-  BERYLLIUM_SOURCE: '8cf8322cd697adf3f8fc2cf369126cecb55d8435'
+  BERYLLIUM_SOURCE: '08926d91111d43ef918d1dcddc66f10d27b4dd85'
   BERYLLIUM_INPUTS_RUN: '43593156255'
 jobs:
   linux-release:
