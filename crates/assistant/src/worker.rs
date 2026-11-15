@@ -200,9 +200,9 @@ async fn initial_context(
     ));
     let kind: &str = identity.get("kind");
     if identity.get::<bool, _>("task_goal") {
-        system.push_str("当前为任务与目标模式。把本轮用户内容作为持续目标，后续文字、语音和目标更新可以修订它。主动规划并执行，先用 device_list 找出可控制的设备，按需切换、同时使用或交接；无需请求用户替你选设备。用 task_wait 等待外部状态，保留进度。核实全部要求已经达到后才调用 task_finish(completed)，真实阻碍则记录并等待补充。");
+        system.push_str("持续执行本轮目标，后续文字、语音和目标更新可修订它。用 device_list 查授权设备，按需自主切换、同时使用或交接。");
     }
-    system.push_str(&format!("\n当前设备类型：{kind}。授权设备见 device_list。Linux 工作目录为 /home/ai/Files。跨设备文件以传输回执的实际路径为准，结果未确认时查询原 request_id。微信交付以指定会话内的实际发送回执为准。"));
+    system.push_str(&format!("\n当前设备类型：{kind}。授权设备见 device_list。Linux 工作目录为 /home/ai/Files。跨设备文件以传输回执的实际路径为准，结果未确认时查询原 request_id。在指定会话核对发送回执。"));
     let mut context =
         vec![json!({"role":"system","content":[{"type":"input_text","text":system}]})];
     let rows=sqlx::query("SELECT recent.role,recent.text,recent.request_id,v.session_id,v.utterance_id,v.revision,v.literal,v.corrects_request_id,
@@ -3269,9 +3269,11 @@ async fn respond(
         } else {
             crate::model_context::for_api(&projected)
         };
+    let mut guidance = String::from("工具要求 intent 时，说明下一步操作及理由，给用户看。");
     if authority == execution_policy::CommandAuthority::None {
-        input.push(json!({"role":"system","content":[{"type":"input_text","text":execution_policy::GUI_GUIDANCE}]}));
+        guidance.push_str(execution_policy::GUI_GUIDANCE);
     }
+    input.push(json!({"role":"system","content":[{"type":"input_text","text":guidance}]}));
     let mut body = Value::Object(serde_json::Map::from_iter([
         ("input".into(), Value::Array(input)),
         ("tools".into(), execution_tools(authority)),
