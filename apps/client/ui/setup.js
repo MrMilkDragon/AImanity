@@ -86,7 +86,6 @@ function render() {
   languages.update(locale, selectingLanguage);
   const progress = snapshot?.progress;
   const state = progress?.state;
-  const active = state === 'running' || state === 'license';
   const ready = state === 'ready';
   const installed = state === 'installed';
   const showingProgress = !!(startupPhase || state);
@@ -95,30 +94,25 @@ function render() {
   $('local-panel').hidden = showingProgress;
   $('progress').hidden = !showingProgress;
   $('progress').dataset.startup = String(!!startupPhase);
-  renderActivity(!selectingLanguage && showingProgress && !ready && state !== 'license' ? activity : []);
+  renderActivity(!selectingLanguage && showingProgress && !ready ? activity : []);
   renderUpdate();
   if (startupPhase) {
     $('progress-detail').dataset.state = starting ? 'running' : 'startup-failed';
     $('progress-title').textContent = label('start');
     $('phase').textContent = (state === 'running' && label(progress.phase)) || label(startupLabels[startupPhase]);
     showError($('progress-error'), actionError || statusError || startup.error);
-    $('license').hidden = true;
     $('retry').hidden = starting;
     $('retry').textContent = label('retry');
     $('cancel').hidden = true;
-    $('accept').hidden = true;
     $('enter').hidden = true;
   } else if (state) {
     $('progress-detail').dataset.state = state;
     $('progress-title').textContent = label(ready ? 'ready' : 'installStep');
     $('phase').textContent = label(ready ? 'readyDevices' : progress.phase === 'failed' ? (state === 'cancelled' ? 'stopped' : 'installFailed') : progress.phase) || label('busy');
     showError($('progress-error'), actionError || statusError || (state === 'failed' || state === 'blocked' ? progress.error || 'installation_failed' : ''));
-    $('license').hidden = state !== 'license';
-    if ($('license').textContent !== progress.license) $('license').textContent = progress.license;
     $('retry').hidden = !['failed', 'blocked', 'cancelled', 'interrupted', 'installed'].includes(state);
     $('retry').textContent = label(installed ? 'start' : 'retry');
-    $('cancel').hidden = !active;
-    $('accept').hidden = state !== 'license';
+    $('cancel').hidden = state !== 'running';
     $('enter').hidden = !ready;
   } else if (!selectingLanguage) {
     const host = snapshot?.host;
@@ -250,7 +244,7 @@ function scheduleRefresh() {
   pollTimer = setTimeout(async () => {
     if (!pending) await refresh();
     scheduleRefresh();
-  }, startup.phase && startup.phase !== 'failed' ? 300 : state === 'running' || state === 'license' ? 800 : 3000);
+  }, startup.phase && startup.phase !== 'failed' ? 300 : state === 'running' ? 800 : 3000);
 }
 
 function beginPolling() {
@@ -277,7 +271,6 @@ const start = () => run('start_deployment', { request: { locale, ...resources } 
 $('local-setup').addEventListener('submit', event => { event.preventDefault(); void start(); });
 $('retry').addEventListener('click', () => startup.phase ? void run('retry_startup') : void start());
 $('cancel').addEventListener('click', () => void run('cancel_deployment'));
-$('accept').addEventListener('click', () => void run('accept_deployment_license'));
 $('enter').addEventListener('click', () => void run('open_workbench', { locale }));
 updateTrigger.addEventListener('pointerenter', event => {
   if (event.pointerType === 'mouse') updateControl.open = true;

@@ -61,10 +61,6 @@ pub(super) async fn start<E: Execute>(
 ) -> Result<()> {
     let root = backend.root;
     let folder = root.join("runtime/container-host");
-    let policies: Value =
-        serde_json::from_slice(&fs::read(root.join("config/container-host-runtime.json"))?)
-            .map_err(|_| Error::Invalid("container_host_policy"))?;
-    let policy = &policies["hosts"]["macos-arm64"];
     let command = folder.join("lima/bin/limactl");
     let state = managed_engine::state_directory(root, home, user)?;
     managed_engine::claim_state(&root.join("data").canonicalize()?, &state)?;
@@ -96,6 +92,10 @@ pub(super) async fn start<E: Execute>(
                 .await?;
         }
         "" => {
+            let policies: Value =
+                serde_json::from_slice(&fs::read(root.join("config/container-host-runtime.json"))?)
+                    .map_err(|_| Error::Invalid("container_host_policy"))?;
+            let policy = &policies["hosts"]["macos-arm64"];
             let profile: Value =
                 serde_json::from_slice(&fs::read(root.join("data/deployment/profile.json"))?)
                     .map_err(|_| Error::Invalid("host_profile"))?;

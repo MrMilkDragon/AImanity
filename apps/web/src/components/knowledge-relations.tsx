@@ -13,9 +13,10 @@ import {LoadingOrb} from "./ui/loading-orb";
 
 type Doc = MessageShape<typeof KnowledgeDocumentSchema>;
 
-export function KnowledgeRelations({doc, disabled, onChanged, onSelect}: {
+export function KnowledgeRelations({doc, busy, setBusy, onChanged, onSelect}: {
   doc: Pick<Doc, "id" | "revision" | "relatedIds">;
-  disabled: boolean;
+  busy: boolean;
+  setBusy: (busy: boolean) => void;
   onChanged: (value: Doc) => void;
   onSelect: (id: string) => void;
 }) {
@@ -27,7 +28,6 @@ export function KnowledgeRelations({doc, disabled, onChanged, onSelect}: {
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
   const [picking, setPicking] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export function KnowledgeRelations({doc, disabled, onChanged, onSelect}: {
     <header className="knowledge-related-header">
       <h3 id={`${picker}-label`}>{t("关联文档")}</h3>
       <Button ref={trigger} variant="ghost" size="icon" aria-controls={picker} aria-expanded={picking}
-        aria-label={t(picking ? "收起关联选择" : "关联文档")} disabled={disabled || busy}
+        aria-label={t(picking ? "收起关联选择" : "关联文档")} disabled={busy}
         onClick={() => {
           if (!picking) setLoaded(false);
           setPicking(!picking);
@@ -80,7 +80,7 @@ export function KnowledgeRelations({doc, disabled, onChanged, onSelect}: {
     {error && <p role="alert" className="workbench-error">{t(error)}</p>}
     {related.length > 0 && <ul className="knowledge-related-links">
       {related.map(value => <li key={value.id}>
-        <button type="button" disabled={disabled || busy} onClick={() => onSelect(value.id)}>
+        <button type="button" disabled={busy} onClick={() => onSelect(value.id)}>
           <span>{value.title}</span><ArrowUpRight size={15} aria-hidden/>
         </button>
       </li>)}
@@ -102,7 +102,7 @@ export function KnowledgeRelations({doc, disabled, onChanged, onSelect}: {
       <div className="knowledge-link-options" aria-busy={!loaded}>
         {options.map(value => {
           const linked = doc.relatedIds.includes(value.id);
-          return <button type="button" key={value.id} aria-pressed={linked} disabled={busy || disabled}
+          return <button type="button" key={value.id} aria-pressed={linked} disabled={busy}
             onClick={() => void toggle(value.id)}>
             <span>{value.title}</span>{linked ? <Check size={16} aria-hidden/> : <Link2 size={15} aria-hidden/>}
           </button>;

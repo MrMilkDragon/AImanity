@@ -5,9 +5,7 @@ use std::process::Command;
 use std::{
     collections::{BTreeMap, VecDeque},
     fs,
-    io::Write,
     path::{Path, PathBuf},
-    process::ChildStdin,
     sync::{
         Arc, LazyLock, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -85,8 +83,6 @@ pub struct Progress {
     pub state: String,
     #[serde(default)]
     pub error: String,
-    #[serde(default)]
-    pub license: String,
 }
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Activity {
@@ -173,7 +169,6 @@ pub struct ManagerState {
     closing: Mutex<bool>,
     progress: Mutex<Progress>,
     activity: Mutex<VecDeque<Activity>>,
-    input: Mutex<Option<ChildStdin>>,
 }
 #[derive(Default)]
 pub struct Bootstrap(pub Arc<ManagerState>);
@@ -227,7 +222,6 @@ impl ManagerState {
                 phase: phase.into(),
                 state: state.into(),
                 error: error.into(),
-                license: String::new(),
             },
         )
     }
@@ -256,7 +250,6 @@ impl ManagerState {
                 phase: "failed".into(),
                 state: state.into(),
                 error: "checkpoint_write_failed".into(),
-                license: String::new(),
             };
         }
     }
@@ -783,23 +776,6 @@ pub async fn shutdown(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(not(any(target_os = "macos", windows)))]
     let result = Ok::<_, ai_phone_host_runtime::Error>(());
     result.map_err(|error| error.code().into())
-}
-
-pub fn accept_license(app: &tauri::AppHandle) -> Result<(), String> {
-    let state = app.state::<Bootstrap>();
-    let mut progress = state.0.progress.lock().map_err(|_| "installer_state")?;
-    if progress.state != "license" {
-        return Err("no_pending_license".into());
-    }
-    let mut input = state.0.input.lock().map_err(|_| "installer_state")?;
-    let input = input.as_mut().ok_or("no_pending_license")?;
-    input
-        .write_all(b"{\"accept\":true}\n")
-        .and_then(|_| input.flush())
-        .map_err(|_| "license_response_failed")?;
-    progress.state = "running".into();
-    progress.license.clear();
-    Ok(())
 }
 
 #[cfg(test)]

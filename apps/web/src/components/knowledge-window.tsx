@@ -248,7 +248,7 @@ export function KnowledgeWindow({open, onClose}: {open: boolean; onClose: () => 
             disabled={busy} onClick={() => imagePicker.current?.click()}><ImagePlus size={17}/></Button>
           <Button variant="ghost" size="icon" aria-label={t("保存文档")} disabled={!canSave}
             onClick={() => void save()}><Save size={17}/></Button>
-        </> : <Button variant="ghost" size="icon" aria-label={t("编辑文档")}
+        </> : <Button variant="ghost" size="icon" aria-label={t("编辑文档")} disabled={busy}
           onClick={() => setEditing(true)}><PenLine size={17}/></Button>}
         {draft.id && <Button variant="ghost" size="icon" aria-label={t("移除当前文档")} disabled={busy}
           onClick={() => void remove()}><Trash2 size={16}/></Button>}
@@ -291,7 +291,7 @@ export function KnowledgeWindow({open, onClose}: {open: boolean; onClose: () => 
           </div>
         </> : <>
           <div className="markdown-document"><Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{draft.content}</Markdown></div>
-          {draft.id && <KnowledgeRelations key={draft.id} doc={draft} disabled={busy}
+          {draft.id && <KnowledgeRelations key={draft.id} doc={draft} busy={busy} setBusy={setBusy}
             onSelect={select} onChanged={accept}/>}
         </>)}
       </div>
