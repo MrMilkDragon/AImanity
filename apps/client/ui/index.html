@@ -14,28 +14,28 @@
 <body>
 <main class="setup">
   <section id="language-screen" class="language-screen" aria-labelledby="language-heading" hidden>
-    <header class="language-heading">
+    <div class="pane-body language-content">
       <h1 id="language-heading" class="setup-title" data-i18n="languageTitle">Choose your language</h1>
-    </header>
-    <div id="language-wall" role="radiogroup" aria-labelledby="language-heading"></div>
+      <div id="language-options" role="radiogroup" aria-labelledby="language-heading"></div>
+    </div>
     <footer class="setup-footer language-actions">
-      <button id="language-continue" class="primary" type="button"><span data-i18n="continue">Continue</span><span class="continue-arrow" aria-hidden="true">→</span></button>
+      <button id="language-continue" class="primary" type="button" data-i18n="continue">Continue</button>
     </footer>
   </section>
 
   <div id="setup-flow" hidden>
     <section id="local-panel" class="pane" aria-labelledby="title">
-      <h1 id="title" class="setup-title" tabindex="-1" data-i18n="title">Set up your devices</h1>
       <form id="local-setup">
         <div class="pane-body">
+          <h1 id="title" class="setup-title" tabindex="-1" data-i18n="title">Set up your devices</h1>
           <p id="host-error" class="error" role="alert" hidden></p>
           <div class="devices">
             <section class="device-row" aria-labelledby="phone-title">
-              <div class="device-identity"><span class="device-glyph phone-glyph" aria-hidden="true"></span><h2 id="phone-title" data-i18n="phone">Phone</h2><p class="system">Android 15</p></div>
+              <div class="device-identity"><span class="device-glyph phone-glyph" aria-hidden="true"></span><h2 id="phone-title" data-i18n="phone">Phone</h2></div>
               <div id="phone-fields" class="resource-fields"></div>
             </section>
             <section class="device-row" aria-labelledby="desktop-title">
-              <div class="device-identity"><span class="device-glyph desktop-glyph" aria-hidden="true"></span><h2 id="desktop-title" data-i18n="desktop">Computer</h2><p class="system">Linux · Openbox</p></div>
+              <div class="device-identity"><span class="device-glyph desktop-glyph" aria-hidden="true"></span><h2 id="desktop-title" data-i18n="desktop">Computer</h2></div>
               <div id="desktop-fields" class="resource-fields"></div>
             </section>
           </div>

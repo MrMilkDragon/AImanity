@@ -2,7 +2,7 @@
 
 The native installer can carry a host-architecture-matched `images.payload` alongside Android and source components. It contains four clean image roles: the Agent work environment, Linux GUI desktop, PostgreSQL and Redis. User homes, database volumes, browser profiles, phone disks, credentials and chats remain separate installation state. A running user's container is never an input.
 
-The desktop contains Openbox, Chromium, LibreOffice, Chinese fonts/input support, and audio and notification helpers. The container host supplies the VM, kernel and engine.
+The desktop extends the workspace image and shares its Chromium, Chinese fonts, OCR, and native guest runtime. Openbox provides the desktop and a launcher for the browser, files, terminal, text editor, LibreOffice, and desktop settings. The container host supplies the VM, kernel and engine.
 
 ## Validation and activation
 
@@ -20,7 +20,7 @@ These JSON records describe local artifacts and installation state. Browser busi
 
 ## Maintainer workflow
 
-Use a clean source export and a dedicated builder engine. Build the workspace and desktop Dockerfiles with that source export as the context.
+Use a clean source export and a dedicated builder engine. Build the workspace first and pass its image to the desktop Dockerfile as `WORKSPACE_IMAGE`.
 
 Review the built images and digest-pinned PostgreSQL/Redis defaults in `compose.yaml`. Record their references in a local JSON object with keys `workspace`, `desktop`, `postgres`, `redis`, then run:
 

@@ -110,6 +110,23 @@ fn prepare_guest() -> Result<()> {
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(crate) fn grow_root() -> Result<()> {
+    let root = fs::File::open("/")?;
+    let block_size = rustix::fs::fstatvfs(&root)
+        .map_err(std::io::Error::from)?
+        .f_frsize;
+    let sectors = fs::read_to_string("/sys/class/block/vda/size")?
+        .trim()
+        .parse::<u64>()
+        .map_err(|_| Error::Invalid("vm_root_disk_size"))?;
+    rustix::fs::ext4_ioc_resize_fs(&root, sectors * 512 / block_size).map_err(|error| {
+        eprintln!("Linux filesystem resize failed: {error}");
+        Error::Invalid("vm_root_resize")
+    })?;
+    Ok(())
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub(crate) async fn guest(arguments: &[OsString]) -> Result<()> {
     if !arguments.is_empty() {
         return Err(Error::Invalid("vm_bootstrap_arguments"));
@@ -148,7 +165,7 @@ pub(crate) async fn guest(arguments: &[OsString]) -> Result<()> {
         native_ipc::read_bounded(&mut stream, FRAME_LIMIT).await?;
     verify(&key, b"host", &nonce, &request.profile, &request.proof)?;
     let initialization = async {
-        crate::wsl::backend::initialize_request(&request.profile, "0.0.0.0").await?;
+        crate::wsl::backend::initialize_request(&request.profile, true).await?;
         crate::vm_control::guest::listen().await
     }
     .await;

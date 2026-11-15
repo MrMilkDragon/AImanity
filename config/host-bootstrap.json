@@ -1,7 +1,7 @@
 {
   "format": 1,
   "minimum_ram_gb": 12,
-  "minimum_free_gb": 35,
+  "minimum_free_gb": 24,
   "minimum_resume_free_gb": 2,
   "hosts": {
     "macos-arm64": {

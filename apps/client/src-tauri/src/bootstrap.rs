@@ -56,6 +56,8 @@ pub struct Phone {
 pub struct Desktop {
     cpus: u8,
     memory_mb: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    storage_gb: Option<u32>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -72,6 +74,9 @@ impl Request {
             || ![1536, 2048, 3072, 4096].contains(&self.phone.memory_mb)
             || ![2048, 2560, 3072, 4096].contains(&self.desktop.memory_mb)
             || ![16, 24, 32].contains(&self.phone.storage_gb)
+            || self.desktop.storage_gb.is_some_and(|storage| {
+                !ai_phone_host_runtime::DESKTOP_STORAGE_GB.contains(&storage)
+            })
         {
             return Err("invalid_device_resources".into());
         }
@@ -940,6 +945,20 @@ mod tests {
                 .unwrap()
                 .validate()
                 .is_ok()
+        );
+        let mut storage: serde_json::Value = serde_json::from_str(value).unwrap();
+        storage["desktop"]["storage_gb"] = serde_json::json!(64);
+        assert_eq!(
+            serde_json::to_value(serde_json::from_value::<Request>(storage.clone()).unwrap())
+                .unwrap(),
+            storage
+        );
+        storage["desktop"]["storage_gb"] = serde_json::json!(24);
+        assert!(
+            serde_json::from_value::<Request>(storage)
+                .unwrap()
+                .validate()
+                .is_err()
         );
         for invalid in [
             value.replace("2048", "9999999"),

@@ -423,7 +423,7 @@ pub(crate) async fn run(arguments: &[OsString]) -> Result<()> {
     }
     let mut request = Vec::new();
     std::io::stdin().take(8193).read_to_end(&mut request)?;
-    initialize_request(&request, "127.0.0.1").await?;
+    initialize_request(&request, false).await?;
     println!(
         "{}",
         json!({"backend_started":true,"phone_ready":false,"complete_device_bundle":false,"windows_boot_verified":false})
@@ -431,7 +431,7 @@ pub(crate) async fn run(arguments: &[OsString]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn initialize_request(request: &[u8], web_bind: &str) -> Result<()> {
+pub(crate) async fn initialize_request(request: &[u8], qemu: bool) -> Result<()> {
     let (send, stop) = watch::channel(false);
     let signal = tokio::spawn(async move {
         let result = crate::component::interrupt().await;
@@ -445,7 +445,7 @@ pub(crate) async fn initialize_request(request: &[u8], web_bind: &str) -> Result
         Path::new("/var/lib/aiphone/installation"),
         Path::new("/run/aiphone"),
         request,
-        web_bind,
+        qemu,
         Process(stop),
         &|path| Ok(fs2::available_space(path)?),
     )
@@ -459,12 +459,17 @@ async fn initialize<E: Execute>(
     home: &Path,
     run: &Path,
     request: &[u8],
-    web_bind: &str,
+    qemu: bool,
     execute: E,
     available: &dyn Fn(&Path) -> Result<u64>,
 ) -> Result<()> {
     let request = profile::parse_request(request)
         .map_err(|_| Error::Invalid("wsl_initialization_request"))?;
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    if qemu && request.desktop.storage_gb.is_some() {
+        crate::linux_vm::grow_root()?;
+    }
+    let web_bind = if qemu { "0.0.0.0" } else { "127.0.0.1" };
     phase("preflight");
     let parent = home
         .parent()

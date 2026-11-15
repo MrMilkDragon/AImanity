@@ -142,7 +142,7 @@ export async function prepareImages(
     ];
     if (role === "desktop")
       args.push("--build-arg", "WORKSPACE_IMAGE=" + sources.workspace);
-    if (guest)
+    if (role === "workspace" && guest)
       args.push(
         "--build-arg",
         "GUEST_RUNTIME_SOURCE=guest_runtime",

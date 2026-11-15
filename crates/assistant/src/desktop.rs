@@ -1302,9 +1302,7 @@ fn transfer_value(t: wire::DeviceTransfer) -> Value {
 }
 
 pub fn catalog() -> Vec<Value> {
-    fn f(name: &str, desc: &str, props: Value, required: Vec<&str>) -> Value {
-        json!({"type":"function","name":name,"description":desc,"parameters":{"type":"object","properties":props,"required":required,"additionalProperties":false}})
-    }
+    use crate::tool_catalog::function;
     let id = json!({"type":"string"});
     let location = json!({"type":"object","properties":{"device_id":id,"path":id},"required":["device_id","path"],"additionalProperties":false});
     let num = json!({"type":"integer"});
@@ -1315,15 +1313,15 @@ pub fn catalog() -> Vec<Value> {
         "longitude":{"type":"number","minimum":-180,"maximum":180}
     },"required":["latitude","longitude"],"additionalProperties":false});
     vec![
-        f(
+        function(
             "device_location_state",
             "查看模拟位置是否开启、本任务是否可调整，以及获准时的模拟位置和设备回执。只读，不查询宿主真实位置。",
             json!({}),
             vec![],
         ),
-        f(
+        function(
             "device_location_set",
-            "本任务获准控制全部受影响设备时可启用和调整模拟位置。先读取device_location_state，使用返回的revision作为expected_revision。point用指定模拟坐标启用静态位置；route启用路线并指定两个以上模拟路线点、speed_kph和repeat；pause暂停当前路线。坐标只用于客体模拟，不查询真实位置。",
+            "本任务获准控制全部受影响设备时可启用和调整模拟位置。先读取device_location_state，使用返回的revision作为expected_revision。point用指定模拟坐标启用静态位置；route启用路线并指定模拟路线点、speed_kph和repeat；pause暂停当前路线。坐标只用于客体模拟，不查询真实位置。",
             json!({
                 "expected_revision":{"type":"integer","minimum":0},
                 "mode":{"type":"string","enum":["point","route","pause"]},
@@ -1334,109 +1332,109 @@ pub fn catalog() -> Vec<Value> {
             }),
             vec!["expected_revision", "mode"],
         ),
-        f(
+        function(
             "device_file_list",
             "列出本任务获准控制的设备目录或共享工作文件。device_id为空表示harness工作文件；path为绝对路径，默认/。另一Agent设备的共享目录用device_files；应用操作仍须phone-use/computer-use。",
             json!({"device_id":id,"path":id}),
             vec!["device_id", "path"],
         ),
-        f(
+        function(
             "device_file_manage",
-            "统一文件管理：批量copy/move/delete/mkdir/rename。sources和target含device_id/path；空device_id为工作文件，非空设备须有本任务的控制授权。目标是目录，name为空沿用文件名。跨设备需device_link；向另一Agent设备交接共享文件用device_transfer。不覆盖已有文件；文件到达不代表社交软件发送成功。",
+            "批量管理文件。sources和target含device_id/path；空device_id为工作文件，非空设备须有本任务的控制授权。目标是目录，name为空沿用文件名。跨设备需device_link；向另一Agent设备交接共享文件用device_transfer。不覆盖已有文件；文件到达不代表社交软件发送成功。",
             json!({"operation":{"type":"string","enum":["copy","move","delete","mkdir","rename"]},"sources":{"type":"array","items":location},"target":location,"name":id}),
             vec!["operation", "sources", "target", "name"],
         ),
-        f(
+        function(
             "device_message",
             "向已连线的另一设备Agent交接一项工作，包含预期结果和已核对的文件路径。对方空闲时自动唤醒；可用task_wait让出运行，返回结果会唤醒原任务。排队不是完成。",
             json!({"source_device_id":id,"target_device_id":id,"text":id}),
             vec!["source_device_id", "target_device_id", "text"],
         ),
-        f(
+        function(
             "device_list",
             "列出主人已安装的真实设备、can_control控制权限和can_handoff交接能力。未连线的其他Agent设备可先device_link，再device_message交接；数据线不授予GUI控制权。",
             json!({}),
             vec![],
         ),
-        f(
+        function(
             "computer_observe",
             "观察Linux真实桌面，返回截图、窗口标题、尺寸、observation_id与epoch。GUI操作必须基于本轮最新观察。",
             json!({"device_id":id}),
             vec!["device_id"],
         ),
-        f(
+        function(
             "computer_zoom",
             "只读放大当前观察的局部，适合小字、表格和密集控件。返回原图偏移及倍率；点击仍用全屏坐标，不把局部坐标直接送入动作。",
             json!({"device_id":id,"observation_id":id,"x":origin,"y":origin,"width":extent,"height":extent}),
             vec!["device_id", "observation_id", "x", "y", "width", "height"],
         ),
-        f(
+        function(
             "computer_find_text",
             "在最新截图中定位文字，返回原图坐标、边界和置信度；同名结果分别保留。小字或整屏未找到时，可用region指定目标附近的全屏像素区域进行放大识别；返回坐标仍为全屏坐标。找不到返回空列表，不执行点击；文字区域不保证可点击。",
             json!({"device_id":id,"observation_id":id,"text":id,"region":{"type":"object","properties":{"x":origin,"y":origin,"width":extent,"height":extent},"required":["x","y","width","height"],"additionalProperties":false}}),
             vec!["device_id", "observation_id", "text"],
         ),
-        f(
+        function(
             "computer_find_control",
             "只读定位前台窗口的真实可访问性控件。提供名称text或角色role，可同时筛选；返回所有同名候选的全屏边界、可用/可编辑/焦点状态，不执行点击。按钮和表单优先于猜坐标；旧窗口不提供可访问性时用computer_find_text/OCR。partial=true不代表已搜索完整窗口。",
             json!({"device_id":id,"observation_id":id,"text":id,"role":id}),
             vec!["device_id", "observation_id"],
         ),
-        f(
+        function(
             "computer_click",
             "点击当前电脑画面中的目标；双击clicks=2，右键button=3。动作后自动返回新截图。",
             json!({"device_id":id,"observation_id":id,"x":num,"y":num,"button":num,"clicks":num}),
             vec!["device_id", "observation_id", "x", "y"],
         ),
-        f(
+        function(
             "computer_type",
             "向已聚焦的Linux输入区域粘贴Unicode文本（支持中文）。replace=true可在一次动作中替换当前可编辑字段，执行前核对真实焦点；不用于画布或文档正文。默认追加；焦点不足时不输入、不自动降级追加，先点击文本框。",
             json!({"device_id":id,"observation_id":id,"text":id,"replace":{"type":"boolean"}}),
             vec!["device_id", "observation_id", "text"],
         ),
-        f(
+        function(
             "computer_key",
             "发送Linux按键，如Return、ctrl+l、ctrl+s、Alt+F4。不能替代观察。",
             json!({"device_id":id,"observation_id":id,"key":id}),
             vec!["device_id", "observation_id", "key"],
         ),
-        f(
+        function(
             "computer_scroll",
             "在指定坐标滚动。amount正数向下，负数向上，最多8格。",
             json!({"device_id":id,"observation_id":id,"x":num,"y":num,"amount":num}),
             vec!["device_id", "observation_id", "x", "y", "amount"],
         ),
-        f(
+        function(
             "computer_drag",
             "按住左键从x/y拖到to_x/to_y；返回真实结果画面。",
             json!({"device_id":id,"observation_id":id,"x":num,"y":num,"to_x":num,"to_y":num}),
             vec!["device_id", "observation_id", "x", "y", "to_x", "to_y"],
         ),
-        f(
+        function(
             "computer_run",
             "在这台Linux桌面容器执行命令，工作目录/home/ai/Files；提供Bun、curl、git和LibreOffice。日常办公优先通过computer-use操作桌面应用。可sudo -n取得客体root配置系统；命令执行必须如实记录，不能假称鼠标操作。不能访问macOS。",
             json!({"device_id":id,"script":id}),
             vec!["device_id", "script"],
         ),
-        f(
+        function(
             "device_files",
             "列出设备共享文件。电脑path相对/home/ai/Files，手机默认/sdcard/Download。",
             json!({"device_id":id,"path":id}),
             vec!["device_id"],
         ),
-        f(
+        function(
             "device_link",
             "连接或断开主人已安装的手机与电脑，本任务至少控制一端。文件通道不改变GUI控制归属；另一Agent的设备用device_message交接。",
             json!({"source_device_id":id,"target_device_id":id,"connected":{"type":"boolean"}}),
             vec!["source_device_id", "target_device_id", "connected"],
         ),
-        f(
+        function(
             "device_transfer",
             "沿已连接的数据线传文件，最高64MiB，双端内容校验。返回request_id和实际目标路径；completed仅表示文件到达目标设备，绝不代表微信发送或对方收到。",
             json!({"source_device_id":id,"target_device_id":id,"source_path":id,"target_name":id}),
             vec!["source_device_id", "target_device_id", "source_path"],
         ),
-        f(
+        function(
             "device_transfer_status",
             "核对原request_id的传输账本，unknown/pending不是完成，不得重复创建新传输。",
             json!({"request_id":id}),

@@ -53,13 +53,16 @@ fn native_profile_creates_private_configuration_and_resumes_without_rewriting_us
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path();
     let path = "$HOME/literal:$(not-a-command):~/工具/bin";
-    success(invoke(root, &request(), path, "android35-x86_64"));
+    let mut selected = request();
+    selected["desktop"]["storage_gb"] = json!(32);
+    success(invoke(root, &selected, path, "android35-x86_64"));
     let profile_path = root.join("data/deployment/profile.json");
     let profile = fs::read(&profile_path).unwrap();
     let value: Value = serde_json::from_slice(&profile).unwrap();
     assert_eq!(value["launch_path"], path);
     assert_eq!(value["phone"]["template"], "android35-x86_64");
     assert_eq!(value["desktop"]["template"], "debian13-openbox");
+    assert_eq!(value["desktop"]["storage_gb"], 32);
     assert_eq!(
         value["sdk_root"],
         root.join("SDK with spaces").to_str().unwrap()

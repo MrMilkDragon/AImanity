@@ -109,7 +109,6 @@ pub(crate) fn resume(
     match verify() {
         Ok(components) => Ok(Some(StagedSource {
             directory: root,
-            data: home.join("user/data"),
             identity: expected.to_owned(),
             components,
             reused: true,
@@ -313,7 +312,6 @@ pub(crate) fn stage(
     };
     Ok(StagedSource {
         directory: destination,
-        data: home.join("user/data"),
         identity: expected.to_owned(),
         components: index.manifest.components,
         reused,

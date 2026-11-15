@@ -257,11 +257,10 @@ pub(crate) fn resolve_with_engine(
         .cloned()
         .or_else(|| std::env::var("AI_PHONE_MANAGED_BIN").ok())
         .unwrap_or_default();
-    let path = env.get("PATH").map(String::as_str).unwrap_or(&base);
     let path = if prefix.is_empty() {
-        path.into()
+        base
     } else {
-        format!("{prefix}:{path}")
+        format!("{prefix}:{base}")
     };
     env.extend(managed);
     env.extend(images::environment(root)?);
