@@ -9,38 +9,22 @@ permissions:
 env:
   BERYLLIUM_SOURCE: '89dd85e52619df0aa21d7813f22090105cd1b5f3'
   BERYLLIUM_INPUTS_RUN: '43593156255'
+  SEALED_INPUTS_RUN: '43700537360'
 jobs:
   lean-images:
-    name: Linux images (${{ matrix.arch }})
+    name: Linux desktop smoke (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {arch: arm64, machine: aarch64, runner: ubuntu-24.04-arm}
-          - {arch: amd64, machine: x86_64, runner: ubuntu-24.04}
+          - {arch: arm64, runner: ubuntu-24.04-arm}
+          - {arch: amd64, runner: ubuntu-24.04}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-          ref: ${{ env.BERYLLIUM_SOURCE }}
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-          path: carrier
-      - name: Prepare the disposable Linux factory
-        env:
-          EXPECTED_MACHINE: ${{ matrix.machine }}
-        run: |
-          test "$RUNNER_ENVIRONMENT" = github-hosted
-          test "$(uname -m)" = "$EXPECTED_MACHINE"
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-          ./scripts/bootstrap.sh
-          ./scripts/bun scripts/source.ts check --repository --manifest
-          cargo build --locked -p ai-phone-release-tools --bin release-tools
-          test -x target/debug/release-tools
       - uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
         with:
           version: v29.9.2
@@ -48,34 +32,27 @@ jobs:
           set-host: true
           daemon-config: |
             {"features":{"containerd-snapshotter":true}}
-      - name: Build and seal the Linux images
-        env:
-          IMAGE_ARCH: ${{ matrix.arch }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/lean-images"
-          ./scripts/bun -e 'import { checkDocker, prepareImages } from "./scripts/tooling/factory"; import { digest, ROOT } from "./scripts/tooling/process"; const output = process.env.RUNNER_TEMP + "/lean-images"; checkDocker(); const built = await prepareImages(ROOT, output, await digest("SOURCE-MANIFEST.json"), process.env.IMAGE_ARCH); await Bun.write(output + "/images.receipt.json", JSON.stringify({...built.receipt, source: process.env.BERYLLIUM_SOURCE}, null, 2) + "\n"); console.log(JSON.stringify(built.receipt));'
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
+          run-id: ${{ env.SEALED_INPUTS_RUN }}
+          github-token: ${{ github.token }}
           name: lean-linux-images-${{ matrix.arch }}
-          path: |
-            ${{ runner.temp }}/lean-images/images.payload
-            ${{ runner.temp }}/lean-images/images.receipt.json
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 2
+          path: ${{ runner.temp }}/lean-images
       - name: Boot the exported desktop offline and exercise the GUI
         env:
           IMAGE_ARCH: ${{ matrix.arch }}
-        run: bash carrier/scripts/smoke-lean-linux.sh "$RUNNER_TEMP/lean-images" "$IMAGE_ARCH"
+        run: bash scripts/smoke-lean-linux.sh "$RUNNER_TEMP/lean-images" "$IMAGE_ARCH"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
         with:
           name: lean-linux-desktop-${{ matrix.arch }}
-          path: ${{ runner.temp }}/lean-images/desktop*.png
+          path: |
+            ${{ runner.temp }}/lean-images/desktop*.png
+            ${{ runner.temp }}/lean-images/desktop-attestation.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 2
   macos-dmg:
-    needs: lean-images
     runs-on: macos-26
     timeout-minutes: 85
     env:
@@ -94,6 +71,8 @@ jobs:
           path: carrier
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
+          run-id: ${{ env.SEALED_INPUTS_RUN }}
+          github-token: ${{ github.token }}
           name: lean-linux-images-arm64
           path: ${{ runner.temp }}/lean-images
       - name: Build and temporarily sign the complete macOS DMG
@@ -119,118 +98,7 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 2
-  linux-release:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 80
-    env:
-      CARGO_BUILD_JOBS: '2'
-      CARGO_INCREMENTAL: '0'
-      NEXT_TELEMETRY_DISABLED: '1'
-      AI_PHONE_TEST_TESSERACT: /usr/bin/tesseract
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-          ref: ${{ env.BERYLLIUM_SOURCE }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-      - name: Set up the Windows Linux guest toolchain
-        run: |
-          test "$RUNNER_ENVIRONMENT" = github-hosted
-          test "$(uname -m)" = x86_64
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "$ANDROID_HOME/ndk"
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends e2fsprogs qemu-utils cpio \
-            build-essential pkg-config libssl-dev unzip tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-          rustup target add x86_64-unknown-linux-musl
-          export JAVA_HOME="$JAVA_HOME_17_X64"
-          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
-          ./scripts/bootstrap.sh
-          ./scripts/bun scripts/source.ts check --repository --manifest
-          cargo build --locked -p ai-phone-release-tools --bin release-tools
-      - uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
-        with:
-          version: v29.9.2
-          context: aimanity-beryllium-ocr
-          set-host: true
-          daemon-config: |
-            {"features":{"containerd-snapshotter":true}}
-      - name: Build source-matched native services, web, Android helpers, and offline OCR
-        run: |
-          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/tessdata"
-          export AI_PHONE_TEST_TESSDATA="$RUNNER_TEMP/tessdata"
-          ./scripts/bun scripts/artifacts.ts native
-          ./scripts/bun scripts/artifacts.ts phone --build
-          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld"
-          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-Clinker-flavor=ld.lld --remap-path-prefix=$HOME=/build-user"
-          cargo build --locked --release -p ai-phone-guest-runtime --bin desktop-bridge --target x86_64-unknown-linux-musl
-          export AI_PHONE_RELEASE_DESKTOP_BRIDGE="$PWD/target/x86_64-unknown-linux-musl/release/desktop-bridge"
-          ./scripts/bun -e 'import {buildFactoryDependency} from "./scripts/tooling/factory-inputs"; await buildFactoryDependency(process.cwd(), process.env.RUNNER_TEMP + "/ocr-context", process.env.RUNNER_TEMP + "/ocr", "linux-ocr");'
-          ./scripts/bun run build
-          ./scripts/bun scripts/prepare-client.ts --with-web-runtime --with-service-runtime --with-phone-apps --linux-ocr "$RUNNER_TEMP/ocr"
-          mkdir "$RUNNER_TEMP/compiled"
-          cp apps/client/src-tauri/gen/host/source.payload "$RUNNER_TEMP/compiled/"
-          cp target/release/ai-phone-assistant "$RUNNER_TEMP/compiled/bootstrap.program"
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          run-id: ${{ env.BERYLLIUM_INPUTS_RUN }}
-          github-token: ${{ github.token }}
-          name: beryllium-windows-linux-inputs
-          path: ${{ runner.temp }}/linux-inputs
-      - name: Await the new sealed Linux x64 images
-        run: |
-          timeout 45m bash -eu -o pipefail -c '
-            endpoint="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts"
-            until gh api "$endpoint" --jq '\''.artifacts[] | select(.name == "lean-linux-images-amd64") | .id'\'' | grep -E "^[0-9]+$"; do sleep 15; done
-          '
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          name: lean-linux-images-amd64
-          path: ${{ runner.temp }}/lean-images
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          run-id: ${{ env.BERYLLIUM_INPUTS_RUN }}
-          github-token: ${{ github.token }}
-          name: beryllium-windows-immutable-inputs
-          path: ${{ runner.temp }}/immutable
-      - name: Assemble the Windows release partition
-        run: |
-          work="$RUNNER_TEMP"; qemu="$work/immutable/host/qemu"
-          (cd "$work/linux-inputs" && sha256sum -c guest.sha256)
-          read -r base _ < "$work/linux-inputs/guest.sha256"
-          rm "$work/linux-inputs/images.payload" "$work/linux-inputs/images.sha256"
-          mv "$work/linux-inputs/guest.qcow2" "$qemu/guest/guest.qcow2"
-          test "$(jq -r .source "$work/lean-images/images.receipt.json")" = "$BERYLLIUM_SOURCE"
-          bash scripts/windows-release-layer.sh "$work/compiled" "$work/immutable" "$qemu/guest" "$work/lean-images/images.payload"
-          sha() { sha256sum "$1" | cut -d ' ' -f1; }
-          jq --arg source "$(git rev-parse HEAD)" --arg source_manifest "$(sha SOURCE-MANIFEST.json)" \
-            --arg release "$(sha "$work/compiled/source.payload")" --arg base "$base" \
-            --arg init "$(sha "$qemu/guest/release-init.cpio.gz")" --arg ext "$(sha "$qemu/guest/release.ext4")" \
-            --argjson basesize "$(stat -c %s "$qemu/guest/guest.qcow2")" \
-            --argjson initsize "$(stat -c %s "$qemu/guest/release-init.cpio.gz")" \
-            --argjson extsize "$(stat -c %s "$qemu/guest/release.ext4")" '
-            .source_commit=$source | .source_manifest_sha256=$source_manifest | .release_sha256=$release |
-            .guest.disk.sha256=$base | .guest.disk.size=$basesize |
-            .files |= map(if .path=="guest/guest.qcow2" then .sha256=$base|.size=$basesize
-                          elif .path=="guest/release-init.cpio.gz" then .sha256=$init|.size=$initsize
-                          elif .path=="guest/release.ext4" then .sha256=$ext|.size=$extsize else . end)' \
-            "$qemu/manifest.json" > "$qemu/manifest.new"
-          mv "$qemu/manifest.new" "$qemu/manifest.json"
-          rm "$work/immutable/host/android.payload"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: beryllium-assembled-windows-qemu
-          path: ${{ runner.temp }}/immutable/host/qemu/
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 2
   windows-exe:
-    needs: [linux-release, lean-images]
     runs-on: windows-2025
     timeout-minutes: 85
     env:
@@ -268,6 +136,8 @@ jobs:
         run: ./.tools/bin/bun.exe scripts/prepare-client.ts --android-runtime dist/immutable/host/android.payload
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
+          run-id: ${{ env.SEALED_INPUTS_RUN }}
+          github-token: ${{ github.token }}
           name: beryllium-assembled-windows-qemu
           path: apps/client/src-tauri/gen/host/qemu
       - name: Build and temporarily sign the complete Windows EXE
