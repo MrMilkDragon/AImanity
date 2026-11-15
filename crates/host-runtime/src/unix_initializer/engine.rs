@@ -8,7 +8,13 @@ fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-fn definition(home: &Path, folder: &Path, policy: &Value, memory_mb: u32) -> Result<Value> {
+fn definition(
+    home: &Path,
+    folder: &Path,
+    policy: &Value,
+    memory_mb: u32,
+    storage_gb: u32,
+) -> Result<Value> {
     let arch = policy["arch"]
         .as_str()
         .ok_or(Error::Invalid("container_host_policy"))?;
@@ -18,7 +24,7 @@ fn definition(home: &Path, folder: &Path, policy: &Value, memory_mb: u32) -> Res
     let packages = quote(&text(&folder.join("packages"))?);
     Ok(json!({
         "minimumLimaVersion":"2.2.1", "vmType":"vz", "arch":arch,
-        "cpus":4, "memory":format!("{}GiB", crate::desktop_host_memory_mib(memory_mb) / 1024), "disk":"64GiB",
+        "cpus":4, "memory":format!("{}GiB", crate::desktop_host_memory_mib(memory_mb) / 1024), "disk":format!("{storage_gb}GiB"),
         "images":[{"location":folder.join("image.iso"),"arch":arch,"digest":format!("sha256:{image}")}],
         "mountType":"virtiofs", "mounts":[{"location":home,"writable":true}],
         "containerd":{"system":false,"user":false}, "propagateProxyEnv":false,
@@ -61,10 +67,6 @@ pub(super) async fn start<E: Execute>(
 ) -> Result<()> {
     let root = backend.root;
     let folder = root.join("runtime/container-host");
-    let policies: Value =
-        serde_json::from_slice(&fs::read(root.join("config/container-host-runtime.json"))?)
-            .map_err(|_| Error::Invalid("container_host_policy"))?;
-    let policy = &policies["hosts"]["macos-arm64"];
     let command = folder.join("lima/bin/limactl");
     let state = managed_engine::state_directory(root, home, user)?;
     managed_engine::claim_state(&root.join("data").canonicalize()?, &state)?;
@@ -96,16 +98,24 @@ pub(super) async fn start<E: Execute>(
                 .await?;
         }
         "" => {
+            let policies: Value =
+                serde_json::from_slice(&fs::read(root.join("config/container-host-runtime.json"))?)
+                    .map_err(|_| Error::Invalid("container_host_policy"))?;
+            let policy = &policies["hosts"]["macos-arm64"];
             let profile: Value =
                 serde_json::from_slice(&fs::read(root.join("data/deployment/profile.json"))?)
                     .map_err(|_| Error::Invalid("host_profile"))?;
             let memory = serde_json::from_value(profile["desktop"]["memory_mb"].clone())
                 .map_err(|_| Error::Invalid("host_profile"))?;
+            let storage =
+                serde_json::from_value::<Option<u32>>(profile["desktop"]["storage_gb"].clone())
+                    .map_err(|_| Error::Invalid("host_profile"))?
+                    .unwrap_or(64);
             let file = home.join("container-host.yaml");
             filesystem::publish_private(
                 home,
                 "container-host.yaml",
-                &serde_json::to_vec(&definition(home, &folder, policy, memory)?)
+                &serde_json::to_vec(&definition(home, &folder, policy, memory, storage)?)
                     .map_err(|_| Error::Invalid("container_host_policy"))?,
                 false,
             )?;
@@ -157,9 +167,11 @@ mod tests {
             Path::new("/home/App Data/releases/id/runtime/container-host"),
             &json!({"arch":"aarch64","image":{"sha256":"abc"}}),
             2560,
+            32,
         )
         .unwrap();
         assert_eq!(value["memory"], "5GiB");
+        assert_eq!(value["disk"], "32GiB");
         assert_eq!(value["propagateProxyEnv"], false);
         assert_eq!(value["mounts"][0]["location"], "/home/App Data");
         assert!(

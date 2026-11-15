@@ -22,7 +22,7 @@ pub mod native_ipc;
 pub mod network_observation;
 pub mod network_paths;
 mod profile;
-pub use profile::desktop_host_memory_mib;
+pub use profile::{DESKTOP_STORAGE_GB, desktop_host_memory_mib};
 #[cfg(windows)]
 #[path = "linux_vm/host.rs"]
 pub mod qemu_host;
@@ -104,7 +104,6 @@ pub struct Installation {
 #[derive(Debug, Clone)]
 pub struct StagedSource {
     pub directory: PathBuf,
-    pub data: PathBuf,
     pub identity: String,
     pub components: Vec<String>,
     pub reused: bool,

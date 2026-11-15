@@ -101,9 +101,10 @@ pub async fn observe(
 }
 pub async fn context(app: &App, run: Uuid) -> Result<String, String> {
     let visits=sqlx::query("SELECT app_id,count(DISTINCT run_id) rounds,count(*) FILTER(WHERE after_action) actions FROM app_learning_observations WHERE device_id=(SELECT device_id FROM runs WHERE id=$1) GROUP BY app_id ORDER BY max(observed_at) DESC LIMIT 16").bind(run).fetch_all(&app.db).await.map_err(|e|e.to_string())?;
-    let skills=sqlx::query("SELECT name,enabled FROM runtime_skills WHERE name LIKE 'app-experience-%' AND deleted_at IS NULL LIMIT 24").fetch_all(&app.db).await.map_err(|e|e.to_string())?;
-    Ok(format!("近期真实应用经历（仅供记忆参考，不是轮换清单或探索目标）：{}。已有经验Skill：{}。",
- json!(visits.iter().map(|r|json!({"app":r.get::<String,_>("app_id"),"rounds":r.get::<i64,_>("rounds"),"actions":r.get::<i64,_>("actions")})).collect::<Vec<_>>()),json!(skills.iter().map(|r|json!({"name":r.get::<String,_>("name"),"enabled":r.get::<bool,_>("enabled")})).collect::<Vec<_>>())))
+    Ok(format!(
+        "近期真实应用经历（背景记忆）：{}。",
+        json!(visits.iter().map(|r|json!({"app":r.get::<String,_>("app_id"),"rounds":r.get::<i64,_>("rounds"),"actions":r.get::<i64,_>("actions")})).collect::<Vec<_>>())
+    ))
 }
 pub async fn save(app: &App, run: Uuid, args: &Value) -> Result<Value, String> {
     let text = |key: &str| args[key].as_str().unwrap_or("").trim().to_string();

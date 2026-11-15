@@ -13,7 +13,7 @@ The default guests are Android 15 and Debian 13/Openbox. CPU, memory and initial
 
 ## Installation lifecycle
 
-1. Choose language and device resources. A fresh complete installation requires 12 GiB RAM and 35 GiB free storage; 16 GiB RAM is recommended.
+1. Choose language and device resources. A fresh complete installation requires 12 GiB RAM and 24 GiB free storage; 16 GiB RAM is recommended. Choose 16, 32, or 64 GiB for the Linux system disk. The default is 32 GiB.
 2. The client stages the bundled systems, emulator, container engine, applications and compiled services. Users do not prepare a development environment or download system images separately.
 3. Versioned code lives in `host/releases/<payload hash>`; devices, database, files and configuration live in `host/user`.
 4. Rust initializes the container host, images, database and services, boots the native phone, provisions input/notifications and checks actual device frames before reporting ready.

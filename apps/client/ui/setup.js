@@ -1,4 +1,3 @@
-import { languageWall } from './language-wall.js';
 import { mountLoadingOrb } from './loading-orb.js';
 import { bindSpringRange } from './range-motion.js';
 import { languageNames, localeFor, locales, setupLabels, updateLabels } from './setup-i18n.js';
@@ -16,7 +15,7 @@ let polling = false;
 let snapshot, actionError = '', statusError = '', pending = false, pollTimer, previousView, stopped = false;
 let activity = [], visibleActivityKey = '';
 let updateOffer, updating = false, updateFailed = false, updatePinned = false;
-const resources = { phone: { cpus: 2, memory_mb: 2048, storage_gb: 16 }, desktop: { cpus: 2, memory_mb: 2560 } };
+const resources = { phone: { cpus: 2, memory_mb: 2048, storage_gb: 16 }, desktop: { cpus: 2, memory_mb: 2560, storage_gb: 32 } };
 const sliders = [];
 const startupLabels = { checking: 'startupChecking', repairing: 'startupRepairing', opening: 'startupOpening', failed: 'startupFailed' };
 const activityLabels = { running: 'activityRunning', completed: 'activityCompleted', failed: 'activityFailed' };
@@ -83,7 +82,6 @@ function render() {
   const selectingLanguage = choosingLanguage && !startupPhase;
   $('language-screen').hidden = !selectingLanguage;
   $('setup-flow').hidden = selectingLanguage;
-  languages.update(locale, selectingLanguage);
   const progress = snapshot?.progress;
   const state = progress?.state;
   const active = state === 'running' || state === 'license';
@@ -151,11 +149,25 @@ function render() {
   previousView = view;
 }
 
-const languages = languageWall($('language-wall'), locales, languageNames, value => {
-  locale = value;
+const languageOptions = $('language-options');
+languageOptions.replaceChildren(...locales.map((value, index) => {
+  const choice = document.createElement('label');
+  choice.className = 'language-choice';
+  const input = document.createElement('input');
+  input.type = 'radio';
+  input.name = languageKey;
+  input.value = value;
+  input.checked = value === locale;
+  const name = document.createElement('span');
+  name.lang = value;
+  name.dir = 'auto';
+  name.textContent = languageNames[index];
+  choice.append(input, name);
+  return choice;
+}));
+languageOptions.addEventListener('change', event => {
+  locale = event.target.value;
   translate();
-  render();
-  languages.focus();
 });
 const orb = mountLoadingOrb($('install-orb'));
 window.addEventListener('pagehide', orb.dispose, { once: true });
@@ -176,6 +188,7 @@ function resourceSlider(device, key, values) {
   title.htmlFor = id;
   title.dataset.i18n = { cpus: 'cpu', memory_mb: 'memory', storage_gb: 'storage' }[key];
   const output = document.createElement('output');
+  output.dir = 'ltr';
   output.setAttribute('for', id);
   output.setAttribute('aria-hidden', 'true');
   const input = document.createElement('input');
@@ -217,6 +230,7 @@ resourceSlider('phone', 'memory_mb', [1536, 2048, 3072, 4096]);
 resourceSlider('phone', 'storage_gb', [16, 24, 32]);
 resourceSlider('desktop', 'cpus', [1, 2, 4]);
 resourceSlider('desktop', 'memory_mb', [2048, 2560, 3072, 4096]);
+resourceSlider('desktop', 'storage_gb', [16, 32, 64]);
 
 async function refresh() {
   try {
@@ -226,7 +240,7 @@ async function refresh() {
     if (!startup.phase) {
       if (!snapshot && next.previous_request) {
         for (const { update, device, key } of sliders) {
-          resources[device][key] = next.previous_request[device][key];
+          resources[device][key] = next.previous_request[device][key] ?? resources[device][key];
           update(resources[device][key]);
         }
       }
@@ -273,9 +287,9 @@ async function run(command, args) {
     await refresh();
   }
 }
-const start = () => run('start_deployment', { request: { locale, ...resources } });
+const start = (request = { locale, ...resources }) => run('start_deployment', { request });
 $('local-setup').addEventListener('submit', event => { event.preventDefault(); void start(); });
-$('retry').addEventListener('click', () => startup.phase ? void run('retry_startup') : void start());
+$('retry').addEventListener('click', () => startup.phase ? void run('retry_startup') : void start(snapshot?.previous_request));
 $('cancel').addEventListener('click', () => void run('cancel_deployment'));
 $('accept').addEventListener('click', () => void run('accept_deployment_license'));
 $('enter').addEventListener('click', () => void run('open_workbench', { locale }));

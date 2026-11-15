@@ -5,7 +5,7 @@ use ring::hmac;
 use std::{
     ffi::OsString,
     fs::{self, File, OpenOptions},
-    io::{self, Write},
+    io::{self, Read, Write},
     net::Ipv4Addr,
     path::{Path, PathBuf},
     process::Stdio,
@@ -93,7 +93,7 @@ impl<'a> QemuVmConfig<'a> {
         })
     }
 
-    fn validate(&self, profile: &[u8]) -> Result<()> {
+    fn validate(&self, profile: &[u8]) -> Result<crate::profile::Request> {
         if ![self.runtime, self.guest, self.home]
             .iter()
             .all(|path| path.is_absolute())
@@ -107,8 +107,9 @@ impl<'a> QemuVmConfig<'a> {
         {
             return Err(Error::Invalid("vm_owner_arguments"));
         }
-        crate::profile::parse_request(profile)?;
-        filesystem::directory(self.home, true)
+        let request = crate::profile::parse_request(profile)?;
+        filesystem::directory(self.home, true)?;
+        Ok(request)
     }
 
     fn worker_command(&self) -> Result<Command> {
@@ -187,6 +188,31 @@ impl<'a> QemuVmConfig<'a> {
         fs::rename(staging.path(), &disk)?;
         self.existing_disk()
     }
+
+    async fn grow_disk(&self, overlay: &Path, storage_gb: u32) -> Result<()> {
+        let mut header = [0_u8; 32];
+        filesystem::regular(overlay)?.read_exact(&mut header)?;
+        // QCOW2 stores its virtual byte size in header bytes 24–31.
+        let previous = u64::from_be_bytes(*header.last_chunk::<8>().unwrap());
+        if previous >= (u64::from(storage_gb) << 30) {
+            return Ok(());
+        }
+        let status = Command::new(self.runtime.join("qemu-img.exe"))
+            .args(["resize", "-f", "qcow2"])
+            .arg(overlay)
+            .arg(format!("{storage_gb}G"))
+            .creation_flags(HIDDEN)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(log(self.home, "owner.log")?)
+            .kill_on_drop(true)
+            .status()
+            .await?;
+        if !status.success() {
+            return Err(Error::Invalid("vm_overlay_resize"));
+        }
+        Ok(())
+    }
 }
 
 fn digest(id: &str) -> bool {
@@ -210,6 +236,7 @@ impl<'a> QemuVm<'a> {
     async fn start(
         config: QemuVmConfig<'a>,
         profile: Vec<u8>,
+        storage_gb: Option<u32>,
         lease: filesystem::Lease,
     ) -> Result<Self> {
         let web = TcpListener::bind((Ipv4Addr::LOCALHOST, config.web_port)).await?;
@@ -225,6 +252,9 @@ impl<'a> QemuVm<'a> {
         }
         filesystem::existing_directory(&firmware)?;
         let overlay = config.disk(&base).await?;
+        if let Some(storage) = storage_gb {
+            config.grow_disk(&overlay, storage).await?;
+        }
         let key = key_path(config.home);
         let mut secret = [0; 32];
         getrandom::fill(&mut secret).map_err(|_| Error::Invalid("vm_bootstrap_key"))?;
@@ -544,9 +574,9 @@ pub async fn worker(arguments: &[OsString]) -> Result<()> {
         let config = QemuVmConfig::parse(arguments)?;
         let request: LinuxVmBootstrapRequest =
             native_ipc::read_bounded(&mut input, PROFILE_FRAME).await?;
-        config.validate(&request.profile)?;
+        let storage = config.validate(&request.profile)?.desktop.storage_gb;
         let lease = config.lease()?.ok_or(Error::Busy)?;
-        Ok::<_, Error>((config, request.profile, lease))
+        Ok::<_, Error>((config, request.profile, storage, lease))
     }
     .await;
     let cancel = async {
@@ -557,9 +587,9 @@ pub async fn worker(arguments: &[OsString]) -> Result<()> {
     };
     tokio::pin!(cancel);
     let start = match admission {
-        Ok((config, profile, lease)) => tokio::select! { biased;
+        Ok((config, profile, storage, lease)) => tokio::select! { biased;
             _ = &mut cancel => Err(Error::Cancelled),
-            result = QemuVm::start(config, profile, lease) => result,
+            result = QemuVm::start(config, profile, storage, lease) => result,
         },
         Err(error) => Err(error),
     };

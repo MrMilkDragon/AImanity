@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use std::{ffi::OsString, fs, io::Read, path::Path};
 
 pub(crate) const CONTRACT: &str = "ai-phone-host-profile-v1";
+pub const DESKTOP_STORAGE_GB: [u32; 3] = [16, 32, 64];
 const LOCALES: [&str; 10] = [
     "zh-CN", "en", "zh-TW", "ja", "ko", "de", "fr", "es", "ru", "ar",
 ];
@@ -27,16 +28,17 @@ struct Phone {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Desktop {
+pub(crate) struct Desktop {
     cpus: u32,
     memory_mb: u32,
+    pub(crate) storage_gb: Option<u32>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Request {
     locale: String,
     phone: Phone,
-    desktop: Desktop,
+    pub(crate) desktop: Desktop,
     #[cfg(unix)]
     #[serde(default)]
     pub(crate) android_qemu: bool,
@@ -76,6 +78,9 @@ fn resources(phone: &Phone, desktop: &Desktop) -> bool {
         && [1536, 2048, 3072, 4096].contains(&phone.memory_mb)
         && [16, 24, 32].contains(&phone.storage_gb)
         && [2048, 2560, 3072, 4096].contains(&desktop.memory_mb)
+        && desktop
+            .storage_gb
+            .is_none_or(|storage| DESKTOP_STORAGE_GB.contains(&storage))
 }
 
 fn absolute(text: &str) -> bool {
@@ -110,6 +115,7 @@ fn validate(value: &Value, template: &str) -> Result<()> {
         template: String,
         cpus: u32,
         memory_mb: u32,
+        storage_gb: Option<u32>,
     }
     let header: Profile =
         serde_json::from_value(value.clone()).map_err(|_| Error::Invalid("host_profile"))?;
@@ -117,10 +123,7 @@ fn validate(value: &Value, template: &str) -> Result<()> {
         .map_err(|_| Error::Invalid("host_profile"))?;
     let desktop: Device = serde_json::from_value(value["desktop"].clone())
         .map_err(|_| Error::Invalid("host_profile"))?;
-    let storage = value["phone"]["storage_gb"]
-        .as_u64()
-        .and_then(|value| u32::try_from(value).ok())
-        .ok_or(Error::Invalid("host_profile"))?;
+    let storage = phone.storage_gb.ok_or(Error::Invalid("host_profile"))?;
     if header.schema_version != 1
         || !LOCALES.contains(&header.locale.as_str())
         || phone.template != template
@@ -135,6 +138,7 @@ fn validate(value: &Value, template: &str) -> Result<()> {
             &Desktop {
                 cpus: desktop.cpus,
                 memory_mb: desktop.memory_mb,
+                storage_gb: desktop.storage_gb,
             },
         )
         || !absolute(&header.sdk_root)
@@ -242,12 +246,15 @@ pub(crate) fn prepare_request(
         return Err(Error::Invalid("host_profile"));
     }
     checked_launch_path(Some(launch_path))?;
-    let value = json!({"schema_version":1,"local_entry":true,"locale":request.locale,
+    let mut value = json!({"schema_version":1,"local_entry":true,"locale":request.locale,
         "launch_path":launch_path,
         "sdk_root":sdk,"java_home":java,
         "host_proxy":"","container_proxy":"",
         "phone":{"template":template,"cpus":request.phone.cpus,"memory_mb":request.phone.memory_mb,"storage_gb":request.phone.storage_gb},
         "desktop":{"template":"debian13-openbox","cpus":request.desktop.cpus,"memory_mb":request.desktop.memory_mb}});
+    if let Some(storage) = request.desktop.storage_gb {
+        value["desktop"]["storage_gb"] = json!(storage);
+    }
     persist(root, &value)
 }
 

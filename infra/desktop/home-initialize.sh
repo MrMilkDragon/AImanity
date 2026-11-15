@@ -17,6 +17,7 @@ wallpaper_mode=color
 desktop_bg=#e7ebef
 desktop_fg=#26313c
 desktop_shadow=#ffffff
+show_wm_menu=1
 show_documents=0
 show_trash=0
 show_mounts=0

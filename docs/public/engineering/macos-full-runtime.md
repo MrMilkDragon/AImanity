@@ -2,7 +2,7 @@
 
 The macOS DMG contains the client, Android and Linux baselines, local services and their runtimes. The client manages device creation.
 
-The host requirement is an Apple Silicon Mac running macOS 15.0 or later, at least 12 GiB RAM and 35 GiB free space at initial deployment. The hardware and space checks run before device creation. Existing user data is kept separately from versioned program files.
+The host requirement is an Apple Silicon Mac running macOS 15.0 or later, at least 12 GiB RAM and 24 GiB free space at initial deployment. The hardware and space checks run before device creation. Existing user data is kept separately from versioned program files.
 
 ## Contents
 
@@ -61,6 +61,6 @@ Precompiled guest inputs are verified and materialized inside the source checkou
 
 ## 中文
 
-macOS 发行结构内置客户端、Android 与 Linux 基础、服务程序及运行环境。终端用户无需另行安装编译器、包管理器、Android SDK 或 Docker。首次部署要求 Apple Silicon、macOS 15.0、12 GiB 内存和35 GiB可用空间；持久用户数据与程序版本分离。
+macOS 发行结构内置客户端、Android 与 Linux 基础、服务程序及运行环境。终端用户无需另行安装编译器、包管理器、Android SDK 或 Docker。首次部署要求 Apple Silicon、macOS 15.0、12 GiB 内存和 24 GiB 可用空间；持久用户数据与程序版本分离。
 
 内置 Android 17 ARM64（构建 16644040）、Avo 1.1.0 和 ADB 36.0.1。构建时将 `AIMANITY_ANDROID_SDK_INPUT` 指向暂存目录并运行上方命令。已有离线胶囊时，改用 `AIMANITY_ANDROID_PAYLOAD` 和 `AIMANITY_ANDROID_PAYLOAD_SHA256`。[下载](../release-status.md) · [Android 源码与暂存](android-runtime.md)

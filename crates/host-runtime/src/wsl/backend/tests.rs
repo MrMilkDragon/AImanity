@@ -136,7 +136,7 @@ impl Init {
             &self.home,
             &self.run,
             REQUEST,
-            "127.0.0.1",
+            false,
             fixture,
             &|_| Ok(free),
         )
@@ -721,7 +721,7 @@ async fn invalid_resources_are_rejected_before_creating_installation_state() {
         &home,
         &folder.path().join("run"),
         b"{}",
-        "127.0.0.1",
+        false,
         Fixture::default(),
         &|_| Ok(u64::MAX),
     )
