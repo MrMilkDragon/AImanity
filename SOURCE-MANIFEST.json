@@ -13,8 +13,8 @@
     },
     {
       "path": ".dockerignore",
-      "size": 405,
-      "sha256": "f012a2bdb947ce4383e643df79cd0b28a27d30fce094ac1cb531903c11821ebf"
+      "size": 429,
+      "sha256": "c0a8d06b2d3bc4a7e358d2b3987c3ca76952142b4db2c92989f1964cdc7bc347"
     },
     {
       "path": ".env.example",

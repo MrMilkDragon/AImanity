@@ -10,6 +10,7 @@
 !infra/desktop/*.sh
 !infra/desktop/*.pa
 !infra/desktop/dunstrc
+!infra/desktop/menu.xml
 !infra/desktop/mimeapps.list
 !infra/desktop/location.js
 !LICENSE
