@@ -38,6 +38,7 @@ if (@(Get-Listeners).Count -ne $Ports.Count -or -not (Test-Path $Owner) -or
     throw 'Run this after the two-device acceptance checks.'
 }
 
+[void]$Client.Handle
 $timer = [Diagnostics.Stopwatch]::StartNew()
 if (-not $Client.CloseMainWindow() -or -not $Client.WaitForExit(110000)) {
     throw 'The app did not complete normal window-close shutdown.'

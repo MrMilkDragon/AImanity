@@ -18,6 +18,7 @@ $LocalProbe = Join-Path $Local 'webview-uninstall-probe'
 New-Item -ItemType Directory -Path $Local -Force | Out-Null
 Set-Content -Path $Backup -Value 'external backup'
 Set-Content -Path $LocalProbe -Value 'private cache'
+[void]$Launcher.Handle
 if (-not $Launcher.CloseMainWindow() -or -not $Launcher.WaitForExit(110000) -or $Launcher.ExitCode -ne 0) {
     throw 'Normal close before uninstall failed.'
 }
