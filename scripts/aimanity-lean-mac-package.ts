@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const [root, images, work] = process.argv.slice(2);
@@ -12,6 +12,7 @@ const { buildNative, prepareServices } = await import(root + "/scripts/tooling/n
 const { writeTar, buildReleaseTools } = await import(root + "/scripts/tooling/archive.ts");
 const { buildConfig } = await import(root + "/scripts/tooling/resources.ts");
 const { buildClient, noticeManifest } = await import(root + "/scripts/tooling/client-build.ts");
+const { componentManifests, stageSource } = await import(root + "/scripts/tooling/client-payload.ts");
 const { imageManifest } = await import(root + "/scripts/tooling/image-capsule.ts");
 
 if (hostKey() !== "macos-arm64") throw Error("Apple Silicon builder required");
@@ -38,7 +39,8 @@ try {
     copyFileSync(join(host, member), join(resources, member));
   }
   run(["tar", "-xf", join(host, "source.payload"), "-C", reuse,
-    "runtime/container-host", "runtime/phone-apps", "runtime/web", "runtime/services/bin/desktop-bridge"], {cwd:root});
+    "runtime/container-host", "runtime/phone-apps", "runtime/web", componentManifests.web,
+    "runtime/services/bin/desktop-bridge"], {cwd:root});
 } finally {
   run(["hdiutil", "detach", mount], {cwd:root});
   rmSync(mount, {recursive:true});
@@ -59,11 +61,18 @@ process.env.AI_PHONE_RELEASE_DESKTOP_BRIDGE = join(reuse, "runtime/services/bin/
 await buildNative(root);
 const services = await prepareServices(root);
 const files = [...source, ...["web","phone-apps","container-host"].flatMap(role =>
-  collect(join(reuse, "runtime", role), "runtime/" + role).files), ...services];
-const manifest = { format:2, components:["web","native-services","phone-apps","container-host"], files:records(files) };
+  collect(join(reuse, "runtime", role), "runtime/" + role).files), ...services,
+  {path:componentManifests.web, mode:0o644, data:readFileSync(join(reuse, componentManifests.web))}];
+const manifest = { format:2, components:Object.keys(componentManifests), files:records(files) };
 const archive = join(resources, "source.payload");
 await writeTar(archive, [...files, {path:"HOST-MANIFEST.json", mode:0o644, data:Buffer.from(JSON.stringify(manifest))}],
   {codec:"xz", architecture:"arm64", root});
+const staging = mkdtempSync(join(work, "validate-source-"));
+try {
+  console.log("Native runtime staged source:", await stageSource(archive, staging, root));
+} finally {
+  rmSync(staging, {recursive:true, force:true});
+}
 save(join(resources, "integrity.json"), {
   "source.payload": await digest(archive),
   "images.payload": imageDigest,

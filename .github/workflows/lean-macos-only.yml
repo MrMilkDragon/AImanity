@@ -1,0 +1,58 @@
+name: Beryllium macOS source capsule and signed installer
+on:
+  push:
+    branches: [codex/beryllium-lean-macos]
+    paths: [.github/workflows/lean-macos-only.yml]
+permissions:
+  contents: read
+  actions: read
+env:
+  BERYLLIUM_SOURCE: '89dd85e52619df0aa21d7813f22090105cd1b5f3'
+  SEALED_INPUTS_RUN: '43700537360'
+jobs:
+  macos-dmg:
+    runs-on: macos-26
+    timeout-minutes: 85
+    env:
+      CARGO_INCREMENTAL: '0'
+      NEXT_TELEMETRY_DISABLED: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.BERYLLIUM_SOURCE }}
+          fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: carrier
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: ${{ env.SEALED_INPUTS_RUN }}
+          github-token: ${{ github.token }}
+          name: lean-linux-images-arm64
+          path: ${{ runner.temp }}/lean-images
+      - name: Build and temporarily sign the complete macOS DMG
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = arm64
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          ./scripts/bun scripts/source.ts check --repository --manifest
+          cmake --version
+          if ! command -v tesseract >/dev/null; then brew install tesseract; fi
+          export AI_PHONE_TEST_TESSERACT="$(command -v tesseract)"
+          export AI_PHONE_TEST_TESSDATA="$RUNNER_TEMP/ocr-models"
+          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$AI_PHONE_TEST_TESSDATA"
+          ./scripts/bun carrier/scripts/aimanity-lean-mac-package.ts "$PWD" "$RUNNER_TEMP/lean-images/images.payload" "$RUNNER_TEMP/lean-macos"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: lean-macos-signed-dmg
+          path: |
+            ${{ runner.temp }}/lean-macos/release/AImanity-*-macos-arm64.dmg
+            ${{ runner.temp }}/lean-macos/release/AImanity-*-macos-arm64.dmg.manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
