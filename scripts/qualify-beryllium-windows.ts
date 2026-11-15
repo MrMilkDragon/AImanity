@@ -405,6 +405,12 @@ try {
       verifyAndroidFrame(`/api/phone/media/screen?device=${encodeURIComponent(phone.id)}`),
     ]);
     equal(android("shell", "cat", "/data/local/tmp/aimanity-quit.txt").toString(), marker, "Android data survives normal quit");
+    if (process.env.AIMANITY_QA_UNINSTALL === "1") {
+      clearInterval(watchWeb);
+      clearInterval(watchAndroid);
+      const cleanup = Bun.spawnSync(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "beryllium-qualification/scripts/qualify-beryllium-windows-uninstall.ps1", "-AcceptanceRoot", root], {env, stdout: "inherit", stderr: "inherit", timeout: 260_000});
+      equal(cleanup.exitCode, 0, "installed native uninstaller removed app and private state");
+    }
   }
 
   if (process.env.AIMANITY_QA_BERYLLIUM_UPGRADE === "1") {

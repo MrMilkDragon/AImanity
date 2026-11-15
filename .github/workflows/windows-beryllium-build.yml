@@ -1,13 +1,13 @@
-name: Beryllium signed Windows final offline acceptance
+name: Beryllium signed Windows install, recovery and uninstall
 on:
   push:
-    branches: [codex/beryllium-final-windows]
+    branches: [codex/beryllium-uninstall-windows]
     paths: [.github/workflows/windows-beryllium-build.yml]
 permissions:
   contents: read
   actions: read
 env:
-  BERYLLIUM_SOURCE: '08926d91111d43ef918d1dcddc66f10d27b4dd85'
+  BERYLLIUM_SOURCE: '95631889904e5a95a89f4d248de34134edf14345'
   BERYLLIUM_INPUTS_RUN: '43593156255'
 jobs:
   linux-release:
@@ -261,6 +261,7 @@ jobs:
           printf '%s  %s\n' "$identity" "$name" | sha256sum -c -
       - name: Install and drive the real first-run desktop client
         env:
+          AIMANITY_QA_UNINSTALL: '1'
           AIMANITY_QA_ANDROID_AUDIO: '1'
           AIMANITY_QA_BERYLLIUM_FRESH: ${{ matrix.scenario == 'fresh' && '1' || '0' }}
           AIMANITY_QA_BERYLLIUM_UPGRADE: ${{ matrix.scenario == 'upgrade' && '1' || '0' }}
