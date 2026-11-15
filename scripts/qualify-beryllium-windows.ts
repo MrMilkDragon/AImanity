@@ -2,6 +2,7 @@ import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { deepEqual, equal, match, ok } from "node:assert/strict";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ScreenFrames } from "../apps/web/src/lib/screen-frames";
 import { ControlStateSchema, DeviceActionRequestSchema, DeviceActionResponseSchema, TakeControlRequestSchema } from "../packages/protocol/src/gen/ai_phone/v1/phone_runtime_pb";
 import type { MessageInitShape } from "@bufbuild/protobuf";
 import { RegistryRequestSchema, RegistryStateSchema } from "../packages/protocol/src/gen/ai_phone/v1/registry_pb";
@@ -260,6 +261,36 @@ try {
       await Bun.sleep(750);
     }
   }
+  async function verifyReopenedDesktop(endpoint: string) {
+    const started = performance.now(), deadline = started + 12_000;
+    for (let attempt = 1; performance.now() < deadline; attempt++) {
+      const signal = AbortSignal.timeout(4_000);
+      try {
+        const response = await fetch(`${origin}${endpoint}&raw=1`, { headers: { cookie }, cache: "no-store", signal });
+        if (response.ok) {
+          match(response.headers.get("content-type") ?? "", /^application\/octet-stream\b/i);
+          const frames = new ScreenFrames(), reader = response.body!.getReader();
+          try {
+            for (;;) {
+              const next = await reader.read();
+              if (next.done) break;
+              const frame = frames.push(next.value);
+              if (!frame) continue;
+              deepEqual([...frame.subarray(0, 3), ...frame.subarray(-2)], [255, 216, 255, 255, 217]);
+              console.log(JSON.stringify({ reopenedLinuxJpeg: true, attempts: attempt, ms: Math.round(performance.now() - started) }));
+              return;
+            }
+          } finally { await reader.cancel(); }
+        }
+        console.log(`Reopened Linux screen subscription ${attempt} ended without JPEG (HTTP ${response.status})`);
+      } catch (error) {
+        if (!signal.aborted) throw error;
+        console.log(`Reopened Linux screen subscription ${attempt} exceeded the browser's first-frame watchdog`);
+      }
+      await Bun.sleep(250);
+    }
+    throw Error("Reopened Linux did not present a JPEG through the browser's reconnect path");
+  }
   await Promise.all([
     verifyFrame(`/api/desktop/media?device_id=${encodeURIComponent(desktop.id)}`, "Linux").then(passed => ok(passed, "Linux JPEG stream")),
     verifyAndroidFrame(`/api/phone/media/screen?device=${encodeURIComponent(phone.id)}`),
@@ -412,8 +443,7 @@ try {
     cookie = reopened.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
     ok(cookie, "reopened workbench issued a session");
     await Promise.all([
-      verifyFrame(`/api/desktop/media?device_id=${encodeURIComponent(desktop.id)}`, "Reopened Linux")
-        .then(passed => ok(passed, "reopened Linux JPEG stream")),
+      verifyReopenedDesktop(`/api/desktop/media?device_id=${encodeURIComponent(desktop.id)}`),
       verifyAndroidFrame(`/api/phone/media/screen?device=${encodeURIComponent(phone.id)}`),
     ]);
     equal(android("shell", "cat", "/data/local/tmp/aimanity-quit.txt").toString(), marker, "Android data survives normal quit");
