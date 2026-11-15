@@ -1,0 +1,371 @@
+name: Beryllium lean offline installers
+on:
+  push:
+    branches: [codex/beryllium-lean-factory]
+    paths: [.github/workflows/lean-offline-carrier.yml]
+permissions:
+  contents: read
+  actions: read
+env:
+  BERYLLIUM_SOURCE: 'd2ad368577b94fe6e673af2aeb1740c7bc24bc19'
+  BERYLLIUM_INPUTS_RUN: '43593156255'
+jobs:
+  lean-images:
+    name: Linux images (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: arm64, machine: aarch64, runner: ubuntu-24.04-arm}
+          - {arch: amd64, machine: x86_64, runner: ubuntu-24.04}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.BERYLLIUM_SOURCE }}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: carrier
+      - name: Prepare the disposable Linux factory
+        env:
+          EXPECTED_MACHINE: ${{ matrix.machine }}
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = "$EXPECTED_MACHINE"
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          ./scripts/bun scripts/source.ts check --repository --manifest
+      - uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
+        with:
+          version: v29.9.2
+          context: aimanity-lean-images
+          set-host: true
+          daemon-config: |
+            {"features":{"containerd-snapshotter":true}}
+      - name: Build, seal, and launch the Linux desktop
+        env:
+          IMAGE_ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/lean-images"
+          ./scripts/bun -e 'import { checkDocker, prepareImages } from "./scripts/tooling/factory"; import { digest, ROOT } from "./scripts/tooling/process"; const output = process.env.RUNNER_TEMP + "/lean-images"; checkDocker(); const built = await prepareImages(ROOT, output, await digest("SOURCE-MANIFEST.json"), process.env.IMAGE_ARCH); await Bun.write(output + "/images.receipt.json", JSON.stringify({...built.receipt, source: process.env.BERYLLIUM_SOURCE}, null, 2) + "\n"); console.log(JSON.stringify(built.receipt));'
+          bash carrier/scripts/smoke-lean-linux.sh "$RUNNER_TEMP/lean-images" "$IMAGE_ARCH"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: lean-linux-images-${{ matrix.arch }}
+          path: ${{ runner.temp }}/lean-images/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+  macos-dmg:
+    needs: lean-images
+    runs-on: macos-26
+    timeout-minutes: 85
+    env:
+      CARGO_INCREMENTAL: '0'
+      NEXT_TELEMETRY_DISABLED: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.BERYLLIUM_SOURCE }}
+          fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: carrier
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: lean-linux-images-arm64
+          path: ${{ runner.temp }}/lean-images
+      - name: Build and temporarily sign the complete macOS DMG
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = arm64
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          ./scripts/bun scripts/source.ts check --repository --manifest
+          cmake --version
+          if ! command -v tesseract >/dev/null; then brew install tesseract; fi
+          export AI_PHONE_TEST_TESSERACT="$(command -v tesseract)"
+          export AI_PHONE_TEST_TESSDATA="$RUNNER_TEMP/ocr-models"
+          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$AI_PHONE_TEST_TESSDATA"
+          ./scripts/bun carrier/scripts/aimanity-lean-mac-package.ts "$PWD" "$RUNNER_TEMP/lean-images/images.payload" "$RUNNER_TEMP/lean-macos"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: lean-macos-signed-dmg
+          path: |
+            ${{ runner.temp }}/lean-macos/release/AImanity-*-macos-arm64.dmg
+            ${{ runner.temp }}/lean-macos/release/AImanity-*-macos-arm64.dmg.manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+  linux-release:
+    needs: lean-images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      NEXT_TELEMETRY_DISABLED: '1'
+      AI_PHONE_TEST_TESSERACT: /usr/bin/tesseract
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.BERYLLIUM_SOURCE }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Set up the Windows Linux guest toolchain
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = x86_64
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "$ANDROID_HOME/ndk"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends e2fsprogs qemu-utils cpio \
+            build-essential pkg-config libssl-dev unzip tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          rustup target add x86_64-unknown-linux-musl
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
+          ./scripts/bootstrap.sh
+          ./scripts/bun scripts/source.ts check --repository --manifest
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+      - uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
+        with:
+          version: v29.9.2
+          context: aimanity-beryllium-ocr
+          set-host: true
+          daemon-config: |
+            {"features":{"containerd-snapshotter":true}}
+      - name: Build source-matched native services, web, Android helpers, and offline OCR
+        run: |
+          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/tessdata"
+          export AI_PHONE_TEST_TESSDATA="$RUNNER_TEMP/tessdata"
+          ./scripts/bun scripts/artifacts.ts native
+          ./scripts/bun scripts/artifacts.ts phone --build
+          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld"
+          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-Clinker-flavor=ld.lld --remap-path-prefix=$HOME=/build-user"
+          cargo build --locked --release -p ai-phone-guest-runtime --bin desktop-bridge --target x86_64-unknown-linux-musl
+          export AI_PHONE_RELEASE_DESKTOP_BRIDGE="$PWD/target/x86_64-unknown-linux-musl/release/desktop-bridge"
+          ./scripts/bun -e 'import {buildFactoryDependency} from "./scripts/tooling/factory-inputs"; await buildFactoryDependency(process.cwd(), process.env.RUNNER_TEMP + "/ocr-context", process.env.RUNNER_TEMP + "/ocr", "linux-ocr");'
+          ./scripts/bun run build
+          ./scripts/bun scripts/prepare-client.ts --with-web-runtime --with-service-runtime --with-phone-apps --linux-ocr "$RUNNER_TEMP/ocr"
+          mkdir "$RUNNER_TEMP/compiled"
+          cp apps/client/src-tauri/gen/host/source.payload "$RUNNER_TEMP/compiled/"
+          cp target/release/ai-phone-assistant "$RUNNER_TEMP/compiled/bootstrap.program"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: ${{ env.BERYLLIUM_INPUTS_RUN }}
+          github-token: ${{ github.token }}
+          name: beryllium-windows-linux-inputs
+          path: ${{ runner.temp }}/linux-inputs
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: lean-linux-images-amd64
+          path: ${{ runner.temp }}/lean-images
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: ${{ env.BERYLLIUM_INPUTS_RUN }}
+          github-token: ${{ github.token }}
+          name: beryllium-windows-immutable-inputs
+          path: ${{ runner.temp }}/immutable
+      - name: Assemble the Windows release partition
+        run: |
+          work="$RUNNER_TEMP"; qemu="$work/immutable/host/qemu"
+          (cd "$work/linux-inputs" && sha256sum -c guest.sha256)
+          read -r base _ < "$work/linux-inputs/guest.sha256"
+          rm "$work/linux-inputs/images.payload" "$work/linux-inputs/images.sha256"
+          mv "$work/linux-inputs/guest.qcow2" "$qemu/guest/guest.qcow2"
+          test "$(jq -r .source "$work/lean-images/images.receipt.json")" = "$BERYLLIUM_SOURCE"
+          bash scripts/windows-release-layer.sh "$work/compiled" "$work/immutable" "$qemu/guest" "$work/lean-images/images.payload"
+          sha() { sha256sum "$1" | cut -d ' ' -f1; }
+          jq --arg source "$(git rev-parse HEAD)" --arg source_manifest "$(sha SOURCE-MANIFEST.json)" \
+            --arg release "$(sha "$work/compiled/source.payload")" --arg base "$base" \
+            --arg init "$(sha "$qemu/guest/release-init.cpio.gz")" --arg ext "$(sha "$qemu/guest/release.ext4")" \
+            --argjson basesize "$(stat -c %s "$qemu/guest/guest.qcow2")" \
+            --argjson initsize "$(stat -c %s "$qemu/guest/release-init.cpio.gz")" \
+            --argjson extsize "$(stat -c %s "$qemu/guest/release.ext4")" '
+            .source_commit=$source | .source_manifest_sha256=$source_manifest | .release_sha256=$release |
+            .guest.disk.sha256=$base | .guest.disk.size=$basesize |
+            .files |= map(if .path=="guest/guest.qcow2" then .sha256=$base|.size=$basesize
+                          elif .path=="guest/release-init.cpio.gz" then .sha256=$init|.size=$initsize
+                          elif .path=="guest/release.ext4" then .sha256=$ext|.size=$extsize else . end)' \
+            "$qemu/manifest.json" > "$qemu/manifest.new"
+          mv "$qemu/manifest.new" "$qemu/manifest.json"
+          rm "$work/immutable/host/android.payload"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: beryllium-assembled-windows-qemu
+          path: ${{ runner.temp }}/immutable/host/qemu/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+  windows-exe:
+    needs: linux-release
+    runs-on: windows-2025
+    timeout-minutes: 85
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_HTTP_MULTIPLEXING: 'false'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.BERYLLIUM_SOURCE }}
+      - name: Pin the native Build Tools
+        shell: bash
+        run: |
+          cmake --version
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+          ./scripts/bun scripts/source.ts check --repository --manifest
+      - name: Prepare Authenticode tooling
+        shell: pwsh
+        run: |
+          & C:\msys64\usr\bin\bash.exe -lc 'pacman -Sy --needed --noconfirm mingw-w64-ucrt-x86_64-osslsigncode mingw-w64-ucrt-x86_64-openssl'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          'C:\msys64\ucrt64\bin' >> $env:GITHUB_PATH
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: ${{ env.BERYLLIUM_INPUTS_RUN }}
+          github-token: ${{ github.token }}
+          name: beryllium-windows-immutable-inputs
+          path: dist/immutable
+      - name: Prepare the Android component and launcher resources
+        run: ./.tools/bin/bun.exe scripts/prepare-client.ts --android-runtime dist/immutable/host/android.payload
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: beryllium-assembled-windows-qemu
+          path: apps/client/src-tauri/gen/host/qemu
+      - name: Build and temporarily sign the complete Windows EXE
+        shell: bash
+        run: |
+          ./scripts/bun -e 'import {join} from "node:path"; import {json,save} from "./scripts/tooling/inventory"; import {ROOT,digest} from "./scripts/tooling/process"; import {buildConfig} from "./scripts/tooling/resources"; const host=join(ROOT,"apps/client/src-tauri/gen/host"), file=join(host,"integrity.json"); const integrity=json(file); integrity["qemu/manifest.json"]=await digest(join(host,"qemu/manifest.json")); save(file,integrity); buildConfig(ROOT);'
+          ./scripts/bun -e 'import {windowsCargo, buildClient} from "./scripts/tooling/client-build"; windowsCargo("build"); console.log(JSON.stringify(await buildClient("windows",undefined,{packageOnly:true,temporarySigning:true})));'
+          test "$(stat -c %s dist/AImanity-*-windows-x64-setup.exe)" -lt 2147483648
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: beryllium-windows-signed-exe
+          path: |
+            dist/AImanity-*-windows-x64-setup.exe
+            dist/AImanity-*-windows-x64-setup.exe.manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+  exact-exe:
+    needs: windows-exe
+    runs-on: windows-2025
+    timeout-minutes: 42
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [fresh, upgrade]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.BERYLLIUM_SOURCE }}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: beryllium-qualification
+      - name: Prepare acceptance tools
+        shell: bash
+        run: ./scripts/bootstrap.sh
+      - name: Prepare Windows Server WebView2 Runtime
+        shell: pwsh
+        run: |
+          $client = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          function Get-WebView2Version {
+            foreach ($parent in @('HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients', 'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients')) {
+              $version = Get-ItemPropertyValue (Join-Path $parent $client) pv -ErrorAction SilentlyContinue
+              if ($version -and $version -ne '0.0.0.0') { return $version }
+            }
+          }
+          $version = Get-WebView2Version
+          if (!$version) {
+            'Windows Server runner started without the WebView2 Runtime.'
+            $bootstrapper = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrapper
+            $setup = Start-Process $bootstrapper -ArgumentList '/silent', '/install' -Wait -PassThru
+            if ($setup.ExitCode -ne 0) { throw "WebView2 Runtime bootstrapper exit code: $($setup.ExitCode)" }
+            $version = Get-WebView2Version
+          }
+          if (!$version) { throw 'WebView2 Runtime registration is missing.' }
+          "Windows Server WebView2 Runtime: $version"
+      - name: Choose a fresh installation volume
+        shell: pwsh
+        run: |
+          $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match '^[A-Z]:\\$' } | Sort-Object Free -Descending
+          $drives | ForEach-Object { 'Free on {0}: {1:N1} GiB' -f $_.Root, ($_.Free / 1GB) }
+          $os = Get-CimInstance Win32_OperatingSystem
+          '{0} build {1}, RAM {2:N1} GiB' -f $os.Caption, $os.BuildNumber, ($os.TotalVisibleMemorySize / 1MB)
+          $root = Join-Path $drives[0].Root "AImanity-QA-$env:GITHUB_RUN_ID"
+          $profile = Join-Path $root 'profile'
+          New-Item -ItemType Directory -Path $profile -Force | Out-Null
+          Add-Type -Name ShellFolders -Namespace Acceptance -MemberDefinition @'
+          [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, ExactSpelling = true)]
+          public static extern int SHSetKnownFolderPath(ref System.Guid folder, uint flags, System.IntPtr token, string path);
+          '@
+          $local = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'dev.aiphone.client/client-updates'
+          if (Test-Path $local) { throw 'The disposable runner already has an AImanity update cache.' }
+          "AIMANITY_QA_UPDATE_CACHE=$local" >> $env:GITHUB_ENV
+          $roaming = [Guid]'3eb685db-65f9-4cf6-a03a-e3ef65729f3d'
+          $redirect = [Acceptance.ShellFolders]::SHSetKnownFolderPath([ref] $roaming, 0, [IntPtr]::Zero, $profile)
+          if ($redirect -ne 0) { throw "Cannot redirect the runner's RoamingAppData: $redirect" }
+          if ([Environment]::GetFolderPath('ApplicationData') -ne $profile) {
+            throw 'The isolated Windows profile did not become the RoamingAppData known folder.'
+          }
+          "AIMANITY_QA_ROOT=$root" >> $env:GITHUB_ENV
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: beryllium-windows-signed-exe
+          path: ${{ env.AIMANITY_QA_ROOT }}
+      - name: Verify the QA installer and exact source receipt
+        shell: pwsh
+        run: |
+          $file = Join-Path $env:AIMANITY_QA_ROOT 'AImanity-0.0.2-windows-x64-setup.exe'
+          $receipt = Get-Content "$file.manifest.json" -Raw | ConvertFrom-Json
+          if ($receipt.source_commit -ne $env:BERYLLIUM_SOURCE -or !$receipt.authenticode.cryptographically_verified) { throw 'Unexpected Beryllium build receipt' }
+          if ((Get-FileHash -Path $file -Algorithm SHA256).Hash -ne $receipt.sha256) { throw 'Beryllium EXE differs from the signed package receipt' }
+      - name: Download and verify the published signed installer
+        if: matrix.scenario == 'upgrade'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          name='AImanity-0.0.1-windows-x64-setup.exe'
+          identity='ee631f27c3e82b2a3fac15545872f97c9eeb61297f8f3f0bcf4e66d96ab13a5c'
+          asset=$(gh api "repos/$repo/releases/tags/v0.0.1" --jq ".assets[] | select(.name == \"$name\" and .state == \"uploaded\" and .size == 2110635192 and .digest == \"sha256:$identity\") | .id")
+          [[ "$asset" =~ ^[0-9]+$ ]]
+          dir=$(cygpath -u "$AIMANITY_QA_ROOT")
+          gh api "repos/$repo/releases/assets/$asset" -H 'Accept: application/octet-stream' > "$dir/$name"
+          cd "$dir"
+          printf '%s  %s\n' "$identity" "$name" | sha256sum -c -
+      - name: Install and drive the real first-run desktop client
+        env:
+          AIMANITY_QA_UNINSTALL: '1'
+          AIMANITY_QA_ANDROID_AUDIO: '1'
+          AIMANITY_QA_BERYLLIUM_FRESH: ${{ matrix.scenario == 'fresh' && '1' || '0' }}
+          AIMANITY_QA_BERYLLIUM_UPGRADE: ${{ matrix.scenario == 'upgrade' && '1' || '0' }}
+        shell: pwsh
+        run: |
+          Copy-Item beryllium-qualification/scripts/qualify-beryllium-windows.ts scripts/qualify-beryllium-windows.ts
+          ./.tools/bin/bun.exe scripts/qualify-beryllium-windows.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
