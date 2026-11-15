@@ -14,7 +14,7 @@ container=$(docker run -d --network none --init --shm-size=256m "$desktop")
 report() {
   local status=$?
   if [ "$status" -ne 0 ]; then
-    docker exec -u ai "$container" sh -c 'for app in browser terminal calc; do echo "--- $app ---"; cat "/tmp/qa-$app.log" 2>/dev/null; done; echo "--- windows ---"; xwininfo -root -tree; echo "--- CDP ---"; curl --noproxy "*" -sS http://127.0.0.1:9222/json/list' || true
+    docker exec -u ai "$container" sh -c 'for app in browser calc; do echo "--- $app ---"; cat "/tmp/qa-$app.log" 2>/dev/null; done; echo "--- windows ---"; xwininfo -root -tree; echo "--- CDP ---"; curl --noproxy "*" -sS http://127.0.0.1:9222/json/list' || true
     docker logs "$container"
   fi
   docker rm -f "$container" >/dev/null
@@ -32,19 +32,25 @@ docker exec -u ai "$container" sh -ec '
   for language in eng chi_sim; do tesseract --list-langs | grep -qx "$language"; done
   xdotool mousemove 600 320 click 3
   ffmpeg -hide_banner -loglevel error -y -f x11grab -i :0 -frames:v 1 /tmp/desktop-menu.png
-  xdotool key Escape
+  xdotool mousemove 632 367 click 1
   ffmpeg -hide_banner -loglevel error -y -f lavfi -i sine=frequency=440:duration=0.15 /tmp/lean-tone.wav
   paplay /tmp/lean-tone.wav
 '
 docker cp "$container:/tmp/desktop-menu.png" "$out/desktop-menu.png"
+echo 'Checking Terminal opened from the desktop menu by X11 class'
+window=$(docker exec -u ai "$container" timeout 25 xdotool search --sync --onlyvisible --limit 1 --class '^XTerm$')
+docker exec -u ai "$container" timeout 5 xdotool windowactivate --sync "$window"
+echo 'Typing a Chinese command through the native computer-use bridge'
+jq -nc --arg text 'printf %s "ready 中文" > /tmp/qa-xterm-input' --argjson window "$window" \
+  '{kind:"text",text:$text,window_id:$window}' | docker exec -i -u ai "$container" /usr/local/bin/desktop-bridge action | jq -e .success
+printf '%s\n' '{"kind":"key","key":"Return"}' | docker exec -i -u ai "$container" /usr/local/bin/desktop-bridge action | jq -e .success
+test "$(docker exec -u ai "$container" cat /tmp/qa-xterm-input)" = 'ready 中文'
+echo 'Terminal wrote exact command output: ready 中文'
 launch() {
   docker exec -d -u ai "$container" sh -ec 'export DBUS_SESSION_BUS_ADDRESS=$(cat /tmp/ai-runtime/dbus-address); log=$1; shift; exec "$@" >"/tmp/qa-$log.log" 2>&1' sh "$@"
 }
 launch browser /usr/local/bin/ai-phone-browser 'data:text/html,%3Ctitle%3EAImanity%20Chromium%3C/title%3E'
-launch terminal xterm -title 'AImanity Terminal'
 launch calc localc --norestore
-echo 'Checking Terminal window'
-docker exec -u ai "$container" timeout 25 xdotool search --sync --onlyvisible --name '^AImanity Terminal$'
 echo 'Checking LibreOffice Calc window'
 docker exec -u ai "$container" timeout 25 xdotool search --sync --onlyvisible --name 'LibreOffice Calc'
 echo 'Checking Chromium offline CDP page'
