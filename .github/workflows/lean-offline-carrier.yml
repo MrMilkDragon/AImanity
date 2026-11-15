@@ -39,6 +39,8 @@ jobs:
           rustup default 1.96.0
           ./scripts/bootstrap.sh
           ./scripts/bun scripts/source.ts check --repository --manifest
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+          test -x target/debug/release-tools
       - uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
         with:
           version: v29.9.2
@@ -46,17 +48,29 @@ jobs:
           set-host: true
           daemon-config: |
             {"features":{"containerd-snapshotter":true}}
-      - name: Build, seal, and launch the Linux desktop
+      - name: Build and seal the Linux images
         env:
           IMAGE_ARCH: ${{ matrix.arch }}
         run: |
           mkdir -p "$RUNNER_TEMP/lean-images"
           ./scripts/bun -e 'import { checkDocker, prepareImages } from "./scripts/tooling/factory"; import { digest, ROOT } from "./scripts/tooling/process"; const output = process.env.RUNNER_TEMP + "/lean-images"; checkDocker(); const built = await prepareImages(ROOT, output, await digest("SOURCE-MANIFEST.json"), process.env.IMAGE_ARCH); await Bun.write(output + "/images.receipt.json", JSON.stringify({...built.receipt, source: process.env.BERYLLIUM_SOURCE}, null, 2) + "\n"); console.log(JSON.stringify(built.receipt));'
-          bash carrier/scripts/smoke-lean-linux.sh "$RUNNER_TEMP/lean-images" "$IMAGE_ARCH"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: lean-linux-images-${{ matrix.arch }}
-          path: ${{ runner.temp }}/lean-images/
+          path: |
+            ${{ runner.temp }}/lean-images/images.payload
+            ${{ runner.temp }}/lean-images/images.receipt.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+      - name: Boot the exported desktop offline and exercise the GUI
+        env:
+          IMAGE_ARCH: ${{ matrix.arch }}
+        run: bash carrier/scripts/smoke-lean-linux.sh "$RUNNER_TEMP/lean-images" "$IMAGE_ARCH"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: lean-linux-desktop-${{ matrix.arch }}
+          path: ${{ runner.temp }}/lean-images/desktop*.png
           if-no-files-found: error
           compression-level: 0
           retention-days: 2
@@ -106,7 +120,6 @@ jobs:
           compression-level: 0
           retention-days: 2
   linux-release:
-    needs: lean-images
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     env:
@@ -169,6 +182,12 @@ jobs:
           github-token: ${{ github.token }}
           name: beryllium-windows-linux-inputs
           path: ${{ runner.temp }}/linux-inputs
+      - name: Await the new sealed Linux x64 images
+        run: |
+          timeout 45m bash -eu -o pipefail -c '
+            endpoint="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts"
+            until gh api "$endpoint" --jq '\''.artifacts[] | select(.name == "lean-linux-images-amd64") | .id'\'' | grep -E "^[0-9]+$"; do sleep 15; done
+          '
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: lean-linux-images-amd64
@@ -211,7 +230,7 @@ jobs:
           compression-level: 0
           retention-days: 2
   windows-exe:
-    needs: linux-release
+    needs: [linux-release, lean-images]
     runs-on: windows-2025
     timeout-minutes: 85
     env:
