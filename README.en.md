@@ -6,7 +6,7 @@ An agent that listens while it works, explores on its own, and learns across And
 
 ## 0.0.2 Beryllium
 
-Apple Silicon macOS and Windows 11 x64. [Download DMG or EXE](docs/public/release-status.md) · [GitHub Releases](https://github.com/MrMilkDragon/AImanity/releases)
+Apple Silicon macOS and Windows 11 x64. [Download DMG or EXE](docs/public/release-status.md) · [GitHub Releases](https://github.com/MrMilkDragon/AImanity/releases) · [Uninstall](docs/public/release-status.md#uninstall)
 
 ## What it does
 

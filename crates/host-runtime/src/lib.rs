@@ -37,6 +37,8 @@ pub mod supervision;
 mod unix_initializer;
 #[cfg(target_os = "macos")]
 pub use unix_initializer::shutdown as stop_macos_installation;
+#[cfg(target_os = "macos")]
+pub use unix_initializer::uninstall as remove_macos_devices;
 pub mod vm_control;
 pub mod wsl;
 

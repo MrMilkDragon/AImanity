@@ -111,11 +111,6 @@ impl Rpc {
         let mut response = self
             .client
             .post(format!("http://127.0.0.1:{port}/v1/{route}"))
-            .timeout(Duration::from_secs(if port == self.runner_port {
-                30
-            } else {
-                120
-            }))
             .bearer_auth(token)
             .header("content-type", MEDIA)
             .body(body)

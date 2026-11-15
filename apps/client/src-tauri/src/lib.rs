@@ -6,6 +6,10 @@ use std::{
 use tauri::{Manager, Url, WebviewUrl, WebviewWindowBuilder, webview::PageLoadEvent};
 mod bootstrap;
 mod copilot;
+#[cfg(target_os = "macos")]
+mod macos_uninstall;
+#[cfg(windows)]
+mod uninstall;
 mod updates;
 
 static WORKBENCH_URL: LazyLock<Url> = LazyLock::new(|| {
@@ -388,6 +392,10 @@ fn start_startup(app: &tauri::AppHandle) -> Result<(), String> {
 pub fn run() {
     {
         let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+        #[cfg(target_os = "macos")]
+        if let Some(code) = macos_uninstall::run(&arguments) {
+            std::process::exit(code);
+        }
         if let Some(code) = updates::run(&arguments) {
             std::process::exit(code);
         }
@@ -396,6 +404,14 @@ pub fn run() {
         {
             if let Err(error) = bootstrap::verify_bundled_host(std::path::Path::new(folder)) {
                 eprintln!("{error}");
+                std::process::exit(1);
+            }
+            std::process::exit(0);
+        }
+        #[cfg(windows)]
+        if arguments.len() == 1 && arguments[0] == "--uninstall-windows-user-data" {
+            if let Err(error) = uninstall::remove() {
+                println!("{error}");
                 std::process::exit(1);
             }
             std::process::exit(0);
@@ -434,6 +450,10 @@ pub fn run() {
             }
         }
     }
+    #[cfg(windows)]
+    let Ok(_uninstall_guard) = uninstall::open_guard() else {
+        return;
+    };
     let builder = tauri::Builder::default()
         .manage(Startup::default())
         .manage(Exit::default())
@@ -463,6 +483,14 @@ pub fn run() {
                     None::<&str>,
                 )?;
                 app.manage(updates::Menu::new(update.clone()));
+                #[cfg(target_os = "macos")]
+                let uninstall = MenuItem::with_id(
+                    app,
+                    macos_uninstall::ID,
+                    "Uninstall AImanity…",
+                    true,
+                    None::<&str>,
+                )?;
                 let app_menu = Submenu::with_items(
                     app,
                     "AImanity",
@@ -471,6 +499,8 @@ pub fn run() {
                         &setup,
                         &update,
                         &PredefinedMenuItem::separator(app)?,
+                        #[cfg(target_os = "macos")]
+                        &uninstall,
                         &PredefinedMenuItem::quit(app, Some("Quit AImanity"))?,
                     ],
                 )?;
@@ -507,6 +537,8 @@ pub fn run() {
             let _ = show_setup(app);
         }
         updates::ID => updates::select(app),
+        #[cfg(target_os = "macos")]
+        macos_uninstall::ID => macos_uninstall::select(app),
         _ => {}
     });
     builder

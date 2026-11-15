@@ -44,28 +44,26 @@ pub async fn run(
 }
 
 async fn verify_notifications(rpc: &Rpc) -> Result<()> {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        let value = tokio::time::timeout_at(
-            deadline,
-            rpc.notifications(wire::DeviceRequest {
-                phone_id: "phone-local-01".into(),
-                owner_id: "local-user".into(),
-                ..Default::default()
-            }),
-        )
-        .await
-        .map_err(|_| Error("device_setup_notifications_unavailable"))??;
-        if value.connected && value.attention_connected {
-            return Ok(());
+    let observe = async {
+        loop {
+            match rpc
+                .notifications(wire::DeviceRequest {
+                    phone_id: "phone-local-01".into(),
+                    owner_id: "local-user".into(),
+                    ..Default::default()
+                })
+                .await
+            {
+                Ok(value) if value.connected && value.attention_connected => return Ok(()),
+                Ok(_) | Err(Error("device_setup_response_unknown")) => {}
+                Err(error) => return Err(error),
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
-        if Instant::now() >= deadline {
-            return Err(Error("device_setup_notifications_unavailable"));
-        }
-        tokio::select! {biased;
-            _=rpc.cancelled.cancelled()=>return Err(Error("device_setup_cancelled_remote_may_continue")),
-            _=tokio::time::sleep(Duration::from_millis(250))=>{},
-        }
+    };
+    tokio::select! {biased;
+        _=rpc.cancelled.cancelled()=>Err(Error("device_setup_cancelled_remote_may_continue")),
+        result=tokio::time::timeout(Duration::from_secs(45), observe)=>result.map_err(|_| Error("device_setup_notifications_unavailable"))?,
     }
 }
 
