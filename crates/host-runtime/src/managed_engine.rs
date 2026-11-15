@@ -221,11 +221,23 @@ pub(crate) fn environment(root: &Path, user: &Path) -> Result<BTreeMap<String, S
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) async fn shutdown(home: &Path) -> Result<()> {
-    let user = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or(Error::Invalid("unix_host_home"))?;
-    let Some(engine) = selection(&home.join("user"), &user)? else {
+pub(crate) fn remove_state(home: &Path, user: &Path) -> Result<()> {
+    let data = home.join("user/data");
+    if !data.try_exists()? {
+        return Ok(());
+    }
+    filesystem::checked_parents(home, &data)?;
+    let state = state_path(&data, home, user)?;
+    if state.try_exists()? {
+        verify_state(&data, &state)?;
+        fs::remove_dir_all(state)?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) async fn shutdown(home: &Path, user: &Path) -> Result<()> {
+    let Some(engine) = selection(&home.join("user"), user)? else {
         return Ok(());
     };
     let command = |arguments: &[&str]| {

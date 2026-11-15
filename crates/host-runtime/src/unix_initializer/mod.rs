@@ -26,6 +26,14 @@ pub(crate) const CONTRACT: &str = "ai-phone-unix-host-initializer-v1";
 
 #[cfg(target_os = "macos")]
 pub async fn shutdown(home: &Path) -> Result<()> {
+    let user = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or(Error::Invalid("unix_host_home"))?;
+    shutdown_owned(home, &user).await
+}
+
+#[cfg(target_os = "macos")]
+async fn shutdown_owned(home: &Path, user: &Path) -> Result<()> {
     if !home.try_exists()? {
         return Ok(());
     }
@@ -33,9 +41,22 @@ pub async fn shutdown(home: &Path) -> Result<()> {
     let services = crate::supervision::macos::deactivate(&home).await;
     let (phone, engine) = tokio::join!(
         phone::shutdown(&home),
-        crate::managed_engine::shutdown(&home),
+        crate::managed_engine::shutdown(&home, user),
     );
     services.and(phone).and(engine)
+}
+
+#[cfg(target_os = "macos")]
+pub async fn uninstall(home: &Path, user: &Path) -> Result<()> {
+    if !home.try_exists()? {
+        return Ok(());
+    }
+    filesystem::existing_directory(home)?;
+    let home = home.canonicalize()?;
+    let _startup = filesystem::lease(&home.join("initialize.lock"))?.ok_or(Error::Busy)?;
+    let _installation = Installation::lock(&home)?;
+    shutdown_owned(&home, user).await?;
+    crate::managed_engine::remove_state(&home, user)
 }
 fn text(path: &Path) -> Result<String> {
     path.to_str()

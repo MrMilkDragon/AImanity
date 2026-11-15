@@ -768,13 +768,17 @@ pub fn wait_until_idle(app: &tauri::AppHandle) {
     }
 }
 
-pub async fn shutdown(app: &tauri::AppHandle) -> Result<(), String> {
+pub(crate) async fn stop_installing(app: &tauri::AppHandle) -> Result<(), String> {
     *app.state::<Bootstrap>().0.closing.lock().unwrap() = true;
     cancel(app);
     let waiting = app.clone();
     tauri::async_runtime::spawn_blocking(move || wait_until_idle(&waiting))
         .await
-        .map_err(|_| "installer_state")?;
+        .map_err(|_| "installer_state".into())
+}
+
+pub async fn shutdown(app: &tauri::AppHandle) -> Result<(), String> {
+    stop_installing(app).await?;
     let folder = home(app)?;
     #[cfg(target_os = "macos")]
     let result = ai_phone_host_runtime::stop_macos_installation(&folder).await;

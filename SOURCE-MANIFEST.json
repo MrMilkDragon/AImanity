@@ -133,13 +133,13 @@
     },
     {
       "path": "README.en.md",
-      "size": 2805,
-      "sha256": "549286cf0edbf29330ed821be6494daea4644b455e3341382fa5a0ae3e93fe78"
+      "size": 2861,
+      "sha256": "011728100ca0c693a3dcd736d515862334020db12c44c5b707587288a51ee02d"
     },
     {
       "path": "README.md",
-      "size": 5129,
-      "sha256": "811ab6568ff3314b02d6238c3c3ee1e0eb1172ad36415f7def6e3bffb6d22585"
+      "size": 5235,
+      "sha256": "d2ea8f07d012d3c630d3c4b015779623f0722939cdc24dd18fd59c4188d4d4dd"
     },
     {
       "path": "SECURITY.md",
@@ -238,8 +238,8 @@
     },
     {
       "path": "apps/client/src-tauri/Cargo.toml",
-      "size": 1235,
-      "sha256": "abbfc36836281821ea4c8038bdc5163d156a8f1b9ad486909df85ba233585062"
+      "size": 1291,
+      "sha256": "f6551a1d8b4592e340a8fae02ae757f9abc90c4b6ca2a590aeaf81f3aee327c4"
     },
     {
       "path": "apps/client/src-tauri/Info.plist",
@@ -413,8 +413,8 @@
     },
     {
       "path": "apps/client/src-tauri/src/bootstrap.rs",
-      "size": 35893,
-      "sha256": "1176b2148443aef7b04263395489ffff5849668c8728fa6af306748bd19bde8e"
+      "size": 36018,
+      "sha256": "8f58107efeced71c8d8b21e29892bd5a03b6348381ef94b4d2d64e3227793171"
     },
     {
       "path": "apps/client/src-tauri/src/copilot.rs",
@@ -423,8 +423,13 @@
     },
     {
       "path": "apps/client/src-tauri/src/lib.rs",
-      "size": 22301,
-      "sha256": "8ee59654ee5bab440d024e0b04c9be8aec3c6066c11b6191d171096b774bb3d8"
+      "size": 23402,
+      "sha256": "45250df7d70fa8f5dda1d9541a2696e2dc268051eeb89280906ff29facf21e63"
+    },
+    {
+      "path": "apps/client/src-tauri/src/macos_uninstall.rs",
+      "size": 5657,
+      "sha256": "42951465f56f1f34be7662f79cecb865dd895edc72258d9711bde98b85d2d5df"
     },
     {
       "path": "apps/client/src-tauri/src/main.rs",
@@ -432,9 +437,14 @@
       "sha256": "59ac8370fc1ad11004c5105b3c794bf78436e3799e2d5ecee5fc01c5c24d942b"
     },
     {
+      "path": "apps/client/src-tauri/src/uninstall.rs",
+      "size": 4261,
+      "sha256": "a378931b84e30756df4e9556509adccccf9799fc5d78c13c1d798182495e1b91"
+    },
+    {
       "path": "apps/client/src-tauri/src/updates/macos.rs",
-      "size": 11270,
-      "sha256": "827a68fc15de7ab9747d2f667d5274ace807e25ac75e029dfcf87c45d7beb537"
+      "size": 11430,
+      "sha256": "9182737c9e45c7cf883ba84b4b2e4eda67761c3ebe36580cd3e36770c176fc55"
     },
     {
       "path": "apps/client/src-tauri/src/updates/windows.rs",
@@ -443,8 +453,8 @@
     },
     {
       "path": "apps/client/src-tauri/src/updates.rs",
-      "size": 17572,
-      "sha256": "62d052e0e2a53cc32e936e7b72260f21d7c08fe189033f60fd59a5f4eb3c0c43"
+      "size": 17866,
+      "sha256": "2d9756a8cc44a4756d581e4239f5b8d3742ebe0b9114d330fc78d5cacd03a8c4"
     },
     {
       "path": "apps/client/src-tauri/tauri.conf.json",
@@ -453,8 +463,8 @@
     },
     {
       "path": "apps/client/src-tauri/windows/installer.iss",
-      "size": 4877,
-      "sha256": "757e78b5b5e689e390e6e4a2cb56cafcfe562d5a9e7290147ca8b8045d5b8f52"
+      "size": 6523,
+      "sha256": "311cf25b0b7abfa6a4ab71b6e430207ba97e4910578f7170652e7d09ecc81575"
     },
     {
       "path": "apps/client/ui/glass.css",
@@ -2573,8 +2583,8 @@
     },
     {
       "path": "crates/host-runtime/src/lib.rs",
-      "size": 4139,
-      "sha256": "a4eb7b77a6e27fd2a7250d5dbf7996701ee2ff935cfc48da1c6409de9b1bba92"
+      "size": 4228,
+      "sha256": "39939c3a71eb2c8615f21d066d1d91b3b4d3bdb1067f3d73669a395d25ca086e"
     },
     {
       "path": "crates/host-runtime/src/links.rs",
@@ -2593,8 +2603,8 @@
     },
     {
       "path": "crates/host-runtime/src/managed_engine.rs",
-      "size": 11606,
-      "sha256": "4aed037f5ae783650f5bccc3edebd1a73439b281189e6d589da9faeaa1ec695a"
+      "size": 11911,
+      "sha256": "ceb97a3844565eb5478f9bcfe7626a03b94cc215700b325245e55cb05a6ae6e7"
     },
     {
       "path": "crates/host-runtime/src/manifest.rs",
@@ -2683,8 +2693,8 @@
     },
     {
       "path": "crates/host-runtime/src/unix_initializer/mod.rs",
-      "size": 13403,
-      "sha256": "8155f3b49efd5ddceeedf5ae2ebb42eb253569f5a1f4754a5cad0f574a0ee58d"
+      "size": 14132,
+      "sha256": "267b0a97b2020577dff56a627edb07b51d05dfdafb65df1daafc408ca0ca71bf"
     },
     {
       "path": "crates/host-runtime/src/unix_initializer/phone.rs",
@@ -3643,8 +3653,8 @@
     },
     {
       "path": "docs/public/release-status.md",
-      "size": 2334,
-      "sha256": "99133720963b11d3277e9f39d7ff66b586d3a47e19c2e8d1de6bb3e6df8623a7"
+      "size": 3091,
+      "sha256": "38aa40ea75b33c66b8161764edecd3b3871b73c46b0e94fa59a0ce6508e2f3b3"
     },
     {
       "path": "docs/public/runtime-bundles.md",

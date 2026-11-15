@@ -21,7 +21,7 @@ use tokio::{
 };
 
 #[cfg(target_os = "macos")]
-mod macos;
+pub(crate) mod macos;
 #[cfg(windows)]
 mod windows;
 
@@ -83,6 +83,15 @@ impl Menu {
             state: Mutex::new(UpdateState::default()),
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn idle_guard(app: &AppHandle) -> std::result::Result<impl Drop + '_, &'static str> {
+    app.state::<Menu>()
+        .inner()
+        .state
+        .try_lock()
+        .map_err(|_| "An update is in progress. Try again after it finishes.")
 }
 
 pub fn cleanup_current(app: &AppHandle) {

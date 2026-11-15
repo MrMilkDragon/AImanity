@@ -44,8 +44,16 @@ fn installed_bundle() -> Result<PathBuf, String> {
     {
         Ok(bundle.to_path_buf())
     } else {
-        Err("Install AImanity before updating.".into())
+        Err("Install AImanity first.".into())
     }
+}
+
+pub(crate) fn application(identifier: &str) -> Result<PathBuf, String> {
+    let bundle = installed_bundle()?;
+    if info(&bundle)?.identifier != identifier {
+        return Err("The installed app has a different bundle identifier.".into());
+    }
+    Ok(bundle)
 }
 
 fn checked(command: &mut Command) -> Result<Output, String> {
@@ -86,10 +94,7 @@ pub(super) fn launch(app: &AppHandle, downloaded: &Path, version: &Version) -> R
     {
         return Err("Unexpected macOS installer path.".into());
     }
-    let bundle = installed_bundle()?;
-    if info(&bundle)?.identifier != app.config().identifier {
-        return Err("The installed app has a different bundle identifier.".into());
-    }
+    let bundle = application(&app.config().identifier)?;
     let pid = process::id();
     let work = workspace(&bundle, pid);
     DirBuilder::new()
@@ -114,11 +119,11 @@ pub(super) fn launch(app: &AppHandle, downloaded: &Path, version: &Version) -> R
     Ok(())
 }
 
-fn wait_for_parent(pid: u32) -> Result<(), String> {
+pub(crate) fn wait_for_parent(pid: u32) -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(120);
     while unsafe { getppid() } as u32 == pid {
         if Instant::now() >= deadline {
-            return Err("AImanity did not quit. Close it and try the update again.".into());
+            return Err("AImanity did not quit.".into());
         }
         thread::sleep(Duration::from_millis(100));
     }
@@ -227,16 +232,17 @@ fn install(bundle: &Path, work: &Path, downloaded: &Path, version: &Version) -> 
     result
 }
 
-fn alert(message: &str) {
+pub(crate) fn alert(title: &str, message: &str) {
     let _ = Command::new("/usr/bin/osascript")
         .args([
             "-e",
             "on run argv",
             "-e",
-            "display alert \"AImanity update failed\" message (item 1 of argv) as critical",
+            "display alert (item 1 of argv) message (item 2 of argv) as critical",
             "-e",
             "end run",
             "--",
+            title,
             message,
         ])
         .spawn();
@@ -275,7 +281,7 @@ pub(crate) fn run(args: &[OsString]) -> Option<i32> {
     Some(match result {
         Ok(()) => 0,
         Err(error) => {
-            alert(&error);
+            alert("AImanity update failed", &error);
             1
         }
     })
