@@ -308,15 +308,6 @@ fn cancel_deployment(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Res
     Ok(())
 }
 #[tauri::command]
-fn accept_deployment_license(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-) -> Result<(), String> {
-    require_setup_window(&window)?;
-    bootstrap::accept_license(&app)
-}
-
-#[tauri::command]
 async fn open_workbench(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
@@ -445,7 +436,6 @@ pub fn run() {
             retry_startup,
             start_deployment,
             cancel_deployment,
-            accept_deployment_license,
             check_client_update,
             install_client_update,
             copilot::native_voice

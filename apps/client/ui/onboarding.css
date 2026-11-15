@@ -65,7 +65,7 @@
   inline-size: clamp(112px, min(28vw, 34dvh), 180px);
   aspect-ratio: 1;
 }
-:is([data-state=running], [data-state=license], [data-state=ready], [data-state=startup-failed]) .progress-visual { display: grid; }
+:is([data-state=running], [data-state=ready], [data-state=startup-failed]) .progress-visual { display: grid; }
 .progress-visual > * {
   grid-area: 1 / 1;
   transition: opacity 260ms ease, scale 440ms cubic-bezier(.2, 1.12, .35, 1);
@@ -107,7 +107,6 @@
   box-shadow: 0 10px 32px rgb(0 0 0 / .12);
 }
 .startup-update-panel p { white-space: pre-wrap; overflow-wrap: anywhere; }
-#license { justify-self: stretch; text-align: start; }
 .install-activity {
   display: grid;
   gap: 3px;

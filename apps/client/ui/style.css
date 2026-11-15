@@ -74,7 +74,6 @@ button:focus-visible, pre:focus-visible { outline: 2px solid #595650; outline-of
 .progress-body { display: flex; flex-direction: column; }
 .progress-detail { display: grid; margin-block: auto; }
 .error { color: var(--error); font-size: var(--text-size); overflow-wrap: anywhere; }
-#license { margin: 0; padding: 12px 0; max-block-size: 176px; overflow: auto; border-block: 1px solid var(--setup-line); font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 540px) {
   .device-row { grid-template-columns: minmax(0, 1fr); gap: 9px; padding-block: 12px; }
   .resource-fields { gap: 12px; }

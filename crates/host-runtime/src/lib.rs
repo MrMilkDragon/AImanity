@@ -102,7 +102,6 @@ pub struct Installation {
 #[derive(Debug, Clone)]
 pub struct StagedSource {
     pub directory: PathBuf,
-    pub data: PathBuf,
     pub identity: String,
     pub components: Vec<String>,
     pub reused: bool,
