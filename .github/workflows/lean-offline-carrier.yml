@@ -7,7 +7,7 @@ permissions:
   contents: read
   actions: read
 env:
-  BERYLLIUM_SOURCE: 'd2ad368577b94fe6e673af2aeb1740c7bc24bc19'
+  BERYLLIUM_SOURCE: '89dd85e52619df0aa21d7813f22090105cd1b5f3'
   BERYLLIUM_INPUTS_RUN: '43593156255'
 jobs:
   lean-images:
