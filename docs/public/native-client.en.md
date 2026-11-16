@@ -12,7 +12,11 @@ The conversation supports Markdown, older-message pagination, expandable tool re
 
 The native component system shares typography, radii, 40px control heights and glass parameters. Anchored windows measure their content and animate their size; covered device and chat controls receive no pointer input. Device and anchored-window transitions use window frame events. Tool-history polling runs only for the current running task with its process expanded, with one final fetch when it ends.
 
-Remaining migration work covers the other feature windows, native audio and modes, complete language/accessibility coverage, setup, updates and the Windows host entry. Visual parity is reviewed against the current workbench as each component lands.
+The global toolbar opens the language selector, Skill manager, simulated location, workbench proxy, knowledge graph and document editor, three-pane file manager, Task & Goal, and device/Agent settings as anchored panels. The device toolbars control native playback volume, rotation and screenshots. Each device has an independent audio stream that continues across focus changes until muted.
+
+Liberty and Task & Goal use the shared assistant's persisted mode state. Copilot captures the default microphone, uses the bundled offline recognizer, and reads replies with the system voice. Partial recognition appears in the composer; final text enters the shared message outbox. Building the native client requires CMake for the bundled recognizer.
+
+Remaining work covers full keyboard and accessibility parity, physical microphone and loudspeaker echo validation, packaged setup and updates, and the Windows host entry.
 
 ```sh
 cargo build --release --manifest-path apps/native/Cargo.toml

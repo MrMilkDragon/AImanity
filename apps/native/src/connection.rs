@@ -144,6 +144,15 @@ impl Connection {
         )
         .await
     }
+    pub async fn audio_stream(&self, index: usize) -> Result<reqwest::Response, String> {
+        let route = if index == 0 { "audio" } else { "desktop/audio" };
+        self.http
+            .get(format!("http://127.0.0.1:17865/{route}"))
+            .header("authorization", &self.phone)
+            .send()
+            .await
+            .map_err(|error| error.to_string())
+    }
     pub async fn upload(&self, path: &std::path::Path) -> Result<wire::ChatAttachment, String> {
         let name = path
             .file_name()
@@ -158,6 +167,16 @@ impl Connection {
             return Err("单个附件须为 1 字节到 8 MiB".into());
         }
         let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
+        self.upload_bytes(name, bytes).await
+    }
+    pub async fn upload_bytes(
+        &self,
+        name: String,
+        bytes: Vec<u8>,
+    ) -> Result<wire::ChatAttachment, String> {
+        if bytes.is_empty() || bytes.len() > 8 * 1024 * 1024 {
+            return Err("单个附件须为 1 字节到 8 MiB".into());
+        }
         let form = reqwest::multipart::Form::new().part(
             "file",
             reqwest::multipart::Part::bytes(bytes).file_name(name),
@@ -179,11 +198,92 @@ impl Connection {
         }
         wire::ChatAttachment::decode(bytes).map_err(|e| e.to_string())
     }
+    pub async fn get_bytes(&self, route: &str) -> Result<bytes::Bytes, String> {
+        self.get(route, &[])
+            .await?
+            .bytes()
+            .await
+            .map_err(|e| e.to_string())
+    }
     pub async fn attachment(&self, id: &str) -> Result<bytes::Bytes, String> {
+        self.get_bytes(&format!("attachment/{id}")).await
+    }
+    async fn get(&self, route: &str, query: &[(&str, &str)]) -> Result<reqwest::Response, String> {
         let response = self
             .http
-            .get(format!("http://127.0.0.1:17863/v1/attachment/{id}"))
+            .get(format!("http://127.0.0.1:17863/v1/{route}"))
+            .query(query)
             .header("authorization", &self.assistant)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = response.status();
+        if !status.is_success() {
+            let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+            return Err(wire::ApiError::decode(bytes)
+                .map_err(|_| format!("HTTP {status}"))?
+                .message);
+        }
+        Ok(response)
+    }
+    pub async fn download_file(
+        &self,
+        source: &str,
+        target: &std::path::Path,
+    ) -> Result<(), String> {
+        use tokio::io::AsyncWriteExt;
+        let mut response = self
+            .get(
+                "workbench/file",
+                &[("path", source.trim_start_matches('/'))],
+            )
+            .await?;
+        let temporary = target.with_extension(format!("{}.part", uuid::Uuid::now_v7()));
+        let result = async {
+            let mut file = tokio::fs::File::create(&temporary)
+                .await
+                .map_err(|e| e.to_string())?;
+            while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+                file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+            }
+            file.flush().await.map_err(|e| e.to_string())?;
+            drop(file);
+            tokio::fs::rename(&temporary, target)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        .await;
+        if result.is_err() {
+            let _ = tokio::fs::remove_file(&temporary).await;
+        }
+        result
+    }
+    pub async fn upload_file(
+        &self,
+        source: &std::path::Path,
+        directory: String,
+    ) -> Result<wire::FileLocation, String> {
+        let location = wire::FileLocation {
+            path: directory,
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let file = reqwest::multipart::Part::file(source)
+            .await
+            .map_err(|e| e.to_string())?;
+        let form = reqwest::multipart::Form::new()
+            .part(
+                "location",
+                reqwest::multipart::Part::bytes(location)
+                    .mime_str("application/x-protobuf")
+                    .map_err(|e| e.to_string())?,
+            )
+            .part("file", file);
+        let response = self
+            .http
+            .post("http://127.0.0.1:17863/v1/files/upload")
+            .header("authorization", &self.assistant)
+            .multipart(form)
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -194,7 +294,7 @@ impl Connection {
                 .map_err(|_| format!("HTTP {status}"))?
                 .message);
         }
-        Ok(bytes)
+        wire::FileLocation::decode(bytes).map_err(|e| e.to_string())
     }
     pub fn chat_events(self) -> impl futures_util::Stream<Item = Result<wire::ChatState, String>> {
         iced::stream::channel::<Result<wire::ChatState, String>>(1, async move |mut output| {

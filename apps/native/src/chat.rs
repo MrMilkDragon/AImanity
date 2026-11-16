@@ -1,7 +1,7 @@
 use crate::{
     connection::Connection,
     controls::{Icon, icon_button},
-    style,
+    modes, style,
 };
 use ai_phone_api::wire;
 use iced::{
@@ -18,6 +18,8 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub enum Message {
+    RefreshDisplay,
+    Mode(modes::Message),
     Edit(text_editor::Action),
     Send,
     Sent(String, Result<wire::ChatState, String>),
@@ -27,6 +29,7 @@ pub enum Message {
     Scroll(bool),
     Pick,
     Files(Vec<PathBuf>),
+    Capture(String, Vec<u8>),
     Uploaded(String, Result<wire::ChatAttachment, String>),
     Remove(String),
     Attachment(wire::ChatAttachment),
@@ -70,6 +73,7 @@ struct Trace {
     summaries: HashMap<String, Vec<markdown::Item>>,
 }
 pub struct Chat {
+    display_after: Option<u64>,
     pub state: wire::ChatState,
     draft: text_editor::Content,
     pending: Vec<Pending>,
@@ -90,6 +94,7 @@ pub struct Chat {
 impl Chat {
     pub fn new() -> Self {
         Self {
+            display_after: None,
             state: Default::default(),
             draft: text_editor::Content::new(),
             pending: Vec::new(),
@@ -242,6 +247,7 @@ impl Chat {
         let snapshot = wire::ChatState {
             conversation_id: pending.request.conversation_id.clone(),
             device_id: pending.request.device_id.clone(),
+            agent_id: pending.request.agent_id.clone(),
             messages: vec![pending.message.clone()],
             ..Default::default()
         };
@@ -319,6 +325,11 @@ impl Chat {
         device_id: &str,
     ) -> Task<Message> {
         match message {
+            Message::RefreshDisplay => {
+                self.display_after = self.state.messages.last().map(|m| m.ordinal);
+                self.following = true;
+            }
+            Message::Mode(_) => {}
             Message::Edit(action) => self.draft.perform(action),
             Message::Send => {
                 if (self.draft.text().trim().is_empty() && self.uploads.is_empty())
@@ -402,6 +413,7 @@ impl Chat {
                             let request = wire::ChatSendRequest {
                                 conversation_id: record.conversation_id.clone(),
                                 device_id: record.device_id.clone(),
+                                agent_id: record.agent_id.clone(),
                                 text: message.text.clone(),
                                 attachment_ids: message
                                     .attachments
@@ -409,6 +421,7 @@ impl Chat {
                                     .map(|a| a.id.clone())
                                     .collect(),
                                 request_id: message.request_id.clone(),
+                                voice: message.voice.clone(),
                                 ..Default::default()
                             };
                             self.pending.push(Pending {
@@ -451,6 +464,24 @@ impl Chat {
                             .collect()
                     },
                     Message::Files,
+                );
+            }
+            Message::Capture(name, bytes) => {
+                if self.uploads.len() == 8 {
+                    self.error = "每条消息最多 8 个附件".into();
+                    return Task::none();
+                }
+                let id = uuid::Uuid::now_v7().to_string();
+                self.uploads.push(Upload {
+                    id: id.clone(),
+                    name: name.clone(),
+                    attachment: None,
+                    error: None,
+                });
+                let client = client.clone();
+                return Task::perform(
+                    async move { client.upload_bytes(name, bytes).await },
+                    move |r| Message::Uploaded(id.clone(), r),
                 );
             }
             Message::Files(paths) => {
@@ -622,7 +653,48 @@ impl Chat {
         }
         Task::none()
     }
-    fn attachments<'a>(&'a self, files: &'a [wire::ChatAttachment]) -> Element<'a, Message> {
+    pub fn send_voice(
+        &mut self,
+        request: wire::ChatSendRequest,
+        client: &Connection,
+    ) -> Task<Message> {
+        let id = request.request_id.clone();
+        self.pending.push(Pending {
+            message: wire::ChatMessage {
+                id: id.clone(),
+                request_id: id.clone(),
+                role: "user".into(),
+                text: request.text.clone(),
+                voice: request.voice.clone(),
+                ..Default::default()
+            },
+            request,
+            error: None,
+            sending: false,
+        });
+        self.following = true;
+        self.error.clear();
+        self.send_pending(&id, client)
+    }
+    pub fn recover_voice(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let draft = self.draft.text();
+        self.draft = text_editor::Content::with_text(
+            if draft.trim().is_empty() {
+                text.to_owned()
+            } else {
+                format!("{}\n{text}", draft.trim_end())
+            }
+            .as_str(),
+        );
+    }
+    fn attachments<'a>(
+        &'a self,
+        files: &'a [wire::ChatAttachment],
+        locale: crate::locale::Locale,
+    ) -> Element<'a, Message> {
         column(files.iter().map(|file| {
             let content: Element<'_, Message> =
                 if let Some(Some(handle)) = self.previews.get(&file.id) {
@@ -637,7 +709,7 @@ impl Chat {
                 space::horizontal(),
                 icon_button(
                     Icon::Download,
-                    "保存附件",
+                    locale.tr("保存附件"),
                     Some(Message::Download(file.clone()))
                 )
             ]
@@ -647,14 +719,19 @@ impl Chat {
         .spacing(4)
         .into()
     }
-    fn trace<'a>(&'a self, message: &'a wire::ChatMessage) -> Element<'a, Message> {
+    fn trace<'a>(
+        &'a self,
+        message: &'a wire::ChatMessage,
+        theme: &iced::Theme,
+        locale: crate::locale::Locale,
+    ) -> Element<'a, Message> {
         let Some(trace) = self.traces.get(&message.id) else {
             return space().into();
         };
         let status = if message.active && message.run_id == self.state.run_id {
-            status_label(&self.state.run_status)
+            locale.tr(status_label(&self.state.run_status))
         } else {
-            "执行记录"
+            locale.tr("执行记录")
         };
         let mut body = column![
             button(
@@ -685,7 +762,7 @@ impl Chat {
                     calls.len(),
                     calls.iter().map(|t| t.model_ms).sum::<u64>() as f64 / 1000.
                 );
-                body = body.push(text(label).size(12).color(style::MUTED));
+                body = body.push(text(label).size(12).style(style::muted_text));
             }
             for event in &trace.events {
                 if event.kind == "summary" {
@@ -693,7 +770,7 @@ impl Chat {
                         body = body.push(
                             markdown::view(
                                 items,
-                                markdown::Settings::with_text_size(14, style::theme()),
+                                markdown::Settings::with_text_size(14, theme.clone()),
                             )
                             .map(Message::Link),
                         );
@@ -718,10 +795,10 @@ impl Chat {
                                 .view(),
                                 text(&event.title).size(13),
                                 space::horizontal(),
-                                text(status_label(&event.status))
+                                text(locale.tr(status_label(&event.status)))
                                     .size(12)
-                                    .color(style::MUTED),
-                                text(elapsed).size(12).color(style::MUTED)
+                                    .style(style::muted_text),
+                                text(elapsed).size(12).style(style::muted_text)
                             ]
                             .spacing(6)
                             .align_y(iced::Alignment::Center),
@@ -736,20 +813,33 @@ impl Chat {
                 }
             }
             if !trace.loaded && trace.loading {
-                body = body.push(text("读取过程…").size(12).color(style::MUTED));
+                body = body.push(
+                    text(locale.tr("读取过程…"))
+                        .size(12)
+                        .style(style::muted_text),
+                );
             }
         }
         body.into()
     }
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view<'a>(
+        &'a self,
+        modes: &'a modes::Modes,
+        locale: crate::locale::Locale,
+    ) -> Element<'a, Message> {
+        let theme = if modes.copilot_active() {
+            style::copilot_theme()
+        } else {
+            style::theme()
+        };
         let mut messages = column![].spacing(18);
         if self.has_older {
             messages = messages.push(
                 button(
                     text(if self.loading_older {
-                        "读取中…"
+                        locale.tr("读取中…")
                     } else {
-                        "较早消息"
+                        locale.tr("较早消息")
                     })
                     .size(12),
                 )
@@ -761,31 +851,35 @@ impl Chat {
             if !message.system_notice.is_empty() {
                 continue;
             }
+            if self
+                .display_after
+                .is_some_and(|ordinal| message.ordinal <= ordinal)
+                && !message.active
+            {
+                continue;
+            }
             let mut item = column![
                 text(if message.role == "user" {
-                    "你"
+                    locale.tr("你")
                 } else if self.state.agent_name.is_empty() {
                     "Agent"
                 } else {
                     &self.state.agent_name
                 })
                 .size(11)
-                .color(style::MUTED)
+                .style(style::muted_text)
             ]
             .spacing(7);
             if message.has_activity {
-                item = item.push(self.trace(message));
+                item = item.push(self.trace(message, &theme, locale));
             }
             if !message.attachments.is_empty() {
-                item = item.push(self.attachments(&message.attachments));
+                item = item.push(self.attachments(&message.attachments, locale));
             }
             if let Some(items) = self.markdown.get(&message.id) {
                 item = item.push(
-                    markdown::view(
-                        items,
-                        markdown::Settings::with_text_size(14, style::theme()),
-                    )
-                    .map(Message::Link),
+                    markdown::view(items, markdown::Settings::with_text_size(14, theme.clone()))
+                        .map(Message::Link),
                 );
             }
             if !message.text.is_empty() || message.has_activity || !message.attachments.is_empty() {
@@ -794,15 +888,18 @@ impl Chat {
         }
         for pending in &self.pending {
             let mut item = column![
-                text("你").size(11).color(style::MUTED),
+                text(locale.tr("你")).size(11).style(style::muted_text),
                 text(&pending.message.text).size(14),
-                self.attachments(&pending.message.attachments)
+                self.attachments(&pending.message.attachments, locale)
             ]
             .spacing(6);
             let delivery: Element<'_, Message> = if pending.sending {
-                text("发送中…").size(12).color(style::MUTED).into()
+                text(locale.tr("发送中…"))
+                    .size(12)
+                    .style(style::muted_text)
+                    .into()
             } else {
-                button(text("重试发送").size(12))
+                button(text(locale.tr("重试发送")).size(12))
                     .style(style::quiet)
                     .on_press(Message::Retry(pending.request.request_id.clone()))
                     .into()
@@ -811,7 +908,7 @@ impl Chat {
             messages = messages.push(item);
         }
         let editor = text_editor(&self.draft)
-            .placeholder("发送消息…")
+            .placeholder(locale.tr("发送消息…"))
             .height(84)
             .padding(10)
             .size(14)
@@ -832,14 +929,15 @@ impl Chat {
                 s
             });
         let mut actions = row![
-            icon_button(Icon::Paperclip, "添加附件", Some(Message::Pick)),
+            icon_button(Icon::Paperclip, locale.tr("添加附件"), Some(Message::Pick)),
+            modes.dock(&self.state).map(Message::Mode),
             space::horizontal()
         ]
         .spacing(4);
         if self.state.run_status == "paused" {
             actions = actions.push(icon_button(
                 Icon::Play,
-                "继续",
+                locale.tr("继续"),
                 (!self.control_busy).then_some(Message::Command(Command::Resume)),
             ));
         }
@@ -850,19 +948,19 @@ impl Chat {
             if self.state.can_pause && self.state.run_status != "paused" {
                 actions = actions.push(icon_button(
                     Icon::Pause,
-                    "暂停",
+                    locale.tr("暂停"),
                     (!self.control_busy).then_some(Message::Command(Command::Pause)),
                 ));
             }
             actions = actions.push(icon_button(
                 Icon::Stop,
-                "停止",
+                locale.tr("停止"),
                 (!self.control_busy).then_some(Message::Command(Command::Stop)),
             ));
         }
         actions = actions.push(icon_button(
             Icon::Send,
-            "发送 · ⌘ / Ctrl + Enter",
+            locale.tr("发送 · ⌘ / Ctrl + Enter"),
             ((!self.draft.text().trim().is_empty() || !self.uploads.is_empty())
                 && self.uploads.iter().all(|u| u.attachment.is_some()))
             .then_some(Message::Send),
@@ -875,24 +973,27 @@ impl Chat {
                         .style(style::quiet)
                         .on_press_maybe(upload.attachment.clone().map(Message::Attachment)),
                     text(if upload.error.is_some() {
-                        "失败"
+                        locale.tr("失败")
                     } else if upload.attachment.is_none() {
-                        "上传中…"
+                        locale.tr("上传中…")
                     } else {
                         ""
                     })
                     .size(12)
-                    .color(style::MUTED),
+                    .style(style::muted_text),
                     space::horizontal(),
                     icon_button(
                         Icon::Trash,
-                        "移除附件",
+                        locale.tr("移除附件"),
                         Some(Message::Remove(upload.id.clone()))
                     )
                 ]
                 .spacing(6)
                 .align_y(iced::Alignment::Center),
             );
+        }
+        if !modes.transcript().is_empty() {
+            composer = composer.push(container(text(modes.transcript()).size(13)).padding([6, 10]));
         }
         composer = composer.push(editor).push(actions);
         column![
@@ -908,18 +1009,18 @@ impl Chat {
         .spacing(10)
         .into()
     }
-    pub fn preview_view(&self) -> Element<'_, Message> {
+    pub fn preview_view(&self, locale: crate::locale::Locale) -> Element<'_, Message> {
         let Some(file) = &self.preview else {
             return space().into();
         };
         let mut content = column![
             row![
-                icon_button(Icon::Back, "返回", Some(Message::ClosePreview)),
+                icon_button(Icon::Back, locale.tr("返回"), Some(Message::ClosePreview)),
                 text(&file.name).size(14),
                 space::horizontal(),
                 icon_button(
                     Icon::Download,
-                    "保存图片",
+                    locale.tr("保存图片"),
                     Some(Message::Download(file.clone()))
                 )
             ]

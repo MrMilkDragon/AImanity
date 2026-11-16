@@ -16,6 +16,9 @@ See [distribution requirements](docs/public/distribution-requirements.md) for th
 | --- | --- | --- |
 | Iced 0.14.0 | [Upstream](https://github.com/iced-rs/iced/tree/0.14.0), [MIT licence](docs/public/licenses/native-ui/iced-LICENSE) | Native workbench UI; locked dependencies in apps/native/Cargo.lock |
 | rfd 0.15.4 | [Upstream](https://github.com/PolyMeilex/rfd), [MIT licence](docs/public/licenses/native-ui/rfd-LICENSE) | Native attachment open/save dialogs |
+| Rodio 0.21.1 | [Upstream](https://github.com/RustAudio/rodio/tree/v0.21.1), [MIT licence](docs/public/licenses/native-ui/rodio-LICENSE.MIT) | Native device audio mixing and resampling |
+| CPAL 0.16.0 | [Upstream](https://github.com/RustAudio/cpal/tree/0.16.0), [Apache-2.0 licence](docs/public/licenses/native-ui/cpal-LICENSE.APACHE) | System speaker and microphone access |
+| arboard 3.7.0 | [Upstream](https://github.com/1Password/arboard), [MIT licence](docs/public/licenses/native-ui/arboard-LICENSE.MIT) | Native clipboard support |
 | Lucide / Feather icons | [Upstream](https://github.com/lucide-icons/lucide), [ISC / MIT licences](docs/public/licenses/native-ui/lucide-LICENSE) | Native SVG controls adapted from the existing workbench icon family |
 | pulldown-cmark 0.12.2 | [Upstream](https://github.com/pulldown-cmark/pulldown-cmark), [MIT licence](docs/public/licenses/native-ui/pulldown-cmark-LICENSE) | Shared conversation Markdown through Iced |
 | open 5.4.5 | [Upstream](https://github.com/Byron/open-rs), [MIT licence](docs/public/licenses/native-ui/open-LICENSE.md) | User-activated conversation links |

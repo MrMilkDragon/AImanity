@@ -8,9 +8,13 @@ license = "Apache-2.0"
 [workspace]
 
 [dependencies]
-iced = { version = "=0.14.0", default-features = false, features = ["wgpu", "tokio", "image-without-codecs", "advanced", "advanced-shaping", "svg", "markdown", "x11", "wayland"] }
+iced = { version = "=0.14.0", default-features = false, features = ["wgpu", "tokio", "image-without-codecs", "advanced", "advanced-shaping", "svg", "markdown", "canvas", "x11", "wayland"] }
 ai-phone-api = { path = "../../crates/api" }
 ai-phone-host-runtime = { path = "../../crates/host-runtime" }
+ai-phone-local-speech = { path = "../../crates/local-speech" }
+arboard = "3"
+cpal = "=0.16.0"
+rodio = { version = "=0.21.1", default-features = false, features = ["playback"] }
 prost = "=0.14.4"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "multipart"] }
 rfd = { version = "0.15", default-features = false, features = ["tokio", "xdg-portal"] }
@@ -18,7 +22,8 @@ open = "5"
 bytes = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "process", "io-util"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 futures-util = "0.3"
 tokio-tungstenite = "0.28"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
@@ -37,3 +42,6 @@ strip = "debuginfo"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSMenu", "NSMenuItem"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSString", "NSThread"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.61.3", features = ["Win32_Media_Speech", "Win32_System_Com", "Win32_System_Variant"] }

@@ -10,7 +10,7 @@ use tokio::{
 #[derive(Clone, Deserialize)]
 pub struct Host {
     pub home: PathBuf,
-    resource: PathBuf,
+    pub resource: PathBuf,
     request: PathBuf,
     source: String,
     android: String,

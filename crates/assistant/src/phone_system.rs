@@ -14,7 +14,7 @@ pub async fn target(app: &App, id: &str) -> Result<Target, String> {
         return Ok(Target {
             runner: 17862,
             token: app.phone_token.clone(),
-            serial: "emulator-5564".into(),
+            serial: std::env::var("AI_PHONE_SERIAL").unwrap_or_else(|_| "emulator-5564".into()),
         });
     }
     Err("手机未接入或已归档".into())

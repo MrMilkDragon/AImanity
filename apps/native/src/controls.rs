@@ -6,6 +6,18 @@ use iced::{
 
 #[derive(Clone, Copy)]
 pub enum Icon {
+    Network,
+    Pin,
+    Book,
+    Wrench,
+    Folder,
+    Target,
+    Screen,
+    Camera,
+    Copy,
+    Cut,
+    Up,
+    Grip,
     Plus,
     Back,
     Edit,
@@ -20,10 +32,21 @@ pub enum Icon {
     Down,
     Right,
     Download,
+    Upload,
+    Search,
+    Link,
+    Undo,
+    Close,
+    Image,
     Check,
     Settings,
     Cable,
     Refresh,
+    Volume,
+    Muted,
+    Compass,
+    Mic,
+    MicOff,
 }
 pub fn action_button<'a, M: Clone + 'a>(
     label: &'a str,
@@ -68,6 +91,38 @@ pub fn tab_button<'a, M: Clone + 'a>(
 impl Icon {
     pub fn view<'a>(self) -> svg::Svg<'a> {
         let path = match self {
+            Self::Network => {
+                "<rect x='9' y='2' width='6' height='6'/><rect x='2' y='16' width='6' height='6'/><rect x='16' y='16' width='6' height='6'/><path d='M12 8v4M5 16v-4h14v4'/>"
+            }
+            Self::Pin => {
+                "<path d='M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z'/><circle cx='12' cy='10' r='2.6'/>"
+            }
+            Self::Book => {
+                "<path d='M12 6C9 3 5 3 2 4v15c4-1 7-1 10 2 3-3 6-3 10-2V4c-3-1-7-1-10 2Zm0 0v15'/>"
+            }
+            Self::Wrench => {
+                "<path d='M13 9l4 4 4-4a6 6 0 0 1-8 7l-6 6a2 2 0 0 1-3-3l6-6a6 6 0 0 1 7-8Z'/>"
+            }
+            Self::Folder => {
+                "<path d='M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z'/>"
+            }
+            Self::Target => {
+                "<circle cx='12' cy='12' r='9'/><circle cx='12' cy='12' r='5'/><circle cx='12' cy='12' r='1'/>"
+            }
+            Self::Screen => {
+                "<rect x='2' y='4' width='20' height='14' rx='2'/><path d='M8 22h8m-4-4v4'/>"
+            }
+            Self::Camera => "<path d='M4 9V5h4m8 0h4v4m0 6v4h-4m-8 0H4v-4M3 12h18'/>",
+            Self::Copy => {
+                "<rect x='8' y='8' width='12' height='12' rx='2'/><path d='M16 4H6a2 2 0 0 0-2 2v10'/>"
+            }
+            Self::Cut => {
+                "<circle cx='6' cy='6' r='3'/><circle cx='6' cy='18' r='3'/><path d='m8 8 12 12M8 16 20 4'/>"
+            }
+            Self::Up => "<path d='m6 10 6-6 6 6m-6-6v16'/>",
+            Self::Grip => {
+                "<path d='M9 5h.1M15 5h.1M9 12h.1m6 0h.1M9 19h.1m6 0h.1' stroke-width='3'/>"
+            }
             Self::Plus => "<path d='M12 5v14M5 12h14'/>",
             Self::Back => "<path d='m12 19-7-7 7-7M5 12h14'/>",
             Self::Edit => "<path d='m16 3 5 5L8 21H3v-5ZM14 5l5 5'/>",
@@ -88,6 +143,16 @@ impl Icon {
             Self::Down => "<path d='m6 9 6 6 6-6'/>",
             Self::Right => "<path d='m9 6 6 6-6 6'/>",
             Self::Download => "<path d='M12 3v12m-5-5 5 5 5-5M5 16v5h14v-5'/>",
+            Self::Upload => "<path d='M12 15V3m-5 5 5-5 5 5M5 16v5h14v-5'/>",
+            Self::Search => "<circle cx='11' cy='11' r='7'/><path d='m16 16 4 4'/>",
+            Self::Link => {
+                "<path d='M10 13a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-2 2m3 5a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l2-2'/>"
+            }
+            Self::Undo => "<path d='M9 14l-5-5 5-5M4 9h10a6 6 0 0 1 0 12h-2'/>",
+            Self::Close => "<path d='m6 6 12 12M18 6 6 18'/>",
+            Self::Image => {
+                "<rect x='3' y='3' width='18' height='18' rx='2'/><circle cx='9' cy='9' r='2'/><path d='m3 18 5-5 3 3 4-4 6 6'/>"
+            }
             Self::Check => "<path d='m5 12 4 4L19 6'/>",
             Self::Settings => {
                 "<path d='m10 2-.7 3-2 .9L4.5 5 2 9.3l2.2 2.1v2L2 15.5 4.5 20l2.8-.9 2 .9.7 3h5l.7-3 2-.9 2.8.9 2.5-4.5-2.2-2.1v-2L23 9.3 20.5 5l-2.8.9-2-.9L15 2Z'/><circle cx='12.5' cy='12.5' r='3'/>"
@@ -98,8 +163,30 @@ impl Icon {
             Self::Refresh => {
                 "<path d='M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M18 18a8 8 0 0 1-13-3'/>"
             }
+            Self::Volume => {
+                "<path d='M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13'/>"
+            }
+            Self::Muted => "<path d='M11 5 6 9H3v6h3l5 4zM16 9l6 6m0-6-6 6'/>",
+            Self::Compass => {
+                "<circle cx='12' cy='12' r='9'/><path d='m15.8 8.2-2.3 5.3-5.3 2.3 2.3-5.3Z'/>"
+            }
+            Self::Mic => {
+                "<rect x='9' y='2' width='6' height='12' rx='3'/><path d='M5 10v2a7 7 0 0 0 14 0v-2m-7 9v3'/>"
+            }
+            Self::MicOff => {
+                "<path d='m2 2 20 20M9 9v2a3 3 0 0 0 5 2m1-4V5a3 3 0 0 0-5.6-1.5M5 10v2a7 7 0 0 0 12 4.9m2-4.9v-2m-7 9v3'/>"
+            }
         };
-        svg(svg::Handle::from_memory(format!("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='#171717' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'>{path}</svg>").into_bytes())).width(18).height(18)
+        use std::sync::OnceLock;
+        static HANDLES: [OnceLock<svg::Handle>; Icon::MicOff as usize + 1] =
+            [const { OnceLock::new() }; Icon::MicOff as usize + 1];
+        let handle = HANDLES[self as usize].get_or_init(|| svg::Handle::from_memory(format!("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='#171717' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'>{path}</svg>").into_bytes()));
+        svg(handle.clone())
+            .width(18)
+            .height(18)
+            .style(|theme: &iced::Theme, _| svg::Style {
+                color: Some(theme.palette().text),
+            })
     }
 }
 pub fn icon_button<'a, M: Clone + 'a>(
@@ -131,7 +218,7 @@ pub fn field<'a, M: Clone + 'a>(
     enabled: bool,
 ) -> Element<'a, M> {
     column![
-        text(label).size(12).color(style::MUTED),
+        text(label).size(12).style(style::muted_text),
         text_input("", value)
             .on_input_maybe(enabled.then_some(on_input))
             .size(14)

@@ -1,20 +1,32 @@
 mod agent_details;
 mod agents;
+mod audio;
 mod chat;
 mod connection;
 mod controls;
+mod devices;
+mod files;
 mod host;
+mod knowledge;
 mod layout;
+mod locale;
+mod location;
+mod modes;
 mod occlude;
 mod platform;
+mod proxy;
 mod scene;
+mod skills;
 mod style;
 mod surface;
 use ai_phone_api::wire;
 use connection::{Connection, DeviceInput, Frame};
 use iced::{
     Element, Event, Length, Rectangle, Size, Subscription, Task, keyboard,
-    widget::{button, container, mouse_area, pin, row, stack, text},
+    widget::{
+        button, column, container, image, mouse_area, pin, row, scrollable, sensor, space, stack,
+        text,
+    },
     window,
 };
 use layout::Layout;
@@ -28,6 +40,20 @@ enum Message {
     Chat(Result<wire::ChatState, String>),
     Conversation(chat::Message),
     Agents(agents::Message),
+    Devices(devices::Message),
+    CloseDevices,
+    Audio(usize, audio::Message),
+    Files(Box<files::Message>),
+    Knowledge(knowledge::Message),
+    Skills(skills::Message),
+    Location(location::Message),
+    Proxy(proxy::Message),
+    Modes(modes::Message),
+    SetLocale(locale::Locale),
+    Captured(usize, Result<Capture, String>),
+    SaveCapture,
+    AttachCapture,
+    CaptureSaved(Result<(), String>),
     Focus(usize),
     Input(usize, DeviceInput),
     InputDone(usize, Result<(), String>, Instant),
@@ -35,11 +61,30 @@ enum Message {
     Tick(Instant),
     Event(Event),
     Hover(bool),
-    Pin,
+    OpenPanel(Panel, bool),
+    PanelSize(iced::Size),
     PanelFocus,
     Link,
     Linked(Result<wire::DeviceLinkState, String>),
     Rotate,
+}
+#[derive(Clone, Debug)]
+struct Capture {
+    name: String,
+    image: image::Handle,
+    png: Arc<Vec<u8>>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Panel {
+    Language,
+    Skills,
+    Location,
+    Proxy,
+    Knowledge,
+    Files,
+    Goal,
+    Agent,
+    Capture(usize),
 }
 struct App {
     stop: Option<tokio::sync::oneshot::Sender<()>>,
@@ -51,6 +96,18 @@ struct App {
     frames: [Option<Arc<Frame>>; 2],
     chat: chat::Chat,
     agents: agents::Agents,
+    device_admin: devices::Devices,
+    show_devices: bool,
+    audio: [audio::Playback; 2],
+    files: files::Files,
+    knowledge: knowledge::Knowledge,
+    skills: skills::Skills,
+    location: location::Location,
+    proxy: proxy::Proxy,
+    modes: modes::Modes,
+    locale: locale::Locale,
+    capture: Option<Capture>,
+    cursor: iced::Point,
     error: String,
     root: String,
     focus: usize,
@@ -65,6 +122,7 @@ struct App {
     target: Layout,
     transition: Option<Instant>,
     popup: bool,
+    panel: Panel,
     pinned: bool,
     popup_amount: f32,
     from_popup: f32,
@@ -94,6 +152,18 @@ impl App {
             frames: [None, None],
             chat: chat::Chat::new(),
             agents: agents::Agents::new(),
+            device_admin: Default::default(),
+            show_devices: false,
+            audio: std::array::from_fn(|_| audio::Playback::new()),
+            files: Default::default(),
+            knowledge: Default::default(),
+            skills: Default::default(),
+            location: Default::default(),
+            proxy: Default::default(),
+            modes: Default::default(),
+            locale: Default::default(),
+            capture: None,
+            cursor: iced::Point::ORIGIN,
             error: String::new(),
             root: String::new(),
             focus: 0,
@@ -108,6 +178,7 @@ impl App {
             target: layout,
             transition: None,
             popup: false,
+            panel: Panel::Agent,
             pinned: false,
             popup_amount: 0.,
             from_popup: 0.,
@@ -121,6 +192,15 @@ impl App {
         let task = match host {
             Ok(host) => {
                 app.host_home = host.home.clone();
+                app.location.set_root(&host.home);
+                app.locale = std::fs::read_to_string(host.home.join("user/native-locale"))
+                    .map_or_else(
+                        |_| locale::Locale::default(),
+                        |s| locale::Locale::parse(s.trim()),
+                    );
+                app.modes.set_language(app.locale.code());
+                app.modes
+                    .set_speech_model(host.resource.join("speech/ggml-tiny-q5_1.bin"));
                 Task::run(host.events(receiver), Message::Host)
             }
             Err(error) => {
@@ -245,6 +325,7 @@ impl App {
                     });
                     self.linked = links.links.iter().any(|l| l.connected);
                     self.agents.registry = registry;
+                    self.files.set_devices(&self.devices);
                     let chat_task = self.chat.accept(chat, &client).map(Message::Conversation);
                     let restore = self.chat.restore(&self.root).map(Message::Conversation);
                     self.error.clear();
@@ -261,12 +342,22 @@ impl App {
                     ];
                     for (index, device) in self.devices.iter().enumerate() {
                         if let Some(device) = device {
+                            tasks.push(
+                                self.audio[index]
+                                    .restore(&self.root, &device.id)
+                                    .map(move |m| Message::Audio(index, m)),
+                            );
                             tasks
                                 .push(Task::run(client.clone().frames(device.clone()), move |r| {
                                     Message::Frame(index, r)
                                 }));
                         }
                     }
+                    tasks.push(
+                        self.modes
+                            .update(modes::Message::Refresh, &client, "", &self.chat.state)
+                            .map(Message::Modes),
+                    );
                     let (task, handle) = Task::batch(tasks).abortable();
                     self.streams = Some(handle.abort_on_drop());
                     return task;
@@ -293,13 +384,22 @@ impl App {
             },
             Message::Chat(result) => {
                 if let Some(client) = &self.connection {
-                    return self
+                    let task = self
                         .chat
                         .update(chat::Message::History(result), client, "")
                         .map(Message::Conversation);
+                    return Task::batch([
+                        task,
+                        self.modes
+                            .observe_chat(&self.chat.state)
+                            .map(Message::Modes),
+                    ]);
                 }
             }
             Message::Conversation(message) => {
+                if let chat::Message::Mode(message) = message {
+                    return self.update(Message::Modes(message));
+                }
                 if matches!(message, chat::Message::Edit(_)) {
                     self.keyboard_target = None;
                     self.input_started = Some(Instant::now());
@@ -319,13 +419,175 @@ impl App {
                         .map(Message::Conversation);
                 }
             }
-            Message::Agents(agents::Message::Measured(size)) => {
+            Message::Modes(message) => {
+                if matches!(message, modes::Message::GoalEdit(_)) {
+                    self.keyboard_target = None;
+                    self.pinned = true;
+                }
+                if let Some(client) = &self.connection {
+                    let device = self.devices[self.focus]
+                        .as_ref()
+                        .map_or("", |d| d.id.as_str());
+                    let task = self
+                        .modes
+                        .update(message, client, device, &self.chat.state)
+                        .map(Message::Modes);
+                    self.chat.recover_voice(&self.modes.take_recovered());
+                    if let Some(request) = self.modes.take_voice() {
+                        return Task::batch([
+                            task,
+                            self.chat
+                                .send_voice(request, client)
+                                .map(Message::Conversation),
+                        ]);
+                    }
+                    return task;
+                }
+            }
+            Message::Audio(i, message) => {
+                self.keyboard_target = None;
+                return self.audio[i]
+                    .update(message, self.connection.as_ref(), i)
+                    .map(move |m| Message::Audio(i, m));
+            }
+            Message::Files(message) => {
+                if let Some(client) = &self.connection {
+                    return self
+                        .files
+                        .update(*message, client)
+                        .map(|m| Message::Files(Box::new(m)));
+                }
+            }
+            Message::Knowledge(message) => {
+                if let Some(client) = &self.connection {
+                    return self
+                        .knowledge
+                        .update(message, client)
+                        .map(Message::Knowledge);
+                }
+            }
+            Message::Skills(message) => {
+                if let Some(client) = &self.connection {
+                    return self.skills.update(message, client).map(Message::Skills);
+                }
+            }
+            Message::Location(message) => {
+                if let Some(client) = &self.connection {
+                    return self.location.update(message, client).map(Message::Location);
+                }
+            }
+            Message::Proxy(message) => {
+                if let Some(client) = &self.connection {
+                    return self.proxy.update(message, client).map(Message::Proxy);
+                }
+            }
+            Message::SetLocale(locale) => {
+                self.locale = locale;
+                self.modes.set_language(locale.code());
+                self.set_popup(false);
+                if let Err(error) =
+                    std::fs::write(self.host_home.join("user/native-locale"), locale.code())
+                {
+                    self.error = error.to_string();
+                }
+            }
+            Message::Captured(index, result) => {
+                if self.panel == Panel::Capture(index) {
+                    match result {
+                        Ok(capture) => self.capture = Some(capture),
+                        Err(error) => self.error = error,
+                    }
+                }
+            }
+            Message::AttachCapture => {
+                if let Some(capture) = self.capture.take() {
+                    self.set_popup(false);
+                    return self.update(Message::Conversation(chat::Message::Capture(
+                        capture.name,
+                        (*capture.png).clone(),
+                    )));
+                }
+            }
+            Message::SaveCapture => {
+                if let Some(capture) = self.capture.clone() {
+                    return Task::perform(
+                        async move {
+                            if let Some(target) = rfd::AsyncFileDialog::new()
+                                .set_file_name(capture.name)
+                                .save_file()
+                                .await
+                            {
+                                target
+                                    .write(&capture.png)
+                                    .await
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            Ok(())
+                        },
+                        Message::CaptureSaved,
+                    );
+                }
+            }
+            Message::CaptureSaved(Err(error)) => {
+                self.error = error;
+            }
+            Message::PanelSize(size) | Message::Agents(agents::Message::Measured(size)) => {
                 let height = size.height.ceil();
                 if self.panel_content_height != height {
                     self.panel_content_height = height;
                     self.from_panel = self.panel_size;
                     self.from_popup = self.popup_amount;
                     self.popup_transition = Some(Instant::now());
+                }
+            }
+            Message::Agents(agents::Message::Devices) => {
+                self.show_devices = true;
+                self.from_panel = self.panel_size;
+                self.from_popup = self.popup_amount;
+                self.popup_transition = Some(Instant::now());
+                if let Some(device) = &self.devices[self.focus] {
+                    return self.update(Message::Devices(devices::Message::Choose(
+                        device.id.clone(),
+                    )));
+                }
+            }
+            Message::CloseDevices => {
+                self.show_devices = false;
+                self.from_panel = self.panel_size;
+                self.from_popup = self.popup_amount;
+                self.popup_transition = Some(Instant::now());
+            }
+            Message::Devices(message) => {
+                if let Some(client) = &self.connection {
+                    let task = self
+                        .device_admin
+                        .update(message, &self.agents.registry, client)
+                        .map(Message::Devices);
+                    if let Some(registry) = self.device_admin.registry.take() {
+                        let added = registry.devices.iter().any(|d| {
+                            d.runtime_state == "managed"
+                                && self.devices.iter().flatten().all(|old| old.id != d.id)
+                        });
+                        for device in self.devices.iter_mut().flatten() {
+                            if let Some(updated) =
+                                registry.devices.iter().find(|d| d.id == device.id)
+                            {
+                                device.clone_from(updated);
+                            }
+                        }
+                        self.agents.registry = registry;
+                        self.files.set_devices(&self.devices);
+                        if added {
+                            let root = self.root.clone();
+                            return Task::batch([
+                                task,
+                                Task::perform(Connection::connect(root), |r| {
+                                    Message::Connected(r.map(Box::new))
+                                }),
+                            ]);
+                        }
+                    }
+                    return task;
                 }
             }
             Message::Agents(message) => {
@@ -399,6 +661,7 @@ impl App {
                 });
             }
             Message::Tick(now) => {
+                self.modes.animate(now);
                 if let Some(start) = self.input_started.take() {
                     eprintln!(
                         "native_metric edit_to_frame_event_ms={:.3}",
@@ -450,6 +713,10 @@ impl App {
                 }
                 self.closing = true;
                 self.streams = None;
+                for audio in &mut self.audio {
+                    audio.stop();
+                }
+                self.modes.stop_capture();
                 self.phase = "正在关闭设备".into();
                 if let Some(stop) = self.stop.take() {
                     let _ = stop.send(());
@@ -465,14 +732,19 @@ impl App {
                 key: keyboard::Key::Named(keyboard::key::Named::Escape),
                 ..
             })) => {
+                if self.popup
+                    && self.panel == Panel::Knowledge
+                    && let Some(message) = self.knowledge.escape()
+                {
+                    return self.update(Message::Knowledge(message));
+                }
                 self.set_popup(false);
                 self.pinned = false;
                 self.chat.preview = None;
                 self.keyboard_target = None;
             }
-            Message::Event(Event::Mouse(iced::mouse::Event::CursorMoved { position }))
-                if self.popup && !self.pinned =>
-            {
+            Message::Event(Event::Mouse(iced::mouse::Event::CursorMoved { position })) => {
+                self.cursor = position;
                 let p = self.popup_rect();
                 let area = Rectangle {
                     x: p.x - 8.,
@@ -480,7 +752,11 @@ impl App {
                     width: p.width + 16.,
                     height: p.height + 56.,
                 };
-                if !area.contains(position) {
+                if self.popup
+                    && !self.pinned
+                    && !area.contains(position)
+                    && !self.child_rect().contains(position)
+                {
                     self.set_popup(false);
                 }
             }
@@ -489,11 +765,26 @@ impl App {
                     self.set_popup(inside);
                 }
             }
-            Message::Pin => {
+            Message::OpenPanel(panel, click) => {
+                if panel == self.panel && self.popup {
+                    if click {
+                        self.pinned = !self.pinned;
+                        self.set_popup(self.pinned);
+                    }
+                    return Task::none();
+                }
                 self.chat.preview = None;
-                self.pinned = !self.pinned;
-                self.set_popup(self.pinned);
+                if self.panel == Panel::Knowledge && panel != Panel::Knowledge {
+                    let _ = self.update(Message::Knowledge(knowledge::Message::CloseDocument));
+                }
+                self.panel = panel;
+                self.pinned = click;
+                self.from_panel = self.panel_size;
+                self.from_popup = self.popup_amount;
+                self.popup_transition = Some(Instant::now());
+                self.set_popup(true);
                 self.keyboard_target = None;
+                return self.load_panel();
             }
             Message::PanelFocus => {
                 self.keyboard_target = None;
@@ -528,14 +819,26 @@ impl App {
                 }
             }
             Message::Event(Event::Window(window::Event::FileDropped(path))) => {
+                if self.popup
+                    && self.panel == Panel::Files
+                    && self.popup_rect().contains(self.cursor)
+                {
+                    let message = self.files.local_drop(self.cursor, self.popup_rect(), path);
+                    return self.update(Message::Files(Box::new(message)));
+                }
                 return self.update(Message::Conversation(chat::Message::Files(vec![path])));
+            }
+            Message::Event(Event::Mouse(iced::mouse::Event::ButtonReleased(_)))
+                if self.panel == Panel::Files =>
+            {
+                return self.update(Message::Files(Box::new(files::Message::EndDrag)));
             }
             _ => {}
         }
         Task::none()
     }
     fn subscription(&self) -> Subscription<Message> {
-        let mut subscriptions = vec![iced::event::listen_with(|event, _, _| match &event {
+        let mut subscriptions = vec![iced::event::listen_with(|event, status, _| match &event {
             Event::Window(
                 window::Event::Opened { .. }
                 | window::Event::Resized(_)
@@ -547,16 +850,38 @@ impl App {
                 key: keyboard::Key::Named(keyboard::key::Named::Escape),
                 ..
             }) => Some(Message::Event(event)),
+            Event::Mouse(iced::mouse::Event::ButtonReleased(_))
+                if status == iced::event::Status::Ignored =>
+            {
+                Some(Message::Event(event))
+            }
             _ => None,
         })];
         if self.transition.is_some()
             || self.popup_transition.is_some()
             || self.input_started.is_some()
+            || self.modes.animating()
         {
             subscriptions.push(window::frames().map(Message::Tick));
         }
         subscriptions.push(self.chat.subscription().map(Message::Conversation));
-        subscriptions.push(self.agents.subscription(self.popup).map(Message::Agents));
+        subscriptions.push(
+            self.agents
+                .subscription(self.popup && self.panel == Panel::Agent)
+                .map(Message::Agents),
+        );
+        if self.connection.is_some() {
+            subscriptions.push(self.modes.subscription().map(Message::Modes));
+        }
+        if self.popup && self.panel == Panel::Knowledge {
+            subscriptions.push(self.knowledge.subscription().map(Message::Knowledge));
+        }
+        if self.popup && self.panel == Panel::Location {
+            subscriptions.push(self.location.subscription().map(Message::Location));
+        }
+        if self.show_devices {
+            subscriptions.push(self.device_admin.subscription().map(Message::Devices));
+        }
         Subscription::batch(subscriptions)
     }
     fn popup_rect(&self) -> Rectangle {
@@ -571,9 +896,13 @@ impl App {
         if self.popup_amount > 0. {
             let width = self.panel_size.width.min(self.size.width - 64.);
             let height = self.panel_size.height;
+            let anchor = self.panel_anchor();
+            let y = anchor
+                .y
+                .min(self.size.height - height.min(self.size.height - 96.) - 24.);
             Rectangle {
-                x: self.size.width - width - 32.,
-                y: 64.,
+                x: (anchor.x - width).clamp(32., self.size.width - width - 32.),
+                y,
                 width,
                 height: height.min(self.size.height - 96.) * self.popup_amount,
             }
@@ -583,51 +912,315 @@ impl App {
     }
     fn panel_target(&self) -> Size {
         Size::new(
-            (self.size.width - 64.).min(if self.agents.is_editing() { 480. } else { 400. }),
-            self.panel_content_height.min(self.size.height - 96.),
+            (self.size.width - 64.).min(match self.panel {
+                Panel::Agent if self.agents.is_editing() => 480.,
+                Panel::Agent if self.show_devices => 680.,
+                Panel::Agent => 400.,
+                Panel::Language => 280.,
+                Panel::Skills => 650.,
+                Panel::Knowledge => 850.,
+                Panel::Files => 1120.,
+                Panel::Location => 560.,
+                Panel::Proxy => 420.,
+                Panel::Goal => 650.,
+                Panel::Capture(0) => 440.,
+                Panel::Capture(_) => 700.,
+            }),
+            (match self.panel {
+                Panel::Files => 736.,
+                Panel::Knowledge => 590.,
+                Panel::Skills => 550.,
+                _ => self.panel_content_height,
+            })
+            .min(self.size.height - 96.),
         )
     }
+    const NAV_PANELS: [Panel; 8] = [
+        Panel::Language,
+        Panel::Skills,
+        Panel::Location,
+        Panel::Proxy,
+        Panel::Knowledge,
+        Panel::Files,
+        Panel::Goal,
+        Panel::Agent,
+    ];
+    fn panel_anchor(&self) -> iced::Point {
+        if let Panel::Capture(index) = self.panel {
+            let device = self.layout.devices[index];
+            return iced::Point::new(device.x + self.panel_target().width, device.y);
+        }
+        let index = Self::NAV_PANELS
+            .iter()
+            .position(|p| *p == self.panel)
+            .unwrap();
+        iced::Point::new(self.size.width - 80. - (7 - index) as f32 * 48., 64.)
+    }
+    fn load_panel(&mut self) -> Task<Message> {
+        let message = match self.panel {
+            Panel::Skills => Message::Skills(skills::Message::Load),
+            Panel::Knowledge => Message::Knowledge(knowledge::Message::Load),
+            Panel::Location => Message::Location(location::Message::Load),
+            Panel::Proxy => Message::Proxy(proxy::Message::Load),
+            Panel::Files => Message::Files(Box::new(files::Message::Load)),
+            Panel::Goal => Message::Modes(modes::Message::Refresh),
+            Panel::Capture(index) => {
+                self.capture = None;
+                let Some(frame) = self.frames[index].clone() else {
+                    return Task::none();
+                };
+                return Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            let mut png = Vec::new();
+                            use ::image::ImageEncoder;
+                            ::image::codecs::png::PngEncoder::new(&mut png)
+                                .write_image(
+                                    &frame.pixels,
+                                    frame.width,
+                                    frame.height,
+                                    ::image::ExtendedColorType::Rgba8,
+                                )
+                                .map_err(|e| e.to_string())?;
+                            let image = image::Handle::from_rgba(
+                                frame.width,
+                                frame.height,
+                                frame.pixels.as_ref().clone(),
+                            );
+                            let name = format!(
+                                "{}-{}.png",
+                                if index == 0 { "Android" } else { "Linux" },
+                                chrono::Local::now().format("%Y%m%d-%H%M%S")
+                            );
+                            Ok(Capture {
+                                png: Arc::new(png),
+                                image,
+                                name,
+                            })
+                        })
+                        .await
+                        .map_err(|e| e.to_string())?
+                    },
+                    move |r| Message::Captured(index, r),
+                );
+            }
+            _ => return Task::none(),
+        };
+        self.update(message)
+    }
+    fn child_rect(&self) -> Rectangle {
+        if !self.popup || self.panel != Panel::Knowledge || !self.knowledge.document_open() {
+            return Rectangle::default();
+        }
+        let parent = self.popup_rect();
+        let width = 620f32.min(self.size.width - 64.);
+        let height = 600f32.min(self.size.height - 96.);
+        let anchor = self.knowledge.document_anchor().unwrap_or(iced::Point::new(
+            parent.x + parent.width - 20.,
+            parent.y + 44.,
+        ));
+        Rectangle::new(
+            iced::Point::new(
+                (anchor.x + 12.).clamp(32., self.size.width - width - 32.),
+                (anchor.y + 12.).clamp(64., self.size.height - height - 24.),
+            ),
+            Size::new(width, height),
+        )
+    }
+    fn panel_body(&self) -> Element<'_, Message> {
+        let locale = self.locale;
+        let content = match self.panel {
+            Panel::Agent if self.show_devices => column![
+                row![
+                    controls::icon_button(
+                        controls::Icon::Back,
+                        locale.tr("返回"),
+                        Some(Message::CloseDevices)
+                    ),
+                    text(locale.tr("设备")).size(14)
+                ]
+                .align_y(iced::Center),
+                self.device_admin
+                    .view(&self.agents.registry, locale)
+                    .map(Message::Devices)
+            ]
+            .spacing(12)
+            .into(),
+            Panel::Agent => return self.agents.view(locale).map(Message::Agents),
+            Panel::Skills => return self.skills.view(locale).map(Message::Skills),
+            Panel::Knowledge => return self.knowledge.view(locale).map(Message::Knowledge),
+            Panel::Files => self
+                .files
+                .view(self.size.height - 96., locale)
+                .map(|m| Message::Files(Box::new(m))),
+            Panel::Location => self.location.view(locale).map(Message::Location),
+            Panel::Proxy => self.proxy.view(locale).map(Message::Proxy),
+            Panel::Goal => self.modes.goal_view().map(Message::Modes),
+            Panel::Language => column(locale::Locale::all().map(|l| {
+                button(
+                    row![
+                        text(l.glyph()).size(12).width(32),
+                        text(l.name()).size(14),
+                        space::horizontal(),
+                        container(controls::Icon::Check.view().opacity(if locale == l {
+                            1.
+                        } else {
+                            0.
+                        }))
+                        .width(18)
+                    ]
+                    .spacing(8)
+                    .align_y(iced::Center),
+                )
+                .on_press(Message::SetLocale(l))
+                .height(40)
+                .width(Length::Fill)
+                .style(style::quiet)
+                .into()
+            }))
+            .spacing(4)
+            .into(),
+            Panel::Capture(_) => {
+                let mut body = column![text(locale.tr("截图")).size(14)].spacing(12);
+                if let Some(capture) = &self.capture {
+                    body = body
+                        .push(
+                            image(capture.image.clone())
+                                .width(Length::Fill)
+                                .height(410)
+                                .content_fit(iced::ContentFit::Contain),
+                        )
+                        .push(
+                            row![
+                                space::horizontal(),
+                                button(locale.tr("保存图片"))
+                                    .on_press(Message::SaveCapture)
+                                    .style(style::quiet),
+                                controls::action_button(
+                                    locale.tr("附到对话"),
+                                    Some(Message::AttachCapture)
+                                )
+                                .width(100)
+                            ]
+                            .spacing(8),
+                        );
+                } else {
+                    body = body.push(text(locale.tr("正在截图")).size(13));
+                }
+                body.into()
+            }
+        };
+        scrollable(sensor(container(content).padding(24)).on_resize(Message::PanelSize))
+            .height(Length::Fill)
+            .into()
+    }
     fn view(&self) -> Element<'_, Message> {
+        use controls::{Icon, icon_button};
+        let tr = |key: &'static str| self.locale.tr(key);
+        let popup = self.popup_rect();
+        let child_popup = self.child_rect();
         let scene = scene::Scene {
             layout: self.layout,
             size: self.size,
             frames: self.frames.clone(),
             focus: self.focus,
-            popup: self.popup_rect(),
+            popup,
+            child_popup,
+            mode_effects: self.modes.effects(),
             keyboard_target: self.keyboard_target,
         };
         let mut layers = vec![surface::Surface::new(scene).into()];
-        let error_message = if !self.error.is_empty() {
-            &self.error
-        } else {
-            &self.chat.error
-        };
+        let error_message = [
+            self.error.as_str(),
+            self.modes.voice_error(),
+            self.modes.proactive_error(),
+            self.audio[0].error(),
+            self.audio[1].error(),
+            self.chat.error.as_str(),
+        ]
+        .into_iter()
+        .find(|error| !error.is_empty())
+        .unwrap_or("");
         let error = if error_message.is_empty() {
-            text(&self.phase).size(12)
+            text(self.locale.tr(&self.phase)).size(12)
         } else {
             text(error_message).size(12).color(style::ERROR)
         };
-        let nav = row![
+        let mut nav = row![
             container(error).width(Length::Fill).clip(true),
-            controls::icon_button(
-                controls::Icon::Refresh,
-                "重新连接",
-                (!self.error.is_empty() && !self.root.is_empty()).then_some(Message::Retry)
-            ),
-            controls::icon_button(
-                controls::Icon::Cable,
-                if self.linked { "断开" } else { "连接" },
+            icon_button(
+                Icon::Cable,
+                tr(if self.linked {
+                    "断开数据线"
+                } else {
+                    "连接数据线"
+                }),
                 self.connection.as_ref().map(|_| Message::Link)
             ),
-            mouse_area(controls::icon_button(
-                controls::Icon::Settings,
-                "Agent",
-                self.connection.as_ref().map(|_| Message::Pin)
-            ))
-            .on_enter(Message::Hover(true))
-        ]
-        .spacing(8)
-        .align_y(iced::Alignment::Center);
+        ];
+        for panel in Self::NAV_PANELS {
+            let (icon, label, active) = match panel {
+                Panel::Language => (Icon::Settings, self.locale.name(), false),
+                Panel::Skills => (Icon::Wrench, tr("Skill管理"), false),
+                Panel::Location => (Icon::Pin, tr("模拟位置"), self.location.enabled()),
+                Panel::Proxy => (Icon::Network, tr("工作台代理"), self.proxy.enabled()),
+                Panel::Knowledge => (Icon::Book, tr("知识库"), false),
+                Panel::Files => (Icon::Folder, tr("文件管理"), false),
+                Panel::Goal => (Icon::Target, tr("任务与目标"), self.modes.goal_active()),
+                Panel::Agent => (Icon::Settings, tr("配置中心"), false),
+                Panel::Capture(_) => unreachable!(),
+            };
+            let click = self
+                .connection
+                .as_ref()
+                .map(|_| Message::OpenPanel(panel, true));
+            let chosen = self.popup && self.panel == panel || active;
+            let trigger: Element<'_, Message> = if panel == Panel::Language || chosen {
+                let content: Element<'_, Message> = if panel == Panel::Language {
+                    text(self.locale.glyph()).size(13).into()
+                } else {
+                    icon.view().into()
+                };
+                iced::widget::tooltip(
+                    button(container(content).center(Length::Fill))
+                        .width(40)
+                        .height(40)
+                        .style(move |theme, status| {
+                            let mut s = style::quiet(theme, status);
+                            if chosen {
+                                s.background =
+                                    Some(iced::Color::from_rgba(0., 0., 0., 0.10).into());
+                            }
+                            s
+                        })
+                        .on_press_maybe(click),
+                    text(label).size(12),
+                    iced::widget::tooltip::Position::Bottom,
+                )
+                .into()
+            } else {
+                icon_button(icon, label, click)
+            };
+            nav = nav.push(if self.connection.is_some() {
+                mouse_area(trigger)
+                    .on_enter(Message::OpenPanel(panel, false))
+                    .into()
+            } else {
+                trigger
+            });
+        }
+        nav = nav.push(icon_button(
+            Icon::Refresh,
+            tr("刷新对话显示"),
+            if !self.error.is_empty() && !self.root.is_empty() {
+                Some(Message::Retry)
+            } else {
+                self.connection
+                    .as_ref()
+                    .map(|_| Message::Conversation(chat::Message::RefreshDisplay))
+            },
+        ));
+        let nav = nav.spacing(8).align_y(iced::Center);
         layers.push(
             pin(container(nav).width(self.size.width - 64.).height(40.))
                 .x(32)
@@ -639,29 +1232,57 @@ impl App {
             let name = self.devices[index]
                 .as_ref()
                 .map(|d| d.name.as_str())
-                .unwrap_or(if index == 0 { "手机" } else { "电脑" });
+                .unwrap_or(tr(if index == 0 { "手机" } else { "电脑" }));
             let mut tools = row![text(name).size(13)]
                 .spacing(8)
                 .align_y(iced::Alignment::Center);
-            if index == 0 {
+            if self.focus == index || self.linked {
                 tools = tools.push(
-                    button(text("旋转").size(12))
-                        .on_press_maybe(self.frames[0].as_ref().map(|_| Message::Rotate))
-                        .style(style::quiet),
+                    self.audio[index]
+                        .view(self.connection.is_some(), index, self.locale)
+                        .map(move |m| Message::Audio(index, m)),
                 );
+                if index == 0 {
+                    tools = tools.push(icon_button(
+                        Icon::Screen,
+                        tr(if self.aspects()[0] > 1. {
+                            "切换竖屏"
+                        } else {
+                            "切换横屏"
+                        }),
+                        self.frames[0].as_ref().map(|_| Message::Rotate),
+                    ));
+                }
+                tools = tools.push(icon_button(
+                    Icon::Camera,
+                    tr("截图"),
+                    self.frames[index]
+                        .as_ref()
+                        .map(|_| Message::OpenPanel(Panel::Capture(index), true)),
+                ));
             }
             layers.push(
-                pin(container(tools).width(rect.width.max(100.)).height(32.))
-                    .x(rect.x)
-                    .y(rect.y - 36.)
-                    .into(),
+                pin(container(occlude::behind(
+                    occlude::behind(tools.into(), popup),
+                    child_popup,
+                ))
+                .width(rect.width.max(255.))
+                .height(40.))
+                .x(rect.x)
+                .y(rect.y - 41.)
+                .into(),
             );
         }
         let r = self.layout.chat;
         layers.push(
             pin(container(occlude::behind(
-                self.chat.view().map(Message::Conversation),
-                self.popup_rect(),
+                occlude::behind(
+                    self.chat
+                        .view(&self.modes, self.locale)
+                        .map(Message::Conversation),
+                    popup,
+                ),
+                child_popup,
             ))
             .padding(18)
             .width(r.width)
@@ -673,12 +1294,14 @@ impl App {
         let p = self.popup_rect();
         if self.chat.preview.is_some() {
             layers.push(
-                pin(
-                    container(self.chat.preview_view().map(Message::Conversation))
-                        .width(p.width)
-                        .height(p.height)
-                        .clip(true),
+                pin(container(
+                    self.chat
+                        .preview_view(self.locale)
+                        .map(Message::Conversation),
                 )
+                .width(p.width)
+                .height(p.height)
+                .clip(true))
                 .x(p.x)
                 .y(p.y)
                 .into(),
@@ -687,7 +1310,7 @@ impl App {
             layers.push(
                 pin(mouse_area(
                     container(
-                        container(self.agents.view().map(Message::Agents))
+                        container(occlude::behind(self.panel_body(), child_popup))
                             .width(self.panel_target().width)
                             .height(p.height),
                     )
@@ -699,6 +1322,19 @@ impl App {
                 .on_press(Message::PanelFocus))
                 .x(p.x)
                 .y(p.y)
+                .into(),
+            );
+        }
+        if child_popup.width > 0.
+            && let Some(document) = self.knowledge.document_view(self.locale)
+        {
+            layers.push(
+                pin(container(document.map(Message::Knowledge))
+                    .width(child_popup.width)
+                    .height(child_popup.height)
+                    .clip(true))
+                .x(child_popup.x)
+                .y(child_popup.y)
                 .into(),
             );
         }
@@ -718,7 +1354,13 @@ fn main() -> iced::Result {
     iced::application(App::boot, App::update, App::view)
         .title("AImanity · Native")
         .subscription(App::subscription)
-        .theme(style::theme())
+        .theme(|app: &App| {
+            if app.modes.copilot_active() {
+                style::copilot_theme()
+            } else {
+                style::theme()
+            }
+        })
         .window(window::Settings {
             size: Size::new(1200., 800.),
             min_size: Some(Size::new(720., 600.)),

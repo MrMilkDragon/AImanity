@@ -414,7 +414,7 @@ impl Details {
         }
         Task::none()
     }
-    pub fn view(&self, tab: Tab) -> Element<'_, Message> {
+    pub fn view(&self, tab: Tab, locale: crate::locale::Locale) -> Element<'_, Message> {
         let mut body = column![].spacing(14);
         match tab {
             Tab::Memory => {
@@ -422,7 +422,7 @@ impl Details {
                     space::horizontal(),
                     icon_button(
                         Icon::Plus,
-                        "添加记忆",
+                        locale.tr("添加记忆"),
                         (self.memory_loaded && !self.memory_busy).then_some(Message::NewMemory)
                     )
                 ]);
@@ -459,12 +459,12 @@ impl Details {
                                 space::horizontal(),
                                 icon_button(
                                     Icon::Trash,
-                                    "删除",
+                                    locale.tr("删除"),
                                     (!self.memory_busy).then_some(Message::DeleteMemory(i))
                                 ),
                                 icon_button(
                                     Icon::Check,
-                                    "保存",
+                                    locale.tr("保存"),
                                     (!self.memory_busy && changed)
                                         .then_some(Message::SaveMemory(i))
                                 )
@@ -474,14 +474,14 @@ impl Details {
                     );
                 }
                 if self.memory_loaded && self.memories.is_empty() {
-                    body = body.push(text("暂无记忆").size(13).color(style::MUTED));
+                    body = body.push(text(locale.tr("暂无记忆")).size(13).color(style::MUTED));
                 }
             }
             Tab::Connections => {
                 body = body.push(
                     row([
-                        ("wecom", "企业微信"),
-                        ("feishu", "飞书"),
+                        ("wecom", locale.tr("企业微信")),
+                        ("feishu", locale.tr("飞书")),
                         ("qq", "QQ"),
                         ("telegram", "Telegram"),
                         ("whatsapp", "WhatsApp"),
@@ -497,11 +497,11 @@ impl Details {
                     if let Some(binding) = binding {
                         body = body.push(
                             text(match binding.status.as_str() {
-                                "connected" => "已连接",
-                                "connecting" => "连接中",
-                                "waiting_qr" => "等待扫码",
-                                "failed" => "连接失败",
-                                "unbound" => "未连接",
+                                "connected" => locale.tr("已连接"),
+                                "connecting" => locale.tr("连接中"),
+                                "waiting_qr" => locale.tr("等待扫码"),
+                                "failed" => locale.tr("连接失败"),
+                                "unbound" => locale.tr("未连接"),
                                 _ => &binding.status,
                             })
                             .size(12)
@@ -536,7 +536,7 @@ impl Details {
                         ));
                     }
                     body = body.push(field(
-                        "代理地址",
+                        locale.tr("代理地址"),
                         &self.proxy,
                         Message::Proxy,
                         self.channels_loaded && !self.channels_busy,
@@ -549,7 +549,7 @@ impl Details {
                     }
                     if let Some(binding) = binding.filter(|b| !b.pairing_command.is_empty()) {
                         body = body.push(
-                            button("复制配对指令")
+                            button(locale.tr("复制配对指令"))
                                 .style(style::quiet)
                                 .on_press(Message::CopyPair(binding.pairing_command.clone())),
                         );
@@ -557,14 +557,15 @@ impl Details {
                     let enabled = self.channels_loaded && !self.channels_busy;
                     if self.channel == "whatsapp" && binding.is_some_and(|b| b.configured) {
                         body = body.push(
-                            button("重新扫码")
+                            button(locale.tr("重新扫码"))
                                 .style(style::quiet)
                                 .on_press_maybe(enabled.then_some(Message::Bind(true))),
                         );
                     }
                     body = body.push(row![
-                        action_button("连接", enabled.then_some(Message::Bind(false))).width(80),
-                        button("配对")
+                        action_button(locale.tr("连接"), enabled.then_some(Message::Bind(false)))
+                            .width(80),
+                        button(locale.tr("配对"))
                             .style(style::quiet)
                             .height(40)
                             .on_press_maybe(
@@ -574,7 +575,7 @@ impl Details {
                         space::horizontal(),
                         icon_button(
                             Icon::Trash,
-                            "解除连接",
+                            locale.tr("解除连接"),
                             (enabled && binding.is_some_and(|b| b.configured))
                                 .then_some(Message::Unbind)
                         )
@@ -584,7 +585,7 @@ impl Details {
             Tab::Voice => {
                 body = body
                     .push(field(
-                        "API 地址",
+                        locale.tr("API 地址"),
                         &self.voice.base_url,
                         |v| Message::VoiceField(VoiceField::Url, v),
                         self.voice_loaded && !self.voice_busy,
@@ -606,7 +607,7 @@ impl Details {
                                     } else {
                                         Icon::Eye
                                     },
-                                    "显示 / 隐藏密钥",
+                                    locale.tr("显示 / 隐藏密钥"),
                                     Some(Message::VoiceReveal)
                                 )
                             ]
@@ -621,7 +622,7 @@ impl Details {
                 body = body
                     .push(
                         column![
-                            text("输入协议").size(12).color(style::MUTED),
+                            text(locale.tr("输入协议")).size(12).color(style::MUTED),
                             pick_list(
                                 protocols,
                                 Some(VoiceProtocol(self.voice.input_protocol())),
@@ -637,32 +638,32 @@ impl Details {
                         .spacing(6),
                     )
                     .push(field(
-                        "识别模型",
+                        locale.tr("识别模型"),
                         &self.voice.recognition_model,
                         |v| Message::VoiceField(VoiceField::Recognition, v),
                         self.voice_loaded && !self.voice_busy,
                     ))
                     .push(
-                        button(text("高级").size(12))
+                        button(text(locale.tr("高级")).size(12))
                             .style(style::quiet)
                             .on_press(Message::VoiceAdvanced),
                     );
                 if self.voice_advanced {
                     body = body
                         .push(field(
-                            "远程合成模型",
+                            locale.tr("远程合成模型"),
                             &self.voice.speech_model,
                             |v| Message::VoiceField(VoiceField::Speech, v),
                             self.voice_loaded && !self.voice_busy,
                         ))
                         .push(field(
-                            "远程音色",
+                            locale.tr("远程音色"),
                             &self.voice.voice,
                             |v| Message::VoiceField(VoiceField::Voice, v),
                             self.voice_loaded && !self.voice_busy,
                         ))
                         .push(field(
-                            "代理地址",
+                            locale.tr("代理地址"),
                             &self.voice.proxy_url,
                             |v| Message::VoiceField(VoiceField::Proxy, v),
                             self.voice_loaded && !self.voice_busy,
@@ -670,7 +671,7 @@ impl Details {
                 }
                 body = body.push(row![
                     action_button(
-                        "保存",
+                        locale.tr("保存"),
                         (self.voice_loaded && !self.voice_busy)
                             .then_some(Message::VoiceSave(false))
                     )
@@ -678,7 +679,7 @@ impl Details {
                     space::horizontal(),
                     icon_button(
                         Icon::Trash,
-                        "清除语音配置",
+                        locale.tr("清除语音配置"),
                         (self.voice_loaded && !self.voice_busy).then_some(Message::VoiceSave(true))
                     )
                 ]);
@@ -686,7 +687,7 @@ impl Details {
             Tab::Model => {}
         }
         if self.memory_busy || self.voice_busy || (!self.channels_loaded && self.channels_busy) {
-            body = body.push(text("读取中…").size(12).color(style::MUTED));
+            body = body.push(text(locale.tr("读取中…")).size(12).color(style::MUTED));
         }
         if !self.error.is_empty() {
             body = body.push(text(&self.error).size(12).color(style::ERROR));

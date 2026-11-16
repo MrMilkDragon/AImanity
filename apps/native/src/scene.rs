@@ -14,6 +14,8 @@ pub struct Scene {
     pub frames: [Option<Arc<Frame>>; 2],
     pub focus: usize,
     pub popup: Rectangle,
+    pub child_popup: Rectangle,
+    pub mode_effects: [f32; 4],
     pub keyboard_target: Option<usize>,
 }
 #[derive(Default)]
@@ -33,7 +35,9 @@ impl shader::Program<Message> for Scene {
         cursor: mouse::Cursor,
     ) -> Option<shader::Action<Message>> {
         if matches!(event, Event::Mouse(_))
-            && cursor.position().is_some_and(|p| self.popup.contains(p))
+            && cursor
+                .position()
+                .is_some_and(|p| self.popup.contains(p) || self.child_popup.contains(p))
         {
             state.pressed = None;
             return None;
@@ -180,6 +184,7 @@ impl shader::Program<Message> for Scene {
                 desktop: rect(self.layout.devices[1]),
                 chat: rect(self.layout.chat),
                 popup: rect(self.popup),
+                child_popup: rect(self.child_popup),
                 state: [
                     self.layout.angles[0],
                     self.layout.angles[1],
@@ -193,6 +198,7 @@ impl shader::Program<Message> for Scene {
                     style::BORDER_WIDTH,
                 ],
                 background: style::BACKGROUND.into_linear(),
+                mode_effects: self.mode_effects,
             },
             frames: self.frames.clone(),
         }
@@ -221,9 +227,11 @@ pub struct Uniforms {
     desktop: [f32; 4],
     chat: [f32; 4],
     popup: [f32; 4],
+    child_popup: [f32; 4],
     state: [f32; 4],
     material: [f32; 4],
     background: [f32; 4],
+    mode_effects: [f32; 4],
 }
 #[derive(Debug)]
 pub struct Primitive {

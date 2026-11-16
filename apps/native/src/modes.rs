@@ -1,0 +1,467 @@
+mod speech;
+
+use crate::{
+    connection::Connection,
+    controls::{Icon, action_button},
+    locale::Locale,
+    style,
+};
+use ai_phone_api::wire;
+use iced::{
+    Color, Element, Length, Subscription, Task, keyboard,
+    widget::{button, column, container, row, space, text, text_editor},
+};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
+#[derive(Clone, Debug)]
+pub enum Message {
+    Refresh,
+    Refreshed(Result<wire::ProactiveState, String>),
+    ToggleLiberty,
+    GoalEdit(text_editor::Action),
+    SetGoal(bool),
+    Saved(Option<u64>, Result<wire::ProactiveState, String>),
+    ToggleCopilot,
+    Capture(String, speech::Event),
+    Spoken(u64, Result<(), String>),
+}
+
+#[derive(Default)]
+pub struct Modes {
+    state: Option<wire::ProactiveState>,
+    reading: bool,
+    saving: bool,
+    error: String,
+    connection_error: String,
+    goal_error: String,
+    goal: text_editor::Content,
+    goal_edited: bool,
+    goal_revision: u64,
+    speech: speech::Copilot,
+    model: PathBuf,
+    locale: Locale,
+    mode_started: Option<Instant>,
+    mode_time: f32,
+    goal_time: f32,
+    last_tick: Option<Instant>,
+    edge: f32,
+    edge_changed: Option<(Instant, f32)>,
+    last_edge: bool,
+}
+
+impl Modes {
+    pub fn set_speech_model(&mut self, path: PathBuf) {
+        self.model = path;
+    }
+    pub fn set_language(&mut self, language: &str) {
+        self.locale = Locale::parse(language);
+    }
+    pub fn update(
+        &mut self,
+        message: Message,
+        client: &Connection,
+        device_id: &str,
+        chat: &wire::ChatState,
+    ) -> Task<Message> {
+        match message {
+            Message::Refresh if !self.saving && !self.reading => {
+                self.reading = true;
+                let client = client.clone();
+                return Task::perform(
+                    async move {
+                        client
+                            .rpc("proactive/state", wire::ProactiveRequest {})
+                            .await
+                    },
+                    Message::Refreshed,
+                );
+            }
+            Message::Refreshed(result) => {
+                self.reading = false;
+                if !self.saving {
+                    match result {
+                        Ok(next) => {
+                            self.connection_error.clear();
+                            self.apply(next);
+                        }
+                        Err(error) => self.connection_error = error,
+                    }
+                }
+            }
+            Message::ToggleLiberty if !self.saving => {
+                let Some(state) = &self.state else {
+                    return Task::none();
+                };
+                if state.goal_active && !state.exploring {
+                    return Task::none();
+                }
+                self.saving = true;
+                self.error.clear();
+                let request = wire::ProactiveUpdateRequest {
+                    expected_revision: state.revision,
+                    exploring: !state.exploring,
+                    notifications_enabled: state.notifications_enabled,
+                    forward_notifications: state.forward_notifications,
+                    autonomous_reply: state.autonomous_reply,
+                    autonomous_install: state.autonomous_install,
+                    interval_seconds: state.interval_seconds,
+                    wechat_watch: Some(state.wechat_watch),
+                };
+                let client = client.clone();
+                return Task::perform(
+                    async move { client.rpc("proactive/update", request).await },
+                    |result| Message::Saved(None, result),
+                );
+            }
+            Message::GoalEdit(action) => {
+                if action.is_edit() {
+                    self.goal_edited = true;
+                    self.goal_revision += 1;
+                    self.goal_error.clear();
+                }
+                self.goal.perform(action);
+            }
+            Message::SetGoal(clear) if !self.saving => {
+                let Some(state) = &self.state else {
+                    return Task::none();
+                };
+                let value = self.goal.text();
+                if !clear && !self.can_save_goal(value.trim()) {
+                    return Task::none();
+                }
+                let request = wire::GoalUpdateRequest {
+                    expected_revision: state.revision,
+                    goal: if clear {
+                        String::new()
+                    } else {
+                        value.trim().to_owned()
+                    },
+                    device_id: if state.goal_active {
+                        state.goal_device_id.clone()
+                    } else {
+                        device_id.into()
+                    },
+                };
+                self.saving = true;
+                self.goal_error.clear();
+                let revision = self.goal_revision;
+                let client = client.clone();
+                return Task::perform(
+                    async move { client.rpc("proactive/goal", request).await },
+                    move |result| Message::Saved(Some(revision), result),
+                );
+            }
+            Message::Saved(revision, result) => {
+                self.saving = false;
+                match result {
+                    Ok(next) => {
+                        if revision == Some(self.goal_revision) {
+                            self.goal_edited = false;
+                        }
+                        self.apply(next);
+                    }
+                    Err(error) => {
+                        if revision.is_some() {
+                            self.goal_error = error;
+                        } else {
+                            self.error = error;
+                        }
+                        return self.update(Message::Refresh, client, device_id, chat);
+                    }
+                }
+            }
+            Message::ToggleCopilot => {
+                if self.speech.active() {
+                    self.speech.stop();
+                } else if !chat.conversation_id.is_empty() && !device_id.is_empty() {
+                    return self
+                        .speech
+                        .start(self.model.clone(), self.locale.code(), chat);
+                }
+            }
+            Message::Capture(session, event) => {
+                return self.speech.capture(session, event, device_id, chat);
+            }
+            Message::Spoken(index, result) => return self.speech.spoken(index, result),
+            _ => {}
+        }
+        Task::none()
+    }
+    fn apply(&mut self, next: wire::ProactiveState) {
+        if self
+            .state
+            .as_ref()
+            .is_some_and(|current| current.revision > next.revision)
+        {
+            return;
+        }
+        if !self.goal_edited
+            && self
+                .state
+                .as_ref()
+                .is_none_or(|current| current.goal != next.goal)
+        {
+            self.goal = text_editor::Content::with_text(&next.goal);
+        }
+        let edge_enabled = next.exploring && !next.goal_active;
+        if self.last_edge != edge_enabled {
+            self.edge_changed = Some((Instant::now(), self.edge));
+            self.last_edge = edge_enabled;
+        }
+        if !next.goal_active {
+            self.goal_time = 0.;
+        }
+        self.state = Some(next);
+    }
+    pub fn subscription(&self) -> Subscription<Message> {
+        iced::time::every(Duration::from_millis(2500)).map(|_| Message::Refresh)
+    }
+    pub fn stop_capture(&mut self) {
+        self.speech.stop();
+    }
+    pub fn observe_chat(&mut self, chat: &wire::ChatState) -> Task<Message> {
+        self.speech.observe_chat(chat)
+    }
+    pub fn take_voice(&mut self) -> Option<wire::ChatSendRequest> {
+        self.speech.request.take()
+    }
+    pub fn take_recovered(&mut self) -> String {
+        std::mem::take(&mut self.speech.recovered)
+    }
+    pub fn transcript(&self) -> &str {
+        &self.speech.transcript
+    }
+    pub fn voice_error(&self) -> &str {
+        self.locale.tr(&self.speech.error)
+    }
+    pub fn proactive_error(&self) -> &str {
+        [&self.error, &self.connection_error]
+            .into_iter()
+            .map(String::as_str)
+            .find(|error| !error.is_empty())
+            .or_else(|| {
+                self.state
+                    .as_ref()
+                    .filter(|state| state.exploring)
+                    .map(|state| state.last_error.as_str())
+            })
+            .unwrap_or("")
+    }
+    pub fn copilot_active(&self) -> bool {
+        self.speech.active()
+    }
+    pub fn goal_active(&self) -> bool {
+        self.state.as_ref().is_some_and(|state| state.goal_active)
+    }
+    fn goal_moving(&self) -> bool {
+        self.state.as_ref().is_some_and(|state| {
+            state.goal_active && !matches!(state.goal_status.as_str(), "paused" | "failed")
+        })
+    }
+    pub fn animating(&self) -> bool {
+        self.last_edge || self.edge_changed.is_some() || self.speech.active() || self.goal_moving()
+    }
+    pub fn animate(&mut self, now: Instant) {
+        let start = self.mode_started.get_or_insert(now);
+        self.mode_time = now.saturating_duration_since(*start).as_secs_f32();
+        if let Some(previous) = self.last_tick.replace(now)
+            && self.goal_moving()
+        {
+            self.goal_time += now
+                .saturating_duration_since(previous)
+                .as_secs_f32()
+                .min(0.09);
+        }
+        if let Some((since, from)) = self.edge_changed {
+            let duration = if self.last_edge { 1.4 } else { 0.7 };
+            let fraction = (now.saturating_duration_since(since).as_secs_f32() / duration).min(1.);
+            let target = if self.last_edge { 1. } else { 0. };
+            self.edge = from + (target - from) * fraction;
+            if fraction == 1. {
+                self.edge_changed = None;
+            }
+        }
+    }
+    pub fn effects(&self) -> [f32; 4] {
+        let goal = if self.goal_active() {
+            self.goal_time + 1.
+        } else {
+            0.
+        };
+        [self.mode_time, self.edge, goal, self.speech.visual()]
+    }
+    pub fn dock(&self, chat: &wire::ChatState) -> Element<'_, Message> {
+        let liberty = self.state.as_ref().is_some_and(|state| state.exploring);
+        let ready = self.state.is_some() && !self.saving && (!self.goal_active() || liberty);
+        let copilot = self.speech.active();
+        let voice_status = if copilot {
+            "关闭 Copilot"
+        } else {
+            "开启 Copilot"
+        };
+        let liberty_status = if self.goal_active() {
+            "目标运行中"
+        } else {
+            match self.state.as_ref().map(|s| s.status.as_str()) {
+                Some("exploring") => "Liberty 运行中",
+                Some("notification") => "查看手机动态",
+                Some("user_busy") => "正在处理你的任务",
+                Some("paused") => "任务已暂停",
+                Some("waiting") => "等待下一轮",
+                _ => "待机",
+            }
+        };
+        row![
+            iced::widget::tooltip(
+                mode_button(
+                    "Liberty",
+                    if liberty { Icon::Pause } else { Icon::Compass },
+                    liberty,
+                    ready.then_some(Message::ToggleLiberty)
+                ),
+                text(self.locale.tr(liberty_status)).size(12),
+                iced::widget::tooltip::Position::Top,
+            ),
+            iced::widget::tooltip(
+                mode_button(
+                    "Copilot",
+                    if copilot { Icon::Mic } else { Icon::MicOff },
+                    copilot,
+                    (copilot || !chat.conversation_id.is_empty()).then_some(Message::ToggleCopilot)
+                ),
+                text(self.locale.tr(voice_status)).size(12),
+                iced::widget::tooltip::Position::Top,
+            )
+        ]
+        .spacing(4)
+        .into()
+    }
+    fn can_save_goal(&self, value: &str) -> bool {
+        self.state.as_ref().is_some_and(|state| {
+            !self.saving
+                && !value.is_empty()
+                && value.len() <= 12000
+                && (!state.goal_active || value != state.goal)
+        })
+    }
+    pub fn goal_view(&self) -> Element<'_, Message> {
+        let draft = self.goal.text();
+        let value = draft.trim();
+        let can_save = self.can_save_goal(value);
+        let active = self.goal_active();
+        let goal_status =
+            self.state
+                .as_ref()
+                .filter(|s| !s.goal.is_empty())
+                .map_or("", |s| match s.goal_status.as_str() {
+                    "queued" => "待继续",
+                    "running" => "正在处理",
+                    "paused" => "任务已暂停",
+                    "failed" => "执行失败",
+                    "succeeded" => "已完成",
+                    "canceled" => "已停止",
+                    _ => "",
+                });
+        let editor = text_editor(&self.goal)
+            .placeholder(self.locale.tr("填入你的目标与要求"))
+            .height(140)
+            .padding([14, 16])
+            .size(15)
+            .on_action(Message::GoalEdit)
+            .style(|theme, status| {
+                let mut s = text_editor::default(theme, status);
+                s.background = style::control_fill(theme).into();
+                s.border.width = style::BORDER_WIDTH;
+                s.border.radius = style::CONTROL_RADIUS.into();
+                s
+            })
+            .key_binding(move |press| {
+                if press.key == keyboard::Key::Named(keyboard::key::Named::Enter)
+                    && press.modifiers.command()
+                {
+                    can_save.then_some(text_editor::Binding::Custom(Message::SetGoal(false)))
+                } else {
+                    text_editor::Binding::from_key_press(press)
+                }
+            });
+        let mut actions = row![
+            text(self.locale.tr(goal_status))
+                .size(13)
+                .style(style::muted_text),
+            space::horizontal()
+        ]
+        .spacing(8)
+        .align_y(iced::Alignment::Center);
+        if active {
+            actions = actions.push(
+                action_button(
+                    self.locale.tr("关闭目标"),
+                    (!self.saving).then_some(Message::SetGoal(true)),
+                )
+                .style(style::quiet)
+                .width(92),
+            );
+        }
+        if !active || self.state.as_ref().is_some_and(|s| value != s.goal) {
+            actions = actions.push(
+                action_button(
+                    self.locale.tr(if active { "更新目标" } else { "激活" }),
+                    can_save.then_some(Message::SetGoal(false)),
+                )
+                .width(92),
+            );
+        }
+        let error = if value.len() > 12000 {
+            self.locale.tr("目标内容不能超过 12 KB")
+        } else {
+            &self.goal_error
+        };
+        let mut body = column![text("Task & Goal").size(14), editor].spacing(14);
+        if !error.is_empty() {
+            body = body.push(text(error).size(12).style(style::error_text));
+        }
+        container(body.push(actions))
+            .padding(24)
+            .width(Length::Fill)
+            .into()
+    }
+}
+
+fn mode_button(
+    label: &str,
+    icon: Icon,
+    active: bool,
+    action: Option<Message>,
+) -> Element<'static, Message> {
+    button(
+        container(
+            row![
+                icon.view()
+                    .width(15)
+                    .height(15)
+                    .opacity(if action.is_some() { 1. } else { 0.4 }),
+                text(label.to_owned()).size(12)
+            ]
+            .align_y(iced::Alignment::Center)
+            .spacing(7),
+        )
+        .center_y(Length::Fill),
+    )
+    .height(style::CONTROL_HEIGHT)
+    .padding([0, 10])
+    .style(move |theme, status| {
+        let mut s = style::quiet(theme, status);
+        if active {
+            s.background = Some(Color::from_rgba(0.49, 0.46, 0.79, 0.13).into());
+        }
+        if matches!(status, button::Status::Disabled) {
+            s.text_color = s.text_color.scale_alpha(0.45);
+        }
+        s
+    })
+    .on_press_maybe(action)
+    .into()
+}
