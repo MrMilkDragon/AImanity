@@ -2118,8 +2118,8 @@
     },
     {
       "path": "crates/assistant/src/task_goal_tests.rs",
-      "size": 8239,
-      "sha256": "69ce18ae243287a821a215259ee08fac9db8e9c1f405e1f367527119ffc4a631"
+      "size": 8202,
+      "sha256": "df36edb9be4df638241904ed7207d293f57788b9870bd09bff5231efb3babbab"
     },
     {
       "path": "crates/assistant/src/tool_catalog.rs",

@@ -150,7 +150,6 @@ async fn goal_steers_one_run_and_blocks_liberty_until_stopped_or_completed() {
             Ok(wire::ChatRunRequest {
                 run_id: edited.active_run_id.clone(),
                 pause: true,
-                ..Default::default()
             }
             .encode_to_vec()
             .into()),
