@@ -3,6 +3,7 @@ import {
   readFileSync,
   lstatSync,
   mkdirSync,
+  constants,
   copyFileSync,
   renameSync,
   rmSync,
@@ -104,7 +105,7 @@ export async function preparePayload(
       rmSync(target, { force: true });
       continue;
     }
-    if (source !== target) copyFileSync(source, target);
+    if (source !== target) copyFileSync(source, target, constants.COPYFILE_FICLONE);
     integrity[name] = await digest(target);
   }
   if (options.wslRuntime) {

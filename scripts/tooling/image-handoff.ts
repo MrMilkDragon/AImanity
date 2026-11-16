@@ -2,6 +2,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  constants,
   copyFileSync,
   createWriteStream,
 } from "node:fs";
@@ -85,7 +86,7 @@ export async function stageImages(
   mkdirSync(join(root, "dist"), { recursive: true });
   const folder = mkdtempSync(join(root, "dist/factory-images-")),
     target = join(folder, body);
-  copyFileSync(payload, target);
+  copyFileSync(payload, target, constants.COPYFILE_FICLONE);
   const value = {
     ...(await header(root, source)),
     artifact: { file: body, size, sha256: await digest(target) },

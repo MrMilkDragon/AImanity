@@ -162,6 +162,77 @@ async fn recovery_releases_attempt_ownership_without_replaying_or_losing_checkpo
     }).await;
 }
 
+#[tokio::test]
+#[ignore = "real disposable PostgreSQL; interruption while an automatic skill read is in flight"]
+async fn recovery_reuses_the_automatic_read_checkpoint() {
+    database_case(|app| async move {
+        let (run, message) = queued(&app, registry::PHONE, "user").await;
+        let context = json!([{"role":"user","content":[{"type":"input_text","text":"在手机上打开浏览器"}]}]);
+        sqlx::query("UPDATE runs SET context=$2 WHERE id=$1")
+            .bind(run).bind(context).execute(&app.db).await.unwrap();
+        sqlx::query("INSERT INTO runtime_skills(id,name,description,source,content,builtin) VALUES('phone-use','phone-use','','builtin','手机操作指引',true)")
+            .execute(&app.db).await.unwrap();
+        assert_eq!(claim_due_run(&app).await.unwrap(), Some((run, message)));
+        let mut locked = app.db.begin().await.unwrap();
+        sqlx::query("LOCK TABLE runtime_skills IN ACCESS EXCLUSIVE MODE").execute(&mut *locked).await.unwrap();
+        let worker = tokio::spawn({
+            let app = app.clone();
+            async move { execute(&app, run, &CancellationToken::new()).await }
+        });
+        let action: Uuid = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(id) = sqlx::query_scalar("SELECT id FROM harness_events WHERE run_id=$1 AND kind='tool' AND status='running'")
+                    .bind(run).fetch_optional(&app.db).await.unwrap() {
+                    break id;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        }).await.unwrap();
+        worker.abort();
+        assert!(worker.await.unwrap_err().is_cancelled());
+        let saved: Option<String> = sqlx::query_scalar("SELECT pending_tools->0->>'local_action_id' FROM runs WHERE id=$1")
+            .bind(run).fetch_one(&app.db).await.unwrap();
+        assert_eq!(saved, Some(action.to_string()), "the admitted read must be recoverable");
+        let read: Value = sqlx::query_scalar("SELECT pending_tools->0 FROM runs WHERE id=$1")
+            .bind(run).fetch_one(&app.db).await.unwrap();
+        // Old checkpoints saved the automatic read only in the model context.
+        let mut legacy_context = crate::exploration_policy::context(true, true, true, "");
+        let observation = json!({"type":"function_call","name":"phone_observe","arguments":"{}",
+            "call_id":"planned-observation","local_action_id":Uuid::now_v7().to_string()});
+        legacy_context.extend([observation.clone(), read]);
+        sqlx::query("UPDATE runs SET origin='exploration',context=$2,pending_tools=$3 WHERE id=$1")
+            .bind(run).bind(json!(legacy_context)).bind(json!([observation])).execute(&app.db).await.unwrap();
+        recover_interrupted_runs(&app.db).await.unwrap();
+        assert_eq!(claim_due_run(&app).await.unwrap(), Some((run, message)));
+        let worker = tokio::spawn({
+            let app = app.clone();
+            async move { execute(&app, run, &CancellationToken::new()).await }
+        });
+        let (Json(mut context), Json(pending)): (Json<Vec<Value>>, Json<Vec<Value>>) =
+            tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    if let Some(row) = sqlx::query_as("SELECT context,pending_tools FROM runs WHERE id=$1 AND pending_tools->0->>'name'='skill_read'")
+                        .bind(run).fetch_optional(&app.db).await.unwrap() {
+                        break row;
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            }).await.unwrap();
+        worker.abort();
+        assert!(worker.await.unwrap_err().is_cancelled());
+        locked.rollback().await.unwrap();
+        let call = &pending[0];
+        assert_eq!(call["local_action_id"], action.to_string());
+        assert_eq!(pending[1]["call_id"], "planned-observation");
+        let result = recorded_tool(&app, run, message, call, &context, &mut 0, &CancellationToken::new()).await.unwrap();
+        context.push(json!({"type":"function_call_output","call_id":call["call_id"],"output":result}));
+        assert!(phone_skill_read(&context));
+        let receipts: i64 = sqlx::query_scalar("SELECT count(*) FROM harness_events WHERE run_id=$1 AND kind='tool' AND status='completed'")
+            .bind(run).fetch_one(&app.db).await.unwrap();
+        assert_eq!(receipts, 1);
+    }).await;
+}
+
 struct FixtureTask(tokio::task::JoinHandle<()>);
 impl Drop for FixtureTask {
     fn drop(&mut self) {

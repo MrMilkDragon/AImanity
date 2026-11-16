@@ -4,7 +4,7 @@ use futures_util::{SinkExt, StreamExt};
 use prost::Message;
 use std::{
     sync::Arc,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio_tungstenite::tungstenite::{client::IntoClientRequest, http::HeaderValue};
 
@@ -13,7 +13,6 @@ pub struct Connection {
     http: reqwest::Client,
     assistant: HeaderValue,
     phone: HeaderValue,
-    session: HeaderValue,
 }
 #[derive(Clone, Debug)]
 pub struct Session {
@@ -31,6 +30,8 @@ pub struct Frame {
     pub captured_ms: f64,
     pub received: Instant,
 }
+
+const RECONNECT_DELAY: Duration = Duration::from_secs(1);
 #[derive(Clone, Debug)]
 pub enum DeviceInput {
     Tap {
@@ -68,16 +69,11 @@ impl Connection {
             .no_proxy()
             .build()
             .map_err(|e| e.to_string())?;
-        let mut client = Self {
+        let client = Self {
             http,
             assistant: bearer(&assistant)?,
             phone: bearer(&phone)?,
-            session: HeaderValue::from_static(""),
         };
-        let session: wire::LoginResult = client.rpc("enter", wire::LocalEntryRequest {}).await?;
-        client.session = HeaderValue::from_str(&format!("ai_phone_session={}", session.token))
-            .map_err(|e| e.to_string())?;
-        client.session.set_sensitive(true);
         let (registry, chat, links) = tokio::try_join!(
             client.rpc("registry/state", wire::RegistryRequest {}),
             client.history(),
@@ -294,37 +290,49 @@ impl Connection {
     }
     pub fn chat_events(self) -> impl futures_util::Stream<Item = Result<wire::ChatState, String>> {
         iced::stream::channel::<Result<wire::ChatState, String>>(1, async move |mut output| {
-            let result: Result<(), String> = async {
-                let mut request = "ws://127.0.0.1:17863/v1/chat/events"
-                    .into_client_request()
-                    .map_err(|e| e.to_string())?;
-                request
-                    .headers_mut()
-                    .insert("origin", HeaderValue::from_static("http://127.0.0.1:17860"));
-                request.headers_mut().insert("cookie", self.session.clone());
-                let (mut socket, _) = tokio_tungstenite::connect_async(request)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                while let Some(event) = socket.next().await {
-                    match event.map_err(|e| e.to_string())? {
-                        tokio_tungstenite::tungstenite::Message::Binary(bytes) => {
-                            wire::ChatChanged::decode(bytes).map_err(|e| e.to_string())?;
-                            output
-                                .send(self.history().await)
-                                .await
-                                .map_err(|e| e.to_string())?;
-                        }
-                        tokio_tungstenite::tungstenite::Message::Close(_) => {
-                            return Err("对话连接已关闭".into());
-                        }
-                        _ => {}
+            let mut reconnecting = false;
+            loop {
+                let result: Result<(), String> = async {
+                    let mut request = "ws://127.0.0.1:17863/v1/chat/events"
+                        .into_client_request()
+                        .map_err(|e| e.to_string())?;
+                    request
+                        .headers_mut()
+                        .insert("authorization", self.assistant.clone());
+                    let (mut socket, _) = tokio_tungstenite::connect_async(request)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    if reconnecting {
+                        output
+                            .send(Ok(self.history().await?))
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        reconnecting = false;
                     }
+                    while let Some(event) = socket.next().await {
+                        match event.map_err(|e| e.to_string())? {
+                            tokio_tungstenite::tungstenite::Message::Binary(bytes) => {
+                                wire::ChatChanged::decode(bytes).map_err(|e| e.to_string())?;
+                                output
+                                    .send(self.history().await)
+                                    .await
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            tokio_tungstenite::tungstenite::Message::Close(_) => break,
+                            _ => {}
+                        }
+                    }
+                    Err("对话连接已关闭".into())
                 }
-                Ok(())
-            }
-            .await;
-            if let Err(error) = result {
-                let _ = output.send(Err(error)).await;
+                .await;
+                if !reconnecting
+                    && let Err(error) = result
+                    && output.send(Err(error)).await.is_err()
+                {
+                    return;
+                }
+                reconnecting = true;
+                tokio::time::sleep(RECONNECT_DELAY).await;
             }
         })
     }
@@ -333,74 +341,86 @@ impl Connection {
         device: wire::RegisteredDevice,
     ) -> impl futures_util::Stream<Item = Result<Frame, String>> {
         iced::stream::channel::<Result<Frame, String>>(1, async move |mut output| {
-            let result: Result<(), String> = async {
-                let route = if device.kind == "phone" {
-                    "screen"
-                } else {
-                    "desktop/screen"
-                };
-                let response = self
-                    .http
-                    .get(format!("http://127.0.0.1:17865/{route}"))
-                    .header("authorization", &self.phone)
-                    .send()
-                    .await
-                    .map_err(|e| e.to_string())?
-                    .error_for_status()
-                    .map_err(|e| e.to_string())?;
-                let mut stream = response.bytes_stream();
-                let mut bytes = BytesMut::new();
-                let mut sequence = 0;
-                while let Some(chunk) = stream.next().await {
-                    bytes.extend_from_slice(&chunk.map_err(|e| e.to_string())?);
-                    let mut latest = None;
-                    while let Some(end) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
-                        let header =
-                            std::str::from_utf8(&bytes[..end]).map_err(|e| e.to_string())?;
-                        let length = header
-                            .lines()
-                            .find_map(|line| line.strip_prefix("Content-Length: "))
-                            .ok_or("画面缺少长度")?
-                            .trim()
-                            .parse::<usize>()
-                            .map_err(|e| e.to_string())?;
-                        if bytes.len() < end + 4 + length {
-                            break;
+            let route = if device.kind == "phone" {
+                "screen"
+            } else {
+                "desktop/screen"
+            };
+            let mut sequence = 0;
+            let mut reconnecting = false;
+            loop {
+                let result: Result<(), String> = async {
+                    let response = self
+                        .http
+                        .get(format!("http://127.0.0.1:17865/{route}"))
+                        .header("authorization", &self.phone)
+                        .send()
+                        .await
+                        .map_err(|e| e.to_string())?
+                        .error_for_status()
+                        .map_err(|e| e.to_string())?;
+                    let mut stream = response.bytes_stream();
+                    let mut bytes = BytesMut::new();
+                    while let Some(chunk) = stream.next().await {
+                        bytes.extend_from_slice(&chunk.map_err(|e| e.to_string())?);
+                        let mut latest = None;
+                        while let Some(end) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+                            let header =
+                                std::str::from_utf8(&bytes[..end]).map_err(|e| e.to_string())?;
+                            let length = header
+                                .lines()
+                                .find_map(|line| line.strip_prefix("Content-Length: "))
+                                .ok_or("画面缺少长度")?
+                                .trim()
+                                .parse::<usize>()
+                                .map_err(|e| e.to_string())?;
+                            if bytes.len() < end + 4 + length {
+                                break;
+                            }
+                            let captured_ms = header
+                                .lines()
+                                .find_map(|line| line.strip_prefix("X-Capture-Time: "))
+                                .map(str::parse::<f64>)
+                                .transpose()
+                                .map_err(|e| e.to_string())?
+                                .unwrap_or(0.);
+                            let packet = bytes.split_to(end + 4 + length).freeze();
+                            latest = Some((packet.slice(end + 4..), captured_ms));
                         }
-                        let captured_ms = header
-                            .lines()
-                            .find_map(|line| line.strip_prefix("X-Capture-Time: "))
-                            .map(str::parse::<f64>)
-                            .transpose()
-                            .map_err(|e| e.to_string())?
-                            .unwrap_or(0.);
-                        let packet = bytes.split_to(end + 4 + length).freeze();
-                        latest = Some((packet.slice(end + 4..), captured_ms));
-                    }
-                    if let Some((jpeg, captured_ms)) = latest {
-                        let received = Instant::now();
-                        let decoded = image::load_from_memory(&jpeg)
+                        if let Some((jpeg, captured_ms)) = latest {
+                            let received = Instant::now();
+                            let decoded = image::load_from_memory_with_format(
+                                &jpeg,
+                                image::ImageFormat::Jpeg,
+                            )
                             .map_err(|e| e.to_string())?
                             .into_rgba8();
-                        sequence += 1;
-                        output
-                            .send(Ok(Frame {
-                                width: decoded.width(),
-                                height: decoded.height(),
-                                pixels: Arc::new(decoded.into_raw()),
-                                sequence,
-                                captured_ms,
-                                received,
-                            }))
-                            .await
-                            .map_err(|e| e.to_string())?;
+                            sequence += 1;
+                            reconnecting = false;
+                            output
+                                .send(Ok(Frame {
+                                    width: decoded.width(),
+                                    height: decoded.height(),
+                                    pixels: Arc::new(decoded.into_raw()),
+                                    sequence,
+                                    captured_ms,
+                                    received,
+                                }))
+                                .await
+                                .map_err(|e| e.to_string())?;
+                        }
                     }
+                    Err("设备画面连接已关闭".into())
                 }
-                Err("设备画面连接已关闭".into())
-            }
-            .await;
-            if let Err(error) = result {
-                let _ = output.send(Err(error)).await;
+                .await;
+                if !reconnecting
+                    && let Err(error) = result
+                    && output.send(Err(error)).await.is_err()
+                {
+                    return;
+                }
+                reconnecting = true;
+                tokio::time::sleep(RECONNECT_DELAY).await;
             }
         })
     }
@@ -541,7 +561,6 @@ impl Connection {
             http: reqwest::Client::new(),
             assistant: HeaderValue::from_static(""),
             phone: HeaderValue::from_static(""),
-            session: HeaderValue::from_static(""),
         }
     }
 }

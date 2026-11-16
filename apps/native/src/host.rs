@@ -15,6 +15,7 @@ pub struct Host {
     pub home: PathBuf,
     pub resource: PathBuf,
     pub request: PathBuf,
+    #[cfg(target_os = "macos")]
     pub source: String,
     pub android: String,
     pub images: String,
@@ -35,26 +36,6 @@ pub enum Event {
 }
 
 impl Host {
-    pub fn packaged(
-        home: PathBuf,
-        resource: PathBuf,
-        request: PathBuf,
-        source: String,
-        android: String,
-        images: String,
-        resume: bool,
-    ) -> Self {
-        Self {
-            home,
-            resource,
-            request,
-            source,
-            android,
-            images,
-            resume,
-        }
-    }
-
     pub fn load(path: &str) -> Result<Self, String> {
         let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
         serde_json::from_slice(&bytes).map_err(|e| e.to_string())
@@ -265,10 +246,7 @@ fn prepare_windows_host() -> Result<i32, String> {
     };
 
     let resource = crate::deployment::Bundle::resource_dir()?;
-    let components = crate::deployment::bundle_integrity(&resource)?;
-    if !components.contains_key("qemu/manifest.json") {
-        return Err("windows_backend_missing".into());
-    }
+    crate::deployment::bundle_inventory(&resource)?;
     let system = PathBuf::from(std::env::var_os("SystemRoot").ok_or("windows_system_path")?)
         .join("System32");
     let code = Command::new(system.join("dism.exe"))

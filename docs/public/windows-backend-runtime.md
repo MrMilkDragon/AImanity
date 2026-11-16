@@ -1,6 +1,6 @@
 # Windows backend runtime
 
-The Windows installer carries a Linux guest disk and kernel. QEMU runs the guest through Windows Hypervisor Platform. The factory builds the disk from the same sealed Linux root filesystem used by the WSL development and recovery tools.
+The Windows installer carries a Linux guest disk and kernel. QEMU runs the guest through Windows Hypervisor Platform. The disk and WSL development images share the Linux root filesystem factory.
 
 ## Contents
 
@@ -8,7 +8,6 @@ The Windows installer carries a Linux guest disk and kernel. QEMU runs the guest
 |---|---|
 | Ubuntu base | Immutable base digest and retained distribution notices |
 | Rust services | Assistant with channels, phone runner/media, OCR and native initializer |
-| Web | Next.js standalone resources and matched Bun executable |
 | Docker and Compose | Pinned Alpine package closure in an isolated musl prefix |
 | Container images | Sealed workspace, desktop, PostgreSQL and Redis images |
 | Phone bridge | Linux x64 ADB 36.0.1 and bundled scrcpy audio server |
@@ -59,18 +58,19 @@ On a disposable Linux builder, build the pinned x86_64 kernel and convert a fres
 
 ```sh
 ./scripts/bun scripts/windows-guest-disk.ts kernel build/guest-kernel
+./scripts/bun scripts/wsl-backend.ts --native-ui
 sudo ./scripts/bun scripts/windows-guest-disk.ts \
-  build/wsl-backend.payload "$BACKEND_SHA256" build/guest-kernel/bzImage \
+  .tools/wsl-backend-qualification/assembled/wsl-backend.payload "$BACKEND_SHA256" build/guest-kernel/bzImage \
   build/guest-kernel/modules.tar.gz build/guest-kernel/kernel-receipt.json \
   build/windows-guest.payload
 ```
 
 The backend factory verifies the QEMU bootstrap command before sealing. The guest capsule contains its kernel, compressed QCOW2 disk, kernel config, license text and manifest. BusyBox starts the Rust bootstrap on the named virtio-serial port `org.aiphone.bootstrap`.
 
-The Windows client starts QEMU and keeps writes in a persistent QCOW2 overlay. Linux uses the Nehalem CPU profile to expose SSE4.2 to the bundled Bun runtime. The native setup uses the observed Android ADB connection and desktop receipt to complete device setup. The workbench checks its local HTTP endpoint before opening.
+The Windows client starts QEMU and keeps writes in a persistent QCOW2 overlay. The native setup uses the observed Android ADB connection and desktop receipt to complete device setup. The workbench connects to the bundled Rust services through the authenticated loopback relay.
 
 ## 中文
 
-Windows 客户端用 QEMU 和 Windows Hypervisor Platform 启动内置 Linux 客体。客体包含 Rust 服务、网页、Docker/Compose、数据库和桌面镜像。用户数据保存在 QCOW2 写入层内。
+Windows 客户端用 QEMU 和 Windows Hypervisor Platform 启动内置 Linux 客体。客体包含 Rust 服务、Docker/Compose、数据库和桌面镜像。用户数据保存在 QCOW2 写入层内。
 
 原生 Android 通过 ADB 和媒体桥与 Linux 后端配对。双方返回 protobuf 回执后，客户端进入工作台。[发行状态](release-status.md)

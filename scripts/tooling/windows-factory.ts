@@ -13,8 +13,8 @@ import { factoryAndroidInput, prepareFactoryAndroid } from "./android-component"
 import { deliveryMetadata } from "./client-payload";
 import { buildReleaseTools } from "./archive";
 import { windowsReleaseSigning } from "./installer-signing";
+import { legacyWindowsBackendComponents as components } from "./wsl-factory";
 import {
-  windowsBackendComponents as components,
   windowsSourceIdentity as sourceIdentity,
   type WindowsVmInputs,
 } from "./windows-vm-payload";

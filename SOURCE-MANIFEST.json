@@ -53,8 +53,8 @@
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 7912,
-      "sha256": "a8e96716f9eae7d80533d215cb5375ce7211b94d940531f5a21a44041b7eeee7"
+      "size": 8015,
+      "sha256": "8efe0e2d9952663e1e626b46cb3d0030e0a140bbd1884e3bcd68b76af03a43f6"
     },
     {
       "path": ".github/workflows/source.yml",
@@ -68,8 +68,8 @@
     },
     {
       "path": ".github/workflows/windows-guest.yml",
-      "size": 3829,
-      "sha256": "8d0aac669945d72df46c18f56c7e740450edc89a621f2650d566b3f9e94fbf9f"
+      "size": 3822,
+      "sha256": "85feed14eaef2c2ab84fefbc50fe43fde7437bfb9d604cc08c9370fbdd636ebe"
     },
     {
       "path": ".github/workflows/windows-installer-acceptance.yml",
@@ -553,8 +553,8 @@
     },
     {
       "path": "apps/native/src/connection.rs",
-      "size": 20460,
-      "sha256": "42bb6646c18f374d1565c9fb4831300454a2b2e30d2aa65989c4319804d027e0"
+      "size": 21276,
+      "sha256": "c2986ee10e94ba5af6d70d0da16d0fed53df7fe0a508ecb609fec91fd4e8108f"
     },
     {
       "path": "apps/native/src/controls.rs",
@@ -563,8 +563,8 @@
     },
     {
       "path": "apps/native/src/deployment.rs",
-      "size": 15218,
-      "sha256": "2a6892121c336837048a91bf60d022ca205421151ded35caa608bfd7100d82aa"
+      "size": 15400,
+      "sha256": "01cddcb4b62a725366c9f60b66ade5f03973d6ba80f94d0663a192d83ff0ed29"
     },
     {
       "path": "apps/native/src/devices.rs",
@@ -578,8 +578,8 @@
     },
     {
       "path": "apps/native/src/host.rs",
-      "size": 10662,
-      "sha256": "7b6c38f3d94c1df2a53f2d577fe6c2bbd755c4da4718f9ae30ad3de17b69129d"
+      "size": 10179,
+      "sha256": "d5ac44841750d8992080f77eb68d2c192c81c2f4262b3157b1a30da0faa0685e"
     },
     {
       "path": "apps/native/src/knowledge/graph.rs",
@@ -608,8 +608,8 @@
     },
     {
       "path": "apps/native/src/main.rs",
-      "size": 58021,
-      "sha256": "832657b4d0135b736062c6de660ef62f48a76e14511c8cddc57e8423eb5b4267"
+      "size": 58402,
+      "sha256": "8049ba9886f81c6fa910884b897998752041e2f621df8e1ba10e2adb5853f9ce"
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
@@ -1838,8 +1838,8 @@
     },
     {
       "path": "crates/assistant/src/app_learning.rs",
-      "size": 22670,
-      "sha256": "9c61cb2cb91a9cfd7f80e6f31219497e7480d0c79face92c9eeffa69c64e36ca"
+      "size": 23741,
+      "sha256": "74c7551d3f53d2a10ffce10169c67ad1db25202b59cc237e1a0fb02affbfe2cd"
     },
     {
       "path": "crates/assistant/src/application_identity.rs",
@@ -2038,8 +2038,8 @@
     },
     {
       "path": "crates/assistant/src/execution_tests.rs",
-      "size": 36746,
-      "sha256": "4878d08bcf6fbdf5af4a6057e0969efc7611624f1e8204618b17d3a0c07e9d40"
+      "size": 41193,
+      "sha256": "135598adc36b14c0fde311f42635e2fa1faf8cd13d8cb2490f2c3a41d4af7951"
     },
     {
       "path": "crates/assistant/src/exploration_policy.rs",
@@ -2198,8 +2198,8 @@
     },
     {
       "path": "crates/assistant/src/run_signals.rs",
-      "size": 6092,
-      "sha256": "d85ffc6a2507b83aba30cfc0a89b9dc11f2282d47d5e9d0e72d1f419ce20a3d2"
+      "size": 6914,
+      "sha256": "d39ddf95d0c855df64f5d80aeef78973f43d590d57c8da2eb24669b02366bdca"
     },
     {
       "path": "crates/assistant/src/settings.rs",
@@ -2218,8 +2218,8 @@
     },
     {
       "path": "crates/assistant/src/skill_resources.rs",
-      "size": 6252,
-      "sha256": "12a05d214a017e6384477a33769f11c19c0222a1252d8601102a11f1831333a7"
+      "size": 6495,
+      "sha256": "e5734f9e413dc9234d1b71c1af1d59c734f6669c5b83d3e8441ffef0e52edf6e"
     },
     {
       "path": "crates/assistant/src/speech/activity.rs",
@@ -2293,8 +2293,8 @@
     },
     {
       "path": "crates/assistant/src/workbench.rs",
-      "size": 53217,
-      "sha256": "8a82058c01458b82da350a850f5f50968c6c17eb8ad5420e46e38b411e2d9273"
+      "size": 53268,
+      "sha256": "663bd89abe67b14a5c35ceb49ef7a13537cdc4c678dce28c1c1d32bf115381f4"
     },
     {
       "path": "crates/assistant/src/worker/execution_policy.rs",
@@ -2313,8 +2313,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 244475,
-      "sha256": "947a200f319d69240c67fbf7907b82d8bf92867b97ced24e5052010880f90457"
+      "size": 243428,
+      "sha256": "e2049c698ba4742be42f40abb9d5ceef4c2660f8bfbae7ea3b70588f654fb4d5"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -3343,8 +3343,8 @@
     },
     {
       "path": "docs/public/engineering/macos-full-runtime.md",
-      "size": 5349,
-      "sha256": "a15295b686de43d8532aace6a8620b3b1d580e9bea2a5354f31868ebd6742488"
+      "size": 5606,
+      "sha256": "ac0e9a4d14b77b3ac49efd18a48e0a7f41dd6d8425f4f20098c732bbafac2b0a"
     },
     {
       "path": "docs/public/engineering/native-android-preparation.md",
@@ -3908,18 +3908,18 @@
     },
     {
       "path": "docs/public/windows-backend-runtime.md",
-      "size": 6428,
-      "sha256": "017939552c1681d7a0e09a1b4ec577f2a3561870556f14dd51b9583912df025e"
+      "size": 6350,
+      "sha256": "498494d44368e7e96c6de4a7100cd9a3b2e4c4e188cc95c458acdfed544de3cb"
     },
     {
       "path": "docs/public/windows-client-factory.md",
-      "size": 2470,
-      "sha256": "47d7a8f685486efec89cbc5f69e10bd0b55a1c77fd8ac3e9e38071bf12ad1317"
+      "size": 2520,
+      "sha256": "eb5ce2ed66e923f4235e968dd0f3073059cfee466a59b6ae80aca6a85b1092e4"
     },
     {
       "path": "infra/desktop/Dockerfile",
-      "size": 2411,
-      "sha256": "c1806ab33d28a4c67d35ab1bc3f9d54c056001fb8b64e9f760d9efa5e4795f55"
+      "size": 2310,
+      "sha256": "1ea8a230bac9c94daf52f35c0b8a96ed71096af760bc70944035a515d8d11d79"
     },
     {
       "path": "infra/desktop/dunstrc",
@@ -4383,8 +4383,8 @@
     },
     {
       "path": "scripts/macos-client-factory.ts",
-      "size": 668,
-      "sha256": "7a0bdcd470cb7c283f3fb5ce0c26cc11e91d64bbdaafe6c0fea95865c9fcb215"
+      "size": 596,
+      "sha256": "20f6d59ee5cdb2dc6f46408f957edf292555015f79f0e1c432e2657994d7a9c0"
     },
     {
       "path": "scripts/native-host",
@@ -4478,8 +4478,8 @@
     },
     {
       "path": "scripts/tooling/client-payload.ts",
-      "size": 8613,
-      "sha256": "6caa0c568759603ba2dcfe3ab72446bb76dc10794194f0dbc51b7358210aa2ad"
+      "size": 8654,
+      "sha256": "4d2011ed4986ed3cbc7115822a12f50f1c52b29e5a4401d85fbfe18b4a3b15d5"
     },
     {
       "path": "scripts/tooling/container-host.ts",
@@ -4503,8 +4503,8 @@
     },
     {
       "path": "scripts/tooling/factory.ts",
-      "size": 4991,
-      "sha256": "4fd784fbba61473e8f5876732aa28ed26d3089194c5989a88fa06b7313d3b68e"
+      "size": 5238,
+      "sha256": "85c423d25f506e57f36726c5123f894f74a80568ed8edbffba112178ce2362c7"
     },
     {
       "path": "scripts/tooling/fetch-windows-aosp.ts",
@@ -4523,8 +4523,8 @@
     },
     {
       "path": "scripts/tooling/image-handoff.ts",
-      "size": 7952,
-      "sha256": "61d259eed909241c223cc22f66ca50848d16398e2dc7e76e749dbc7484da5ef2"
+      "size": 7993,
+      "sha256": "e81501e45bb1765bd2f60578c30aa8c9d54af9fa55de7433f3029e826a70fd76"
     },
     {
       "path": "scripts/tooling/installer-signing.ts",
@@ -4543,8 +4543,8 @@
     },
     {
       "path": "scripts/tooling/macos-factory.ts",
-      "size": 6359,
-      "sha256": "9ab7c784a99e7860578a3046ee4c313c99fbdc46a249ee028561d527ce0c8956"
+      "size": 6855,
+      "sha256": "1cda4a402a7ba2cf26fac7ad1ebcba064673904340a619a20e0b1abc07560a11"
     },
     {
       "path": "scripts/tooling/native-build.ts",
@@ -4608,8 +4608,8 @@
     },
     {
       "path": "scripts/tooling/windows-factory.ts",
-      "size": 7709,
-      "sha256": "335466b70c4f44d018f14ce836a2b046eaee7caf68bffd96dcb26ac79c5ebd4a"
+      "size": 7745,
+      "sha256": "c4859402fe9573f826d6591788871854ca4f13a28338300dd6d98d8bf00ae983"
     },
     {
       "path": "scripts/tooling/windows-guest-disk.ts",
@@ -4628,8 +4628,8 @@
     },
     {
       "path": "scripts/tooling/windows-vm-payload.ts",
-      "size": 6660,
-      "sha256": "ca1edb7a6a3caaeed837c701d447ace6d715e5a669a463938c681c1781a34691"
+      "size": 6643,
+      "sha256": "7b020742a550ea085ac85767518be4c5c959dca9f369864297399e490c5a27e0"
     },
     {
       "path": "scripts/tooling/wsl-capsule.ts",
@@ -4638,13 +4638,13 @@
     },
     {
       "path": "scripts/tooling/wsl-factory.ts",
-      "size": 14188,
-      "sha256": "f13c88ca082aa2942e7351b89a736d827169758c48179af9e80e9baed69c62e0"
+      "size": 14770,
+      "sha256": "29131448cdc046ea4a95fb0a5bc88b1b3eb203279d85e36891f54a0f5cd7f453"
     },
     {
       "path": "scripts/tooling/wsl-qualification.ts",
-      "size": 12276,
-      "sha256": "995968a9205768399c8520d1ce24baf84990afb7ffd2ff314ffe5bacd991acf5"
+      "size": 12316,
+      "sha256": "d94715ddb7e5bb3043995e8254ef309e683be15df4c6fe5745b47a1e5150fa21"
     },
     {
       "path": "scripts/tooling/zip.ts",
@@ -4693,8 +4693,8 @@
     },
     {
       "path": "scripts/wsl-backend.ts",
-      "size": 208,
-      "sha256": "48f23049d0d4fae40421869b386a015d6f098812c3ff051c4e34f2353b3b9b2e"
+      "size": 300,
+      "sha256": "f6dc261ea2294772ce741b714dadffae5e9b74b4bfc4ab0f5dd64302683ba255"
     },
     {
       "path": "skills/builtin/autonomous-learning/SKILL.md",

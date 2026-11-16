@@ -16,6 +16,7 @@ import { pipeline } from "node:stream/promises";
 import { entryBytes, readTar } from "./archive";
 import { json, save } from "./inventory";
 import { digest, output } from "./process";
+import { nativeWindowsBackendComponents } from "./wsl-factory";
 
 export type WindowsVmInputs = {
   qemu: string;
@@ -25,9 +26,6 @@ export type WindowsVmInputs = {
 };
 type FileReceipt = { path: string; size: number; sha256: string };
 export type WindowsQemuManifest = { format: number; component: string; version: string; files: FileReceipt[] };
-export const windowsBackendComponents = [
-  "native-services", "phone-apps", "web",
-];
 const guestManifest = "WINDOWS-VM-DISK-MANIFEST.json";
 const guestFiles = ["bzImage", "guest.qcow2", "kernel.config", "KERNEL-LICENSE.txt"];
 const qemuPrograms = [
@@ -86,7 +84,7 @@ async function stageGuest(source: string, identity: string, stage: string) {
     manifest.host !== "windows-x64" ||
     manifest.runtime !== "qemu-linux-backend" ||
     JSON.stringify([...manifest.source_components].sort()) !==
-      JSON.stringify(windowsBackendComponents) ||
+      JSON.stringify(nativeWindowsBackendComponents) ||
     files.size !== guestFiles.length
   )
     throw Error("Invalid Windows guest capsule");

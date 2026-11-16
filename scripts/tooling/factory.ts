@@ -18,10 +18,10 @@ export type Pin = {
   size_bytes?: number;
   file?: string;
 };
-export function capacity(root: string) {
+export function capacity(root: string, minimumGiB = 35) {
   const disk = statfsSync(root);
-  if (disk.bavail * disk.bsize < 35 * 1024 ** 3)
-    throw Error("Factory requires 35 GiB free workspace");
+  if (disk.bavail * disk.bsize < minimumGiB * 1024 ** 3)
+    throw Error(`Factory requires ${minimumGiB} GiB free workspace`);
 }
 export async function fetchPin(folder: string, name: string, pin: Pin) {
   if (basename(name) !== name) throw Error("Invalid factory download name");
@@ -116,9 +116,13 @@ export async function prepareImages(
     )
       throw Error("Immutable database image pin missing");
     const reference = role + "@" + image.split("@")[1];
-    run(["docker", "pull", "--platform", "linux/" + architecture, reference], {
-      cwd: root,
+    const platform = "linux/" + architecture;
+    const cached = Bun.spawnSync(["docker", "image", "inspect", "--platform", platform, reference], {
+      stdout: "ignore",
+      stderr: "ignore",
     });
+    if (cached.exitCode !== 0)
+      run(["docker", "pull", "--platform", platform, reference], { cwd: root });
     sources[role] = reference;
   }
   if (guest) await verifyGuest(root, guest, architecture);

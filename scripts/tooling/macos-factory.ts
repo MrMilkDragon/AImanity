@@ -15,6 +15,7 @@ import {
   buildContainerHost,
   buildLima,
   verifyLima,
+  verifyContainerHost,
 } from "./container-host";
 import { factoryAndroidInput, prepareFactoryAndroid } from "./android-component";
 import { guestBinary, buildGuest, verifyGuest } from "./guest-build";
@@ -32,6 +33,8 @@ import { checkSource } from "./source";
 import { macReleaseSigning } from "./installer-signing";
 
 async function host(root: string, work: string) {
+  const cached = join(root, ".tools/container-host");
+  if (existsSync(cached)) return verifyContainerHost(root, cached);
   const policy = containerPolicy(root),
     native = join(root, ".tools/lima-native"),
     pin = policy.runtime.lima_build;
@@ -78,7 +81,7 @@ async function guest(root: string, work: string) {
 }
 export async function macosFactory(
   root: string,
-  sdk: string,
+  sdk: string | undefined,
   candidate?: string,
   identity?: string,
   releaseSigning = false,
@@ -86,10 +89,13 @@ export async function macosFactory(
   if (hostKey() !== "macos-arm64")
     throw Error("Complete Mac assembly requires Apple Silicon");
   const androidInput = factoryAndroidInput();
+  const prebuiltHost = existsSync(join(root, ".tools/container-host"));
+  const prebuiltApps = existsSync(join(root, ".tools/phone-apps"));
   if (releaseSigning) macReleaseSigning();
-  capacity(root);
+  capacity(root, candidate && prebuiltHost && prebuiltApps && androidInput.kind === "sealed" ? 24 : 35);
   checkSource(root);
-  const env = compilerEnvironment(sdk),
+  if (!sdk && !prebuiltApps) throw Error("--compiler-sdk required to build phone helpers");
+  const env = sdk ? compilerEnvironment(sdk) : process.env,
     work = join(root, ".tools/complete-macos");
   if (existsSync(work)) throw Error("Use a fresh factory checkout");
   mkdirSync(work, { recursive: true });

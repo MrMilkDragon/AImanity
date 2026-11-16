@@ -98,6 +98,7 @@ struct App {
     connection: Option<Connection>,
     devices: [Option<wire::RegisteredDevice>; 2],
     frames: [Option<Arc<Frame>>; 2],
+    frame_errors: [String; 2],
     chat: chat::Chat,
     agents: agents::Agents,
     device_admin: devices::Devices,
@@ -150,6 +151,7 @@ impl App {
             connection: None,
             devices: [None, None],
             frames: [None, None],
+            frame_errors: Default::default(),
             chat: chat::Chat::new(),
             agents: agents::Agents::new(),
             device_admin: Default::default(),
@@ -320,6 +322,9 @@ impl App {
                     }
                 }
             }
+            Message::Host(host::Event::Phase(_) | host::Event::Ready(_))
+            | Message::Connected(_)
+                if self.closing => {}
             Message::Host(host::Event::Phase(phase)) => {
                 self.phase = match phase.as_str() {
                     "source" => "正在加载组件",
@@ -348,6 +353,7 @@ impl App {
                 Ok(()) => return self.update(Message::Setup(deployment::Message::Start)),
                 Err(error) => {
                     self.error = error;
+                    self.phase.clear();
                     self.closing = false;
                 }
             },
@@ -430,11 +436,12 @@ impl App {
                         );
                     }
                     self.frames[index] = Some(Arc::new(frame));
+                    self.frame_errors[index].clear();
                     if resized {
                         self.rearrange();
                     }
                 }
-                Err(error) => self.error = error,
+                Err(error) => self.frame_errors[index] = error,
             },
             Message::Chat(result) => {
                 if let Some(client) = &self.connection {
@@ -1208,6 +1215,7 @@ impl App {
             self.modes.proactive_error(),
             self.audio[0].error(),
             self.audio[1].error(),
+            self.frame_errors[self.focus].as_str(),
             self.chat.error.as_str(),
         ]
         .into_iter()
@@ -1425,7 +1433,7 @@ fn main() -> iced::Result {
     if let [command, resource] = arguments.as_slice()
         && command == "--verify-bundled-host"
     {
-        if let Err(error) = deployment::bundle_integrity(std::path::Path::new(resource)) {
+        if let Err(error) = deployment::verify_bundle(std::path::Path::new(resource)) {
             eprintln!("{error}");
             std::process::exit(1);
         }

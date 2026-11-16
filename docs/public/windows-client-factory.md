@@ -1,6 +1,6 @@
 # Windows installer factory
 
-The Windows 11 x64 EXE contains the Tauri client, AOSP Android 15 x64 (build 13455678) and a Linux guest. Bundled QEMU 11.1.3 runs both guests through Windows Hypervisor Platform. The client uses system WebView2 and links its C runtime statically. [Android sources and staging](engineering/android-runtime.md)
+The Dysprosium Windows 11 x64 EXE contains the Iced/wgpu client, AOSP Android 15 x64 (build 13455678) and a Linux guest. Bundled QEMU 11.1.3 runs both guests through Windows Hypervisor Platform. The client links its C runtime statically and connects to the bundled Rust services. [Android sources and staging](engineering/android-runtime.md)
 
 ## Build
 
@@ -21,6 +21,6 @@ The inspector checks the x64 executable and installed-file inventory. Setup enab
 
 ## 中文
 
-Windows 11 x64 安装包内置 Tauri 客户端、AOSP Android 15 x64（构建 13455678）和 Linux 客体。两台设备通过 QEMU 11.1.3 和 Windows Hypervisor Platform 启动，客户端使用系统 WebView2。
+Dysprosium Windows 11 x64 安装包内置 Iced/wgpu 客户端、AOSP Android 15 x64（构建 13455678）和 Linux 客体。两台设备通过 QEMU 11.1.3 和 Windows Hypervisor Platform 启动，客户端连接内置 Rust 服务。
 
 在私有构建仓库运行 **Desktop installer factory**，选择 Windows，填写 Android 胶囊的 `android_draft_id` 和 `android_payload_sha256`。本地构建时，将 `AIMANITY_ANDROID_SDK_INPUT` 指向暂存目录并运行上方命令。[下载](release-status.md) · [Android 源码与暂存](engineering/android-runtime.md)

@@ -2550,42 +2550,27 @@ async fn execute(
             }
             continue;
         }
-        if (phone_task(&context)
-            || (gui_execution(&context) && !execution_policy::desktop_target(&context))
-            || (notification_run && !desktop_notification)
-            || wechat_task(&context))
-            && !phone_skill_read(&context)
-        {
-            let call = json!({"type":"function_call","name":"skill_read","arguments":"{\"name\":\"phone-use\"}","call_id":format!("phone-use-{}",Uuid::now_v7()),"local_action_id":Uuid::now_v7().to_string()});
-            context.push(call.clone());
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-            let result =
-                recorded_tool(app, id, message, &call, &context, &mut epoch, cancel).await?;
-            context.push(
-                json!({"type":"function_call_output","call_id":call["call_id"],"output":result}),
-            );
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-        }
-        if (computer_task(&context)
-            || (gui_execution(&context) && execution_policy::desktop_target(&context)))
-            && !builtin_skill_read(&context, "computer-use")
-        {
-            let call = json!({"type":"function_call","name":"skill_read","arguments":"{\"name\":\"computer-use\"}","call_id":Uuid::now_v7().to_string(),"local_action_id":Uuid::now_v7().to_string()});
-            context.push(call.clone());
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-            let result =
-                recorded_tool(app, id, message, &call, &context, &mut epoch, cancel).await?;
-            context.push(
-                json!({"type":"function_call_output","call_id":call["call_id"],"output":result}),
-            );
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-        }
         let notification_tool = if desktop_notification {
             "device_notifications"
         } else {
             "phone_notifications"
         };
-        if notification_run
+        let next_tool = pending.first().and_then(|call| call["name"].as_str()).unwrap_or("");
+        let prerequisite = if (next_tool.starts_with("phone_")
+            || phone_task(&context)
+            || (gui_execution(&context) && !execution_policy::desktop_target(&context))
+            || (notification_run && !desktop_notification)
+            || wechat_task(&context))
+            && !phone_skill_read(&context)
+        {
+            Some(("skill_read", r#"{"name":"phone-use"}"#))
+        } else if (next_tool.starts_with("computer_")
+            || computer_task(&context)
+            || (gui_execution(&context) && execution_policy::desktop_target(&context)))
+            && !builtin_skill_read(&context, "computer-use")
+        {
+            Some(("skill_read", r#"{"name":"computer-use"}"#))
+        } else if notification_run
             && !screen_attention
             && !context.iter().any(|v| {
                 v["type"] == "function_call"
@@ -2593,25 +2578,36 @@ async fn execute(
                     && tool_output(&context, v).is_some()
             })
         {
-            let call = json!({"type":"function_call","name":notification_tool,"arguments":"{}","call_id":Uuid::now_v7().to_string(),"local_action_id":Uuid::now_v7().to_string()});
-            context.push(call.clone());
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-            let result =
-                recorded_tool(app, id, message, &call, &context, &mut epoch, cancel).await?;
-            context.push(
-                json!({"type":"function_call_output","call_id":call["call_id"],"output":result}),
-            );
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-        }
-        if wechat_task(&context) && !builtin_skill_read(&context, "wechat") {
-            let call = json!({"type":"function_call","name":"skill_read","arguments":"{\"name\":\"wechat\"}","call_id":format!("wechat-{}",Uuid::now_v7()),"local_action_id":Uuid::now_v7().to_string()});
-            context.push(call.clone());
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-            let result =
-                recorded_tool(app, id, message, &call, &context, &mut epoch, cancel).await?;
-            context.push(
-                json!({"type":"function_call_output","call_id":call["call_id"],"output":result}),
-            );
+            Some((notification_tool, "{}"))
+        } else if wechat_task(&context) && !builtin_skill_read(&context, "wechat") {
+            Some(("skill_read", r#"{"name":"wechat"}"#))
+        } else {
+            None
+        };
+        if let Some((name, arguments)) = prerequisite
+            && pending.first().is_none_or(|call| {
+                call["name"] != name || call["arguments"] != arguments
+            })
+        {
+            let call = context
+                .iter()
+                .rev()
+                .find(|call| {
+                    call["type"] == "function_call"
+                        && call["name"] == name
+                        && call["arguments"] == arguments
+                        && call["provider_native"] != true
+                        && call["local_action_id"].is_string()
+                        && tool_output(&context, call).is_none()
+                })
+                .cloned()
+                .unwrap_or_else(|| {
+                    let call = json!({"type":"function_call","name":name,"arguments":arguments,
+                        "call_id":Uuid::now_v7().to_string(),"local_action_id":Uuid::now_v7().to_string()});
+                    context.push(call.clone());
+                    call
+                });
+            pending.insert(0, call);
             checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
         }
         if pending.is_empty()

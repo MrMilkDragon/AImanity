@@ -8,7 +8,7 @@ The host requirement is an Apple Silicon Mac running macOS 15.0 or later, at lea
 
 | Resource | Included implementation |
 |---|---|
-| Web | Next.js standalone application and Bun 1.4.4 |
+| Workbench | Iced and wgpu |
 | Agent and phone services | Host-native Rust assistant/runner and CPU OCR helper using managed Tesseract |
 | Phone integration | Prebuilt input/notification and launcher applications |
 | Container host | App-owned Lima 2.2.1, Alpine boot image and offline Docker/Compose packages |
@@ -33,6 +33,8 @@ The factory seals the staged AOSP, Avo and ADB files, builds the Lima container 
 
 To reuse a sealed Android capsule, set `AIMANITY_ANDROID_PAYLOAD` and `AIMANITY_ANDROID_PAYLOAD_SHA256` in place of `AIMANITY_ANDROID_SDK_INPUT`. In the private **Desktop installer factory** workflow, select `platform=macos` and enter the Android capsule’s `android_draft_id` and `android_payload_sha256`. The ARM64 Linux job builds the image capsule, then the Mac job assembles the DMG.
 
+Pass the admitted ARM64 handoff with `--image-candidate` and `--image-metadata-sha256`. A source-matched `.tools/phone-apps` allows assembly without a local Android compiler SDK. When the container host and Android capsule are also prepared, the packaging stage needs 24 GiB free.
+
 For distribution, run the factory with `--sign-release` on a Mac with the Developer ID Application identity and the `notarytool` profile already in Keychain. Set `AIMANITY_MAC_SIGNING_IDENTITY` to the certificate name and `AIMANITY_MAC_NOTARY_PROFILE` to the profile name. The factory signs the app and DMG, submits the DMG to Apple, then staples and validates the ticket.
 
 Private Actions storage retains the DMG, inventory and receipt. The maintainer publishes the reviewed installer to Releases as one asset under 2 GiB.
@@ -40,8 +42,8 @@ Private Actions storage retains the DMG, inventory and receipt. The maintainer p
 Use a reviewed source checkout and architecture-matched factory resources. The distribution command is:
 
 ```sh
-./scripts/bun scripts/build-client.ts --platform macos \
-  --with-web-runtime --with-service-runtime --with-phone-apps \
+./scripts/bun scripts/build-client.ts --platform macos --native-workbench \
+  --with-service-runtime --with-phone-apps \
   --with-container-host \
   --android-runtime /factory/android.payload \
   --images-runtime /factory/images.payload

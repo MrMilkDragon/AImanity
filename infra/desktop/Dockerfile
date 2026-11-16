@@ -3,7 +3,6 @@ FROM ${WORKSPACE_IMAGE}
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 USER root
-RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources
 RUN --mount=type=bind,source=infra/desktop/install-openbox.sh,target=/tmp/install-openbox.sh \
     apt-get -o Acquire::Retries=4 update && \
     DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=4 install -y --no-install-recommends \

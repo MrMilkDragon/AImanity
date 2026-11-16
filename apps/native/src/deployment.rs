@@ -76,8 +76,7 @@ pub fn data_home() -> Result<PathBuf, String> {
         .ok_or_else(|| "Application data directory unavailable".into())
 }
 
-pub fn bundle_integrity(resource: &Path) -> Result<BTreeMap<String, String>, String> {
-    use sha2::{Digest, Sha256};
+pub fn bundle_inventory(resource: &Path) -> Result<BTreeMap<String, String>, String> {
     let inventory: BTreeMap<String, String> =
         serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/integrity.json")))
             .map_err(|e| e.to_string())?;
@@ -96,7 +95,12 @@ pub fn bundle_integrity(resource: &Path) -> Result<BTreeMap<String, String>, Str
             return Err(format!("离线组件缺失 · {name}"));
         }
     }
-    for (name, expected) in &inventory {
+    Ok(inventory)
+}
+
+pub fn verify_bundle(resource: &Path) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    for (name, expected) in bundle_inventory(resource)? {
         // The installer verifies its large payloads while extracting them.
         if matches!(
             name.as_str(),
@@ -104,7 +108,7 @@ pub fn bundle_integrity(resource: &Path) -> Result<BTreeMap<String, String>, Str
         ) {
             continue;
         }
-        let mut file = fs::File::open(resource.join(name)).map_err(|e| e.to_string())?;
+        let mut file = fs::File::open(resource.join(&name)).map_err(|e| e.to_string())?;
         let mut hash = Sha256::new();
         let mut bytes = [0; 65536];
         loop {
@@ -114,11 +118,11 @@ pub fn bundle_integrity(resource: &Path) -> Result<BTreeMap<String, String>, Str
             }
             hash.update(&bytes[..count]);
         }
-        if format!("{:x}", hash.finalize()) != *expected {
+        if format!("{:x}", hash.finalize()) != expected {
             return Err(format!("离线组件损坏 · {name}"));
         }
     }
-    Ok(inventory)
+    Ok(())
 }
 impl Bundle {
     pub fn resource_dir() -> Result<PathBuf, String> {
@@ -136,7 +140,7 @@ impl Bundle {
         let resource = Self::resource_dir()?;
         Ok(Self {
             home: data_home()?,
-            inventory: bundle_integrity(&resource)?,
+            inventory: bundle_inventory(&resource)?,
             resource,
         })
     }
@@ -201,15 +205,16 @@ impl Bundle {
         } else {
             self.inventory.get("images.payload")
         };
-        Ok(Host::packaged(
-            self.home.clone(),
-            self.resource.clone(),
-            path,
-            self.inventory["source.payload"].clone(),
-            self.inventory["android.payload"].clone(),
-            images.ok_or("找不到设备镜像")?.clone(),
-            installed,
-        ))
+        Ok(Host {
+            home: self.home.clone(),
+            resource: self.resource.clone(),
+            request: path,
+            #[cfg(target_os = "macos")]
+            source: self.inventory["source.payload"].clone(),
+            android: self.inventory["android.payload"].clone(),
+            images: images.ok_or("找不到设备镜像")?.clone(),
+            resume: installed,
+        })
     }
     pub fn mark_installed(&self) -> Result<(), String> {
         let payload = &self.inventory["source.payload"];
