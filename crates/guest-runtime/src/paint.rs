@@ -3,6 +3,7 @@ use crate::{
     Result,
     screen::{PaintFocus, Screen},
 };
+use ai_phone_api::wire::DesktopFrameState;
 use image::RgbImage;
 use std::time::Duration;
 use tokio::time::Instant;
@@ -13,7 +14,7 @@ const DEADLINE: Duration = Duration::from_millis(800);
 
 pub struct Frame {
     pub image: RgbImage,
-    pub state: &'static str,
+    pub state: DesktopFrameState,
     pub wait_ms: u32,
 }
 
@@ -71,9 +72,13 @@ pub async fn after(
                         && !(mousepad_text && mousepad_dirty_title(before, &focus))
                         && !screen.confirmed_desktop_reveal(before.window_id, focus.window_id)
                 })) {
-            Some("stable")
+            Some(DesktopFrameState::Stable)
         } else if expired {
-            Some(if painted { "changing" } else { "unchanged" })
+            Some(if painted {
+                DesktopFrameState::Changing
+            } else {
+                DesktopFrameState::Unchanged
+            })
         } else {
             None
         };
@@ -198,7 +203,7 @@ mod tests {
         let frame = after(&screen, RgbImage::new(32, 32), &focus(""), false)
             .await
             .unwrap();
-        assert_eq!(frame.state, "stable");
+        assert_eq!(frame.state, DesktopFrameState::Stable);
         assert_eq!(*frame.image.get_pixel(31, 3), Rgb([255, 255, 255]));
         assert!(frame.wait_ms < 800);
     }
@@ -214,7 +219,7 @@ mod tests {
         let frame = after(&screen, RgbImage::new(32, 32), &focus(""), false)
             .await
             .unwrap();
-        assert_eq!(frame.state, "changing");
+        assert_eq!(frame.state, DesktopFrameState::Changing);
         assert!(frame.wait_ms >= 800);
         assert!(frame.wait_ms < 1500);
     }
@@ -230,7 +235,7 @@ mod tests {
         screen.count.store(4, Ordering::Relaxed);
         let baseline = screen.capture().unwrap();
         let same = after(&screen, baseline, &focus(""), false).await.unwrap();
-        assert_eq!(same.state, "unchanged");
+        assert_eq!(same.state, DesktopFrameState::Unchanged);
         assert!(same.wait_ms >= 800);
     }
 
@@ -250,7 +255,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(frame.state, "stable");
+        assert_eq!(frame.state, DesktopFrameState::Stable);
         assert_eq!(*frame.image.get_pixel(31, 3), Rgb([255, 255, 255]));
         assert!(frame.wait_ms >= 800 && frame.wait_ms < 1500);
     }
@@ -271,7 +276,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(frame.state, "stable");
+        assert_eq!(frame.state, DesktopFrameState::Stable);
         assert_eq!(*frame.image.get_pixel(0, 0), Rgb([255, 255, 255]));
         assert!((80..800).contains(&frame.wait_ms), "{} ms", frame.wait_ms);
     }

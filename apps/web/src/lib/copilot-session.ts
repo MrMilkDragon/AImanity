@@ -295,7 +295,7 @@ export class CopilotSession {
     const native=this.native;this.native=null;
     const generation=this.generation;
     if(native)void native.close().catch(error=>{
-      if(generation===this.generation){this.error=error instanceof Error?error.message:String(error);this.publish();}
+      if(generation===this.generation&&!this.error){this.error=error instanceof Error?error.message:String(error);this.publish();}
     });
   }
   private pause(message:string){const segments=this.segments;this.segments=null;this.error=message;segments?.finish(performance.now());for(const stream of this.streams.values())stream.close();this.streams.clear();this.microphone?.close();this.recognition?.cancel();this.recognition=null;this.closeNative();this.activity='listening';this.speaker.hold();this.publish();}

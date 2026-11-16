@@ -94,7 +94,7 @@ pub(crate) fn docker() -> Command {
     // The installer owns PATH and can select its private container host.
     Command::new("docker")
 }
-async fn helper(op: &str, args: Value) -> Result<Value> {
+async fn helper_bytes(op: &str, args: Value) -> Result<Vec<u8>> {
     let mut c = docker();
     c.args([
         "exec",
@@ -105,14 +105,24 @@ async fn helper(op: &str, args: Value) -> Result<Value> {
         "/usr/local/bin/desktop-bridge",
         op,
     ]);
-    let out = process(
+    process(
         c,
         args.to_string().into_bytes(),
         12 * 1024 * 1024,
         if op == "run" { 95 } else { 15 },
     )
-    .await?;
-    serde_json::from_slice(&out).map_err(|e| e.to_string())
+    .await
+}
+async fn helper(op: &str, args: Value) -> Result<Value> {
+    serde_json::from_slice(&helper_bytes(op, args).await?).map_err(|e| e.to_string())
+}
+async fn helper_frame(op: &str, args: Value) -> Result<wire::DesktopBridgeFrame> {
+    let bytes = helper_bytes(op, args).await?;
+    let frame = wire::DesktopBridgeFrame::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
+    if frame.png.is_empty() {
+        return Err("电脑没有返回画面".into());
+    }
+    Ok(frame)
 }
 pub async fn notifications(app: &App, device: &str) -> Result<wire::PhoneNotificationList> {
     let (feed, _) = notification_feed(app, device, false).await?;
@@ -221,48 +231,41 @@ async fn save_observation(
     app: &App,
     device: &str,
     epoch: i64,
-    mut value: Value,
+    frame: wire::DesktopBridgeFrame,
 ) -> Result<wire::DesktopObservation> {
-    let png = STANDARD
-        .decode(value["png"].take().as_str().ok_or("电脑没有返回画面")?)
-        .map_err(|e| e.to_string())?;
+    let wire::DesktopBridgeFrame {
+        png,
+        width,
+        height,
+        title,
+        application_class,
+        window_id,
+        process_id,
+        frame_state,
+        frame_wait_ms,
+    } = frame;
     let id = Uuid::now_v7();
     let dir = desktop_directory(&app.root, "observations").await?;
     let path = dir.join(format!("{id}.png"));
     tokio::fs::write(&path, &png)
         .await
         .map_err(|e| e.to_string())?;
-    let title = value["title"].as_str().unwrap_or("Linux desktop");
     let application_id =
-        crate::application_identity::desktop(value["application_class"].as_str().unwrap_or(""))
-            .unwrap_or_default();
-    let window_id = value["window_id"]
-        .as_u64()
-        .and_then(|v| u32::try_from(v).ok())
-        .unwrap_or_default() as u64;
-    let process_id = value["process_id"]
-        .as_u64()
-        .and_then(|v| u32::try_from(v).ok())
-        .unwrap_or_default();
-    sqlx::query("INSERT INTO desktop_observations(id,device_id,epoch,title,png_path,application_id,window_id,process_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(id).bind(device).bind(epoch).bind(title).bind(path.to_string_lossy().to_string()).bind(&application_id).bind(window_id as i64).bind(i64::from(process_id)).execute(&app.db).await.map_err(|e|e.to_string())?;
+        crate::application_identity::desktop(&application_class).unwrap_or_default();
+    sqlx::query("INSERT INTO desktop_observations(id,device_id,epoch,title,png_path,application_id,window_id,process_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)").bind(id).bind(device).bind(epoch).bind(&title).bind(path.to_string_lossy().to_string()).bind(&application_id).bind(i64::from(window_id)).bind(i64::from(process_id)).execute(&app.db).await.map_err(|e|e.to_string())?;
     Ok(wire::DesktopObservation {
         device_id: device.into(),
         observation_id: id.to_string(),
         epoch: epoch as u64,
         captured_at_ms: now(),
-        width: 1280,
-        height: 800,
-        title: title.into(),
+        width,
+        height,
+        title,
         png,
-        frame_state: match value["frame_state"].as_str() {
-            Some("stable") => wire::DesktopFrameState::Stable,
-            Some("changing") => wire::DesktopFrameState::Changing,
-            Some("unchanged") => wire::DesktopFrameState::Unchanged,
-            _ => wire::DesktopFrameState::Unspecified,
-        } as i32,
-        frame_wait_ms: value["frame_wait_ms"].as_u64().unwrap_or_default() as u32,
+        frame_state,
+        frame_wait_ms,
         application_id,
-        window_id,
+        window_id: u64::from(window_id),
         process_id,
     })
 }
@@ -305,8 +308,8 @@ pub async fn observe(
     take: bool,
 ) -> Result<wire::DesktopObservation> {
     let epoch = control(app, device, run, take).await?;
-    let value = helper("observe", json!({})).await?;
-    save_observation(app, device, epoch, value).await
+    let frame = helper_frame("observe", json!({})).await?;
+    save_observation(app, device, epoch, frame).await
 }
 fn validate_pointer(r: &wire::DesktopActionRequest) -> Result<()> {
     let check = |x, y, error: &str| {
@@ -550,8 +553,8 @@ pub async fn action(
     sqlx::query("INSERT INTO desktop_actions(id,device_id,run_id,input_hash,status) VALUES($1,$2,$3,$4,'running')").bind(id).bind(&r.device_id).bind(run).bind(fingerprint).execute(&app.db).await.map_err(|e|e.to_string())?;
     let mut cursor = action_cursor(&r, expected);
     cursor_write(app, &cursor).await?;
-    let result = match helper("action", input).await {
-        Ok(value) => save_observation(app, &r.device_id, r.epoch as i64, value).await,
+    let result = match helper_frame("action", input).await {
+        Ok(frame) => save_observation(app, &r.device_id, r.epoch as i64, frame).await,
         Err(e) => Err(e),
     };
     finish_action(app, id, &mut cursor, &result).await?;
@@ -1583,7 +1586,7 @@ async fn install(app: &App, id: Uuid) -> Result<()> {
     install_step(app, id, "验证画面与控制").await?;
     let mut ok = false;
     for _ in 0..30 {
-        if helper("observe", json!({})).await.is_ok() {
+        if helper_frame("observe", json!({})).await.is_ok() {
             ok = true;
             break;
         }
@@ -1896,7 +1899,7 @@ mod tests {
             sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state) VALUES($1,'Fixture','desktop','fixture','managed')").bind(device).execute(&app.db).await.unwrap();
             sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'docker-desktop','ai-phone-desktop')").bind(device).execute(&app.db).await.unwrap();
             let png=include_bytes!("../../phone-runner/fixtures/ocr-probe.png");
-            let observation=save_observation(&app,device,7,json!({"png":STANDARD.encode(png),"title":"Private document.odt","application_class":"LibreOffice-Writer","frame_state":"stable","frame_wait_ms":320,"window_id":424242,"process_id":99})).await.unwrap();
+            let observation=save_observation(&app,device,7,wire::DesktopBridgeFrame{png:png.to_vec(),width:1280,height:800,title:"Private document.odt".into(),application_class:"LibreOffice-Writer".into(),frame_state:wire::DesktopFrameState::Stable as i32,frame_wait_ms:320,window_id:424242,process_id:99}).await.unwrap();
             assert_eq!(observation.application_id,"linux:libreoffice-writer");
             assert_eq!(observation.window_id,424242);assert_eq!(observation.process_id,99);
             let id=Uuid::now_v7();

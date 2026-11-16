@@ -312,15 +312,6 @@ fn cancel_deployment(app: tauri::AppHandle, window: tauri::WebviewWindow) -> Res
     Ok(())
 }
 #[tauri::command]
-fn accept_deployment_license(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-) -> Result<(), String> {
-    require_setup_window(&window)?;
-    bootstrap::accept_license(&app)
-}
-
-#[tauri::command]
 async fn open_workbench(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
@@ -465,7 +456,6 @@ pub fn run() {
             retry_startup,
             start_deployment,
             cancel_deployment,
-            accept_deployment_license,
             check_client_update,
             install_client_update,
             copilot::native_voice
@@ -650,6 +640,49 @@ mod tests {
             "http://user@127.0.0.1:17860/phone",
         ] {
             assert!(!is_workbench_origin(&Url::parse(address).unwrap()));
+        }
+    }
+
+    #[test]
+    fn workbench_capability_accepts_fetch_origin_and_post_message_page() {
+        use tauri::utils::{acl::RemoteUrlPattern, config::CapabilityEntry};
+
+        let config: tauri::utils::config::Config =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let capability = config
+            .app
+            .security
+            .capabilities
+            .iter()
+            .find_map(|entry| match entry {
+                CapabilityEntry::Inlined(value) if value.identifier == "local-workbench" => {
+                    Some(value)
+                }
+                _ => None,
+            })
+            .unwrap();
+        let patterns: Vec<RemoteUrlPattern> = capability
+            .remote
+            .as_ref()
+            .unwrap()
+            .urls
+            .iter()
+            .map(|value| value.parse().unwrap())
+            .collect();
+        let is_allowed = |address| {
+            let url = Url::parse(address).unwrap();
+            patterns.iter().any(|pattern| pattern.test(&url))
+        };
+        // Fetch IPC sends only Origin. PostMessage IPC carries the full page URL.
+        assert!(is_allowed("http://127.0.0.1:17860"));
+        assert!(is_allowed("http://127.0.0.1:17860/phone?language=zh-CN"));
+        for address in [
+            "http://127.0.0.1:17860/phone/settings",
+            "http://127.0.0.1:17860/login",
+            "http://127.0.0.1:17861/phone",
+            "http://localhost:17860/phone",
+        ] {
+            assert!(!is_allowed(address), "{address}");
         }
     }
 

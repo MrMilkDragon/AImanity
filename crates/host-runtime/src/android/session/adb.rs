@@ -5,6 +5,9 @@ pub(super) struct Adb {
     pub port: u16,
     pub serial: String,
 }
+const BOOT_IDENTITY: &str =
+    r#"shell:boot=$(getprop sys.boot_completed); printf '%s\n' "$boot"; [ "$boot" != 1 ] || id -u"#;
+
 fn error(value: ai_phone_adb::Error) -> Error {
     match value {
         ai_phone_adb::Error::Io(value) => Error::Io(value),
@@ -43,19 +46,18 @@ impl Adb {
         }
         Ok(())
     }
-    pub async fn uid(&self) -> Result<u32> {
-        let bytes = self.request("shell:id -u", 128).await?;
-        std::str::from_utf8(&bytes)
-            .ok()
-            .and_then(|v| v.trim().parse().ok())
-            .ok_or(Error::Invalid("android_root_identity"))
-    }
-    pub async fn boot_completed(&self) -> Result<bool> {
-        Ok(self
-            .request("shell:getprop sys.boot_completed", 128)
-            .await?
-            .trim_ascii()
-            == b"1")
+    pub async fn boot_identity(&self) -> Result<Option<u32>> {
+        let bytes = self.request(BOOT_IDENTITY, 128).await?;
+        let text =
+            std::str::from_utf8(&bytes).map_err(|_| Error::Invalid("android_root_identity"))?;
+        let (boot, uid) = text.split_once('\n').unwrap_or((text, ""));
+        if boot.trim() != "1" {
+            return Ok(None);
+        }
+        uid.trim()
+            .parse()
+            .map(Some)
+            .map_err(|_| Error::Invalid("android_root_identity"))
     }
     pub async fn root(&self) -> Result<()> {
         let bytes = self.request("root:", 4096).await?;
@@ -97,14 +99,14 @@ mod tests {
     use std::net::Ipv4Addr;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     #[tokio::test]
-    async fn selects_the_exact_serial_before_a_bounded_raw_uid_request() {
+    async fn selects_the_exact_serial_before_checking_boot_and_uid_together() {
         let server = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
             .await
             .unwrap();
         let port = server.local_addr().unwrap().port();
         let peer = tokio::spawn(async move {
             let (mut socket, _) = server.accept().await.unwrap();
-            for expected in ["host:transport:emulator-5582", "shell:id -u"] {
+            for expected in ["host:transport:emulator-5582", BOOT_IDENTITY] {
                 let mut length = [0; 4];
                 socket.read_exact(&mut length).await.unwrap();
                 let size =
@@ -114,13 +116,13 @@ mod tests {
                 assert_eq!(bytes, expected.as_bytes());
                 socket.write_all(b"OKAY").await.unwrap();
             }
-            socket.write_all(b"0\r\n").await.unwrap();
+            socket.write_all(b"1\r\n0\r\n").await.unwrap();
         });
         let result = Adb {
             port,
             serial: "emulator-5582".into(),
         }
-        .uid()
+        .boot_identity()
         .await;
         if result.is_err() {
             peer.abort();
@@ -128,6 +130,6 @@ mod tests {
         } else {
             peer.await.unwrap();
         }
-        assert_eq!(result.unwrap(), 0);
+        assert_eq!(result.unwrap(), Some(0));
     }
 }

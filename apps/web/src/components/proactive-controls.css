@@ -43,54 +43,39 @@
   font-size: 13px;
   overflow-wrap: anywhere;
 }
-.task-goal-gears {
+.task-goal-backdrop {
   position: absolute;
   inset: 0;
   z-index: -2;
-  overflow: hidden;
-  contain: layout paint;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  color: var(--foreground);
+  background: radial-gradient(ellipse at 28% 46%, #e0d8ee6e, transparent 57%),
+    radial-gradient(ellipse at 78% 76%, #e6cbb649, transparent 48%);
 }
-.task-goal-gears svg {
-  position: absolute;
-  width: var(--gear-size);
-  height: var(--gear-size);
-  stroke-width: .35;
-  opacity: .13;
-  transform-origin: center;
-  animation: task-goal-turn var(--gear-duration) linear infinite;
+.goal-engraving { opacity: .29; stroke-width: .85; }
+.goal-guide { opacity: .29; stroke-width: .8; }
+.goal-ticks { opacity: .54; stroke-width: 4; stroke-dasharray: 1 4; }
+.goal-thread { opacity: .36; stroke-width: 1; stroke-dasharray: 6 2 2 10; }
+.goal-sweep { opacity: .61; stroke-width: 1.8; stroke-dasharray: 69 18 11 98 36 128; stroke-linecap: round; }
+.goal-node { opacity: .8; }
+.goal-orbit {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: goal-orbit 48s linear infinite;
 }
-.task-goal-gears svg:nth-child(1) {
-  --gear-size: clamp(240px, 38vmin, 530px);
-  --gear-duration: 5s;
-  inset: 8% auto auto 1%;
-}
-.task-goal-gears svg:nth-child(2) {
-  --gear-size: clamp(170px, 29vmin, 380px);
-  --gear-duration: 3.4s;
-  inset: auto 6% 8% auto;
-  animation-direction: reverse;
-}
-.task-goal-gears svg:nth-child(3) {
-  --gear-size: clamp(105px, 19vmin, 240px);
-  --gear-duration: 2.4s;
-  inset: auto 34% 22% auto;
-}
-.task-goal-gears[data-paused=true] svg {
-  animation-play-state: paused;
-}
-@keyframes task-goal-turn {
-  to { transform: rotate(1turn); }
-}
+.goal-orbit-reverse { animation-duration: 33s; animation-direction: reverse; }
+.goal-orbit-secondary { animation-duration: 56s; animation-delay: -11s; }
+.task-goal-backdrop[data-paused=true] .goal-orbit { animation-play-state: paused; }
+@keyframes goal-orbit { to { transform: rotate(1turn); } }
 @media (prefers-reduced-motion: reduce) {
-  .task-goal-gears svg { animation: none; }
+  .goal-orbit { animation: none; }
 }
 @media (prefers-reduced-transparency: reduce), (forced-colors: active) {
   .task-goal-form textarea { background: var(--background); }
 }
 @media (forced-colors: active) {
-  .task-goal-gears { display: none; }
+  .task-goal-backdrop { display: none; }
 }
 .exploration-control{min-width:0;flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:4px}.proactive-dock{display:flex;align-items:center;gap:2px}
 .exploration-toggle{display:flex;align-items:center;gap:7px;height:40px;padding:0 10px;border:0;border-radius:var(--radius);background:transparent;font-size:12px;color:#656a78;cursor:pointer;transition:background 180ms,color 180ms}

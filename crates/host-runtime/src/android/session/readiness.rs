@@ -40,7 +40,7 @@ pub(super) async fn pause(stop: &mut watch::Receiver<bool>) -> Result<()> {
     }
 }
 pub(super) async fn observe(adb: &Adb, reused: bool) -> Result<NativeAndroidBooted> {
-    if !adb.boot_completed().await? || adb.uid().await? != 0 {
+    if adb.boot_identity().await? != Some(0) {
         return Err(Error::Invalid("android_not_booted"));
     }
     snapshot(adb, reused).await

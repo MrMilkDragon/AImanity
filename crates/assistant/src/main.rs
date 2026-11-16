@@ -209,7 +209,9 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
         let cancelled = CancellationToken::new();
         let signal = tokio::spawn(device_setup::interrupt(cancelled.clone()));
         let result = if let Some(root) = root {
-            device_setup::run(&root, cancelled, false).await.map(|_| ())
+            device_setup::run(&root, cancelled, false)
+                .await
+                .and_then(|_| device_setup::runtime_ready(&root))
         } else {
             device_setup::wsl::run(cancelled).await
         };
@@ -332,10 +334,17 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
             async move { redis_events::publish(redis, &app.run_signals.channel_update).await },
         );
     }
-    tokio::spawn(worker::work(app.clone()));
-    tokio::spawn(proactive::work(app.clone()));
+    let tasks = app.clone();
+    tokio::spawn(async move {
+        if let Err(error) = device_setup::wait_for_runtime(&tasks.root).await {
+            eprintln!("Device readiness unavailable: {error}");
+            return;
+        }
+        tokio::spawn(worker::work(tasks.clone()));
+        tokio::spawn(proactive::work(tasks.clone()));
+        tokio::spawn(device_exchange::work(tasks));
+    });
     tokio::spawn(location::work(app.clone()));
-    tokio::spawn(device_exchange::work(app.clone()));
     tokio::spawn(device_network::recover(app.clone()));
     tokio::spawn(harness_proxy::resume(app.clone()));
 

@@ -202,7 +202,7 @@ async fn grpc_capture(media: Arc<Media>) {
                 let rotation = angle(&encoder_media, &image);
                 let at = image.timestamp_us / 1000;
                 match tokio::task::spawn_blocking(move || hub::jpeg(&image, rotation)).await {
-                    Ok(Ok(jpeg)) => encoder_media.screen.publish(jpeg, at),
+                    Ok(Ok(jpeg)) => encoder_media.screen.publish(&jpeg, at),
                     error => {
                         eprintln!("phone frame: {error:?}");
                         encoder_media.screen.end();
@@ -235,21 +235,28 @@ async fn adb_capture(media: &Media) {
         media.screen.demand().await;
         let mut frame = tokio::time::interval(Duration::from_millis(100));
         frame.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last = None;
         while media.screen.viewers.load(Ordering::Relaxed) != 0 {
             frame.tick().await;
             let result: Result<()> = async {
                 let png = adb_png(media).await?;
                 let captured = super::now();
-                let jpg = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
-                    let source =
-                        image::load_from_memory_with_format(&png, image::ImageFormat::Png)?;
-                    let mut jpg = Vec::new();
-                    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpg, 80)
-                        .encode_image(&source)?;
-                    Ok(jpg)
-                })
-                .await??;
-                media.screen.publish(jpg, captured);
+                let jpeg = match &last {
+                    Some((previous, jpeg)) if previous == &png => jpeg,
+                    _ => {
+                        let encoded = tokio::task::spawn_blocking(move || -> Result<_> {
+                            let source =
+                                image::load_from_memory_with_format(&png, image::ImageFormat::Png)?;
+                            let mut jpeg = Vec::new();
+                            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 80)
+                                .encode_image(&source)?;
+                            Ok((png, jpeg))
+                        })
+                        .await??;
+                        &last.insert(encoded).1
+                    }
+                };
+                media.screen.publish(jpeg, captured);
                 Ok(())
             }
             .await;

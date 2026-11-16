@@ -122,6 +122,43 @@ async fn goal_steers_one_run_and_blocks_liberty_until_stopped_or_completed() {
         assert_eq!(edited.active_run_id, started.active_run_id);
         assert_eq!(edited.goal, "检查今天的工作消息");
         assert!(edited.goal_active);
+        let goal_run = Uuid::parse_str(&edited.active_run_id).unwrap();
+        assert_eq!(crate::worker::claim_due_run(&app).await.unwrap().unwrap().0, goal_run);
+        sqlx::query("UPDATE runs SET control_epoch=41 WHERE id=$1")
+            .bind(goal_run)
+            .execute(&app.db)
+            .await
+            .unwrap();
+        crate::worker::recover_interrupted_runs(&app.db).await.unwrap();
+        let reopened = state(&app).await.unwrap();
+        assert_eq!(reopened.active_run_id, edited.active_run_id);
+        assert_eq!(reopened.goal, edited.goal);
+        assert_eq!(reopened.goal_status, "queued");
+        let (epoch, pending_inputs): (i64, i32) = sqlx::query_as(
+            "SELECT control_epoch,jsonb_array_length(steering) FROM runs WHERE id=$1",
+        )
+        .bind(goal_run)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+        assert_eq!(epoch, 0, "a restarted runner has a new control epoch");
+        assert_eq!(pending_inputs, 3);
+
+        let pause = crate::http::cancel(
+            State(app.clone()),
+            headers(&app),
+            Ok(wire::ChatRunRequest {
+                run_id: edited.active_run_id.clone(),
+                pause: true,
+            }
+            .encode_to_vec()
+            .into()),
+        )
+        .await;
+        assert_eq!(pause.status(), StatusCode::OK);
+        crate::worker::recover_interrupted_runs(&app.db).await.unwrap();
+        assert_eq!(state(&app).await.unwrap().goal_status, "paused");
+
         let phone_liberty = route(
             State(app.clone()),
             Path("update".into()),
@@ -150,7 +187,7 @@ async fn goal_steers_one_run_and_blocks_liberty_until_stopped_or_completed() {
         let run_status = |run| {
             sqlx::query_scalar::<_, String>("SELECT status FROM runs WHERE id=$1").bind(run)
         };
-        let goal_run = Uuid::parse_str(&edited.active_run_id).unwrap();
+        crate::worker::recover_interrupted_runs(&app.db).await.unwrap();
         assert_eq!(run_status(goal_run).fetch_one(&app.db).await.unwrap(), "canceled");
 
         let again = goal_state(goal(&app, stopped.revision, "复核消息").await).await;

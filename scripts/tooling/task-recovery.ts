@@ -1,6 +1,7 @@
 import {
   mkdirSync,
   writeFileSync,
+  unlinkSync,
   readFileSync,
   copyFileSync,
   existsSync,
@@ -47,6 +48,9 @@ class Model {
         const history = JSON.stringify(body.input);
         assert(history.includes("result_unknown"));
         assert(history.includes("superseded_after_interruption"));
+      }
+      if (name === "long") {
+        assert(JSON.stringify(body.input).includes("保存本轮实测进度"));
       }
       const calls = new Set(
           body.input
@@ -271,7 +275,7 @@ class Driver {
     );
     return { root, database, runId, message };
   }
-  start(root: string, resume?: string) {
+  start(root: string) {
     const log = openSync(
         join(root, "worker-" + randomUUID() + ".log"),
         "wx",
@@ -285,7 +289,7 @@ class Driver {
           "--ignored",
           "--nocapture",
         ],
-        { env: { ...this.env(root), AI_PHONE_RECOVERY_RESUME_RUN: resume ?? "" }, stdout: log, stderr: log },
+        { env: this.env(root), stdout: log, stderr: log },
       );
     this.processes.push({ child, log });
     return child;
@@ -356,8 +360,9 @@ class Driver {
       }),
       wake = row.wake;
     await this.stop(child);
+    this.sql(db, `UPDATE runs SET control_epoch=42 WHERE id='${id}';`);
     child = this.start(root);
-    await Bun.sleep(700);
+    await this.wait(() => this.sql(db, `SELECT control_epoch FROM runs WHERE id='${id}';`) === "0");
     assert.equal(this.row(db, id).wake, wake);
     assert.equal(this.model.counts.wait, 1);
     run(["docker", "restart", this.args.container], { stdio: "ignore" });
@@ -404,24 +409,23 @@ class Driver {
       };
     this.sql(
       db,
-      `UPDATE runs SET status='running',context=${literal([{ role: "user", content: [{ type: "input_text", text: "你好" }] }, call, unstarted])}::jsonb,pending_tools=${literal([call, unstarted])}::jsonb WHERE id='${id}'; INSERT INTO harness_events(id,run_id,message_id,kind,title,status) VALUES('${action}','${id}','${message}','tool','unknown','running');`,
+      `UPDATE runs SET status='running',control_epoch=42,context=${literal([{ role: "user", content: [{ type: "input_text", text: "你好" }] }, call, unstarted])}::jsonb,pending_tools=${literal([call, unstarted])}::jsonb WHERE id='${id}'; INSERT INTO harness_events(id,run_id,message_id,kind,title,status) VALUES('${action}','${id}','${message}','tool','unknown','running');`,
     );
     const child = this.start(root);
-    await this.wait(() => this.row(db, id).status === "paused");
-    await this.stop(child);
-    assert(!existsSync(join(root, "data/workspaces/admin/forbidden.txt")));
-    assert.equal(this.model.counts.unknown || 0, 0);
-    const resumed = this.start(root, id);
     await this.wait(() => {
       const row = this.row(db, id);
       return row.status === "paused" && row.loop_state.notice_kind === "needs_input";
     });
-    await this.stop(resumed);
+    await this.stop(child);
+    assert.equal(
+      this.sql(db, `SELECT control_epoch FROM runs WHERE id='${id}';`),
+      "0",
+    );
     assert.equal(this.model.counts.unknown, 1);
     assert.equal(this.sql(db, `SELECT count(*) FROM memories;`), "0");
     assert(!existsSync(join(root, "data/workspaces/admin/forbidden.txt")));
     this.reports.push(
-      "Explicit resume replans with the unknown receipt, asks for verification and executes neither old write",
+      "Startup recovery replans with the unknown receipt and executes neither old write",
     );
   }
   async provider() {
@@ -485,23 +489,38 @@ class Driver {
     );
   }
   async longRun() {
-    const { root, database: db, runId: id } = this.fixture("long");
+    const { root, database: db, runId: id } = this.fixture("long"),
+      goal = "保存本轮实测进度";
+    this.sql(
+      db,
+      `UPDATE runs SET trigger_input='task-goal',context=${literal([{role:"user",content:[{type:"input_text",text:goal}]}])}::jsonb WHERE id='${id}'; UPDATE proactive_state SET goal='${goal}',goal_run_id='${id}';`,
+    );
     let child = this.start(root);
     await this.wait(() => this.model.longHold.held);
     assert.equal(this.sql(db, "SELECT count(*) FROM memories;"), "16");
     await this.stop(child);
     this.model.longHold.release();
+    const deployment = join(root, "data/deployment"),
+      pending = join(deployment, "device-setup.pending");
+    mkdirSync(deployment, { mode: 0o700 });
+    writeFileSync(pending, "");
     child = this.start(root);
+    await this.wait(() => this.row(db, id).status === "queued");
+    await Bun.sleep(450);
+    assert.equal(this.row(db, id).status, "queued");
+    assert.equal(this.model.counts.long, 17);
+    unlinkSync(pending);
     await this.wait(() => this.row(db, id).status === "paused", 55);
     assert(this.row(db, id).step >= 56);
     await this.stop(child);
     assert.equal(this.sql(db, "SELECT count(*) FROM memories;"), "56");
+    assert.equal(this.sql(db, "SELECT goal_run_id FROM proactive_state;"), id);
     assert.equal(
       this.sql(db, "SELECT count(DISTINCT content) FROM memories;"),
       "56",
     );
     this.reports.push(
-      "56 committed effects survive slices and an interrupted model call exactly once",
+      "The active goal waits for device readiness, resumes the same run after an interrupted model call and commits each of 56 effects once",
     );
   }
   async close() {

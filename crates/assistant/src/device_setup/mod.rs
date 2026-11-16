@@ -5,6 +5,7 @@ mod store;
 pub mod wsl;
 
 use crate::wire;
+use ai_phone_host_runtime::DEVICE_SETUP_PENDING;
 use rpc::Rpc;
 use std::{fmt, path::Path, time::Duration};
 use store::{Intent, Store};
@@ -21,6 +22,22 @@ impl fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 type Result<T> = std::result::Result<T, Error>;
+
+pub(crate) async fn wait_for_runtime(root: &Path) -> std::io::Result<()> {
+    let pending = root.join(DEVICE_SETUP_PENDING);
+    while tokio::fs::try_exists(&pending).await? {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    Ok(())
+}
+
+pub(crate) fn runtime_ready(root: &Path) -> Result<()> {
+    match std::fs::remove_file(root.join(DEVICE_SETUP_PENDING)) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(Error("device_setup_storage")),
+    }
+}
 
 pub async fn run(
     root: &Path,

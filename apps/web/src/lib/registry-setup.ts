@@ -28,7 +28,8 @@ export function setupProgress(state:MessageShape<typeof RegistryStateSchema>) {
  const agent = state.agents.find(row => row.id === state.activeAgentId);
  const model = state.models.find(row => row.id === agent?.modelConnectionId);
  const devices = state.devices.filter(device => device.runtimeState === 'managed');
- return {devices, ready:!!model?.profile?.verifiedAtMs && devices.length > 0};
+ const agentReady = !!model?.profile?.verifiedAtMs;
+ return {devices, agentReady, ready:agentReady && devices.length > 0};
 }
 type Frame={phoneId?:string;deviceId?:string;width:number;height:number;png:Uint8Array;observationId:string};
 export function hasDeviceFrame(id:string,frame:Frame):boolean {

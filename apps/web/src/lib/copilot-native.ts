@@ -25,7 +25,10 @@ export class NativeRecognition{
     const core=nativeCore();
     if(!core)throw Error('当前客户端不支持本机识别');
     const body=toBinary(NativeVoiceRequestSchema,create(NativeVoiceRequestSchema,{sessionId:this.sessionId,action}));
-    return fromBinary(NativeVoiceResponseSchema,new Uint8Array(await core.invoke('native_voice',body)));
+    const response=await core.invoke('native_voice',body).catch(error=>{
+      throw typeof error==='string'?Error(error):error;
+    });
+    return fromBinary(NativeVoiceResponseSchema,new Uint8Array(response));
   }
   async open(language:string,dispatch:(event:VoiceEvent)=>void){
     this.dispatch=dispatch;

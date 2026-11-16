@@ -4,8 +4,8 @@ import {LanguageWindow,LanguageTrigger} from '@/components/language-window';
 import {WorkbenchNoticeProvider,WorkbenchNotices,DeviceNoticeScope,useWorkbenchNotice} from '@/components/workbench-notices';
 import {useI18n} from '@/components/locale-provider';
 import {DeviceDefaultsProvider,creationDefaults,type DeviceDefaults} from '@/components/device-defaults';
-import { memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,type CSSProperties,type Dispatch,type Ref,type SetStateAction } from "react";
-import {CopilotProvider,CopilotToggle,CopilotWave,useCopilotBinding} from '@/components/copilot';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,type CSSProperties,type Dispatch,type Ref,type SetStateAction } from "react";
+import {CopilotBackdrop,CopilotProvider,CopilotToggle,CopilotWave,useCopilotBinding} from '@/components/copilot';
 import {
   create,
   fromBinary,
@@ -25,7 +25,6 @@ import {
 import {
   RunNoticeKind,
   ChatChangedSchema,
-  ChatMessageSchema,
   ChatStateSchema,
   ChatRunRequestSchema,
   ChatAttachmentSchema,
@@ -33,7 +32,6 @@ import {
 import { ApiErrorSchema } from "@ai-phone/protocol/ai_phone/v1/system_pb";
 import {
   ArrowUp,
-  Download,
   Paperclip,
   Square,
   Pause,
@@ -47,8 +45,6 @@ import {
   RefreshCw,
   Settings,
 } from "lucide-react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import "./phone.css";
@@ -61,10 +57,11 @@ import {LocationWindow} from "@/components/location-window";
 import { KnowledgeWindow } from "@/components/knowledge-window";
 import { HarnessProxy } from "@/components/harness-proxy";
 import { WorkspaceWindow } from "@/components/workspace-window";
-import { ExecutionTrace } from "@/components/execution-trace";
+import { ChatMessageList, type ChatDisplayCut } from "@/components/chat-message-list";
 import {ProactiveProvider,ExplorationToggle,TaskGoal,TaskGoalBackdrop} from "@/components/proactive-controls";
 import { RegistryWindow,type Registry } from "@/components/registry-window";
-import { FloatingWindow, WindowTrigger } from "@/components/floating-window";
+import { FloatingWindow, rememberAnchor, WindowTrigger } from "@/components/floating-window";
+import {setupProgress} from "@/lib/registry-setup";
 import {DesktopRequestSchema,DesktopObservationSchema} from '@ai-phone/protocol/ai_phone/v1/desktop_pb';
 import {DeviceCableToggle} from '@/components/device-cable';
 import {DesktopSurface} from '@/components/desktop-surface';
@@ -80,8 +77,6 @@ import {ClientUpdate} from "@/components/client-update";
 
 type Chat = MessageShape<typeof ChatStateSchema>;
 type Attachment = MessageShape<typeof ChatAttachmentSchema>;
-const ChatMarkdown = memo(Markdown);
-const chatMarkdownPlugins = [remarkGfm];
 type PendingFile = {
   key: string;
   name: string;
@@ -122,6 +117,7 @@ function DeviceWorkbench(){
  const [locationEnabled,setLocationEnabled]=useState(false);
  const [feature,setFeature]=useState(''),[horizontal,setHorizontal]=useState<Record<string,boolean>>({}),[linked,setLinked]=useState<string[]>([]);
  const scene=useRef<HTMLElement>(null),chatActions=useRef<ChatActions>(null),orientations=useRef<Record<string,boolean>>({});
+ const settingsTrigger=useRef<HTMLButtonElement>(null);
  const devices=registry?.devices??[];
  const selectedDevice=devices.find(device=>device.id===current)??devices[0];
  const copilotDeviceId=devices.find(device=>device.runtimeState==='managed')?.id??'phone-local-01';
@@ -138,9 +134,14 @@ function DeviceWorkbench(){
  const close=(name:string)=>setFeature(old=>old===name?'':old);
  const voiceAgentId=feature.startsWith('settings:voice:')?feature.slice('settings:voice:'.length):'';
  const settingsOpen=feature==='settings'||!!voiceAgentId;
- return <CopilotProvider currentDeviceId={copilotDeviceId} onConfigure={id=>setFeature('settings:voice:'+id)}><main ref={scene} className="device-workbench" data-runtime={focus.includes('phone-local-01')}>
+ const agentNeedsSetup=registry!==null&&!setupProgress(registry).agentReady;
+ function configureVoice(id:string){
+  if(settingsTrigger.current)rememberAnchor(settingsTrigger.current, document.activeElement?.matches(':focus-visible')?'keyboard':'click');
+  setFeature('settings:voice:'+id);
+ }
+ return <CopilotProvider currentDeviceId={copilotDeviceId} onConfigure={configureVoice}><main ref={scene} className="device-workbench" data-runtime={focus.includes('phone-local-01')}>
   <TaskGoalBackdrop/>
-  <CopilotWave deviceId={copilotDeviceId}/>
+  <CopilotBackdrop deviceId={copilotDeviceId}/>
   <header className="workbench-navigation">
    <WorkbenchNotices activeFeature={feature}/>
    <nav className="workbench-shared-tools" aria-label={t("工作工具")}>
@@ -152,7 +153,9 @@ function DeviceWorkbench(){
     <WindowTrigger label={t("知识库")} open={feature==='knowledge'} onOpen={()=>setFeature('knowledge')}><BookOpen size={18}/></WindowTrigger>
     <WindowTrigger label={t("文件管理")} open={feature==='files'} onOpen={()=>setFeature('files')}><FolderOpen size={18}/></WindowTrigger>
     <TaskGoal open={feature==='goal'} deviceId={selectedDevice?.id??current} onOpen={()=>setFeature('goal')} onClose={()=>close('goal')}/>
-    <WindowTrigger label={t("配置中心")} open={settingsOpen} onOpen={()=>setFeature('settings')}><Settings size={18}/></WindowTrigger>
+    <WindowTrigger ref={settingsTrigger} label={t(agentNeedsSetup?'配置 Agent':'配置中心')} open={settingsOpen} onOpen={()=>setFeature('settings')}>
+     <Settings size={18} className={agentNeedsSetup?'registry-setup-cue':undefined}/>
+    </WindowTrigger>
     <ClientUpdate open={feature==='update'} onOpen={()=>setFeature('update')} onClose={()=>close('update')}/>
    </nav>
    <Button variant="ghost" size="icon" aria-label={t("刷新对话显示")} title={t("刷新对话显示")} disabled={!selectedDevice} onClick={()=>chatActions.current?.refreshDisplay()}><RefreshCw size={18}/></Button>
@@ -175,7 +178,7 @@ function DeviceWorkbench(){
     copilotDeviceId={copilotDeviceId} onRefresh={()=>setFeature('')}/>}
   </div>
   <DeviceCableLine root={scene} devices={devices} linked={linked}/>
-  <RegistryWindow open={settingsOpen} voiceAgentId={voiceAgentId} onClose={()=>setFeature(old=>old==='settings'||old.startsWith('settings:voice:')?'':old)} onNeedsSetup={()=>setFeature('settings')} onChange={setRegistry} activeDeviceId={current}/>
+  <RegistryWindow open={settingsOpen} voiceAgentId={voiceAgentId} onClose={()=>setFeature(old=>old==='settings'||old.startsWith('settings:voice:')?'':old)} onChange={setRegistry} activeDeviceId={current}/>
   <LanguageWindow open={feature==='language'} onClose={()=>close('language')}/>
   <LocationWindow open={feature==='location'} onClose={()=>close('location')} onEnabled={setLocationEnabled}/>
   <SkillsWindow open={feature==='skills'} onClose={()=>close('skills')}/><KnowledgeWindow open={feature==='knowledge'} onClose={()=>close('knowledge')}/><WorkspaceWindow devices={devices} open={feature==='files'} onClose={()=>close('files')}/>
@@ -472,6 +475,7 @@ function PhoneWorkspace({stageStyle,onSelect,selectedDevice,focused,onActivate,o
   );
 }
 
+const activeChatPollMs=700;
 function SharedConversation({actionsRef,registry,selectedDevice,copilotDeviceId,onRefresh}:{
   actionsRef:Ref<ChatActions>;registry:Registry;selectedDevice:Device;
   copilotDeviceId:string;onRefresh:()=>void;
@@ -484,7 +488,9 @@ function SharedConversation({actionsRef,registry,selectedDevice,copilotDeviceId,
   const chat=chatSnapshot.chat;
   const historyChat=useRef<Chat|null>(null);historyChat.current=chat;
   const historyWatchOffset=useRef(0);
-  const [displayCut,setDisplayCut]=useState<{ids:string[];runId:string;at:number;text:string}|null>(null);
+  const refreshHistory=useRef<(delay?:number)=>void>(()=>{});
+  const requestHistory=useCallback(()=>refreshHistory.current(),[]);
+  const [displayCut,setDisplayCut]=useState<ChatDisplayCut|null>(null);
   useEffect(()=>{try{const value=JSON.parse((localStorage.getItem('ai-phone:chat-display-cut:phone-local-01')??localStorage.getItem('ai-phone:chat-display-cut'))||'null');if(value&&Array.isArray(value.ids)&&value.ids.every((id:unknown)=>typeof id==='string')&&typeof value.at==='number'&&typeof value.runId==='string')setDisplayCut(value);}catch{}},[]);
   function refreshChatDisplay(){
     if(!chat)return;
@@ -502,10 +508,13 @@ function SharedConversation({actionsRef,registry,selectedDevice,copilotDeviceId,
   const acceptChat=useCallback((next:Chat,order=++historyGeneration.current,beforeMessageId='')=>{
     setChatSnapshot(previous=>acceptSnapshot(previous,next,order,beforeMessageId));
   },[]);
-  const acknowledgeInput=useCallback((receipt:AcceptedInput,order:number)=>{
+  const acknowledgeInput=useCallback((receipt:AcceptedInput)=>{
+    const order=beginHistory();
     setChatSnapshot(previous=>acceptInputReceipt(previous,receipt,order));
-  },[]);
-  const outbox=useChatOutbox(chat?.conversationId||'',acceptChat,beginHistory,acknowledgeInput);
+    if(!historyChat.current?.messages.some(message=>message.requestId===receipt.message.requestId))refreshHistory.current(activeChatPollMs);
+  },[beginHistory]);
+  const outbox=useChatOutbox(chat?.conversationId||'',historyChat,acknowledgeInput,requestHistory);
+  const {receiptIds,project}=outbox;
   const recoverVoice=useCallback((value:string)=>setText(old=>old?old+'\n'+value:value),[]);
   const active=!!chat&&['queued','running','paused'].includes(chat.runStatus);
   const paused=chat?.runStatus==='paused';
@@ -525,29 +534,22 @@ function SharedConversation({actionsRef,registry,selectedDevice,copilotDeviceId,
   }),[copilotDeviceId,chat,agentId,runtimeAvailable,outbox.ready,submitVoice,recoverVoice]);
   const voiceDraft=useCopilotBinding(voiceBinding);
   useWorkbenchNotice(error);
-  useWorkbenchNotice(historyError,()=>void fetchChat());
+  useWorkbenchNotice(historyError,requestHistory);
   useWorkbenchNotice(outbox.error||outbox.entries.find(item=>item.error)?.error||'',outbox.retry);
   useWorkbenchNotice(chat?.noticeKind===RunNoticeKind.NEEDS_INPUT?'':chat?.error||'');
   const [files, setFiles] = useState<PendingFile[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<Attachment | null>(null);
-  const visibleMessages=chat?.messages.filter(message=>!displayCut?.ids.includes(message.id)||(message.role==='assistant'&&message.runId===displayCut.runId))??[];
-  const received=new Set(chat?.messages.map(message=>message.requestId));
-  const pendingMessages=outbox.entries.filter(item=>!received.has(item.id));
-  const displayedMessages=[...visibleMessages,...pendingMessages.map(item=>create(ChatMessageSchema,{id:item.id,requestId:item.id,role:'user',text:item.text,attachments:item.attachments.map(file=>({...file,sizeBytes:BigInt(file.sizeBytes)}))}))]
-    .filter(message=>message.role!=='assistant'||message.text||message.hasActivity||message.attachments.length>0)
-    .map(message=>({...message,text:displayCut?.ids.includes(message.id)&&message.text===displayCut.text?'':message.text}));
   const fetchChat=useCallback((signal?:AbortSignal,beforeMessageId='')=>readChatHistory(
-    {conversation,fetching:fetchingChat,latest:historyChat,watchOffset:historyWatchOffset},
-    {begin:beginHistory,accept:acceptChat,error:setHistoryError},signal,beforeMessageId,
-  ),[acceptChat,beginHistory]);
+    {conversation,fetching:fetchingChat,latest:historyChat,watchOffset:historyWatchOffset,receiptIds},
+    {begin:beginHistory,accept:(next,order,before)=>{acceptChat(next,order,before);project(next);},error:setHistoryError},signal,beforeMessageId,
+  ),[acceptChat,beginHistory,receiptIds,project]);
   const historyPages=useChatHistoryPages(fetchChat,chatSnapshot);
   useEffect(() => {
     const abort = new AbortController();
     const url = new URL('/api/chat/events', location.href);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    const updates = new WebSocket(url);
-    updates.binaryType = 'arraybuffer';
+    let updates: WebSocket | undefined;
     let chatTimer: ReturnType<typeof setTimeout>;
     let reading = false;
     let changed = false;
@@ -555,6 +557,7 @@ function SharedConversation({actionsRef,registry,selectedDevice,copilotDeviceId,
     const messages = async () => {
       if (abort.signal.aborted || !visible() || reading) return;
       clearTimeout(chatTimer);
+      if (!updates || updates.readyState === WebSocket.CLOSED) connect();
       reading = true;
       let latest: Chat | undefined;
       do {
@@ -566,27 +569,42 @@ function SharedConversation({actionsRef,registry,selectedDevice,copilotDeviceId,
       const idle = latest && !['queued', 'running', 'paused'].includes(latest.runStatus)
         && !latest.messages.some(message => message.active);
       // An idle connection gets a slower backstop for changes without a socket event.
-      chatTimer = setTimeout(messages, idle && updates.readyState === WebSocket.OPEN ? 5000 : 700);
+      chatTimer = setTimeout(messages, idle && updates?.readyState === WebSocket.OPEN ? 5000 : activeChatPollMs);
     };
-    const refresh = () => {
+    const refresh = (delay = 0) => {
+      if(delay){
+        if(!abort.signal.aborted&&visible()&&!reading){clearTimeout(chatTimer);chatTimer=setTimeout(messages,delay);}
+        return;
+      }
       changed = true;
       void messages();
     };
-    updates.onopen = refresh;
-    updates.onclose = refresh;
-    updates.onmessage = ({data}) => {
-      const {conversationId} = fromBinary(ChatChangedSchema, new Uint8Array(data));
-      if (!conversationId || !conversation.current || conversation.current === conversationId) refresh();
-    };
+    function connect() {
+      const socket = new WebSocket(url);
+      updates = socket;
+      socket.binaryType = 'arraybuffer';
+      socket.onopen = () => refresh();
+      socket.onclose = () => {
+        if (abort.signal.aborted || !visible() || reading) return;
+        clearTimeout(chatTimer);
+        chatTimer = setTimeout(messages, activeChatPollMs);
+      };
+      socket.onmessage = ({data}) => {
+        const {conversationId} = fromBinary(ChatChangedSchema, new Uint8Array(data));
+        if (!conversationId || !conversation.current || conversation.current === conversationId) refresh();
+      };
+    }
     const visibility = () => {
       if (visible()) refresh();
       else clearTimeout(chatTimer);
     };
+    refreshHistory.current=refresh;
     void messages();
     document.addEventListener('visibilitychange', visibility);
     return () => {
       abort.abort();
-      updates.close();
+      refreshHistory.current=()=>{};
+      updates?.close();
       clearTimeout(chatTimer);
       document.removeEventListener('visibilitychange', visibility);
     };
@@ -662,6 +680,7 @@ function SharedConversation({actionsRef,registry,selectedDevice,copilotDeviceId,
   }));
   return <>
         <section data-flip-id="shared-chat" className="conversation-pane" aria-labelledby="shared-chat-agent">
+          <CopilotWave deviceId={copilotDeviceId}/>
           <div className="conversation-device-label"><span>{selectedDevice.name}</span><small id="shared-chat-agent">{(active&&chat?.agentName)||registry.agents.find(a=>a.id===agentId)?.name||t("未分配 Agent")}</small></div>
           <div
             className="message-scroll"
@@ -674,55 +693,14 @@ function SharedConversation({actionsRef,registry,selectedDevice,copilotDeviceId,
           >
             <div className="message-list">
               {chatSnapshot.history?.hasOlder&&<Button className="self-center" variant="ghost" size="sm" type="button" disabled={historyPages.loading} onClick={historyPages.more}>{historyPages.loading&&<LoadingOrb size={14} />}{t("较早消息")}</Button>}
-              {displayedMessages.map((message) => (
-                <article
-                  key={message.requestId||message.id}
-                  data-message-id={message.id}
-                  className={`message message-${message.role}`}
-                  aria-label={message.role === "user" ? t("你") : t("助手")}
-                >
-                  {message.role==="assistant"&&message.runId&&message.hasActivity&&<ExecutionTrace messageId={message.id} afterMs={message.runId===displayCut?.runId?displayCut.at:0} runId={message.runId} active={message.active&&!paused} status={message.active?chat?.runStatus:undefined} nextWakeAtMs={message.active?Number(chat?.nextWakeAtMs):0}/>}
-                  {message.attachments.length > 0 && (
-                    <div className="message-attachments">
-                      {message.attachments.map((file) =>
-                        file.mediaType.startsWith("image/") ? (
-                          <div key={file.id} className="inline-flex items-start gap-1">
-                            <button
-                              onClick={() => setPreview(file)}
-                              aria-label={t("查看") + file.name}
-                            >
-                              <img
-                                src={`/api/assistant/attachment/${file.id}`}
-                                alt={file.name}
-                              />
-                            </button>
-                            <Button asChild variant="ghost" size="icon" className="size-11">
-                              <a
-                                href={`/api/assistant/attachment/${file.id}`}
-                                download={file.name}
-                                aria-label={`${t("下载")} ${file.name}`}
-                                title={t("下载")}
-                              >
-                                <Download aria-hidden="true" />
-                              </a>
-                            </Button>
-                          </div>
-                        ) : (
-                          <a
-                            key={file.id}
-                            href={`/api/assistant/attachment/${file.id}`}
-                            download={file.name}
-                          >
-                            {file.name}
-                          </a>
-                        ),
-                      )}
-                    </div>
-                  )}
-                  {message.text&&<ChatMarkdown remarkPlugins={chatMarkdownPlugins}>{message.text}</ChatMarkdown>}
-                  {pendingMessages.some(item=>item.id===message.requestId&&item.status!=='accepted')&&<span className="message-delivery" role="status">{t(pendingMessages.find(item=>item.id===message.requestId)?.status==='failed'?'未发送':'发送中')}</span>}
-                </article>
-              ))}
+              <ChatMessageList
+                messages={chat?.messages}
+                entries={outbox.entries}
+                displayCut={displayCut}
+                runStatus={chat?.runStatus}
+                nextWakeAtMs={Number(chat?.nextWakeAtMs)}
+                onPreview={setPreview}
+              />
             </div>
           </div>
           <form

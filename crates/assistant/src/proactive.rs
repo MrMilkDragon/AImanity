@@ -835,7 +835,11 @@ async fn schedule_device(app: &App, device_id: &str, kind: &str) -> Result<(), s
         .iter()
         .any(|row| row.get::<String, _>("status") == "pending");
     notifications.retain(|row| (row.get::<String, _>("status") == "pending") == fresh);
-    if notifications.is_empty() && sqlx::query_scalar::<_,bool>("SELECT EXISTS(SELECT 1 FROM runs WHERE conversation_id=$1 AND status IN ('queued','running','paused') AND (origin='exploration' OR status<>'paused'))").bind(conversation).fetch_one(&mut *tx).await? { return Ok(()); }
+    if notifications.is_empty() && sqlx::query_scalar::<_,bool>(
+        "SELECT EXISTS(SELECT 1 FROM runs WHERE conversation_id=$1 AND (
+           status IN ('queued','running') OR (origin='exploration' AND (
+             status='paused' OR (status IN ('succeeded','failed','canceled') AND NOT background_finalized)))))"
+    ).bind(conversation).fetch_one(&mut *tx).await? { return Ok(()); }
     let origin = if !notifications.is_empty() {
         "notification"
     } else if device_id == crate::registry::PHONE
@@ -1022,7 +1026,6 @@ async fn attend_phone(app: &App) {
             .execute(&app.db)
             .await;
         }
-        let _ = reconcile(app).await;
         let _ = schedule(app, &["phone"]).await;
     }
 }
@@ -1066,8 +1069,19 @@ async fn attend_desktops(app: &App) {
             ""
         };
         let _ = sqlx::query("UPDATE proactive_state SET last_error=$1 WHERE $1<>'' OR last_error='电脑通知暂不可用，请检查设备通知服务'").bind(inbox_error).execute(&app.db).await;
-        let _ = reconcile(app).await;
         let _ = schedule(app, &["desktop"]).await;
+    }
+}
+
+async fn settle_notifications(app: &App) {
+    let mut interval = tokio::time::interval(Duration::from_secs(3));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = app.run_signals.proactive_settled.notified() => {}
+        }
+        let _ = reconcile(app).await;
     }
 }
 
@@ -1083,10 +1097,10 @@ async fn forward_reports(app: &App) {
 pub async fn work(app: Shared) {
     // Each device's collection and admission has one owner. Phone supervision
     // precedes phone admission without blocking desktop work or report delivery.
-    // Dropping work cancels all three futures; no detached collector remains.
     tokio::join!(
         attend_phone(&app),
         attend_desktops(&app),
+        settle_notifications(&app),
         forward_reports(&app)
     );
 }
@@ -1198,6 +1212,7 @@ mod tests {
             let first:Uuid=sqlx::query_scalar("SELECT id FROM runs").fetch_one(&app.db).await.unwrap();
             assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM runs").fetch_one(&app.db).await.unwrap(),1,"concurrent schedulers create one cycle");
             sqlx::query("UPDATE runs SET status='succeeded' WHERE id=$1").bind(first).execute(&app.db).await.unwrap();
+            schedule(&app, &["phone"]).await.unwrap();assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM runs").fetch_one(&app.db).await.unwrap(),1,"a terminal cycle must set its next deadline before admission");
             reconcile(&app).await.unwrap();let wake=state(&app).await.unwrap().next_wake_at_ms;
             reconcile(&app).await.unwrap();assert_eq!(state(&app).await.unwrap().next_wake_at_ms,wake,"recovery does not extend the deadline");
             schedule(&app, &["phone", "desktop"]).await.unwrap();assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM runs").fetch_one(&app.db).await.unwrap(),1);

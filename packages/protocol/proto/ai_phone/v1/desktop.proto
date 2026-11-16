@@ -7,6 +7,18 @@ enum DesktopFrameState {
   DESKTOP_FRAME_STATE_CHANGING = 2;
   DESKTOP_FRAME_STATE_UNCHANGED = 3;
 }
+// Frame returned by the Linux desktop bridge to the assistant.
+message DesktopBridgeFrame {
+  bytes png = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  string title = 4;
+  string application_class = 5;
+  uint32 window_id = 6;
+  uint32 process_id = 7;
+  DesktopFrameState frame_state = 8;
+  uint32 frame_wait_ms = 9;
+}
 message DesktopObservation {
   string device_id = 1;
   string observation_id = 2;

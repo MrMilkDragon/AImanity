@@ -139,7 +139,6 @@ pub(super) fn restore(folder: &Path) -> Result<Progress, String> {
     let Some(mut progress) = read(folder)? else {
         return Ok(Progress::default());
     };
-    progress.license.clear();
     match progress.state.as_str() {
         "running" | "license" => {
             progress.phase = "interrupted".into();
@@ -159,7 +158,7 @@ pub(super) fn restore(folder: &Path) -> Result<Progress, String> {
 mod tests {
     use super::*;
     #[test]
-    fn restart_requires_live_readiness_and_never_reuses_license_approval() {
+    fn restart_requires_live_readiness_and_recovers_older_checkpoints() {
         let folder =
             std::env::temp_dir().join(format!("ai-phone-checkpoint-{}", std::process::id()));
         fs::create_dir_all(&folder).unwrap();
@@ -167,16 +166,14 @@ mod tests {
             save(
                 &folder,
                 &Progress {
-                    phase: "sdk-licenses".into(),
+                    phase: "source".into(),
                     state: state.into(),
-                    license: "Fixture terms".into(),
                     ..Default::default()
                 },
             )
             .unwrap();
             let recovered = restore(&folder).unwrap();
             assert_eq!(recovered.state, "interrupted");
-            assert!(recovered.license.is_empty());
             assert!(!completed(&folder).unwrap());
         }
         save(

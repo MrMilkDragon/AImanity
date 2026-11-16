@@ -49,6 +49,8 @@ use std::{
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub const DEVICE_SETUP_PENDING: &str = "data/deployment/device-setup.pending";
+
 #[derive(Debug)]
 pub enum Error {
     Invalid(&'static str),

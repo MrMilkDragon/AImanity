@@ -164,7 +164,19 @@ function AgentForm({draftId, agent, model, initialSection, busy, error, open, on
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState('');
   const nameField = useRef<HTMLInputElement>(null);
-  useEffect(() => {if (section === 'config') nameField.current?.focus({preventScroll:true});}, [section]);
+  const keyRequest = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (draftId && section === 'config') nameField.current?.focus({preventScroll:true});
+  }, [draftId, section]);
+  useEffect(() => {
+    if (!open) {
+      setShowKey(false);
+      setRevealed('');
+      setKeyBusy(false);
+      setKeyError('');
+    }
+    return () => keyRequest.current?.abort();
+  }, [open]);
 
   function update(patch: Partial<Config>) {
     setConfig(current => ({...current, ...patch}));
@@ -177,17 +189,20 @@ function AgentForm({draftId, agent, model, initialSection, busy, error, open, on
       return;
     }
     if (!model) return;
+    const controller = new AbortController();
+    keyRequest.current = controller;
     setKeyBusy(true);
     setKeyError('');
     try {
       const credential = await settingsRpc('credential', ConnectionCredentialRequestSchema,
-        {id:model.id, expectedRevision:model.revision}, ModelCredentialSchema, 'registry');
+        {id:model.id, expectedRevision:model.revision}, ModelCredentialSchema, 'registry', controller.signal);
+      if (controller.signal.aborted) return;
       setRevealed(credential.apiKey);
       setShowKey(true);
     } catch (failure) {
-      setKeyError(failure instanceof Error ? failure.message : t('读取密钥失败'));
+      if (!controller.signal.aborted) setKeyError(failure instanceof Error ? failure.message : t('读取密钥失败'));
     } finally {
-      setKeyBusy(false);
+      if (!controller.signal.aborted) setKeyBusy(false);
     }
   }
 

@@ -55,19 +55,20 @@ fn serve(mut socket: TcpStream) {
     }
     bytes(&mut socket, b"OKAY");
     match service.as_str() {
-        "shell:getprop sys.boot_completed" => {
-            bytes(&mut socket, if mode == "never-boot" { b"0" } else { b"1" })
+        r#"shell:boot=$(getprop sys.boot_completed); printf '%s\n' "$boot"; [ "$boot" != 1 ] || id -u"# => {
+            bytes(
+                &mut socket,
+                if mode == "never-boot" {
+                    b"0\n"
+                } else if (mode == "unknown-root" && !root().join("root.requests").exists())
+                    || mode == "denied-root"
+                {
+                    b"1\n2000\n"
+                } else {
+                    b"1\n0\n"
+                },
+            )
         }
-        "shell:id -u" => bytes(
-            &mut socket,
-            if (mode == "unknown-root" && !root().join("root.requests").exists())
-                || mode == "denied-root"
-            {
-                b"2000"
-            } else {
-                b"0"
-            },
-        ),
         "exec:screencap -p" => bytes(
             &mut socket,
             include_bytes!("../../../phone-runner/fixtures/ocr-probe.png"),

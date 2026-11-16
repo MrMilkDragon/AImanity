@@ -403,14 +403,20 @@ async fn voice_uses_existing_user_priority_without_an_extra_text_delay() {
                 .await
                 .unwrap();
         assert_eq!(policy, ("user".into(), 0));
+        let message: Uuid = sqlx::query_scalar("SELECT assistant_message_id FROM runs WHERE id=$1")
+            .bind(run)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
         assert!(
             tokio::time::timeout(
                 Duration::from_millis(300),
-                input_ready(&app, run, &CancellationToken::new())
+                admit_model(&app, run, message, &CancellationToken::new())
             )
             .await
             .unwrap()
             .unwrap()
+            .is_some()
         );
         accept(&app, &request("文字补充保持原合并策略")).await;
         let quiet: i16 = sqlx::query_scalar("SELECT input_quiet_ms FROM runs WHERE id=$1")
@@ -434,6 +440,11 @@ async fn voice_interrupts_an_in_progress_text_quiet_window() {
     database_case(|app| async move {
         let first = accept(&app, &request("等待文字补充")).await;
         let run = Uuid::parse_str(&first.run_id).unwrap();
+        let message: Uuid = sqlx::query_scalar("SELECT assistant_message_id FROM runs WHERE id=$1")
+            .bind(run)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
         sqlx::query("UPDATE runs SET input_quiet_ms=700,input_at=clock_timestamp() WHERE id=$1")
             .bind(run)
             .execute(&app.db)
@@ -449,16 +460,28 @@ async fn voice_interrupts_an_in_progress_text_quiet_window() {
         };
         let quiet = async {
             assert!(
-                !tokio::time::timeout(
+                tokio::time::timeout(
                     Duration::from_millis(300),
-                    input_ready(&app, run, &CancellationToken::new()),
+                    admit_model(&app, run, message, &CancellationToken::new()),
                 )
                 .await
                 .unwrap()
                 .unwrap()
+                .is_none()
             );
         };
         tokio::join!(quiet, interrupt);
+        let attempts: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM harness_events WHERE run_id=$1 AND kind='model'",
+        )
+        .bind(run)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+        assert_eq!(
+            attempts, 0,
+            "a superseded input never starts a model attempt"
+        );
     })
     .await;
 }
