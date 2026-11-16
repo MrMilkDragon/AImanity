@@ -1,0 +1,235 @@
+name: Dysprosium Windows upgrade-compatible signed candidate
+on:
+  push:
+    branches: [codex/dysprosium-windows-layered]
+    paths: [.github/workflows/dysprosium-windows-layered.yml]
+permissions:
+  contents: read
+  actions: read
+env:
+  DYSPROSIUM_SOURCE: '76aca508fef7fd535dafe5f35760dc5aacc48d95'
+  GUEST_SOURCE_RUN: '43899035620'
+  CALCIUM_BASE_HASH: '1184c13114500f919b6bcc738d9af7e1f872ff192aef624e67aa87a6f9b7446f'
+  CALCIUM_ANDROID_HASH: '23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce'
+jobs:
+  calcium:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.DYSPROSIUM_SOURCE }}
+      - name: Recover Calcium's immutable WHPX base
+        shell: bash
+        run: |
+          ./scripts/bootstrap.sh
+          ./scripts/bun -e '
+            import { join } from "node:path";
+            import { json } from "./scripts/tooling/inventory";
+            import { ROOT, digest } from "./scripts/tooling/process";
+            import { fetchPin } from "./scripts/tooling/factory";
+            import { unpackWindowsInstaller } from "./scripts/tooling/windows-installer";
+            const policy = json(join(ROOT, "config/windows-qemu.json"));
+            const pin = policy.calcium_installer;
+            const installer = await fetchPin(process.env.RUNNER_TEMP, pin.file, pin);
+            const recovered = join(ROOT, "dist", "immutable");
+            await unpackWindowsInstaller(ROOT, installer, recovered, [
+              "{app}\\host\\qemu\\manifest.json",
+              "{app}\\host\\qemu\\guest\\guest.qcow2",
+              "{app}\\host\\qemu\\guest\\bzImage",
+              "{app}\\host\\qemu\\guest\\kernel.config",
+              "{app}\\host\\qemu\\guest\\KERNEL-LICENSE.txt",
+            ]);
+            const manifestPath = join(recovered, "host", "qemu", "manifest.json");
+            if (await digest(manifestPath) !== policy.bundled_manifest_sha256) throw Error("Calcium QEMU manifest differs");
+            const manifest = json(manifestPath);
+            for (const path of ["guest/guest.qcow2", "guest/bzImage", "guest/kernel.config", "guest/KERNEL-LICENSE.txt"]) {
+              const record = manifest.files.find(row => row.path === path);
+              if (await digest(join(recovered, "host", "qemu", path)) !== record.sha256) throw Error("Calcium component differs: " + path);
+            }
+            if (manifest.guest.disk.sha256 !== process.env.CALCIUM_BASE_HASH) throw Error("Calcium base identity differs");
+          '
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: dysprosium-immutable-calcium-base
+          path: dist/immutable/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  release-layer:
+    needs: calcium
+    runs-on: ubuntu-24.04
+    timeout-minutes: 145
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.DYSPROSIUM_SOURCE }}
+      - name: Prepare the disposable layer assembly tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-utils e2fsprogs cpio
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: dysprosium-immutable-calcium-base
+          path: ${{ runner.temp }}/baseline
+      - name: Take the newly built Rust guest from the source factory
+        run: |
+          folder="$RUNNER_TEMP/donor"
+          mkdir "$folder"
+          while :; do
+            artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GUEST_SOURCE_RUN/artifacts?name=dysprosium-guest-relay" --jq '.artifacts[] | select(.expired == false) | .id')
+            if [ -n "$artifact" ]; then
+              gh run download "$GUEST_SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name dysprosium-guest-relay --dir "$folder"
+              break
+            fi
+            linux=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GUEST_SOURCE_RUN/jobs" --jq '.jobs[] | select(.name == "linux-guest" and .status == "completed") | .conclusion')
+            if [ -n "$linux" ] && [ "$linux" != success ]; then echo "::error::Guest source factory: $linux"; exit 1; fi
+            sleep 8
+          done
+      - name: Build and inspect the Rust release partition over the preserved base
+        run: |
+          test "$(git rev-parse HEAD)" = "$DYSPROSIUM_SOURCE"
+          donor="$RUNNER_TEMP/donor"
+          baseline="$RUNNER_TEMP/baseline"
+          qemu="$baseline/host/qemu"
+          compiled="$RUNNER_TEMP/compiled"
+          mkdir "$compiled"
+          tar -xOf "$donor/windows-guest.payload" WINDOWS-VM-DISK-MANIFEST.json > "$donor/manifest.json"
+          jq -e --arg source "$DYSPROSIUM_SOURCE" \
+            '.source_commit == $source and .source_components == ["native-services", "phone-apps"]' "$donor/manifest.json"
+          tar -xOf "$donor/windows-guest.payload" guest.qcow2 > "$donor/guest.qcow2"
+          printf '%s  %s\n' "$(jq -er .disk.sha256 "$donor/manifest.json")" "$donor/guest.qcow2" | sha256sum --check -
+          rm "$donor/windows-guest.payload"
+          qemu-img convert -f qcow2 -O raw -S 4096 "$donor/guest.qcow2" "$donor/root.ext4"
+          rm "$donor/guest.qcow2"
+          debugfs -R "dump /usr/local/libexec/aiphone-bootstrap $compiled/bootstrap.program" "$donor/root.ext4"
+          debugfs -R "dump /opt/aiphone/bundle/source.payload $compiled/source.payload" "$donor/root.ext4"
+          debugfs -R "dump /opt/aiphone/bundle/images.payload $compiled/images.payload" "$donor/root.ext4"
+          rm "$donor/root.ext4"
+          tar -xOf "$compiled/source.payload" HOST-MANIFEST.json | jq -e '.components == ["native-services", "phone-apps"]'
+          bash scripts/windows-release-layer.sh "$compiled" "$baseline" "$qemu/guest" "$compiled/images.payload"
+          record_hash() { sha256sum "$1" | cut -d ' ' -f1; }
+          jq --arg source "$DYSPROSIUM_SOURCE" --arg manifest "$(record_hash SOURCE-MANIFEST.json)" \
+            --arg release "$(record_hash "$compiled/source.payload")" \
+            --arg images "$(record_hash "$compiled/images.payload")" \
+            --arg init "$(record_hash "$qemu/guest/release-init.cpio.gz")" \
+            --arg ext "$(record_hash "$qemu/guest/release.ext4")" \
+            --argjson initsize "$(stat -c %s "$qemu/guest/release-init.cpio.gz")" \
+            --argjson extsize "$(stat -c %s "$qemu/guest/release.ext4")" '
+            .source_commit=$source | .source_manifest_sha256=$manifest |
+            .release_sha256=$release | .release_images_sha256=$images | .windows_boot_verified=false |
+            .files |= map(if .path=="guest/release-init.cpio.gz" then .sha256=$init|.size=$initsize
+                          elif .path=="guest/release.ext4" then .sha256=$ext|.size=$extsize else . end)
+          ' "$qemu/manifest.json" > "$qemu/manifest.new"
+          mv "$qemu/manifest.new" "$qemu/manifest.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: dysprosium-qemu-release-layer
+          path: ${{ runner.temp }}/baseline/host/qemu/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  windows-exe:
+    needs: release-layer
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_HTTP_MULTIPLEXING: 'false'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.DYSPROSIUM_SOURCE }}
+      - name: Locked build tools
+        shell: bash
+        run: |
+          cmake --version
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          test "$(git rev-parse HEAD)" = "$DYSPROSIUM_SOURCE"
+          ./scripts/bun scripts/source.ts check --repository --manifest
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+      - name: Prepare temporary Authenticode tools
+        shell: pwsh
+        run: |
+          & C:\msys64\usr\bin\bash.exe -lc 'pacman -Sy --needed --noconfirm mingw-w64-ucrt-x86_64-osslsigncode mingw-w64-ucrt-x86_64-openssl'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          'C:\msys64\ucrt64\bin' >> $env:GITHUB_PATH
+      - name: Recover QEMU runtime and Android capsule from Calcium
+        shell: bash
+        run: |
+          ./scripts/bun -e '
+            import { rmSync } from "node:fs";
+            import { join } from "node:path";
+            import { json } from "./scripts/tooling/inventory";
+            import { ROOT, download } from "./scripts/tooling/process";
+            import { prepareWindowsQemu } from "./scripts/tooling/windows-qemu";
+            import { unpackWindowsInstaller } from "./scripts/tooling/windows-installer";
+            import { preparePayload } from "./scripts/tooling/client-payload";
+            const pin = json(join(ROOT, "config/windows-qemu.json")).calcium_installer;
+            const installer = join(process.env.RUNNER_TEMP, pin.file);
+            await download(pin.url, installer);
+            await prepareWindowsQemu(join(ROOT, "dist", "windows-qemu"), installer);
+            const recovered = join(ROOT, "dist", "calcium-components");
+            await unpackWindowsInstaller(ROOT, installer, recovered, ["{app}\\host\\android.payload"]);
+            rmSync(installer);
+            const integrity = await preparePayload(ROOT, { androidRuntime: join(recovered, "host", "android.payload") });
+            if (integrity["android.payload"] !== process.env.CALCIUM_ANDROID_HASH) throw Error("Calcium Android capsule differs");
+            rmSync(recovered, { recursive: true });
+          '
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: dysprosium-qemu-release-layer
+          path: apps/client/src-tauri/gen/host/qemu
+      - name: Stage the layered guest and sign the complete native EXE
+        shell: bash
+        run: |
+          ./scripts/bun -e '
+            import { cpSync, lstatSync } from "node:fs";
+            import { join } from "node:path";
+            import { json, save } from "./scripts/tooling/inventory";
+            import { ROOT, digest } from "./scripts/tooling/process";
+            import { buildConfig } from "./scripts/tooling/resources";
+            import { buildClient } from "./scripts/tooling/client-build";
+            const host = join(ROOT, "apps/client/src-tauri/gen/host");
+            const qemu = join(host, "qemu");
+            const runtime = join(ROOT, "dist", "windows-qemu");
+            for (const folder of ["runtime", "licenses"]) cpSync(join(runtime, folder), join(qemu, folder), { recursive: true });
+            const path = join(qemu, "manifest.json");
+            const manifest = json(path);
+            if (manifest.source_commit !== process.env.DYSPROSIUM_SOURCE ||
+                manifest.guest.disk.sha256 !== process.env.CALCIUM_BASE_HASH) throw Error("Layer identity differs");
+            for (const row of manifest.files) {
+              const file = join(qemu, row.path);
+              if (lstatSync(file).size !== row.size || await digest(file) !== row.sha256) throw Error("QEMU release component differs: " + row.path);
+            }
+            const integrityPath = join(host, "integrity.json");
+            const integrity = json(integrityPath);
+            integrity["qemu/manifest.json"] = await digest(path);
+            save(integrityPath, integrity);
+            buildConfig(ROOT);
+            const built = await buildClient("windows", ROOT, { nativeWorkbench: true, temporarySigning: true });
+            if (!built.complete_device_bundle || built.interface !== "iced-wgpu" || built.signing !== "authenticode-self-signed" ||
+                !built.installer_delivery.github_asset_eligible) throw Error("Invalid complete native installer");
+          '
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: dysprosium-windows-layered-signed-exe
+          path: |
+            dist/AImanity-0.0.4-windows-x64-setup.exe
+            dist/AImanity-0.0.4-windows-x64-setup.exe.manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
