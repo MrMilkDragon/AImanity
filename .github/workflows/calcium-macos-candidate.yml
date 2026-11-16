@@ -1,3 +1,52 @@
+name: Calcium macOS signed candidate
+on:
+  push:
+    branches: [codex/calcium-carrier]
+    paths: [.github/workflows/calcium-macos-candidate.yml, scripts/calcium-macos-package.ts]
+permissions:
+  contents: read
+env:
+  CALCIUM_SOURCE: f7f4b57cc425a36956475ebca238ee6ff0b506b6
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+  NEXT_TELEMETRY_DISABLED: '1'
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+jobs:
+  macos-dmg:
+    runs-on: macos-26
+    timeout-minutes: 100
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.CALCIUM_SOURCE }}
+          fetch-depth: 0
+          path: source
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: carrier
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Prepare the disposable Apple Silicon compiler
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = arm64
+          test "$(git rev-parse HEAD)" = "$CALCIUM_SOURCE"
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          rustup target add --toolchain 1.96.0 aarch64-unknown-linux-musl
+          ./scripts/bootstrap.sh
+          ./scripts/bun scripts/source.ts check --repository --manifest
+          if ! command -v tesseract >/dev/null; then brew install tesseract; fi
+          echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
+          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/aimanity-ocr"
+          echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aimanity-ocr" >> "$GITHUB_ENV"
       - name: Build the exact Web runtime and signed DMG
         run: |
           set -euo pipefail

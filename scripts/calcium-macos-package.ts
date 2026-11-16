@@ -16,7 +16,7 @@ const { buildClient, noticeManifest } = await import(root + "/scripts/tooling/cl
 
 if (hostKey() !== "macos-arm64") throw Error("Apple Silicon builder required");
 run(["git", "diff", "--quiet", "1140106eba7b4edf80879b49d3eae0f515d02c93", "HEAD", "--",
-  "apps/android-device", "apps/android-ime", "apps/android-notifications", "scripts/tooling/phone-apps.ts",
+  ":(glob)apps/android-*/**", "scripts/tooling/phone-apps.ts",
   "config/container-host-runtime.json"], { cwd: root });
 const source = sourceFiles(root);
 checkSource(root, { repository: true, manifest: true }, source);
