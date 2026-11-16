@@ -345,16 +345,19 @@ try {
     await checkRetained("", "/", location.path);
     await checkRetained(desktop.id, guestFolder, copied.target.path);
     equal(android("shell", "cat", `/sdcard/Download/${expectedName}`).toString(), expectedName, "prior virtual phone retained exact content");
+    console.log(JSON.stringify({ retainedAfterUpgrade: baseline, workspace: true, linux: true, android: true }));
+    await verifyLinuxControl(upgradedCookie);
     await Promise.all([
       verifyFrame("/api/desktop/media?device_id=" + encodeURIComponent(desktop.id), "Linux after update", upgradedCookie),
       verifyFrame("/api/phone/media/screen?device=" + encodeURIComponent(phone.id), "Android after update", upgradedCookie),
-      verifyLinuxControl(upgradedCookie),
     ]);
     console.log(JSON.stringify({upgrade: baseline + " → " + candidate, method: "native updater helper with QA-staged signed EXE", release: release.release_sha256,
       workspace: true, linux: true, android: true, ms: Math.round(performance.now() - updateStart)}));
   }
 
 } catch (error) {
+  const network = Bun.spawnSync(["powershell.exe", "-NoProfile", "-Command", "Get-NetTCPConnection -LocalPort 17860 -ErrorAction SilentlyContinue | Select-Object State,OwningProcess | Format-Table -HideTableHeaders; Get-Process ai-phone-client,qemu-system-x86_64 -ErrorAction SilentlyContinue | Select-Object ProcessName,Id,StartTime | Format-Table -HideTableHeaders"], { env, timeout: 12000 });
+  console.error("Loopback and process state at failure:\n" + network.stdout.toString());
   for (const log of logPaths) {
     const file = join(home, log);
     if (existsSync(file)) {
