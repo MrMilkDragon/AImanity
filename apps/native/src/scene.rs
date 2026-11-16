@@ -1,9 +1,10 @@
 use crate::{
     Message,
-    connection::{DeviceInput, Frame},
+    connection::{DeviceInput, Frame, Press},
     layout::Layout,
     style,
 };
+use ai_phone_api::wire;
 use iced::{Event, Point, Rectangle, Size, keyboard, mouse, wgpu, widget::shader};
 use std::{sync::Arc, time::Instant};
 
@@ -17,10 +18,73 @@ pub struct Scene {
     pub child_popup: Rectangle,
     pub mode_effects: [f32; 4],
     pub keyboard_target: Option<usize>,
+    pub agent_pointers: [[[f32; 4]; 5]; 2],
+}
+
+const POINTER_MS: u64 = 650;
+
+pub struct AgentTrace {
+    points: [[f32; 4]; 5],
+    received: Instant,
+}
+
+impl AgentTrace {
+    pub fn from_cursor(
+        cursor: &wire::DeviceCursor,
+        device: &wire::RegisteredDevice,
+    ) -> Option<Self> {
+        let agent = if device.kind == "phone" {
+            cursor.actor == "agent"
+        } else {
+            uuid::Uuid::parse_str(&cursor.actor).is_ok()
+        };
+        if !agent
+            || !cursor.input_confirmed
+            || cursor.device_id != device.id
+            || cursor.action_id.is_empty()
+            || cursor.width == 0
+            || cursor.height == 0
+            || !matches!(cursor.status.as_str(), "running" | "completed")
+        {
+            return None;
+        }
+        let mut points = [[0.; 4]; 5];
+        for (slot, point) in points
+            .iter_mut()
+            .zip(cursor.paths.iter().filter_map(|p| p.points.last()))
+        {
+            let age = cursor
+                .reported_at_ms
+                .saturating_sub(cursor.started_at_ms.saturating_add(u64::from(point.at_ms)));
+            *slot = [
+                (point.x as f32 + 0.5) / cursor.width as f32,
+                (point.y as f32 + 0.5) / cursor.height as f32,
+                POINTER_MS.saturating_sub(age) as f32,
+                cursor.width as f32 / cursor.height as f32,
+            ];
+        }
+        Some(Self {
+            points,
+            received: Instant::now(),
+        })
+    }
+
+    pub fn markers(&self, frame: &Frame) -> [[f32; 4]; 5] {
+        let elapsed = self.received.elapsed().as_secs_f32() * 1000.;
+        let aspect = frame.width as f32 / frame.height as f32;
+        self.points.map(|[x, y, remaining, captured_aspect]| {
+            let opacity = if (aspect - captured_aspect).abs() < 0.05 {
+                ((remaining - elapsed) / 160.).clamp(0., 1.)
+            } else {
+                0.
+            };
+            [x, y, opacity, 0.]
+        })
+    }
 }
 #[derive(Default)]
 pub struct Pointer {
-    pressed: Option<(usize, Point, Instant, bool)>,
+    pressed: Option<(usize, Point, Instant, mouse::Button)>,
     pub anchor: Point,
     pub preedit: Option<iced::advanced::input_method::Preedit>,
 }
@@ -43,7 +107,9 @@ impl shader::Program<Message> for Scene {
             return None;
         }
         match event {
-            Event::Mouse(mouse::Event::ButtonPressed(button)) => {
+            Event::Mouse(mouse::Event::ButtonPressed(
+                button @ (mouse::Button::Left | mouse::Button::Right),
+            )) => {
                 let p = cursor.position()?;
                 for index in [self.focus, 1 - self.focus] {
                     if let Some(local) = self.layout.local(index, p) {
@@ -52,14 +118,18 @@ impl shader::Program<Message> for Scene {
                             index,
                             local,
                             Instant::now(),
-                            *button == mouse::Button::Right,
+                            *button,
                         ));
                         return Some(shader::Action::publish(Message::Focus(index)).and_capture());
                     }
                 }
             }
-            Event::Mouse(mouse::Event::ButtonReleased(_)) => {
-                let (index, from, started, right) = state.pressed.take()?;
+            Event::Mouse(mouse::Event::ButtonReleased(button)) => {
+                let (index, from, started, pressed_button) = state.pressed?;
+                if *button != pressed_button {
+                    return None;
+                }
+                state.pressed = None;
                 let to = self.layout.local(index, cursor.position()?)?;
                 let frame = self.frames[index].as_ref()?;
                 let x = (from.x * frame.width as f32).min((frame.width - 1) as f32) as u32;
@@ -73,7 +143,12 @@ impl shader::Program<Message> for Scene {
                         duration: started.elapsed().as_millis().clamp(120, 2000) as u32,
                     }
                 } else {
-                    DeviceInput::Tap { x, y, right }
+                    let press = match button {
+                        mouse::Button::Right => Press::Right,
+                        _ if index == 0 && started.elapsed().as_millis() >= 500 => Press::Hold,
+                        _ => Press::Left,
+                    };
+                    DeviceInput::Tap { x, y, press }
                 };
                 return Some(shader::Action::publish(Message::Input(index, input)).and_capture());
             }
@@ -189,7 +264,11 @@ impl shader::Program<Message> for Scene {
                     self.layout.angles[0],
                     self.layout.angles[1],
                     self.focus as f32,
-                    0.,
+                    if self.agent_pointers.iter().flatten().any(|p| p[2] > 0.) {
+                        1.
+                    } else {
+                        0.
+                    },
                 ],
                 material: [
                     style::PANEL_RADIUS,
@@ -199,6 +278,7 @@ impl shader::Program<Message> for Scene {
                 ],
                 background: style::BACKGROUND.into_linear(),
                 mode_effects: self.mode_effects,
+                agent_pointers: self.agent_pointers,
             },
             frames: self.frames.clone(),
         }
@@ -232,6 +312,7 @@ pub struct Uniforms {
     material: [f32; 4],
     background: [f32; 4],
     mode_effects: [f32; 4],
+    agent_pointers: [[[f32; 4]; 5]; 2],
 }
 #[derive(Debug)]
 pub struct Primitive {

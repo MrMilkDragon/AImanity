@@ -1,4 +1,4 @@
-struct Scene { size:vec4<f32>, phone:vec4<f32>, desktop:vec4<f32>, chat:vec4<f32>, popup:vec4<f32>, child_popup:vec4<f32>, state:vec4<f32>, material:vec4<f32>, background:vec4<f32>, mode_effects:vec4<f32> }
+struct Scene { size:vec4<f32>, phone:vec4<f32>, desktop:vec4<f32>, chat:vec4<f32>, popup:vec4<f32>, child_popup:vec4<f32>, state:vec4<f32>, material:vec4<f32>, background:vec4<f32>, mode_effects:vec4<f32>, agent_pointers:array<array<vec4<f32>,5>,2> }
 @group(0) @binding(0) var<uniform> scene:Scene;
 @group(0) @binding(1) var phone:texture_2d<f32>;
 @group(0) @binding(2) var desktop:texture_2d<f32>;
@@ -27,6 +27,18 @@ fn device(p:vec2<f32>,rect:vec4<f32>,angle:f32,index:u32,under:vec3<f32>)->vec3<
   let uv=local/rect.zw;
   var screen=textureSampleLevel(desktop,linear_sampler,uv,0.).rgb;
   if index==0u {screen=textureSampleLevel(phone,linear_sampler,uv,0.).rgb;}
+  if scene.state.w>0. {
+   for (var i=0u;i<5u;i+=1u) {
+    let mark=scene.agent_pointers[index][i];
+    if mark.z>0. {
+     let d=length(local-mark.xy*rect.zw);
+     let edge=(1.-smoothstep(7.,8.,d))*mark.z;
+     let fill=(1.-smoothstep(5.,6.,d))*mark.z;
+     screen=mix(screen,vec3(.98),edge);
+     screen=mix(screen,vec3(.03,.09,.12),fill);
+    }
+   }
+  }
   let border=smoothstep(-2.0,-.6,dist);
   color=mix(screen,vec3(.13,.14,.15),border);
   color=mix(color,under,smoothstep(-.2,1.,dist));

@@ -12,6 +12,8 @@ mod macos_uninstall;
 mod uninstall {
     include!("../../windows-lifecycle.rs");
 }
+#[path = "../../update_core.rs"]
+mod client_update;
 mod updates;
 
 static WORKBENCH_URL: LazyLock<Url> = LazyLock::new(|| {
@@ -462,7 +464,7 @@ pub fn run() {
                     app,
                     updates::ID,
                     updates::CHECK,
-                    updates::platform().is_some(),
+                    client_update::platform().is_some(),
                     None::<&str>,
                 )?;
                 app.manage(updates::Menu::new(update.clone()));

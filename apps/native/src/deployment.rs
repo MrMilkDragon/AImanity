@@ -6,7 +6,7 @@ use crate::{
 };
 use iced::{
     Element, Length,
-    widget::{button, column, container, pick_list, row, space, text},
+    widget::{button, column, container, row, slider, space, text},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -14,10 +14,49 @@ use std::{
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
+    sync::LazyLock,
 };
+
+#[path = "host_memory.rs"]
+mod host_memory;
 
 #[cfg(not(windows))]
 const ID: &str = "dev.aiphone.client";
+const GIB: u64 = 1024_u64.pow(3);
+
+#[derive(Deserialize)]
+struct CapacityPolicy {
+    minimum_ram_gb: u64,
+    minimum_free_gb: u64,
+    minimum_resume_free_gb: u64,
+}
+
+static CAPACITY_POLICY: LazyLock<CapacityPolicy> = LazyLock::new(|| {
+    serde_json::from_str(include_str!("../../../config/host-bootstrap.json"))
+        .expect("bundled host policy")
+});
+
+#[derive(Clone, Copy)]
+struct Capacity {
+    memory: u64,
+    disk: u64,
+    disk_required: u64,
+}
+
+impl Capacity {
+    fn rows(self) -> [(&'static str, u64, u64); 2] {
+        [
+            ("主机内存", self.memory, CAPACITY_POLICY.minimum_ram_gb),
+            ("可用磁盘", self.disk, self.disk_required),
+        ]
+    }
+
+    fn eligible(self) -> bool {
+        self.rows()
+            .into_iter()
+            .all(|(_, available, required)| available >= required)
+    }
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 struct Guest {
@@ -44,7 +83,7 @@ impl Default for Request {
             desktop: Guest {
                 cpus: 2,
                 memory_mb: 2560,
-                storage_gb: Some(16),
+                storage_gb: Some(32),
             },
         }
     }
@@ -167,36 +206,38 @@ impl Bundle {
                     .as_str()
                     .is_some_and(|id| !id.is_empty())))
     }
-    pub fn host(&self, request: &Request) -> Result<Host, String> {
-        let installed = self.installed()?;
+    fn capacity(&self, admitted: bool) -> Result<Capacity, String> {
         let volume = self
             .home
             .ancestors()
             .find(|p| p.is_dir())
             .ok_or("找不到安装磁盘")?;
-        let free = fs2::available_space(volume).map_err(|e| e.to_string())?;
-        #[derive(Deserialize)]
-        struct Policy {
-            minimum_free_gb: u64,
-            minimum_resume_free_gb: u64,
-        }
-        let policy: Policy =
-            serde_json::from_str(include_str!("../../../config/host-bootstrap.json"))
-                .expect("bundled host policy");
-        let limit = if installed {
-            policy.minimum_resume_free_gb
-        } else {
-            policy.minimum_free_gb
-        };
-        if free < limit * 1024_u64.pow(3) {
+        Ok(Capacity {
+            memory: host_memory::total_memory_bytes() / GIB,
+            disk: fs2::available_space(volume).map_err(|error| error.to_string())? / GIB,
+            disk_required: if admitted {
+                CAPACITY_POLICY.minimum_resume_free_gb
+            } else {
+                CAPACITY_POLICY.minimum_free_gb
+            },
+        })
+    }
+    pub fn host(&self, request: &Request) -> Result<Host, String> {
+        let path = self.home.join("request.json");
+        let admitted = self.installed()? || path.is_file();
+        if let Some((label, available, required)) = self
+            .capacity(admitted)?
+            .rows()
+            .into_iter()
+            .find(|(_, available, required)| available < required)
+        {
             return Err(format!(
-                "磁盘空间不足 · 需要 {limit} GiB，可用 {:.1} GiB",
-                free as f64 / 1024_f64.powi(3)
+                "{} · {available} / {required} GiB",
+                Locale::parse(&request.locale).tr(label)
             ));
         }
-        let path = self.home.join("request.json");
         fs::create_dir_all(&self.home).map_err(|e| e.to_string())?;
-        if !installed {
+        if !admitted {
             let bytes = serde_json::to_vec(request).map_err(|e| e.to_string())?;
             write_atomic(&path, &bytes)?;
         }
@@ -213,7 +254,7 @@ impl Bundle {
             source: self.inventory["source.payload"].clone(),
             android: self.inventory["android.payload"].clone(),
             images: images.ok_or("找不到设备镜像")?.clone(),
-            resume: installed,
+            resume: admitted,
         })
     }
     pub fn mark_installed(&self) -> Result<(), String> {
@@ -244,20 +285,34 @@ pub enum Message {
     Choose(Locale),
     Back,
     Set(bool, Field, u16),
+    RefreshCapacity,
     Start,
+    Stop,
 }
 pub struct Setup {
     pub bundle: Bundle,
     pub request: Request,
     pub locale: Option<Locale>,
+    pub attempted: bool,
+    pub installed: bool,
+    capacity: Result<Capacity, String>,
+    #[cfg(target_os = "macos")]
+    pub activities: Vec<crate::host::Activity>,
 }
 impl Setup {
-    pub fn new(bundle: Bundle, request: Option<Request>) -> Self {
+    pub fn new(bundle: Bundle, request: Option<Request>, installed: bool) -> Self {
         let locale = request.as_ref().map(|r| Locale::parse(&r.locale));
+        let attempted = request.is_some();
+        let capacity = bundle.capacity(installed || attempted);
         Self {
             bundle,
+            attempted,
             request: request.unwrap_or_default(),
             locale,
+            installed,
+            capacity,
+            #[cfg(target_os = "macos")]
+            activities: Vec::new(),
         }
     }
     pub fn update(&mut self, message: Message) {
@@ -265,8 +320,10 @@ impl Setup {
             Message::Choose(locale) => {
                 self.locale = Some(locale);
                 self.request.locale = locale.code().into();
+                self.capacity = self.bundle.capacity(false);
             }
             Message::Back => self.locale = None,
+            Message::RefreshCapacity => self.capacity = self.bundle.capacity(false),
             Message::Set(desktop, field, value) => {
                 let guest = if desktop {
                     &mut self.request.desktop
@@ -279,9 +336,95 @@ impl Setup {
                     Field::Storage => guest.storage_gb = Some(value as u8),
                 }
             }
-            Message::Start => {}
+            Message::Start | Message::Stop => {}
         }
     }
+    #[cfg(target_os = "macos")]
+    pub fn activity(&mut self, activity: crate::host::Activity) {
+        use crate::host::ActivityState::Running;
+        if activity.state != Running
+            && let Some(running) = self
+                .activities
+                .iter_mut()
+                .rev()
+                .find(|entry| entry.command == activity.command && entry.state == Running)
+        {
+            *running = activity;
+            return;
+        }
+        if self.activities.len() == 3 {
+            self.activities.remove(0);
+        }
+        self.activities.push(activity);
+    }
+
+    pub fn progress<'a>(
+        &'a self,
+        locale: Locale,
+        phase: &'a str,
+        error: &'a str,
+        can_stop: bool,
+        elapsed: std::time::Duration,
+    ) -> Element<'a, Message> {
+        let title = locale.tr(if phase.is_empty() {
+            if error.is_empty() {
+                "已停止"
+            } else {
+                "安装失败"
+            }
+        } else {
+            phase
+        });
+        let mut content = column![].spacing(16).align_x(iced::Center);
+        if !phase.is_empty() {
+            content = content.push(loading(elapsed));
+        }
+        content = content.push(text(title).size(18));
+        if !error.is_empty() {
+            content = content.push(text(error).size(13).style(style::error_text));
+        }
+        if phase.is_empty() {
+            let button = if error.is_empty() {
+                "继续安装"
+            } else {
+                "重试"
+            };
+            content = content.push(action_button(locale.tr(button), Some(Message::Start)));
+        } else if can_stop {
+            content = content.push(action_button(locale.tr("停止安装"), Some(Message::Stop)));
+        }
+        let centered =
+            container(container(content).max_width(560).padding(24)).center(Length::Fill);
+        #[cfg(target_os = "macos")]
+        if !self.activities.is_empty() {
+            use crate::host::ActivityState::{Completed, Failed, Running};
+            let activity = column(self.activities.iter().map(|entry| {
+                let label = match entry.state {
+                    Running => "运行中",
+                    Completed => "已完成",
+                    Failed => "失败",
+                };
+                row![
+                    text(&entry.command).size(12),
+                    text(locale.tr(label)).size(12).style(style::muted_text)
+                ]
+                .spacing(12)
+                .into()
+            }))
+            .spacing(6);
+            return iced::widget::stack![
+                centered,
+                container(activity)
+                    .padding(24)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_y(iced::alignment::Vertical::Bottom)
+            ]
+            .into();
+        }
+        centered.into()
+    }
+
     pub fn view<'a>(&self, error: &'a str) -> Element<'a, Message> {
         let content = if let Some(locale) = self.locale {
             let tr = |key: &'static str| locale.tr(key);
@@ -293,10 +436,36 @@ impl Setup {
                 .spacing(8)
                 .align_y(iced::Center),
                 Self::guest(false, self.request.phone, locale),
-                Self::guest(true, self.request.desktop, locale),
-                action_button(tr("安装"), Some(Message::Start))
+                Self::guest(true, self.request.desktop, locale)
             ]
             .spacing(22);
+            let eligible = match &self.capacity {
+                Ok(capacity) => {
+                    let checks = row(capacity.rows().map(|(label, available, required)| {
+                        text(format!("{} {available} / {required} GiB", tr(label)))
+                            .size(12)
+                            .style(move |theme| {
+                                if available < required {
+                                    style::error_text(theme)
+                                } else {
+                                    style::muted_text(theme)
+                                }
+                            })
+                            .into()
+                    }))
+                    .spacing(16);
+                    body = body.push(checks);
+                    capacity.eligible()
+                }
+                Err(error) => {
+                    body = body.push(text(error.clone()).size(13).style(style::error_text));
+                    false
+                }
+            };
+            body = body.push(action_button(
+                tr("安装"),
+                eligible.then_some(Message::Start),
+            ));
             if !error.is_empty() {
                 body = body.push(text(error).size(13).style(style::error_text));
             }
@@ -334,15 +503,15 @@ impl Setup {
     }
     fn guest(desktop: bool, guest: Guest, locale: Locale) -> Element<'static, Message> {
         let tr = |key: &'static str| locale.tr(key);
-        let specs = [
-            (tr("处理器"), Field::Cpu, vec![1, 2, 4], guest.cpus.into()),
+        let specs: [(&str, Field, &'static [u16], u16); 3] = [
+            (tr("处理器"), Field::Cpu, &[1, 2, 4], guest.cpus.into()),
             (
                 tr("内存"),
                 Field::Memory,
                 if desktop {
-                    vec![2048, 2560, 3072, 4096]
+                    &[2048, 2560, 3072, 4096]
                 } else {
-                    vec![1536, 2048, 3072, 4096]
+                    &[1536, 2048, 3072, 4096]
                 },
                 guest.memory_mb,
             ),
@@ -350,35 +519,38 @@ impl Setup {
                 tr("存储"),
                 Field::Storage,
                 if desktop {
-                    vec![16, 32, 64]
+                    &[16, 32, 64]
                 } else {
-                    vec![16, 24, 32]
+                    &[16, 24, 32]
                 },
-                guest.storage_gb.unwrap_or(16).into(),
+                guest
+                    .storage_gb
+                    .unwrap_or(if desktop { 32 } else { 16 })
+                    .into(),
             ),
         ];
         let fields = row(specs.into_iter().map(|(label, field, values, current)| {
-            let options: Vec<_> = values
-                .into_iter()
-                .map(|value| Value {
-                    value,
-                    label: match field {
-                        Field::Cpu => format!("{value} {}", tr("核")),
-                        Field::Memory => format!("{} GB", f32::from(value) / 1024.),
-                        Field::Storage => format!("{value} GB"),
-                    },
-                })
-                .collect();
-            let selected = options.iter().find(|v| v.value == current).cloned();
+            let value = match field {
+                Field::Cpu => format!("{current} {}", tr("核")),
+                Field::Memory => format!("{} GB", f32::from(current) / 1024.),
+                Field::Storage => format!("{current} GB"),
+            };
+            let selected = values
+                .iter()
+                .position(|&value| value == current)
+                .unwrap_or(0);
             column![
-                text(label).size(13).style(style::muted_text),
-                pick_list(options, selected, move |v| Message::Set(
-                    desktop, field, v.value
-                ))
-                .width(Length::Fill)
-                .padding([10, 12])
-                .style(style::select)
-                .menu_style(style::menu)
+                row![
+                    text(label).size(13).style(style::muted_text),
+                    space::horizontal(),
+                    text(value).size(13)
+                ]
+                .spacing(6),
+                slider(0..=values.len() as u8 - 1, selected as u8, move |index| {
+                    Message::Set(desktop, field, values[usize::from(index)])
+                })
+                .height(24)
+                .style(style::range),
             ]
             .spacing(6)
             .into()
@@ -402,17 +574,6 @@ impl Setup {
         .into()
     }
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Value {
-    value: u16,
-    label: String,
-}
-impl std::fmt::Display for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.label)
-    }
-}
-
 pub fn loading<M: 'static>(elapsed: std::time::Duration) -> iced::widget::canvas::Canvas<Orb, M> {
     iced::widget::canvas::Canvas::new(Orb(elapsed.as_secs_f32()))
         .width(64)

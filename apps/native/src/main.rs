@@ -3,6 +3,8 @@ mod agent_details;
 mod agents;
 mod audio;
 mod chat;
+#[path = "../../client/update_core.rs"]
+mod client_update;
 mod connection;
 mod controls;
 mod deployment;
@@ -21,6 +23,7 @@ mod scene;
 mod skills;
 mod style;
 mod surface;
+mod updates;
 use ai_phone_api::wire;
 use connection::{Connection, DeviceInput, Frame};
 use iced::{
@@ -40,6 +43,8 @@ enum Message {
     Setup(deployment::Message),
     Connected(Result<Box<connection::Session>, String>),
     Frame(usize, Result<Frame, String>),
+    PollAgentPointers,
+    AgentPointers(Box<[Option<wire::DeviceCursor>; 2]>),
     Chat(Result<wire::ChatState, String>),
     Conversation(chat::Message),
     Agents(agents::Message),
@@ -70,6 +75,7 @@ enum Message {
     Link,
     Linked(Result<wire::DeviceLinkState, String>),
     Rotate,
+    Update(updates::Message),
 }
 #[derive(Clone, Debug)]
 struct Capture {
@@ -87,17 +93,27 @@ enum Panel {
     Files,
     Goal,
     Agent,
+    Update,
     Capture(usize),
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AfterStop {
+    Exit,
+    InstallAgain,
+    Stay,
 }
 struct App {
     setup: Option<deployment::Setup>,
     stop: Option<tokio::sync::oneshot::Sender<()>>,
     host_home: std::path::PathBuf,
+    updates: updates::State,
     phase: String,
-    closing: bool,
+    after_stop: Option<AfterStop>,
     connection: Option<Connection>,
     devices: [Option<wire::RegisteredDevice>; 2],
     frames: [Option<Arc<Frame>>; 2],
+    agent_traces: [Option<scene::AgentTrace>; 2],
+    pointer_polling: bool,
     frame_errors: [String; 2],
     chat: chat::Chat,
     agents: agents::Agents,
@@ -146,11 +162,14 @@ impl App {
             setup: None,
             stop: None,
             host_home: std::path::PathBuf::new(),
+            updates: Default::default(),
             phase: String::new(),
-            closing: false,
+            after_stop: None,
             connection: None,
             devices: [None, None],
             frames: [None, None],
+            agent_traces: [None, None],
+            pointer_polling: false,
             frame_errors: Default::default(),
             chat: chat::Chat::new(),
             agents: agents::Agents::new(),
@@ -200,7 +219,9 @@ impl App {
                 Ok((bundle, request, installed))
             }) {
                 Ok((bundle, request, installed)) => {
-                    app.setup = Some(deployment::Setup::new(bundle, request));
+                    let setup = deployment::Setup::new(bundle, request, installed);
+                    app.locale = setup.locale.unwrap_or_default();
+                    app.setup = Some(setup);
                     if installed {
                         app.update(Message::Setup(deployment::Message::Start))
                     } else {
@@ -218,6 +239,11 @@ impl App {
     fn start(&mut self, host: Result<host::Host, String>) -> Task<Message> {
         match host {
             Ok(host) => {
+                if let Some(setup) = &mut self.setup {
+                    setup.attempted = true;
+                    #[cfg(target_os = "macos")]
+                    setup.activities.clear();
+                }
                 self.phase = "正在启动设备".into();
                 self.error.clear();
                 self.started = Instant::now();
@@ -306,11 +332,14 @@ impl App {
     }
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Setup(message) => {
+            Message::Setup(message) if self.after_stop.is_none() => {
                 if let Some(setup) = &mut self.setup {
                     match message {
-                        deployment::Message::Start => {
+                        deployment::Message::Start if self.phase.is_empty() => {
                             if let Some(stop) = self.stop.take() {
+                                self.after_stop = Some(AfterStop::InstallAgain);
+                                self.streams = None;
+                                self.error.clear();
                                 let _ = stop.send(());
                                 self.phase = "正在重新启动设备".into();
                             } else {
@@ -318,21 +347,42 @@ impl App {
                                 return self.start(host);
                             }
                         }
+                        deployment::Message::Stop if !self.phase.is_empty() => {
+                            if let Some(stop) = self.stop.take() {
+                                self.after_stop = Some(AfterStop::Stay);
+                                self.streams = None;
+                                self.error.clear();
+                                self.phase = "正在停止安装".into();
+                                let _ = stop.send(());
+                            }
+                        }
                         _ => setup.update(message),
                     }
                 }
             }
-            Message::Host(host::Event::Phase(_) | host::Event::Ready(_))
+            Message::Setup(_) => {}
+            Message::Host(
+                host::Event::Phase(_) | host::Event::Ready(_) | host::Event::Failed(_),
+            )
             | Message::Connected(_)
-                if self.closing => {}
+                if self.after_stop.is_some() || (self.setup.is_some() && self.stop.is_none()) => {}
+            #[cfg(target_os = "macos")]
+            Message::Host(host::Event::Activity(activity)) => {
+                if self.after_stop.is_none()
+                    && let Some(setup) = &mut self.setup
+                {
+                    setup.activity(activity);
+                }
+            }
             Message::Host(host::Event::Phase(phase)) => {
                 self.phase = match phase.as_str() {
                     "source" => "正在加载组件",
+                    "profile" => "正在配置设备",
                     "android" => "正在启动手机",
-                    "engine" => "正在启动电脑",
+                    "engine" | "backend" => "正在启动电脑",
                     "services" => "正在启动服务",
                     "input" => "正在连接输入",
-                    "devices" => "正在连接设备",
+                    "devices" | "ready" => "正在连接设备",
                     _ => "正在启动",
                 }
                 .into();
@@ -340,23 +390,31 @@ impl App {
             Message::Host(host::Event::Ready(root)) => {
                 self.root = root.clone();
                 self.phase = "正在连接设备".into();
-                return Task::perform(Connection::connect(root), |r| {
+                let (task, handle) = Task::perform(Connection::connect(root), |r| {
                     Message::Connected(r.map(Box::new))
-                });
+                })
+                .abortable();
+                self.streams = Some(handle.abort_on_drop());
+                return task;
             }
             Message::Host(host::Event::Failed(error)) => {
                 self.error = error;
                 self.phase.clear();
             }
-            Message::Host(host::Event::Stopped(result)) => match result {
-                Ok(()) if self.closing => return iced::exit(),
-                Ok(()) => return self.update(Message::Setup(deployment::Message::Start)),
-                Err(error) => {
-                    self.error = error;
-                    self.phase.clear();
-                    self.closing = false;
+            Message::Host(host::Event::Stopped(result)) => {
+                self.phase.clear();
+                let action = self.after_stop.take();
+                match result {
+                    Ok(()) => match action {
+                        Some(AfterStop::Exit) => return iced::exit(),
+                        Some(AfterStop::InstallAgain) => {
+                            return self.update(Message::Setup(deployment::Message::Start));
+                        }
+                        _ => {}
+                    },
+                    Err(error) => self.error = error,
                 }
-            },
+            }
             Message::Connected(result) => match result {
                 Ok(session) => {
                     let connection::Session {
@@ -365,6 +423,7 @@ impl App {
                         chat,
                         links,
                     } = *session;
+                    let packaged = self.setup.is_some();
                     if let Some(setup) = self.setup.take()
                         && let Err(error) = setup.bundle.mark_installed()
                     {
@@ -397,6 +456,9 @@ impl App {
                         restore,
                         Task::run(client.clone().chat_events(), Message::Chat),
                     ];
+                    if packaged {
+                        tasks.push(updates::check().map(Message::Update));
+                    }
                     for (index, device) in self.devices.iter().enumerate() {
                         if let Some(device) = device {
                             tasks.push(
@@ -424,6 +486,20 @@ impl App {
                     self.phase.clear();
                 }
             },
+            Message::Update(message) => match message {
+                updates::Message::Checked(Ok(offer)) => self.updates.offer = offer,
+                updates::Message::Checked(Err(error)) => eprintln!("Client update: {error}"),
+                updates::Message::Install => return self.updates.install().map(Message::Update),
+                updates::Message::Progress(progress) => self.updates.progress = Some(progress),
+                updates::Message::Finished(Ok(())) => {
+                    return self
+                        .update(Message::Event(Event::Window(window::Event::CloseRequested)));
+                }
+                updates::Message::Finished(Err(error)) => {
+                    self.updates.progress = None;
+                    self.updates.error = error;
+                }
+            },
             Message::Frame(index, result) => match result {
                 Ok(frame) => {
                     let resized = self.frames[index]
@@ -443,18 +519,48 @@ impl App {
                 }
                 Err(error) => self.frame_errors[index] = error,
             },
+            Message::PollAgentPointers if !self.pointer_polling && self.after_stop.is_none() => {
+                if let Some(client) = self.connection.clone() {
+                    self.pointer_polling = true;
+                    let [phone, desktop] = self.devices.clone();
+                    return Task::perform(
+                        async move {
+                            let (phone, desktop) =
+                                tokio::join!(client.cursor(phone), client.cursor(desktop));
+                            Box::new([phone, desktop])
+                        },
+                        Message::AgentPointers,
+                    );
+                }
+            }
+            Message::AgentPointers(cursors) => {
+                self.pointer_polling = false;
+                if self.after_stop.is_none() {
+                    self.agent_traces = std::array::from_fn(|i| {
+                        scene::AgentTrace::from_cursor(
+                            cursors[i].as_ref()?,
+                            self.devices[i].as_ref()?,
+                        )
+                    });
+                }
+            }
             Message::Chat(result) => {
                 if let Some(client) = &self.connection {
+                    let was_active = self.agent_pointer_active();
                     let task = self
                         .chat
                         .update(chat::Message::History(result), client, "")
                         .map(Message::Conversation);
-                    return Task::batch([
-                        task,
-                        self.modes
-                            .observe_chat(&self.chat.state)
-                            .map(Message::Modes),
-                    ]);
+                    let speech = self
+                        .modes
+                        .observe_chat(&self.chat.state)
+                        .map(Message::Modes);
+                    let sample = if was_active != self.agent_pointer_active() {
+                        self.update(Message::PollAgentPointers)
+                    } else {
+                        Task::none()
+                    };
+                    return Task::batch([task, speech, sample]);
                 }
             }
             Message::Conversation(message) => {
@@ -771,11 +877,12 @@ impl App {
                 self.rearrange();
             }
             Message::Event(Event::Window(window::Event::CloseRequested)) => {
-                if self.closing {
+                if self.after_stop == Some(AfterStop::Exit) {
                     return Task::none();
                 }
-                self.closing = true;
+                let stopping = self.after_stop.replace(AfterStop::Exit).is_some();
                 self.streams = None;
+                self.agent_traces = [None, None];
                 for audio in &mut self.audio {
                     audio.stop();
                 }
@@ -783,6 +890,8 @@ impl App {
                 self.phase = "正在关闭设备".into();
                 if let Some(stop) = self.stop.take() {
                     let _ = stop.send(());
+                } else if stopping {
+                    return Task::none();
                 } else if self.host_home.as_os_str().is_empty() {
                     return iced::exit();
                 } else {
@@ -900,6 +1009,12 @@ impl App {
         }
         Task::none()
     }
+    fn agent_pointer_active(&self) -> bool {
+        let chat = &self.chat.state;
+        chat.run_status == "running"
+            || (chat.run_status == "queued"
+                && chat.next_wake_at_ms <= connection::epoch_ms() as i64)
+    }
     fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![iced::event::listen_with(|event, status, _| match &event {
             Event::Window(
@@ -929,6 +1044,22 @@ impl App {
             subscriptions.push(window::frames().map(Message::Tick));
         }
         subscriptions.push(self.chat.subscription().map(Message::Conversation));
+        if self
+            .setup
+            .as_ref()
+            .is_some_and(|setup| !setup.attempted && setup.locale.is_some())
+        {
+            subscriptions.push(
+                iced::time::every(std::time::Duration::from_secs(3))
+                    .map(|_| Message::Setup(deployment::Message::RefreshCapacity)),
+            );
+        }
+        if self.after_stop.is_none() && self.connection.is_some() && self.agent_pointer_active() {
+            subscriptions.push(
+                iced::time::every(std::time::Duration::from_millis(100))
+                    .map(|_| Message::PollAgentPointers),
+            );
+        }
         subscriptions.push(
             self.agents
                 .subscription(self.popup && self.panel == Panel::Agent)
@@ -987,6 +1118,7 @@ impl App {
                 Panel::Location => 560.,
                 Panel::Proxy => 420.,
                 Panel::Goal => 650.,
+                Panel::Update => 400.,
                 Panel::Capture(0) => 440.,
                 Panel::Capture(_) => 700.,
             }),
@@ -1014,11 +1146,16 @@ impl App {
             let device = self.layout.devices[index];
             return iced::Point::new(device.x + self.panel_target().width, device.y);
         }
+        if self.panel == Panel::Update {
+            return iced::Point::new(self.size.width - 32., 64.);
+        }
         let index = Self::NAV_PANELS
             .iter()
             .position(|p| *p == self.panel)
             .unwrap();
-        iced::Point::new(self.size.width - 80. - (7 - index) as f32 * 48., 64.)
+        let trailing_icons =
+            Self::NAV_PANELS.len() - index + usize::from(self.updates.offer.is_some());
+        iced::Point::new(self.size.width - 32. - trailing_icons as f32 * 48., 64.)
     }
     fn load_panel(&mut self) -> Task<Message> {
         let message = match self.panel {
@@ -1120,6 +1257,7 @@ impl App {
             Panel::Location => self.location.view(locale).map(Message::Location),
             Panel::Proxy => self.proxy.view(locale).map(Message::Proxy),
             Panel::Goal => self.modes.goal_view().map(Message::Modes),
+            Panel::Update => self.updates.view(locale).map(Message::Update),
             Panel::Language => column(locale::Locale::all().map(|l| {
                 button(
                     row![
@@ -1179,6 +1317,22 @@ impl App {
             .into()
     }
     fn view(&self) -> Element<'_, Message> {
+        if let Some(setup) = &self.setup {
+            return if setup.attempted || !self.phase.is_empty() {
+                let can_stop = !setup.installed && self.stop.is_some() && self.after_stop.is_none();
+                setup
+                    .progress(
+                        self.locale,
+                        &self.phase,
+                        &self.error,
+                        can_stop,
+                        self.started.elapsed(),
+                    )
+                    .map(Message::Setup)
+            } else {
+                setup.view(&self.error).map(Message::Setup)
+            };
+        }
         if self.connection.is_none() && !self.phase.is_empty() {
             return container(
                 column![
@@ -1190,9 +1344,6 @@ impl App {
             )
             .center(Length::Fill)
             .into();
-        }
-        if let Some(setup) = &self.setup {
-            return setup.view(&self.error).map(Message::Setup);
         }
         use controls::{Icon, icon_button};
         let tr = |key: &'static str| self.locale.tr(key);
@@ -1207,6 +1358,12 @@ impl App {
             child_popup,
             mode_effects: self.modes.effects(),
             keyboard_target: self.keyboard_target,
+            agent_pointers: std::array::from_fn(|i| {
+                self.agent_traces[i]
+                    .as_ref()
+                    .zip(self.frames[i].as_deref())
+                    .map_or([[0.; 4]; 5], |(trace, frame)| trace.markers(frame))
+            }),
         };
         let mut layers = vec![surface::Surface::new(scene).into()];
         let error_message = [
@@ -1251,7 +1408,7 @@ impl App {
                 Panel::Files => (Icon::Folder, tr("文件管理"), false),
                 Panel::Goal => (Icon::Target, tr("任务与目标"), self.modes.goal_active()),
                 Panel::Agent => (Icon::Settings, tr("配置中心"), false),
-                Panel::Capture(_) => unreachable!(),
+                Panel::Capture(_) | Panel::Update => unreachable!(),
             };
             let click = self
                 .connection
@@ -1303,6 +1460,16 @@ impl App {
                     .map(|_| Message::Conversation(chat::Message::RefreshDisplay))
             },
         ));
+        if self.updates.offer.is_some() {
+            nav = nav.push(
+                mouse_area(icon_button(
+                    Icon::Download,
+                    tr("更新可用"),
+                    Some(Message::OpenPanel(Panel::Update, true)),
+                ))
+                .on_enter(Message::OpenPanel(Panel::Update, false)),
+            );
+        }
         let nav = nav.spacing(8).align_y(iced::Center);
         layers.push(
             pin(container(nav).width(self.size.width - 64.).height(40.))
@@ -1426,6 +1593,9 @@ impl App {
 }
 fn main() -> iced::Result {
     let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    if let Some(code) = client_update::run(&arguments) {
+        std::process::exit(code);
+    }
     #[cfg(windows)]
     if let Some(code) = host::windows_command(&arguments) {
         std::process::exit(code);

@@ -12,7 +12,6 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Manager};
 
 const HELPER: &str = "--install-macos-update";
 const BUNDLE: &str = "AImanity.app";
@@ -82,19 +81,8 @@ fn workspace(bundle: &Path, pid: u32) -> PathBuf {
     bundle.with_file_name(format!(".ai-phone-update-{pid}"))
 }
 
-pub(super) fn launch(app: &AppHandle, downloaded: &Path, version: &Version) -> Result<(), String> {
-    let cache = app
-        .path()
-        .app_cache_dir()
-        .map_err(|error| error.to_string())?;
-    if downloaded
-        != cache
-            .join("client-updates")
-            .join(Platform::Mac.installer(version))
-    {
-        return Err("Unexpected macOS installer path.".into());
-    }
-    let bundle = application(&app.config().identifier)?;
+pub(super) fn launch(downloaded: &Path, version: &Version, identifier: &str) -> Result<(), String> {
+    let bundle = application(identifier)?;
     let pid = process::id();
     let work = workspace(&bundle, pid);
     DirBuilder::new()

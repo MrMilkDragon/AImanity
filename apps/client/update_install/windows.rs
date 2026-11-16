@@ -14,7 +14,6 @@ use std::{
     process::{Command, Stdio},
     ptr::null_mut,
 };
-use tauri::{AppHandle, Manager};
 use windows_sys::Win32::{
     Foundation::WAIT_OBJECT_0,
     Storage::FileSystem::FILE_SHARE_READ,
@@ -30,17 +29,9 @@ const MODE: &str = "--install-client-update";
 const HELPER: &str = "ai-phone-update-helper.exe";
 const LAUNCHER: &str = "ai-phone-client.exe";
 
-pub(super) fn launch(app: &AppHandle, downloaded: &Path, version: &Version) -> Result<(), String> {
-    let folder = app
-        .path()
-        .app_cache_dir()
-        .map_err(|error| error.to_string())?
-        .join("client-updates");
-    if downloaded != folder.join(Platform::Windows.installer(version)) {
-        return Err("Unexpected Windows installer path".into());
-    }
+pub(super) fn launch(folder: &Path, downloaded: &Path, version: &Version) -> Result<(), String> {
     let _locked = lock_installer(downloaded).map_err(|error| error.to_string())?;
-    spawn_helper(&folder, version).map_err(|error| error.to_string())
+    spawn_helper(folder, version).map_err(|error| error.to_string())
 }
 
 fn lock_installer(path: &Path) -> io::Result<File> {

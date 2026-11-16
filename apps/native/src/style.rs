@@ -1,7 +1,7 @@
 use iced::{
     Color, Theme,
     theme::Palette,
-    widget::{button, text},
+    widget::{button, slider, text},
 };
 use std::sync::OnceLock;
 
@@ -95,6 +95,19 @@ pub fn quiet(theme: &Theme, status: button::Status) -> button::Style {
         let ink = if dark(theme) { 1. } else { 0. };
         style.background = Some(Color::from_rgba(ink, ink, ink, 0.055).into());
     }
+    style
+}
+
+pub fn range(theme: &Theme, status: slider::Status) -> slider::Style {
+    let mut style = slider::default(theme, status).with_circular_handle(match status {
+        slider::Status::Active => 5.,
+        slider::Status::Hovered => 6.,
+        slider::Status::Dragged => 7.,
+    });
+    let ink = theme.palette().text;
+    style.rail.width = 3.;
+    style.rail.backgrounds = (ink.scale_alpha(0.64).into(), ink.scale_alpha(0.14).into());
+    style.handle.background = ink.into();
     style
 }
 

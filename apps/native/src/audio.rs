@@ -5,7 +5,7 @@ use crate::{
     style,
 };
 use iced::{
-    Color, Element, Task,
+    Element, Task,
     widget::{row, slider, text, tooltip},
 };
 use rodio::{OutputStreamBuilder, Source};
@@ -191,17 +191,7 @@ impl Playback {
             slider(0..=100, volume, Message::Volume)
                 .width(64)
                 .height(16)
-                .style(|theme, status| {
-                    let mut appearance = slider::default(theme, status);
-                    let track = Color::from_rgb8(222, 222, 222).into();
-                    appearance.rail.backgrounds = (track, track);
-                    appearance.handle.background = style::FOREGROUND.into();
-                    appearance.handle.shape = slider::HandleShape::Rectangle {
-                        width: 12,
-                        border_radius: 4.into(),
-                    };
-                    appearance
-                }),
+                .style(style::range),
             text(format!(
                 "{} {volume}%",
                 locale.tr(if index == 0 {

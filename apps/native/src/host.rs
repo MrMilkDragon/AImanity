@@ -30,9 +30,27 @@ fn default_resume() -> bool {
 #[derive(Clone, Debug)]
 pub enum Event {
     Phase(String),
+    #[cfg(target_os = "macos")]
+    Activity(Activity),
     Ready(String),
     Failed(String),
     Stopped(Result<(), String>),
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Debug, Deserialize)]
+pub struct Activity {
+    pub command: String,
+    pub state: ActivityState,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ActivityState {
+    Running,
+    Completed,
+    Failed,
 }
 
 impl Host {
@@ -58,6 +76,7 @@ impl Host {
                 }
                 let mut child = command.arg("--native-ui").stdout(Stdio::piped()).spawn().map_err(|e|e.to_string())?;
                 let mut lines=BufReader::new(child.stdout.take().unwrap()).lines();
+                let mut failure = None;
                 loop {
                     tokio::select! {
                         _ = &mut stop => {
@@ -68,18 +87,30 @@ impl Host {
                         }
                         line=lines.next_line() => {
                             let Some(line)=line.map_err(|e|e.to_string())? else {break};
-                            if let Some(json)=line.strip_prefix("AI_PHONE_SETUP ") {
+                            let event = if let Some(json) = line.strip_prefix("AI_PHONE_SETUP ") {
                                 #[derive(Deserialize)]
                                 struct Progress {phase:String, error:String}
                                 let progress:Progress=serde_json::from_str(json).map_err(|e|e.to_string())?;
-                                let message=if progress.error.is_empty(){Event::Phase(progress.phase)}else{Event::Failed(progress.error)};
-                                if output.send(message).await.is_err(){return Ok(false);}
+                                if !progress.error.is_empty() {
+                                    failure = Some(progress.error);
+                                    continue;
+                                }
+                                Event::Phase(progress.phase)
+                            } else if let Some(json) = line.strip_prefix("AI_PHONE_ACTIVITY ") {
+                                Event::Activity(serde_json::from_str(json).map_err(|e|e.to_string())?)
+                            } else {
+                                continue;
+                            };
+                            if output.send(event).await.is_err() {
+                                return Ok(false);
                             }
                         }
                     }
                 }
                 let status=child.wait().await.map_err(|e|e.to_string())?;
-                if !status.success(){return Err(format!("设备启动失败：{status}"));}
+                if !status.success() {
+                    return Err(failure.unwrap_or_else(|| status.to_string()));
+                }
                 let root=self.home.join("releases").join(&self.source);
                 output.send(Event::Ready(root.to_string_lossy().into_owned())).await.map_err(|e|e.to_string())?;
                 Ok(true)
@@ -166,7 +197,10 @@ impl Host {
                         }
                         Err(error) => {
                             let _ = output.send(Event::Failed(error)).await;
+                            let result = Self::stop(home).await;
                             let _ = stop.await;
+                            let _ = output.send(Event::Stopped(result)).await;
+                            return;
                         }
                     }
                 }

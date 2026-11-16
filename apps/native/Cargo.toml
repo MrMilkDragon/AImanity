@@ -27,6 +27,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 futures-util = "0.3"
 fs2 = "0.4"
 sha2 = "0.10"
+base64 = "0.22"
+ring = "=0.17.14"
+semver = "1"
 tempfile = "3"
 tokio-tungstenite = "0.28"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
@@ -42,10 +45,11 @@ lto = "thin"
 strip = "debuginfo"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+libc = "=0.2.191"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSMenu", "NSMenuItem"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSString", "NSThread"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "=0.61.3", features = ["Win32_Media_Speech", "Win32_System_Com", "Win32_System_Variant"] }
-windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

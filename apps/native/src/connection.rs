@@ -32,12 +32,19 @@ pub struct Frame {
 }
 
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
+#[derive(Clone, Copy, Debug)]
+pub enum Press {
+    Left,
+    Right,
+    Hold,
+}
+
 #[derive(Clone, Debug)]
 pub enum DeviceInput {
     Tap {
         x: u32,
         y: u32,
-        right: bool,
+        press: Press,
     },
     Drag {
         x: u32,
@@ -114,12 +121,14 @@ impl Connection {
             .map_err(|e| e.to_string())?;
         let status = response.status();
         let bytes = response.bytes().await.map_err(|e| e.to_string())?;
-        eprintln!(
-            "native_metric rpc route={route} ms={:.3} status={} bytes={}",
-            started.elapsed().as_secs_f64() * 1000.,
-            status.as_u16(),
-            bytes.len()
-        );
+        if !route.ends_with("/cursor") {
+            eprintln!(
+                "native_metric rpc route={route} ms={:.3} status={} bytes={}",
+                started.elapsed().as_secs_f64() * 1000.,
+                status.as_u16(),
+                bytes.len()
+            );
+        }
         if !status.is_success() {
             let error = wire::ApiError::decode(bytes).map_err(|_| format!("HTTP {status}"))?;
             return Err(error.message);
@@ -424,6 +433,33 @@ impl Connection {
             }
         })
     }
+    pub async fn cursor(
+        &self,
+        device: Option<wire::RegisteredDevice>,
+    ) -> Option<wire::DeviceCursor> {
+        let device = device?;
+        if device.kind == "phone" {
+            self.rpc(
+                "phone/cursor",
+                wire::DeviceRequest {
+                    phone_id: device.id,
+                    owner_id: "local-user".into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .ok()
+        } else {
+            self.rpc(
+                "desktop/cursor",
+                wire::DesktopRequest {
+                    device_id: device.id,
+                },
+            )
+            .await
+            .ok()
+        }
+    }
     pub async fn input(
         &self,
         device: &wire::RegisteredDevice,
@@ -438,14 +474,16 @@ impl Connection {
             let control: wire::ControlState = self.rpc("phone/control", scope).await?;
             use wire::device_action_request::Action;
             let action = match input {
-                DeviceInput::Tap { x, y, right: false } => Action::Tap(wire::TapAction { x, y }),
-                DeviceInput::Tap { x, y, right: true } => {
-                    Action::LongPress(wire::LongPressAction {
-                        x,
-                        y,
-                        duration_ms: 650,
-                    })
-                }
+                DeviceInput::Tap {
+                    x,
+                    y,
+                    press: Press::Left,
+                } => Action::Tap(wire::TapAction { x, y }),
+                DeviceInput::Tap { x, y, .. } => Action::LongPress(wire::LongPressAction {
+                    x,
+                    y,
+                    duration_ms: 650,
+                }),
                 DeviceInput::Drag {
                     x,
                     y,
@@ -508,11 +546,11 @@ impl Connection {
                 ..Default::default()
             };
             match input {
-                DeviceInput::Tap { x, y, right } => {
+                DeviceInput::Tap { x, y, press } => {
                     request.kind = "click".into();
                     request.x = x as i32;
                     request.y = y as i32;
-                    request.button = if right { 3 } else { 1 };
+                    request.button = if matches!(press, Press::Right) { 3 } else { 1 };
                     request.clicks = 1;
                 }
                 DeviceInput::Drag {

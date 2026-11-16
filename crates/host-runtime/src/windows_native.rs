@@ -77,7 +77,7 @@ impl Deployment<'_> {
         let guest_profile =
             serde_json::to_vec(&guest_profile).map_err(|_| "invalid_device_resources")?;
         let vm = self.home.join("user/qemu");
-        phase("backend");
+        phase("engine");
         qemu_host::ensure(
             &self.resource.join("qemu"),
             &vm,
