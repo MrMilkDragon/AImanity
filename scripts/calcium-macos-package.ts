@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const [sourceRoot, donorPath, workPath] = process.argv.slice(2);
@@ -38,7 +38,7 @@ try {
   run(["tar", "-xf", join(host, "source.payload"), "-C", reuse, "runtime/container-host", "runtime/phone-apps"], { cwd: root });
 } finally {
   run(["hdiutil", "detach", mount], { cwd: root });
-  rmSync(mount);
+  rmdirSync(mount);
 }
 const guest = await buildGuest(root, join(work, "arm-bridge"));
 const newBridge = join(guest, guestBinary);
