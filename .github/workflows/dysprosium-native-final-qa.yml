@@ -1,0 +1,140 @@
+name: Dysprosium Windows final-source native device QA
+on:
+  push:
+    branches: [codex/dysprosium-native-final-qa]
+    paths:
+      - .github/workflows/dysprosium-native-final-qa.yml
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: dysprosium-native-final-qa
+  cancel-in-progress: false
+env:
+  PRODUCT_SOURCE: 9a3b8dcae1940a1f630d9314e39964ff158f2803
+  CALCIUM_BASE_SHA: 1184c13114500f919b6bcc738d9af7e1f872ff192aef624e67aa87a6f9b7446f
+  CALCIUM_ANDROID_SHA: 23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+jobs:
+  linux-final:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AI_PHONE_TEST_TESSERACT: /usr/bin/tesseract
+      QA_PRIOR_SOURCE: e030810373832b3c2bb31be77ace1ecc3b319092
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.PRODUCT_SOURCE }}
+          path: exact
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: 43923363901
+          github-token: ${{ github.token }}
+          name: native-qa-immutable-base
+          path: ${{ runner.temp }}/immutable
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: 43923363901
+          github-token: ${{ github.token }}
+          name: native-qa-linux-release-layer
+          path: ${{ runner.temp }}/prior
+      - name: Rebuild final-SHA Rust guest services using verified identical pinned inputs
+        working-directory: exact
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = x86_64
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SOURCE"
+          git worktree add --detach ../prior "$QA_PRIOR_SOURCE"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-utils e2fsprogs cpio tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          ./scripts/bun scripts/source.ts check --repository --manifest
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
+          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/ocr-models"
+          export AI_PHONE_TEST_TESSDATA="$RUNNER_TEMP/ocr-models"
+          export QA_BASE="$RUNNER_TEMP/immutable"
+          export QA_PRIOR_LAYER="$RUNNER_TEMP/prior"
+          export QA_LAYER="$RUNNER_TEMP/linux-layer"
+          ./scripts/bun ../qa/windows-native-dev/build-linux-layer.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: final-sha-native-qa-linux-release-layer
+          path: ${{ runner.temp }}/linux-layer/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+  windows-dev:
+    needs: linux-final
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CARGO_HTTP_MULTIPLEXING: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.PRODUCT_SOURCE }}
+          path: exact
+          persist-credentials: false
+      - name: Select a disposable Windows program and device data volume
+        shell: pwsh
+        run: |
+          $drive = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match '^[A-Z]:\\$' } | Sort-Object Free -Descending | Select-Object -First 1
+          $os = Get-CimInstance Win32_OperatingSystem
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $drive.Free -lt 40GB -or $os.TotalVisibleMemorySize -lt 12MB) {
+            throw 'This Windows QA runner cannot provision the isolated WHPX guests.'
+          }
+          $root = Join-Path $drive.Root "Dysprosium-QA-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory -Path $root | Out-Null
+          "AIMANITY_QA_ROOT=$root" >> $env:GITHUB_ENV
+          'Windows {0} build {1}; RAM {2:N1} GiB; QA volume free {3:N1} GiB' -f $os.Caption,$os.BuildNumber,($os.TotalVisibleMemorySize/1MB),($drive.Free/1GB)
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: final-sha-native-qa-linux-release-layer
+          path: ${{ env.AIMANITY_QA_ROOT }}/layer
+      - name: Compile the exact Rust Windows executable with no installer
+        working-directory: exact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SOURCE"
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          ./scripts/bun scripts/source.ts check --repository --manifest
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+          ./scripts/bun ../qa/windows-native-dev/prepare-windows.ts dev
+          export AIMANITY_BUNDLE_INTEGRITY="$(cygpath -am "$PWD/apps/native/gen/host/integrity.json")"
+          cargo build --locked --manifest-path apps/native/Cargo.toml
+          ./scripts/bun ../qa/windows-native-dev/prepare-windows.ts launch-layout
+      - name: Exercise the actual native workbench and both WHPX devices
+        working-directory: exact
+        shell: pwsh
+        env:
+          AIMANITY_QA_ANDROID_AUDIO: '1'
+        run: |
+          Copy-Item ../qa/windows-native-dev/native-probe.ts scripts/windows-device-qa-probe.ts
+          Copy-Item ../qa/windows-native-dev/qualify-dev.ts scripts/windows-device-qa.ts
+          ./.tools/bin/bun.exe scripts/windows-device-qa.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: isolated-native-workbench
+          path: ${{ env.AIMANITY_QA_ROOT }}/native-workbench.png
+          if-no-files-found: ignore
+          retention-days: 1
