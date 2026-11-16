@@ -4,7 +4,7 @@
 
 The assistant service polls Android's notification/accessibility feed and the Linux guest's Dunst notification inbox. Notifications can wake a configured Agent with Liberty off. Each event retains its source device, event ID, source key and original receipt. The device's configured Agent and model are pinned when its run is created.
 
-Phone collection, phone supervision and phone admission run in one ordered pipeline. Desktop collection and admission run independently, so a stalled device does not hold the other device's durable notification work. Each pipeline admits only its own device kind on the existing three-second cadence. New events can enter the queue in the same pass. Outgoing summaries have their own owner; dropping the coordinator cancels all three futures.
+Phone collection, phone supervision and phone admission run in one ordered pipeline. Desktop collection and admission run independently, so a stalled device does not hold the other device's durable notification work. Each pipeline admits only its own device kind on the existing three-second cadence. New events can enter the queue in the same pass. Committing a new summary wakes the independent forwarding task immediately. Its three-second poll tracks pending deliveries and discovers saved reports after restart. Dropping the coordinator cancels every branch.
 
 New owner instructions take priority. Existing tasks yield at checkpoints to let notification work proceed. A paused task keeps its history and unknown-action receipts while a new notification receives a separate run. Manual takeover remains authoritative.
 
@@ -60,7 +60,7 @@ Native model protocols and channel-specific delivery guarantees remain separate 
 
 通知在 Liberty 关闭时也可唤醒设备对应的 Agent。普通消息自行判断、默认回复；工作请求可连接授权设备、处理附件、保留工作目录副本并回原会话交付。任务、事件和实际动作回执分别持久化，旧暂停任务保留，未知动作不自动重放。
 
-手机采集、接管核对和手机入队保持原顺序；电脑采集与入队独立运行，各自只调度对应设备。某设备采集挂起不再拖住另一设备已有通知；采集仍为3秒周期并保留去重，新事件在同一轮即可入队，不再额外等待通知年龄。摘要转发仍独立，停止协调器后所有分支一同取消。
+手机采集、接管核对和手机入队保持原顺序；电脑采集与入队独立运行，各自只调度对应设备。某设备采集挂起不再拖住另一设备已有通知；采集仍为3秒周期并保留去重，新事件在同一轮即可入队，不再额外等待通知年龄。新摘要提交后立即唤醒独立的转发任务；3秒轮询跟踪待送达状态，并在重启后发现已保存的报告。停止协调器后所有分支一同取消。
 
 桌面界面变化试验复用通知唤醒。Linux 前台窗口的标题指纹连续两次采样确认变化后，可以唤醒空闲 Agent 只读查看该桌面，再判断是否需要告诉用户。窗口切换时重建基线。普通通知、执行中的任务和近期手动操作优先。每台电脑最多每分钟由此唤醒一次。
 

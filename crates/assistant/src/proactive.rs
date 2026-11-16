@@ -86,40 +86,76 @@ pub async fn state(app: &App) -> Result<wire::ProactiveState, sqlx::Error> {
         "SELECT p.revision,p.exploring,p.attention_connected,p.wechat_watch,p.notifications_enabled,
                 p.forward_notifications,p.autonomous_reply,p.autonomous_install,p.interval_seconds,
                 p.last_error,p.listener_connected,(extract(epoch FROM p.next_cycle_at)*1000)::bigint wake_ms,
-                p.goal,r.status goal_status,r.device_id goal_device_id
-         FROM proactive_state p LEFT JOIN runs r ON r.id=p.goal_run_id WHERE p.owner_id='local-user'",
+                p.goal,r.status goal_status,r.device_id goal_device_id,
+                active.id active_run_id,active.origin active_origin,active.status active_status,
+                (SELECT m.text FROM runs r JOIN messages m ON m.id=r.assistant_message_id
+                 WHERE r.origin IN ('exploration','notification') AND m.text<>'' ORDER BY r.created_at DESC LIMIT 1) latest_summary,
+                (SELECT detail FROM proactive_reports ORDER BY created_at DESC LIMIT 1) delivery_status,
+                (SELECT count(*) FROM phone_notifications WHERE status IN ('pending','pending-summary')) pending_notifications
+         FROM proactive_state p LEFT JOIN runs r ON r.id=p.goal_run_id
+         LEFT JOIN LATERAL (
+             SELECT id,origin,status FROM runs
+             WHERE status IN ('queued','running') OR (status='paused' AND NOT p.exploring)
+             ORDER BY (status IN ('queued','running')) DESC,created_at DESC,id DESC LIMIT 1
+         ) active ON true WHERE p.owner_id='local-user'",
     )
     .fetch_one(&app.db)
     .await?;
-    let active = sqlx::query(
-        "SELECT id,origin,status FROM runs WHERE status IN ('queued','running') OR (status='paused' AND NOT $1) ORDER BY (status IN ('queued','running')) DESC,created_at DESC,id DESC LIMIT 1",
-    )
-    .bind(row.get::<bool,_>("exploring"))
-    .fetch_optional(&app.db)
-    .await?;
     let exploring: bool = row.get("exploring");
-    let latest:Option<String>=sqlx::query_scalar("SELECT m.text FROM runs r JOIN messages m ON m.id=r.assistant_message_id WHERE r.origin IN ('exploration','notification') AND m.text<>'' ORDER BY r.created_at DESC LIMIT 1").fetch_optional(&app.db).await?;
-    let delivery: Option<String> =
-        sqlx::query_scalar("SELECT detail FROM proactive_reports ORDER BY created_at DESC LIMIT 1")
-            .fetch_optional(&app.db)
-            .await?;
     let last_error =
         crate::run_notice::background_error(&app.db, crate::registry::PHONE, row.get("last_error"))
             .await?;
     let goal_status: Option<String> = row.get("goal_status");
     Ok(wire::ProactiveState {
-        revision: row.get::<i64,_>("revision") as u64, exploring,
-        attention_connected:row.get("attention_connected"), wechat_watch:row.get("wechat_watch"), notifications_enabled:row.get("notifications_enabled"), forward_notifications:row.get("forward_notifications"), autonomous_reply:row.get("autonomous_reply"), autonomous_install:row.get("autonomous_install"), interval_seconds:row.get::<i32,_>("interval_seconds") as u32,
-        next_wake_at_ms:if exploring {row.get::<i64,_>("wake_ms") as u64}else{0},
-        active_run_id:active.as_ref().map(|r|r.get::<Uuid,_>("id").to_string()).unwrap_or_default(),
-        status:active.as_ref().map(|r|if r.get::<String,_>("status")=="paused" {"paused".to_string()} else {match r.get::<String,_>("origin").as_str(){"user"=>"user_busy", "notification"=>"notification",_=>"exploring"}.to_string()}).unwrap_or_else(||if exploring{"waiting"}else{"idle"}.into()),
-        last_error,listener_connected:row.get("listener_connected"),
-        pending_notifications:sqlx::query_scalar::<_,i64>("SELECT count(*) FROM phone_notifications WHERE status IN ('pending','pending-summary')").fetch_one(&app.db).await? as u32,
-        latest_summary:latest.unwrap_or_default(),delivery_status:delivery.unwrap_or_default(),
+        revision: row.get::<i64, _>("revision") as u64,
+        exploring,
+        attention_connected: row.get("attention_connected"),
+        wechat_watch: row.get("wechat_watch"),
+        notifications_enabled: row.get("notifications_enabled"),
+        forward_notifications: row.get("forward_notifications"),
+        autonomous_reply: row.get("autonomous_reply"),
+        autonomous_install: row.get("autonomous_install"),
+        interval_seconds: row.get::<i32, _>("interval_seconds") as u32,
+        next_wake_at_ms: if exploring {
+            row.get::<i64, _>("wake_ms") as u64
+        } else {
+            0
+        },
+        active_run_id: row
+            .get::<Option<Uuid>, _>("active_run_id")
+            .map(|id| id.to_string())
+            .unwrap_or_default(),
+        status: match row.get::<Option<&str>, _>("active_status") {
+            Some("paused") => "paused",
+            Some(_) => match row.get::<Option<&str>, _>("active_origin") {
+                Some("user") => "user_busy",
+                Some("notification") => "notification",
+                _ => "exploring",
+            },
+            None => {
+                if exploring {
+                    "waiting"
+                } else {
+                    "idle"
+                }
+            }
+        }
+        .into(),
+        last_error,
+        listener_connected: row.get("listener_connected"),
+        pending_notifications: row.get::<i64, _>("pending_notifications") as u32,
+        latest_summary: row
+            .get::<Option<String>, _>("latest_summary")
+            .unwrap_or_default(),
+        delivery_status: row
+            .get::<Option<String>, _>("delivery_status")
+            .unwrap_or_default(),
         goal: row.get("goal"),
         goal_active: goal_status_is_active(goal_status.as_deref()),
         goal_status: goal_status.unwrap_or_default(),
-        goal_device_id: row.get::<Option<String>, _>("goal_device_id").unwrap_or_default(),
+        goal_device_id: row
+            .get::<Option<String>, _>("goal_device_id")
+            .unwrap_or_default(),
     })
 }
 
@@ -896,6 +932,7 @@ async fn reconcile(app: &App) -> Result<(), sqlx::Error> {
     // only interruptions need a later history-only verification.
     sqlx::query("UPDATE phone_notifications n SET status=CASE WHEN r.status='succeeded' THEN 'succeeded' ELSE 'pending-summary' END FROM runs r WHERE n.run_id=r.id AND n.status='attending' AND r.status IN ('succeeded','failed','canceled','paused')").execute(&mut *tx).await?;
     let rows=sqlx::query("SELECT id,origin,status,error FROM runs WHERE origin IN ('exploration','notification') AND NOT background_finalized AND status IN ('succeeded','failed','canceled','paused') FOR UPDATE").fetch_all(&mut *tx).await?;
+    let mut reports_created = false;
     for row in rows {
         let id: Uuid = row.get("id");
         let status: String = row.get("status");
@@ -929,7 +966,7 @@ async fn reconcile(app: &App) -> Result<(), sqlx::Error> {
             .execute(&mut *tx)
             .await?;
         if row.get::<String, _>("origin") == "notification" && status != "canceled" {
-            sqlx::query(
+            reports_created |= sqlx::query(
                 "INSERT INTO proactive_reports(run_id,request_id) SELECT $1,$2 FROM proactive_state
                  WHERE forward_notifications AND NOT EXISTS(SELECT 1 FROM phone_notifications WHERE run_id=$1 AND notification_key=$3)
                  ON CONFLICT DO NOTHING",
@@ -938,7 +975,8 @@ async fn reconcile(app: &App) -> Result<(), sqlx::Error> {
             .bind(Uuid::now_v7())
             .bind(screen_attention::KEY)
             .execute(&mut *tx)
-            .await?;
+            .await?
+            .rows_affected() > 0;
         }
         sqlx::query(
             "UPDATE phone_notifications SET status=$2 WHERE run_id=$1 AND status='assigned'",
@@ -949,6 +987,9 @@ async fn reconcile(app: &App) -> Result<(), sqlx::Error> {
         .await?;
     }
     tx.commit().await?;
+    if reports_created {
+        app.run_signals.reports_ready.notify_one();
+    }
     Ok(())
 }
 async fn deliver(app: &App) -> Result<(), String> {
@@ -1089,7 +1130,10 @@ async fn forward_reports(app: &App) {
     let mut interval = tokio::time::interval(Duration::from_secs(3));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
-        interval.tick().await;
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = app.run_signals.reports_ready.notified() => {}
+        }
         let _ = deliver(app).await;
     }
 }

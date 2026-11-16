@@ -93,8 +93,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 1895,
-      "sha256": "f708959569239571708c231cf9e8a9727704b9d852337b8a0c97e2f5f146ce5a"
+      "size": 2217,
+      "sha256": "6fc03e7c82a2ab329efc498fc7a056e5ffd42b3bb8f69ded7dd1f1f8422ebebe"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -103,8 +103,8 @@
     },
     {
       "path": "Cargo.lock",
-      "size": 119300,
-      "sha256": "b43655e58a57e3968ecc79439d4de2a57f1534c566e45b596f656efaac5a7b97"
+      "size": 119311,
+      "sha256": "3fe2cfa21825a6ec911a0ae4eee40bbd6949cbb4e8b8412346b5179d09ff10af"
     },
     {
       "path": "Cargo.toml",
@@ -1413,8 +1413,8 @@
     },
     {
       "path": "crates/assistant/Cargo.toml",
-      "size": 1988,
-      "sha256": "a0d4a7cbb47db750927aa39527a02084ee489dda78add53aa6bb544bae3f3e75"
+      "size": 2006,
+      "sha256": "9e3784246844d26854a9c339590a8721b69a2b8c63a315af91575899960ac314"
     },
     {
       "path": "crates/assistant/build.rs",
@@ -1958,8 +1958,8 @@
     },
     {
       "path": "crates/assistant/src/model_context.rs",
-      "size": 38982,
-      "sha256": "e753897e100fc90feb8b01c3fb44379e59eba43cad6d72906ee901c30f4d2220"
+      "size": 39272,
+      "sha256": "8cdc0a901f9c2c7e61234789784395c159f2c126c2e7177db20958c94eae2a88"
     },
     {
       "path": "crates/assistant/src/model_recovery_tests.rs",
@@ -1968,8 +1968,8 @@
     },
     {
       "path": "crates/assistant/src/model_sse.rs",
-      "size": 5062,
-      "sha256": "3d9ded35d482c48565d4a9fcd3449790d6eab40ebf2a106bd2efb0588262ebad"
+      "size": 4988,
+      "sha256": "6946cf57df6b40b7cfb390f7a3ea48c3fb0d17968d75868a88db24eb925dcb17"
     },
     {
       "path": "crates/assistant/src/model_timing.rs",
@@ -1978,8 +1978,8 @@
     },
     {
       "path": "crates/assistant/src/notification_forwarding_tests.rs",
-      "size": 15531,
-      "sha256": "84b8b0df32c6d721dca83bdf345c1c5645ca915c14934c208a07cdb2edbaa269"
+      "size": 15861,
+      "sha256": "d45057b3f038bd12a1fcb602ee7ddc13bf0a8733ecb2d31cf072a0f95b9177f3"
     },
     {
       "path": "crates/assistant/src/notification_policy.rs",
@@ -2008,8 +2008,8 @@
     },
     {
       "path": "crates/assistant/src/proactive.rs",
-      "size": 80016,
-      "sha256": "51426e1ce0c91a1a2cfb3b953cae7c0ec5c55ee0339d98e312abe3a67bcdf636"
+      "size": 80843,
+      "sha256": "05c4fd7443ff1fe55790f274019d2890b6edf7e36fc17e50ff0b7b994c669fc3"
     },
     {
       "path": "crates/assistant/src/redis_events.rs",
@@ -2043,8 +2043,8 @@
     },
     {
       "path": "crates/assistant/src/run_signals.rs",
-      "size": 6019,
-      "sha256": "edbb8ae05b868fe6d86e45579b51c60ec2fc69247f096089ee5e72e64c340b21"
+      "size": 6092,
+      "sha256": "d85ffc6a2507b83aba30cfc0a89b9dc11f2282d47d5e9d0e72d1f419ce20a3d2"
     },
     {
       "path": "crates/assistant/src/settings.rs",
@@ -2228,8 +2228,8 @@
     },
     {
       "path": "crates/guest-runtime/src/imaging.rs",
-      "size": 2858,
-      "sha256": "9e73cdeb88fd1155a5cc3d420b277e10c6ad2a31ba6d384eac389ad91b047eba"
+      "size": 2989,
+      "sha256": "33ce4702355dde5bc3a2057743415ef880d606caa4944ac2e64732b77286b5ac"
     },
     {
       "path": "crates/guest-runtime/src/lib.rs",
@@ -3593,8 +3593,8 @@
     },
     {
       "path": "docs/public/notification-workflows.md",
-      "size": 8168,
-      "sha256": "1bcc594848fb4fea4b841f75dbb812e8b05abc4a0de8a62e7e01eccce095b8c1"
+      "size": 8395,
+      "sha256": "24f0cd2fa31f5eb672ad947bc6a698f8c8f4c8c1ab71ba0e962ad5ab15c78795"
     },
     {
       "path": "docs/public/protocol-boundaries.md",

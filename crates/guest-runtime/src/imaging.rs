@@ -7,7 +7,12 @@ use std::io::Cursor;
 
 pub fn png(image: &RgbImage) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
-    image::codecs::png::PngEncoder::new(&mut bytes).write_image(
+    image::codecs::png::PngEncoder::new_with_quality(
+        &mut bytes,
+        image::codecs::png::CompressionType::Fast,
+        image::codecs::png::FilterType::Paeth,
+    )
+    .write_image(
         image.as_raw(),
         image.width(),
         image.height(),

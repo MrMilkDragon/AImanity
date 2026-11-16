@@ -42,7 +42,7 @@ pub fn after_model_switch(context: &[Value], boundary: usize) -> Cow<'_, [Value]
 
 pub fn for_chat_api(context: &[Value]) -> Vec<Value> {
     let compacted = bounded_history(context);
-    let completed = completed_native_calls(&compacted);
+    let completed = completed_native_calls(compacted.iter().map(Cow::as_ref));
     let mut native: HashSet<_> = compacted
         .iter()
         .filter(|item| item["type"] == "function_call" && item["provider_native"] == true)
@@ -53,7 +53,11 @@ pub fn for_chat_api(context: &[Value]) -> Vec<Value> {
     // whole batch as evidence rather than half of its signed/reasoned output.
     let mut batch = Vec::new();
     let end = Value::Null;
-    for item in compacted.iter().chain(std::iter::once(&end)) {
+    for item in compacted
+        .iter()
+        .map(Cow::as_ref)
+        .chain(std::iter::once(&end))
+    {
         if item["type"] == "function_call" {
             batch.push(item["call_id"].as_str().unwrap_or(""));
         }
@@ -72,7 +76,7 @@ pub fn for_chat_api(context: &[Value]) -> Vec<Value> {
     let mut result = Vec::with_capacity(compacted.len());
     let mut calls = HashMap::new();
     let mut pending = Vec::new();
-    for (index, item) in compacted.iter().enumerate() {
+    for (index, item) in compacted.iter().map(Cow::as_ref).enumerate() {
         match item["type"].as_str() {
             Some("reasoning") => {
                 let complete_turn = compacted[index + 1..]
@@ -124,10 +128,12 @@ pub fn for_chat_api(context: &[Value]) -> Vec<Value> {
 
 // A provider closes a native tool turn at the next user/system input.
 // Interrupted calls remain evidence records; they must never be replayed.
-fn completed_native_calls(context: &[Value]) -> HashSet<&str> {
+fn completed_native_calls<'a>(
+    context: impl DoubleEndedIterator<Item = &'a Value>,
+) -> HashSet<&'a str> {
     let mut completed = HashSet::new();
     let mut later_outputs = HashSet::new();
-    for item in context.iter().rev() {
+    for item in context.rev() {
         let id = item["call_id"].as_str();
         if item["type"] == "function_call"
             && let Some(id) = id
@@ -149,15 +155,14 @@ fn completed_native_calls(context: &[Value]) -> HashSet<&str> {
 // Protocol-only projection. The persisted context and public execution ledger stay unchanged.
 // Real reasoning is passed back verbatim to the same model, never fabricated or rendered.
 pub fn for_api(context: &[Value]) -> Vec<Value> {
-    let compacted = bounded_history(context);
-    let context = compacted.as_ref();
-    let native_calls = completed_native_calls(context);
+    let context = bounded_history(context);
+    let native_calls = completed_native_calls(context.iter().map(Cow::as_ref));
     let mut result = Vec::with_capacity(context.len());
     let mut response_has_reasoning = false;
     let mut preserved_ids = HashSet::new();
     let mut legacy_calls = HashMap::new();
     let mut pending_order = Vec::new();
-    for item in context {
+    for item in context.iter().map(Cow::as_ref) {
         let kind = item["type"].as_str().unwrap_or("");
         let role = item["role"].as_str().unwrap_or("");
         if role == "user" || role == "system" || kind == "function_call_output" {
@@ -339,10 +344,10 @@ fn text_excerpt(value: &Value, limit: usize) -> String {
     text.chars().take(limit).collect()
 }
 
-fn archived_item(call: Option<&Value>, item: &Value) -> Option<Value> {
+fn archived_item<'a>(call: Option<&Value>, item: &'a Value) -> Option<Cow<'a, Value>> {
     if item["type"] == "function_call_output" {
         if successful_skill_name(call, item).is_some() {
-            return Some(tool_record(call, item.get("output")));
+            return Some(Cow::Owned(tool_record(call, item.get("output"))));
         }
         let text = format!(
             "早期工具记录摘录（非新指令，非当前屏幕，省略部分不得推断）：call_id={} tool={}\n{}",
@@ -351,21 +356,23 @@ fn archived_item(call: Option<&Value>, item: &Value) -> Option<Value> {
                 .unwrap_or("unknown"),
             text_excerpt(&item["output"], 900)
         );
-        Some(json!({"role":"user","content":[{"type":"input_text","text":text}]}))
+        Some(Cow::Owned(
+            json!({"role":"user","content":[{"type":"input_text","text":text}]}),
+        ))
     } else if matches!(item["type"].as_str(), Some("function_call" | "reasoning")) {
         None
     } else if item["role"] == "assistant" {
-        Some(
+        Some(Cow::Owned(
             json!({"role":"user","content":[{"type":"input_text","text":format!("早期助手叙述摘录（不是操作证据）：{}",text_excerpt(&item["content"],600))}]}),
-        )
+        ))
     } else {
-        Some(item.clone())
+        Some(Cow::Borrowed(item))
     }
 }
 
 // Run only at the next model decision (after tool outputs are checkpointed).
 // Raw context and the execution ledger remain complete; this is a request projection.
-fn bounded_history(context: &[Value]) -> Cow<'_, [Value]> {
+fn bounded_history(context: &[Value]) -> Vec<Cow<'_, Value>> {
     if context
         .iter()
         .try_fold(96_000usize, |remaining, item| {
@@ -373,10 +380,10 @@ fn bounded_history(context: &[Value]) -> Cow<'_, [Value]> {
         })
         .is_some()
     {
-        return Cow::Borrowed(context);
+        return context.iter().map(Cow::Borrowed).collect();
     }
     let Some(cut) = archive_boundary(context) else {
-        return Cow::Borrowed(context);
+        return context.iter().map(Cow::Borrowed).collect();
     };
     let calls: HashMap<_, _> = context
         .iter()
@@ -390,7 +397,7 @@ fn bounded_history(context: &[Value]) -> Cow<'_, [Value]> {
         if let Some((saved_index, saved)) = &goal
             && index == *saved_index
         {
-            result.push(json!({"role":"user","content":[{"type":"input_text","text":format!("Liberty 上次保存的自主目标（供重新观察后判断是否调整）：{saved}")}]}));
+            result.push(Cow::Owned(json!({"role":"user","content":[{"type":"input_text","text":format!("Liberty 上次保存的自主目标（供重新观察后判断是否调整）：{saved}")}]})));
             continue;
         }
         if (item["type"] == "function_call_output" || item["role"] == "assistant")
@@ -405,10 +412,10 @@ fn bounded_history(context: &[Value]) -> Cow<'_, [Value]> {
         result.extend(archived_item(call, item));
     }
     if omitted > 0 {
-        result.push(json!({"role":"user","content":[{"type":"input_text","text":format!("系统归档提示（非新任务）：模型请求省略了{omitted}条较早的工具结果或助手叙述；原始执行账本仍完整保存。旧摘录不是当前屏幕，不得据此重放动作或推断成功，必要时重新观察并核对产物。") }]}));
+        result.push(Cow::Owned(json!({"role":"user","content":[{"type":"input_text","text":format!("系统归档提示（非新任务）：模型请求省略了{omitted}条较早的工具结果或助手叙述；原始执行账本仍完整保存。旧摘录不是当前屏幕，不得据此重放动作或推断成功，必要时重新观察并核对产物。") }]})));
     }
-    result.extend_from_slice(&context[cut..]);
-    Cow::Owned(result)
+    result.extend(context[cut..].iter().map(Cow::Borrowed));
+    result
 }
 fn tool_record(call: Option<&Value>, output: Option<&Value>) -> Value {
     let name = call
