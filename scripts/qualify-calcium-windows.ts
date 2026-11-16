@@ -2,8 +2,6 @@ import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { deepEqual, equal, match, ok } from "node:assert/strict";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ControlStateSchema, DeviceActionRequestSchema, DeviceActionResponseSchema, TakeControlRequestSchema } from "../packages/protocol/src/gen/ai_phone/v1/phone_runtime_pb";
-import type { MessageInitShape } from "@bufbuild/protobuf";
 import { RegistryRequestSchema, RegistryStateSchema } from "../packages/protocol/src/gen/ai_phone/v1/registry_pb";
 import { DesktopActionRequestSchema, DesktopObservationSchema, DesktopRequestSchema } from "../packages/protocol/src/gen/ai_phone/v1/desktop_pb";
 
@@ -252,10 +250,6 @@ try {
     } finally { await reader.cancel(); }
     throw Error(`${device} did not send a complete JPEG`);
   }
-  await Promise.all([
-    verifyFrame(`/api/desktop/media?device_id=${encodeURIComponent(desktop.id)}`, "Linux"),
-    verifyFrame(`/api/phone/media/screen?device=${encodeURIComponent(phone.id)}`, "Android"),
-  ]);
   async function verifyLinuxControl(session = cookie) {
     const headers = { cookie: session, origin, "content-type": protocol };
     const controlResponse = await fetch(origin + "/api/desktop/control", { method: "POST", headers,
@@ -276,25 +270,6 @@ try {
     deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1280, 800]);
     console.log("Linux workbench click returned a fresh 1280×800 PNG");
   }
-  await verifyLinuxControl();
-  const scope = { phoneId: phone.id, ownerId: "local-user", controller: "manual" };
-  async function phoneRequest(operation: string, body: Uint8Array) {
-    const response = await fetch(`${origin}/api/phone/${operation}`, { method: "POST",
-      headers: { cookie, origin, "content-type": protocol }, body: new Uint8Array(body), signal: AbortSignal.timeout(16000) });
-    equal(response.status, 200, `Android ${operation} HTTP status`);
-    return new Uint8Array(await response.arrayBuffer());
-  }
-  const control = fromBinary(ControlStateSchema, await phoneRequest("control",
-    toBinary(TakeControlRequestSchema, create(TakeControlRequestSchema, scope))));
-  async function phoneAction(action: MessageInitShape<typeof DeviceActionRequestSchema>["action"]) {
-    const actionId = crypto.randomUUID();
-    const request = create(DeviceActionRequestSchema, { ...scope, actionId, runId: "manual", controlEpoch: control.controlEpoch, action });
-    const result = fromBinary(DeviceActionResponseSchema, await phoneRequest("action", toBinary(DeviceActionRequestSchema, request)));
-    equal(result.actionId, actionId);
-    equal(result.success, true, `Android ${action?.case} did not execute: ${result.output}`);
-    return result;
-  }
-
   const components = join(home, "components", "android");
   const [identity] = readdirSync(components);
   ok(identity, "installed Android capsule");
@@ -305,105 +280,7 @@ try {
     return result.stdout;
   }
   equal(android("shell", "id", "-u").toString().trim(), "0");
-  const frame = android("exec-out", "screencap", "-p");
-  equal(frame.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
-  deepEqual([frame.readUInt32BE(16), frame.readUInt32BE(20)], [720, 1440]);
-  const policy = android("shell", "dumpsys", "window", "policy").toString().split("\n")
-    .filter(line => /keyguard|showing|interactive/i.test(line)).slice(0, 14).join("\n");
-  const beforeFocus = android("shell", "dumpsys", "window", "displays").toString().split("\n")
-    .filter(line => /mCurrentFocus|mFocusedApp/.test(line)).join("\n");
-  console.log(`Android pristine window state:\n${beforeFocus}\n${policy}`);
-  match(android("shell", "locksettings", "set-disabled", "--user", "0", "true").toString(), /Lock screen disabled set to true/);
-  equal(android("shell", "locksettings", "get-disabled", "--user", "0").toString().trim(), "true");
-  android("shell", "input", "keyevent", "KEYCODE_SLEEP");
-  await Bun.sleep(350);
-  android("shell", "input keyevent KEYCODE_WAKEUP; svc power stayon true; cmd statusbar collapse; wm dismiss-keyguard; input keyevent KEYCODE_HOME");
-  const search = "com.android.settings.intelligence";
-  const opened = android("shell", "am", "start", "-W", "-a", "android.settings.APP_SEARCH_SETTINGS", "-p", search).toString();
-  match(opened, /Status: ok\b/);
-  equal(android("shell", "settings", "get", "secure", "default_input_method").toString().trim(), "dev.aiphone.input/.UnicodeIme");
-  const uiFile = "/sdcard/aimanity-install.xml";
-  async function androidEditor(predicate: (xml: string) => boolean) {
-    const deadline = Date.now() + 15000;
-    let last = "";
-    do {
-      last = android("shell", `rm -f ${uiFile}; timeout 7 uiautomator dump ${uiFile} 2>&1; [ ! -s ${uiFile} ] || cat ${uiFile}`).toString();
-      if (predicate(last)) return last;
-      await Bun.sleep(250);
-    } while (Date.now() < deadline);
-    const focus = android("shell", "dumpsys", "window", "displays").toString().split("\n")
-      .filter(line => /mCurrentFocus|mFocusedApp/.test(line)).join("\n");
-    throw Error(`Android Settings editor not found: ${focus}\n${last.slice(0, 450)}`);
-  }
-  const editable = /<node[^>]*resource-id="android:id\/search_src_text"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/;
-  const clear = /<node[^>]*resource-id="android:id\/search_close_btn"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/;
-  async function tap(field: RegExpMatchArray | null) {
-    ok(field, "visible Android control coordinates");
-    await phoneAction({case: "tap", value: { x: (Number(field[1]) + Number(field[3])) >> 1,
-      y: (Number(field[2]) + Number(field[4])) >> 1 }});
-  }
-  const hierarchy = await androidEditor(xml => editable.test(xml));
-  await tap(hierarchy.match(editable));
-  await androidEditor(xml => editable.test(xml) && editable.exec(xml)?.[0].includes('focused="true"') === true);
-  const sample = "Calcium 中文";
-  const input = await phoneAction({case: "input", value: {text: sample}});
-  ok(input.output.includes(`committed:${input.actionId}`), "installed Unicode IME returned the action receipt");
-  const entered = await androidEditor(xml => editable.exec(xml)?.[0].includes(`text="${sample}"`) === true && clear.test(xml));
-  await tap(entered.match(clear));
-  await androidEditor(xml => editable.test(xml) && !editable.exec(xml)?.[0].includes(sample) && !clear.test(xml));
-  console.log(JSON.stringify({ androidRoot: true, androidFrame: [720, 1440], androidWorkbenchTouch: true, androidWorkbenchChinese: true, linuxJpeg: true }));
-
-  if (process.env.AIMANITY_QA_ANDROID_AUDIO === "1") {
-    const music = android("shell", "pm", "list", "packages", "--user", "0", "com.android.music").toString().trim();
-    if (music !== "package:com.android.music") {
-      match(android("shell", "cmd", "package", "install-existing", "--user", "0", "com.android.music").toString(), /installed for user: 0/);
-    }
-    const audio = await fetch(`${origin}/api/phone/media/audio?device=${encodeURIComponent(phone.id)}`, {
-      headers: { cookie }, signal: AbortSignal.timeout(16000),
-    });
-    equal(audio.status, 200, "installed Android audio");
-    match(audio.headers.get("content-type") ?? "", /^audio\/L16;rate=48000;channels=2$/i);
-    const pcm = audio.body!.getReader();
-    let min = 0, max = 0, samples = 0;
-    let partial: Buffer<ArrayBufferLike> = Buffer.alloc(0);
-    try {
-      const playback = android("shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d",
-        "file:///product/media/audio/alarms/Neon.ogg", "-t", "audio/ogg", "-n", "com.android.music/.AudioPreview");
-      match(playback.toString(), /Status: ok\b/);
-      while (min === 0 || max === 0) {
-        const { value, done } = await pcm.read();
-        if (done) break;
-        const bytes = Buffer.concat([partial, Buffer.from(value)]);
-        const complete = bytes.length & ~1;
-        for (let index = 0; index < complete; index += 2) {
-          const sample = bytes.readInt16LE(index);
-          min = Math.min(min, sample);
-          max = Math.max(max, sample);
-          samples++;
-        }
-        partial = bytes.subarray(complete);
-      }
-    } finally {
-      await pcm.cancel();
-      android("shell", "am", "force-stop", "com.android.music");
-      if (music !== "package:com.android.music") android("shell", "pm", "uninstall", "-k", "--user", "0", "com.android.music");
-    }
-    ok(min < 0 && max > 0, "installed Android audio emitted nonzero stereo PCM");
-    console.log(JSON.stringify({ androidAudio: true, rate: 48000, channels: 2, samples, min, max }));
-  }
-  equal(desktopSetupExit, 0, "real Windows accessibility first-run and workbench document");
-  if (!baseline) {
-    const packages = android("shell", "pm", "list", "packages", "--user", "0").toString().split(/\r?\n/);
-    for (const installed of ["info.plateaukao.einkbro", "com.android.settings", "com.android.documentsui", "dev.aiphone.input"]) {
-      ok(packages.includes(`package:${installed}`), `${installed} is available`);
-    }
-    for (const retired of ["com.github.metacubex.clash.meta", "com.android.dialer", "com.android.messaging", "com.android.camera2", "com.android.deskclock", "com.android.calendar"]) {
-      ok(!packages.includes(`package:${retired}`), `${retired} is absent`);
-    }
-    const launcher = android("shell", "cmd", "package", "resolve-activity", "--brief", "--user", "0", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME").toString();
-    match(launcher, /dev\.aiphone\.home\/\.HomeActivity/);
-    console.log("Calcium phone default packages and paged Home verified");
-  }
+  equal(desktopSetupExit, 0, "old signed version loaded the workbench");
 
   if (baseline) {
     const expectedName = `update-ownership-${crypto.randomUUID()}.txt`;

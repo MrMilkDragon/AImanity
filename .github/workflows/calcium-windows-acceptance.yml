@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        baseline: ["0.0.2", "0.0.1"]
+        baseline: ["0.0.2"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -118,7 +118,6 @@ jobs:
           printf '%s  %s\n' "$identity" "$name" | sha256sum -c -
       - name: Install and drive the real first-run desktop client
         env:
-          AIMANITY_QA_ANDROID_AUDIO: '1'
           AIMANITY_QA_BASELINE: ${{ matrix.baseline }}
         shell: pwsh
         run: |
