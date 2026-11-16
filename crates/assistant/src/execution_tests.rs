@@ -40,7 +40,7 @@ async fn same_device_waits_until_the_attempt_result_is_committed() {
         .await
         .unwrap();
         assert!(claim_due_run(&app).await.unwrap().is_none());
-        finish_attempt(&app, user.0, user.1, &Ok(RunDisposition::Queued), false)
+        finish_attempt(&app, user.0, &Ok(RunDisposition::Queued), false)
             .await
             .unwrap();
         assert_eq!(claim_due_run(&app).await.unwrap(), Some(notification));
@@ -77,7 +77,7 @@ async fn incoming_handoff_interrupts_exploration_and_wakes_on_lease_release() {
         assert!(crate::proactive::should_yield(&app, target.0).await.unwrap());
         sqlx::query("UPDATE runs SET status='queued',next_wake_at=now()+interval '5 seconds' WHERE id=$1")
             .bind(target.0).execute(&app.db).await.unwrap();
-        finish_attempt(&app,target.0,target.1,&Ok(RunDisposition::Queued),false).await.unwrap();
+        finish_attempt(&app,target.0,&Ok(RunDisposition::Queued),false).await.unwrap();
         tokio::time::timeout(Duration::from_millis(300), app.run_signals.handoff.notified()).await.unwrap();
     }).await;
 }
@@ -113,15 +113,9 @@ async fn distinct_devices_run_together_and_borrowed_devices_cannot_be_stolen() {
                 .await
                 .is_err()
         );
-        finish_attempt(
-            &app,
-            desktop.0,
-            desktop.1,
-            &Ok(RunDisposition::Completed),
-            false,
-        )
-        .await
-        .unwrap();
+        finish_attempt(&app, desktop.0, &Ok(RunDisposition::Completed), false)
+            .await
+            .unwrap();
         crate::run_queue::reserve(&app.db, phone.0, "fixture-desktop")
             .await
             .unwrap();
@@ -135,15 +129,9 @@ async fn distinct_devices_run_together_and_borrowed_devices_cannot_be_stolen() {
             .execute(&app.db)
             .await
             .unwrap();
-        finish_attempt(
-            &app,
-            phone.0,
-            phone.1,
-            &Ok(RunDisposition::Completed),
-            false,
-        )
-        .await
-        .unwrap();
+        finish_attempt(&app, phone.0, &Ok(RunDisposition::Completed), false)
+            .await
+            .unwrap();
         assert_eq!(claim_due_run(&app).await.unwrap(), Some(next));
     })
     .await;

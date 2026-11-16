@@ -145,7 +145,7 @@ async fn pause_resume_preserves_the_wait_and_wins_over_the_previous_attempt() {
         assert!(token.is_cancelled());
 
         assert_eq!(resume(&app, run.id).await.0, StatusCode::OK);
-        finish_attempt(&app, run.id, run.message, &Err("canceled".into()), true)
+        finish_attempt(&app, run.id, &Err("canceled".into()), true)
             .await
             .unwrap();
         let (status, deadline, context): (String, i64, Value) = sqlx::query_as(
@@ -468,7 +468,7 @@ async fn resumed_provider_request_uses_saved_key_and_strips_previous_protocol_me
             assert_eq!(sqlx::query_scalar::<_,Value>("SELECT context FROM runs WHERE id=$1").bind(run.id).fetch_one(&app.db).await.unwrap(),json!(run.context));
             // Each simulated provider failure must finish its claimed attempt,
             // as the real worker does, before the next protocol can resume it.
-            finish_attempt(&app,run.id,run.message,&Err(error),false).await.unwrap();
+            finish_attempt(&app,run.id,&Err(error),false).await.unwrap();
             assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM device_execution_leases WHERE run_id=$1")
                 .bind(run.id).fetch_one(&app.db).await.unwrap(),0);
         }
