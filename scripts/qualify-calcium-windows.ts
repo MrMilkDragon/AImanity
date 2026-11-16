@@ -422,7 +422,9 @@ try {
       body: toBinary(FileManageRequestSchema, create(FileManageRequestSchema, {operation: FileOperation.COPY, sources: [location], target: {path: guestFolder, deviceId: desktop.id}})),
       signal: AbortSignal.timeout(15000)});
     equal(copy.status, 200);
-    equal(fromBinary(FileManageResultSchema, new Uint8Array(await copy.arrayBuffer())).results[0]?.error, "", "wrote prior Linux overlay file through workbench");
+    const copied = fromBinary(FileManageResultSchema, new Uint8Array(await copy.arrayBuffer())).results[0];
+    equal(copied?.error, "", "wrote prior Linux overlay file through workbench");
+    ok(copied?.target?.path, "Linux copy returned its stored path");
     android("shell", `printf %s '${expectedName}' > /sdcard/Download/${expectedName}`);
     const updatePattern = "AImanity-" + candidate + "-windows-x64-setup.exe";
     const updateFolder = process.env.AIMANITY_QA_UPDATE_CACHE!;
@@ -445,21 +447,26 @@ try {
     const deadline = performance.now() + 600_000;
     let upgradedCookie = "";
     do {
+      const deployed = JSON.parse(readFileSync(checkpoint, "utf8"));
+      if (deployed.payload !== deployed.installed_payload || deployed.progress.state !== "ready") {
+        await Bun.sleep(750);
+        continue;
+      }
       const response = await fetch(`${origin}/api/auth/enter`, {method: "POST", headers: {origin, "content-type": protocol}, body: new Uint8Array(), signal: AbortSignal.timeout(2000)}).catch(() => undefined);
       if (response?.ok) upgradedCookie = response.headers.get("set-cookie")?.split(";", 1)[0] ?? "";
       if (upgradedCookie) break;
       await Bun.sleep(750);
     } while (performance.now() < deadline);
     ok(upgradedCookie, "native updater reopened the newly deployed workbench");
-    async function checkRetained(id: string, path: string) {
+    async function checkRetained(id: string, path: string, file: string) {
       const listing = await fetch(`${origin}/api/files/list`, {method: "POST", headers: {cookie: upgradedCookie, origin, "content-type": protocol},
         body: toBinary(FileLocationSchema, create(FileLocationSchema, {deviceId:id,path})), signal: AbortSignal.timeout(20000)});
       equal(listing.status, 200, `new workbench lists prior ${path}`);
       const {entries} = fromBinary(FileListingSchema, new Uint8Array(await listing.arrayBuffer()));
-      ok(entries.some(entry => entry.name === expectedName && entry.sizeBytes === BigInt(expectedName.length)), `prior ${path} retained exact file length and name`);
+      ok(entries.some(entry => entry.path === file && entry.sizeBytes === BigInt(expectedName.length)), `prior ${path} retained exact file length and name`);
     }
-    await checkRetained("", "/");
-    await checkRetained(desktop.id, guestFolder);
+    await checkRetained("", "/", location.path);
+    await checkRetained(desktop.id, guestFolder, copied.target.path);
     equal(android("shell", "cat", `/sdcard/Download/${expectedName}`).toString(), expectedName, "prior virtual phone retained exact content");
     await Promise.all([
       verifyFrame("/api/desktop/media?device_id=" + encodeURIComponent(desktop.id), "Linux after update", upgradedCookie),
