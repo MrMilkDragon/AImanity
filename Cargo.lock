@@ -63,6 +63,7 @@ dependencies = [
  "getrandom 0.4.3",
  "image",
  "md-5",
+ "memchr",
  "prost",
  "qrcode",
  "redis",

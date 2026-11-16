@@ -112,12 +112,16 @@ async fn stalled_forwarding_cannot_delay_notification_wake_or_manual_takeover() 
         registry::initialize(&app.db, &app.settings).await.unwrap();
         schedule(&app, &["phone", "desktop"]).await.unwrap();
         sqlx::query("UPDATE messages SET text='Synthetic completed notification report' WHERE id IN (SELECT assistant_message_id FROM runs)").execute(&app.db).await.unwrap();
-        sqlx::query("UPDATE runs SET origin='notification',status='succeeded',finished_at=now()").execute(&app.db).await.unwrap();
-        reconcile(&app).await.unwrap();
+        sqlx::query("UPDATE runs SET origin='notification'").execute(&app.db).await.unwrap();
         sqlx::query("UPDATE proactive_state SET exploring=false,wechat_watch=true,notifications_since='epoch'").execute(&app.db).await.unwrap();
         let work = tokio::spawn(work(app.clone()));
         let outcome = AssertUnwindSafe(async {
-            tokio::time::timeout(Duration::from_secs(2), inbox.pushing.notified()).await.expect("forwarding must actually be blocked before injecting the incoming event");
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            sqlx::query("UPDATE runs SET status='succeeded',finished_at=now()").execute(&app.db).await.unwrap();
+            let committed = std::time::Instant::now();
+            app.run_signals.proactive_settled.notify_one();
+            tokio::time::timeout(Duration::from_secs(1), inbox.pushing.notified()).await.expect("committed reports must wake delivery without waiting for the next poll");
+            let push_ms = committed.elapsed().as_secs_f64() * 1000.0;
             let started = std::time::Instant::now();
             inbox.available.store(true, Ordering::SeqCst);
             let run = tokio::time::timeout(Duration::from_secs(9), async {
@@ -147,7 +151,7 @@ async fn stalled_forwarding_cannot_delay_notification_wake_or_manual_takeover() 
             assert_eq!(inbox.pushes.load(Ordering::SeqCst), 1, "no competing forwarding owner or duplicate send");
             assert!(!inbox.bad_request.load(Ordering::SeqCst));
             assert_eq!(sqlx::query_scalar::<_,String>("SELECT origin FROM runs WHERE id=$1").bind(run).fetch_one(&app.db).await.unwrap(), "notification");
-            println!("loopback blocked-push fixture: notification woke in {wake_ms} ms; no real provider or device");
+            println!("loopback blocked-push fixture: report forwarding began in {push_ms:.3} ms, notification woke in {wake_ms} ms; no real provider or device");
         }).catch_unwind().await;
         work.abort();
         assert!(work.await.unwrap_err().is_cancelled());

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.4 Decimal — in development
+
+- Wake notification delivery as soon as its report is committed.
+- Fetch Liberty status in one database request.
+- Avoid copying screenshots twice when compacting model history and accelerate streamed response parsing.
+- Encode desktop screenshots faster with lossless PNG filtering.
+
 ## 0.0.3 Calcium
 
 - Resume an interrupted task from its saved goal, input and tool receipts once both devices are ready.

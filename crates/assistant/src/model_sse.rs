@@ -24,10 +24,7 @@ impl SseDecoder {
                 pending = &pending[1..];
                 continue;
             }
-            let end = pending
-                .iter()
-                .position(|byte| matches!(byte, b'\r' | b'\n'))
-                .unwrap_or(pending.len());
+            let end = memchr::memchr2(b'\r', b'\n', pending).unwrap_or(pending.len());
             if self.line.len() + end > MAX_EVENT {
                 return Err("模型流单帧超过限制".into());
             }
