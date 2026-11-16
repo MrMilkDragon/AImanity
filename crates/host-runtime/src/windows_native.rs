@@ -9,7 +9,7 @@ pub fn verify_manifest(resource: &Path, identity: &str) -> Result<(), String> {
         return Err("vm_bundle_invalid".into());
     }
     let bytes = fs::read(resource.join("qemu/manifest.json")).map_err(|e| e.to_string())?;
-    if format!("{:x}", Sha256::digest(bytes)) != identity {
+    if hex::encode(Sha256::digest(bytes)) != identity {
         return Err("vm_bundle_changed".into());
     }
     Ok(())

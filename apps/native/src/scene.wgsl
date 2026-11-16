@@ -1,4 +1,4 @@
-struct Scene { size:vec4<f32>, phone:vec4<f32>, desktop:vec4<f32>, chat:vec4<f32>, popup:vec4<f32>, child_popup:vec4<f32>, state:vec4<f32>, material:vec4<f32>, background:vec4<f32>, mode_effects:vec4<f32>, agent_pointers:array<array<vec4<f32>,5>,2> }
+struct Scene { size:vec4<f32>, phone:vec4<f32>, desktop:vec4<f32>, chat:vec4<f32>, popup:vec4<f32>, child_popup:vec4<f32>, state:vec4<f32>, device_scale:vec4<f32>, material:vec4<f32>, background:vec4<f32>, mode_effects:vec4<f32>, agent_pointers:array<array<vec4<f32>,5>,2> }
 @group(0) @binding(0) var<uniform> scene:Scene;
 @group(0) @binding(1) var phone:texture_2d<f32>;
 @group(0) @binding(2) var desktop:texture_2d<f32>;
@@ -14,24 +14,27 @@ fn sdf(p:vec2<f32>,r:vec4<f32>,radius:f32)->f32 {
 }
 fn device(p:vec2<f32>,rect:vec4<f32>,angle:f32,index:u32,under:vec3<f32>)->vec3<f32> {
  let d=p-rect.xy-rect.zw*.5;
- let x=d.x/(cos(angle)-d.x*sin(angle)/1000.);
- let y=d.y*(1.+x*sin(angle)/1000.);
+ let x=d.x/(cos(angle)-d.x*sin(angle)/1800.);
+ let y=d.y*(1.+x*sin(angle)/1800.);
  let local=vec2(x,y)+rect.zw*.5;
  let box=vec4(0.,0.,rect.zw);
- let radius=select(11.,21.,index==0u);
+ let scale=scene.device_scale[index];
+ let bezel=5.*scale;
+ let radius=select(13.,select(28.,22.,rect.z>rect.w),index==0u)*scale;
  let dist=sdf(local,box,radius);
  var color=under;
- let shadow=exp(-max(dist,0.)*.11)*.13;
+ let shadow=exp(-max(dist,0.)*.09)*.05;
  color*=1.-shadow;
  if dist<1. {
-  let uv=local/rect.zw;
+  let image_size=rect.zw-2.*bezel;
+  let uv=(local-bezel)/image_size;
   var screen=textureSampleLevel(desktop,linear_sampler,uv,0.).rgb;
   if index==0u {screen=textureSampleLevel(phone,linear_sampler,uv,0.).rgb;}
   if scene.state.w>0. {
    for (var i=0u;i<5u;i+=1u) {
     let mark=scene.agent_pointers[index][i];
     if mark.z>0. {
-     let d=length(local-mark.xy*rect.zw);
+     let d=length(local-bezel-mark.xy*image_size);
      let edge=(1.-smoothstep(7.,8.,d))*mark.z;
      let fill=(1.-smoothstep(5.,6.,d))*mark.z;
      screen=mix(screen,vec3(.98),edge);
@@ -39,8 +42,8 @@ fn device(p:vec2<f32>,rect:vec4<f32>,angle:f32,index:u32,under:vec3<f32>)->vec3<
     }
    }
   }
-  let border=smoothstep(-2.0,-.6,dist);
-  color=mix(screen,vec3(.13,.14,.15),border);
+  let border=smoothstep(-bezel-.5,-bezel+.5,dist);
+  color=mix(screen,select(vec3(.0296,.0343,.0423),vec3(.00857),index==0u),border);
   color=mix(color,under,smoothstep(-.2,1.,dist));
  }
  return color;
@@ -94,31 +97,45 @@ fn copilot_background(p:vec2<f32>)->vec3<f32> {
 fn cable(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
  let a=vec2(scene.phone.x+scene.phone.z*.5,scene.phone.y+scene.phone.w);
  let b=vec2(scene.desktop.x+scene.desktop.z*.5,scene.desktop.y+scene.desktop.w);
- let t=clamp((p.x-a.x)/max(b.x-a.x,1.),0.,1.);
- let shelf=max(a.y,b.y)+16.;
- let y=mix(mix(a.y,shelf,smoothstep(0.,.24,t)),b.y,smoothstep(.76,1.,t));
- let wire=(1.-smoothstep(1.,2.,abs(p.y-y)))*step(a.x,p.x)*step(p.x,b.x);
- let plug_a=1.-smoothstep(-.45,.55,sdf(p,vec4(a-vec2(3.5,2.),7.,8.),2.));
- let plug_b=1.-smoothstep(-.45,.55,sdf(p,vec4(b-vec2(3.5,2.),7.,8.),2.));
- return mix(under,vec3(.22,.24,.27),max(wire,max(plug_a,plug_b))*scene.size.z);
+ let bend=max(a.y,b.y)+22.;
+ if p.x<min(a.x,b.x)-5. || p.x>max(a.x,b.x)+5. || p.y<min(a.y,b.y)-3. || p.y>bend+3. {return under;}
+ let span=b.x-a.x;
+ let ratio=clamp((p.x-min(a.x,b.x))/max(abs(span),1.),0.,1.);
+ let t=.5-sign(span)*sin(asin(1.-2.*ratio)/3.);
+ let u=1.-t;
+ let y=(a.y+4.)*u*u*u+3.*bend*u*t+(b.y+4.)*t*t*t;
+ let dx=abs(6.*u*t*span);
+ let dy=3.*((bend-a.y-4.)*u*u+(b.y+4.-bend)*t*t);
+ let distance=abs(p.y-y)*dx/max(length(vec2(dx,dy)),.01);
+ let segment=step(min(a.x,b.x)+.5,p.x)*step(p.x,max(a.x,b.x)-.5)*step(min(a.y,b.y)+4.,p.y);
+ let shadow=(1.-smoothstep(2.,3.,distance))*segment*.9;
+ let wire=(1.-smoothstep(.5,1.5,distance))*segment;
+ let plug=min(sdf(p,vec4(a-vec2(4.,2.),8.,9.),2.),sdf(p,vec4(b-vec2(4.,2.),8.,9.),2.));
+ let steel=vec3(.184,.250,.328);
+ let cable=mix(mix(under,vec3(1.),shadow),steel,wire);
+ let tip=mix(vec3(.776,.815,.863),steel,smoothstep(-1.1,-.4,plug));
+ return mix(under,mix(cable,tip,1.-smoothstep(-.4,.6,plug)),scene.size.z);
 }
 fn base(p:vec2<f32>)->vec3<f32>{
  var c=scene.background.rgb;
  if scene.mode_effects.w>0. {c=copilot_background(p);}
  if scene.mode_effects.z>0. {c=goal_background(p,c);}
- if scene.size.z>0. {c=cable(p,c);}
  if scene.state.z<.5 {
   c=device(p,scene.desktop,scene.state.y,1u,c);c=device(p,scene.phone,scene.state.x,0u,c);
  }else{
   c=device(p,scene.phone,scene.state.x,0u,c);c=device(p,scene.desktop,scene.state.y,1u,c);
  }
+ if scene.size.z>0. {c=cable(p,c);}
  return c;
 }
 fn blur(uv:vec2<f32>,axis:vec2<f32>)->vec3<f32> {
- let step=axis*scene.material.z/1.75/scene.size.xy;
- var c=textureSampleLevel(glass_source,linear_sampler,uv,0.).rgb*.227027;
- c+=(textureSampleLevel(glass_source,linear_sampler,uv+step*1.384615,0.).rgb+textureSampleLevel(glass_source,linear_sampler,uv-step*1.384615,0.).rgb)*.316216;
- c+=(textureSampleLevel(glass_source,linear_sampler,uv+step*3.230769,0.).rgb+textureSampleLevel(glass_source,linear_sampler,uv-step*3.230769,0.).rgb)*.070270;
+ let step=axis*(scene.material.z/18.)/vec2<f32>(textureDimensions(glass_source));
+ let pairs=array<vec2<f32>,6>(vec2(1.481490,.167710),vec2(3.456897,.131416),vec2(5.432513,.084723),vec2(7.408452,.044937),vec2(9.384821,.019609),vec2(11.361721,.007039));
+ var c=textureSampleLevel(glass_source,linear_sampler,uv,0.).rgb*.089133;
+ for (var i=0u;i<6u;i+=1u) {
+  let offset=step*pairs[i].x;
+  c+=(textureSampleLevel(glass_source,linear_sampler,uv+offset,0.).rgb+textureSampleLevel(glass_source,linear_sampler,uv-offset,0.).rgb)*pairs[i].y;
+ }
  return c;
 }
 @fragment fn backdrop(v:Vertex)->@location(0) vec4<f32> {
@@ -127,14 +144,36 @@ fn blur(uv:vec2<f32>,axis:vec2<f32>)->vec3<f32> {
 @fragment fn horizontal(v:Vertex)->@location(0) vec4<f32> {
  return vec4(blur(v.uv,vec2(1.,0.)),1.);
 }
+@fragment fn vertical(v:Vertex)->@location(0) vec4<f32> {
+ return vec4(blur(v.uv,vec2(0.,1.)),1.);
+}
 fn glass(p:vec2<f32>,r:vec4<f32>,under:vec3<f32>)->vec3<f32>{
  let dist=sdf(p,r,scene.material.x);
  if dist>1. {return under*(1.-exp(-max(dist,0.)*.1)*.018);}
  let copilot=scene.mode_effects.w>0.;
- var c=mix(blur(p/scene.size.xy,vec2(0.,1.)),vec3(select(1.,.022,copilot)),scene.material.y);
+ let backdrop=textureSampleLevel(glass_source,linear_sampler,p/scene.size.xy,0.).rgb;
+ var c=mix(backdrop,vec3(select(1.,.022,copilot)),scene.material.y);
  let edge=smoothstep(-scene.material.w-.5,-.5,dist)*(1.-smoothstep(-.5,.5,dist));
- c=mix(c,vec3(select(.87,.14,copilot)),edge);
+ c=mix(c,select(vec3(.1384,.1812,.2462),vec3(.14),copilot),edge*select(.42,1.,copilot));
  return mix(c,under,smoothstep(0.,1.,dist));
+}
+fn tool_glass(p:vec2<f32>,r:vec4<f32>,under:vec3<f32>)->vec3<f32>{
+ if any(p<r.xy-vec2(110.)) || any(p>r.xy+r.zw+vec2(110.,134.)) {return under;}
+ let radius=min(scene.material.x,min(r.z,r.w)*.5);
+ let dist=sdf(p,r,radius);
+ if dist>1. {
+  let d1=max(sdf(p-vec2(0.,24.),r,radius),0.)/45.;
+  let d2=max(sdf(p-vec2(0.,2.),r,radius),0.)/4.;
+  return under*(1.-exp(-d1*d1)*.14-exp(-d2*d2)*.039);
+ }
+ let copilot=scene.mode_effects.w>0.;
+ let backdrop=textureSampleLevel(glass_source,linear_sampler,p/scene.size.xy,0.).rgb;
+ let luminance=dot(backdrop,vec3(.2126,.7152,.0722));
+ let saturated=mix(vec3(luminance),backdrop,1.05);
+ var glass=mix(saturated,vec3(select(1.,.015,copilot)),scene.material.y);
+ let edge=1.-smoothstep(0.,scene.material.w+.5,abs(dist+scene.material.w*.5));
+ glass=mix(glass,vec3(select(.7305,.1329,copilot)),edge);
+ return mix(glass,under,smoothstep(0.,1.,dist));
 }
 @fragment fn fragment(v:Vertex)->@location(0) vec4<f32>{
  let p=v.uv*scene.size.xy;
@@ -152,8 +191,8 @@ fn glass(p:vec2<f32>,r:vec4<f32>,under:vec3<f32>)->vec3<f32>{
   }
   c+=vec3(waves*envelope*.16);
  }
- if scene.popup.z>0. {c=glass(p,scene.popup,c);}
- if scene.child_popup.z>0. {c=glass(p,scene.child_popup,c);}
+ if scene.popup.z>0. {c=mix(c,tool_glass(p,scene.popup,c),scene.size.w);}
+ if scene.child_popup.z>0. {c=tool_glass(p,scene.child_popup,c);}
  if scene.mode_effects.y>0. {
   let uv=p/scene.size.xy;
   let edge=min(min(p.x,scene.size.x-p.x),min(p.y,scene.size.y-p.y));

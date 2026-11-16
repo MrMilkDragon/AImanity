@@ -39,7 +39,7 @@ pub(super) fn prepare(
             layers.push(json!({"mediaType":blob.media_type,"digest":format!("sha256:{}",blob.digest),"size":blob.size}));
         }
         let graph=serde_json::to_vec(&json!({"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"mediaType":"application/vnd.oci.image.config.v1+json","digest":image.config_digest,"size":config.size},"layers":layers})).map_err(|_|Error::Invalid("image_normalization"))?;
-        let identity = format!("{:x}", Sha256::digest(&graph));
+        let identity = hex::encode(Sha256::digest(&graph));
         image.export_digest = format!("sha256:{identity}");
         image.reference = format!("ai-phone-bundle/{role}:sha-{identity}");
         descriptors.push(json!({"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":image.export_digest,"size":graph.len(),"platform":{"os":"linux","architecture":manifest.architecture},"annotations":{"io.containerd.image.name":format!("docker.io/{}",image.reference)}}));

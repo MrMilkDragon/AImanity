@@ -1,6 +1,6 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, icon_button},
+    controls::{Icon, sized_icon_button},
     locale::Locale,
     style,
 };
@@ -182,14 +182,16 @@ impl Playback {
             0
         };
         let muted = volume == 0;
-        let button = icon_button(
+        let button = sized_icon_button(
             if muted { Icon::Muted } else { Icon::Volume },
             locale.tr(if muted { "开启声音" } else { "静音" }),
             enabled.then_some(Message::Toggle),
+            32.,
+            34.,
         );
         let range = tooltip(
             slider(0..=100, volume, Message::Volume)
-                .width(64)
+                .width(60)
                 .height(16)
                 .style(style::range),
             text(format!(

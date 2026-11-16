@@ -114,23 +114,25 @@ fn inspect_archive(
         layout,
         ..
     } = &mut prepared;
-    let mut hash = Sha256::new();
     if outer_digest.is_some() {
         file.rewind()?;
-        io::copy(
-            &mut Cancelled {
-                input: (&mut *file).take(*offset),
-                cancel: cancel.clone(),
-            },
-            &mut hash,
-        )?;
     } else {
         file.seek(SeekFrom::Start(*offset))?;
     }
-    let mut compressed = Hashed {
-        input: (&mut *file).take(manifest.archive.size),
-        hash,
+    let mut input = Hashed {
+        input: file,
+        hash: Sha256::new(),
     };
+    if outer_digest.is_some() {
+        io::copy(
+            &mut Cancelled {
+                input: (&mut input).take(*offset),
+                cancel: cancel.clone(),
+            },
+            &mut io::sink(),
+        )?;
+    }
+    let mut compressed = (&mut input).take(manifest.archive.size);
     *layout = {
         let decoder = inventory::decoder(&mut compressed, manifest.xz())?;
         inventory::inspect(
@@ -148,20 +150,19 @@ fn inspect_archive(
         },
         &mut io::sink(),
     )?;
-    let mut hash = compressed.hash;
     let expected = if let Some(expected) = outer_digest {
         io::copy(
             &mut Cancelled {
-                input: file,
+                input: &mut input,
                 cancel,
             },
-            &mut hash,
+            &mut io::sink(),
         )?;
         expected
     } else {
         &manifest.archive.sha256
     };
-    if format!("{:x}", hash.finalize()) != expected {
+    if hex::encode(input.hash.finalize()) != expected {
         return Err(Error::Invalid("image_archive_digest"));
     }
     Ok(prepared)

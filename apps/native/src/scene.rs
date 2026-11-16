@@ -17,7 +17,9 @@ pub struct Scene {
     pub size: Size,
     pub frames: [Option<Arc<Frame>>; 2],
     pub focus: usize,
+    pub linked: bool,
     pub popup: Rectangle,
+    pub popup_opacity: f32,
     pub child_popup: Rectangle,
     pub mode_effects: [f32; 4],
     pub keyboard_target: Option<usize>,
@@ -110,6 +112,12 @@ struct PointerPress {
 }
 
 impl Scene {
+    fn occludes_device(&self, point: Point) -> bool {
+        self.layout.chat.contains(point)
+            || self.popup.contains(point)
+            || self.child_popup.contains(point)
+    }
+
     fn begin_press(
         &self,
         state: &mut Pointer,
@@ -125,7 +133,7 @@ impl Scene {
                     source,
                     started: Instant::now(),
                     moved: None,
-                    focused: device == self.focus,
+                    focused: device == self.focus || self.linked,
                 });
                 return Some(shader::Action::publish(Message::Focus(device)).and_capture());
             }
@@ -146,7 +154,7 @@ impl Scene {
         if matches!(source, PointerSource::Touch(_)) {
             state.touch_released = Some((position, now));
         }
-        if !press.focused || self.popup.contains(position) || self.child_popup.contains(position) {
+        if !press.focused || self.occludes_device(position) {
             return Some(shader::Action::capture());
         }
         let to = self.layout.local(press.device, position)?;
@@ -228,10 +236,7 @@ impl shader::Program<Message> for Scene {
             {
                 return Some(shader::Action::capture());
             }
-            if cursor
-                .position()
-                .is_some_and(|p| self.popup.contains(p) || self.child_popup.contains(p))
-            {
+            if cursor.position().is_some_and(|p| self.occludes_device(p)) {
                 state.pressed = None;
                 return None;
             }
@@ -249,7 +254,7 @@ impl shader::Program<Message> for Scene {
                 if touch_active {
                     return Some(shader::Action::capture());
                 }
-                if self.popup.contains(*position) || self.child_popup.contains(*position) {
+                if self.occludes_device(*position) {
                     return None;
                 }
                 return self.begin_press(state, *position, PointerSource::Touch(*id));
@@ -281,15 +286,23 @@ impl shader::Program<Message> for Scene {
                 return Some(shader::Action::capture());
             }
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
-                let p = self.layout.local(self.focus, cursor.position()?)?;
-                let frame = self.frames[self.focus].as_ref()?;
+                let position = cursor.position()?;
+                let (device, p) = match self.layout.local(self.focus, position) {
+                    Some(point) => (self.focus, point),
+                    None if self.linked => {
+                        let other = 1 - self.focus;
+                        (other, self.layout.local(other, position)?)
+                    }
+                    None => return None,
+                };
+                let frame = self.frames[device].as_ref()?;
                 let amount = match delta {
                     mouse::ScrollDelta::Lines { y, .. } => y * 96.,
                     mouse::ScrollDelta::Pixels { y, .. } => *y,
                 };
                 return Some(
                     shader::Action::publish(Message::Input(
-                        self.focus,
+                        device,
                         DeviceInput::Scroll {
                             x: (p.x * frame.width as f32) as u32,
                             y: (p.y * frame.height as f32) as u32,
@@ -397,7 +410,12 @@ impl shader::Program<Message> for Scene {
         let rect = |r: Rectangle| [r.x, r.y, r.width, r.height];
         Primitive {
             uniforms: Uniforms {
-                size: [self.size.width, self.size.height, self.layout.cable, 0.],
+                size: [
+                    self.size.width,
+                    self.size.height,
+                    self.layout.cable,
+                    self.popup_opacity,
+                ],
                 phone: rect(self.layout.devices[0]),
                 desktop: rect(self.layout.devices[1]),
                 chat: rect(self.layout.chat),
@@ -412,6 +430,12 @@ impl shader::Program<Message> for Scene {
                     } else {
                         0.
                     },
+                ],
+                device_scale: [
+                    self.layout.device_scale[0],
+                    self.layout.device_scale[1],
+                    0.,
+                    0.,
                 ],
                 material: [
                     style::PANEL_RADIUS,
@@ -432,10 +456,9 @@ impl shader::Program<Message> for Scene {
         _: Rectangle,
         cursor: mouse::Cursor,
     ) -> mouse::Interaction {
-        if cursor
-            .position()
-            .is_some_and(|p| (0..2).any(|i| self.layout.local(i, p).is_some()))
-        {
+        if cursor.position().is_some_and(|p| {
+            !self.occludes_device(p) && (0..2).any(|i| self.layout.local(i, p).is_some())
+        }) {
             mouse::Interaction::Pointer
         } else {
             mouse::Interaction::default()
@@ -452,6 +475,7 @@ pub struct Uniforms {
     popup: [f32; 4],
     child_popup: [f32; 4],
     state: [f32; 4],
+    device_scale: [f32; 4],
     material: [f32; 4],
     background: [f32; 4],
     mode_effects: [f32; 4],
@@ -466,6 +490,7 @@ pub struct Pipeline {
     render: wgpu::RenderPipeline,
     backdrop: wgpu::RenderPipeline,
     horizontal: wgpu::RenderPipeline,
+    vertical: wgpu::RenderPipeline,
     glass_layout: wgpu::BindGroupLayout,
     glass_textures: [wgpu::Texture; 2],
     glass_groups: [wgpu::BindGroup; 2],
@@ -655,6 +680,11 @@ impl shader::Pipeline for Pipeline {
             wgpu::TextureFormat::Rgba8UnormSrgb,
             &[&layout, &glass_layout],
         );
+        let vertical = make_pipeline(
+            "vertical",
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            &[&layout, &glass_layout],
+        );
         let (glass_textures, glass_groups) = Self::glass_buffers(device, &glass_layout, 1, 1);
         let textures = [texture(device, 1, 1, false), texture(device, 1, 1, false)];
         for t in &textures {
@@ -679,6 +709,7 @@ impl shader::Pipeline for Pipeline {
             render,
             backdrop,
             horizontal,
+            vertical,
             glass_layout,
             glass_textures,
             glass_groups,
@@ -759,11 +790,12 @@ impl shader::Primitive for Primitive {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("glass-backdrop"),
         });
-        for (index, render) in [&pipeline.backdrop, &pipeline.horizontal]
+        for (index, render) in [&pipeline.backdrop, &pipeline.horizontal, &pipeline.vertical]
             .into_iter()
             .enumerate()
         {
-            let view = pipeline.glass_textures[index].create_view(&Default::default());
+            let destination = index % 2;
+            let view = pipeline.glass_textures[destination].create_view(&Default::default());
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("glass-blur"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -779,8 +811,8 @@ impl shader::Primitive for Primitive {
             });
             pass.set_pipeline(render);
             pass.set_bind_group(0, &pipeline.group, &[]);
-            if index == 1 {
-                pass.set_bind_group(1, &pipeline.glass_groups[0], &[]);
+            if index > 0 {
+                pass.set_bind_group(1, &pipeline.glass_groups[1 - destination], &[]);
             }
             pass.draw(0..3, 0..1);
         }
@@ -789,7 +821,7 @@ impl shader::Primitive for Primitive {
     fn draw(&self, pipeline: &Pipeline, pass: &mut wgpu::RenderPass<'_>) -> bool {
         pass.set_pipeline(&pipeline.render);
         pass.set_bind_group(0, &pipeline.group, &[]);
-        pass.set_bind_group(1, &pipeline.glass_groups[1], &[]);
+        pass.set_bind_group(1, &pipeline.glass_groups[0], &[]);
         pass.draw(0..3, 0..1);
         true
     }

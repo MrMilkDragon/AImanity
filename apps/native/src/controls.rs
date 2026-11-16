@@ -13,6 +13,8 @@ pub enum Icon {
     Folder,
     Target,
     Screen,
+    PhonePortrait,
+    PhoneLandscape,
     Camera,
     Copy,
     Cut,
@@ -112,6 +114,12 @@ impl Icon {
             Self::Screen => {
                 "<rect x='2' y='4' width='20' height='14' rx='2'/><path d='M8 22h8m-4-4v4'/>"
             }
+            Self::PhonePortrait => {
+                "<rect x='5' y='2' width='14' height='20' rx='2'/><path d='M12 18h.01'/>"
+            }
+            Self::PhoneLandscape => {
+                "<rect x='2' y='5' width='20' height='14' rx='2'/><path d='M6 12h.01'/>"
+            }
             Self::Camera => "<path d='M4 9V5h4m8 0h4v4m0 6v4h-4m-8 0H4v-4M3 12h18'/>",
             Self::Copy => {
                 "<rect x='8' y='8' width='12' height='12' rx='2'/><path d='M16 4H6a2 2 0 0 0-2 2v10'/>"
@@ -194,6 +202,22 @@ pub fn icon_button<'a, M: Clone + 'a>(
     label: &'a str,
     action: Option<M>,
 ) -> Element<'a, M> {
+    sized_icon_button(
+        icon,
+        label,
+        action,
+        style::CONTROL_HEIGHT,
+        style::CONTROL_HEIGHT,
+    )
+}
+
+pub fn sized_icon_button<'a, M: Clone + 'a>(
+    icon: Icon,
+    label: &'a str,
+    action: Option<M>,
+    width: f32,
+    height: f32,
+) -> Element<'a, M> {
     tooltip(
         button(
             container(
@@ -202,8 +226,8 @@ pub fn icon_button<'a, M: Clone + 'a>(
             )
             .center(Length::Fill),
         )
-        .width(style::CONTROL_HEIGHT)
-        .height(style::CONTROL_HEIGHT)
+        .width(width)
+        .height(height)
         .on_press_maybe(action)
         .style(style::quiet),
         text(label).size(12),

@@ -515,5 +515,10 @@
   "请使用 6 MB 以内的 PNG、JPEG 或 WebP 图片": "Use a PNG, JPEG, or WebP image under 6 MB",
   "文档已更新，当前草稿已保留": "Document updated. Your draft is preserved.",
   "放弃草稿": "Discard draft",
-  "知识网络": "Knowledge graph"
+  "知识网络": "Knowledge graph",
+  "选择语言": "Choose your language",
+  "继续": "Continue",
+  "配置设备": "Set up your devices",
+  "开始安装": "Start installation",
+  "本机资源不足，请检查内存和可用空间。": "Insufficient resources. Check memory and free space."
 }

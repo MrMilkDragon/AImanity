@@ -313,21 +313,17 @@ impl Location {
         }
         Task::none()
     }
+    pub fn enable_action(&self) -> Element<'_, Message> {
+        toggler(self.enabled())
+            .on_toggle_maybe((self.state.is_some() && !self.saving).then_some(Message::Enabled))
+            .into()
+    }
+
     pub fn view(&self, locale: crate::locale::Locale) -> Element<'_, Message> {
         let enabled = self.enabled();
         let moving = self.state.as_ref().is_some_and(|s| s.moving);
         let editable = !self.saving && !moving;
-        let mut body = column![
-            row![
-                text(locale.tr("模拟位置")).size(14),
-                space::horizontal(),
-                toggler(enabled).on_toggle_maybe(
-                    (self.state.is_some() && !self.saving).then_some(Message::Enabled)
-                )
-            ]
-            .align_y(iced::Center)
-        ]
-        .spacing(12);
+        let mut body = column![].spacing(12);
         if enabled {
             body = body.push(
                 row![

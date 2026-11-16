@@ -3,11 +3,12 @@ use crate::{
     controls::{Icon, action_button, icon_button},
     locale::Locale,
     style,
+    surface::tool_action,
 };
 use ai_phone_api::wire;
 use iced::{
     Element, Font, Length, Task,
-    widget::{button, checkbox, column, container, row, rule, scrollable, space, text, text_input},
+    widget::{button, checkbox, column, container, row, rule, text, text_input},
 };
 use std::path::PathBuf;
 
@@ -210,25 +211,26 @@ impl Skills {
         )
     }
 
-    pub fn view(&self, locale: Locale) -> Element<'_, Message> {
-        let mut content = column![
-            row![
-                text(locale.tr("Skill 管理")).size(14),
-                space::horizontal(),
-                icon_button(
-                    Icon::Upload,
-                    locale.tr("上传Skill"),
-                    (!self.busy).then_some(Message::ChooseFile)
-                ),
-                icon_button(
-                    Icon::Plus,
-                    locale.tr("添加Skill"),
-                    Some(Message::ToggleImport)
-                ),
-            ]
-            .align_y(iced::Alignment::Center)
+    pub fn actions(&self, locale: Locale) -> Element<'_, Message> {
+        row![
+            tool_action(
+                Icon::Upload,
+                locale.tr("上传Skill"),
+                (!self.busy).then_some(Message::ChooseFile),
+            ),
+            tool_action(
+                Icon::Plus,
+                locale.tr("添加Skill"),
+                Some(Message::ToggleImport),
+            ),
         ]
-        .spacing(10);
+        .align_y(iced::Alignment::Center)
+        .spacing(2)
+        .into()
+    }
+
+    pub fn view(&self, locale: Locale) -> Element<'_, Message> {
+        let mut content = column![].spacing(10);
         if self.adding {
             let submit =
                 (!self.busy && !self.source.trim().is_empty()).then_some(Message::ImportUrl);
@@ -333,8 +335,6 @@ impl Skills {
                 .on_press_maybe((!self.busy).then_some(Message::Undo)),
             );
         }
-        scrollable(container(content).padding(24))
-            .height(Length::Fill)
-            .into()
+        content.into()
     }
 }

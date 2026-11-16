@@ -130,10 +130,9 @@ impl Device for Phone {
             "Success".into()
         } else if args.first() == Some(&"push") {
             use sha2::Digest;
-            self.probe_hash = Some(format!(
-                "{:x}",
-                sha2::Sha512::digest(std::fs::read(args[1]).unwrap())
-            ));
+            self.probe_hash = Some(hex::encode(sha2::Sha512::digest(
+                std::fs::read(args[1]).unwrap(),
+            )));
             String::new()
         } else if args.starts_with(&["shell", "sh", "-c"]) {
             self.probe_hash

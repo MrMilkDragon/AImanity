@@ -53,7 +53,7 @@ fn input() -> Result<Spec> {
 fn saved_spec(root: &Path, name: &str, receipt: &state::Receipt) -> Option<Spec> {
     let folder = state::directory(&root.join("data/services")).ok()?;
     let bytes = state::private_bytes(&folder, &format!("{name}.spec.json"), 8192)?;
-    if format!("{:x}", Sha256::digest(&bytes)) != receipt.spec_content_sha256 {
+    if hex::encode(Sha256::digest(&bytes)) != receipt.spec_content_sha256 {
         return None;
     }
     let spec: Spec = serde_json::from_slice(&bytes).ok()?;
@@ -130,7 +130,7 @@ async fn start(root: &Path, name: &str, spec: Spec) -> Result<bool> {
     filesystem::directory(&folder, true)?;
     let lock = filesystem::lock_file(&folder.join(format!("{name}.lock")))?;
     let bytes = serde_json::to_vec(&spec).map_err(|_| Error::Invalid("service_spec"))?;
-    let identity = format!("{:x}", Sha256::digest(&bytes));
+    let identity = hex::encode(Sha256::digest(&bytes));
     match FileExt::try_lock_exclusive(&lock) {
         Ok(()) => {}
         Err(error)
@@ -288,14 +288,14 @@ mod tests {
         let path = folder.join("emulator.spec.json");
         let valid = serde_json::to_vec(&spec()).unwrap();
         fs::write(&path, &valid).unwrap();
-        let mut receipt:state::Receipt=serde_json::from_value(json!({"format":1,"supervisor":"rust-v1","program":"/fixture","pid":42,"start_ticks":"123","root":root.path(),"spec_sha256":"earlier-logical-digest","spec_content_sha256":format!("{:x}",Sha256::digest(&valid))})).unwrap();
+        let mut receipt:state::Receipt=serde_json::from_value(json!({"format":1,"supervisor":"rust-v1","program":"/fixture","pid":42,"start_ticks":"123","root":root.path(),"spec_sha256":"earlier-logical-digest","spec_content_sha256":hex::encode(Sha256::digest(&valid))})).unwrap();
         assert!(saved_spec(root.path(), "emulator", &receipt).is_some());
         let mut oversized = valid.clone();
         oversized.extend_from_slice(&[b' '; 8193]);
         fs::write(&path, &oversized).unwrap();
-        receipt.spec_content_sha256 = format!("{:x}", Sha256::digest(&oversized));
+        receipt.spec_content_sha256 = hex::encode(Sha256::digest(&oversized));
         assert!(saved_spec(root.path(), "emulator", &receipt).is_none());
-        receipt.spec_content_sha256 = format!("{:x}", Sha256::digest(&valid));
+        receipt.spec_content_sha256 = hex::encode(Sha256::digest(&valid));
         fs::write(&path, b"changed").unwrap();
         assert!(saved_spec(root.path(), "emulator", &receipt).is_none());
         for value in [
@@ -307,14 +307,14 @@ mod tests {
         ] {
             let bytes = serde_json::to_vec(&value).unwrap();
             fs::write(&path, &bytes).unwrap();
-            receipt.spec_content_sha256 = format!("{:x}", Sha256::digest(&bytes));
+            receipt.spec_content_sha256 = hex::encode(Sha256::digest(&bytes));
             assert!(saved_spec(root.path(), "emulator", &receipt).is_none());
         }
         fs::remove_file(&path).unwrap();
         assert!(saved_spec(root.path(), "emulator", &receipt).is_none());
         fs::write(root.path().join("foreign"), &valid).unwrap();
         std::os::unix::fs::symlink(root.path().join("foreign"), &path).unwrap();
-        receipt.spec_content_sha256 = format!("{:x}", Sha256::digest(&valid));
+        receipt.spec_content_sha256 = hex::encode(Sha256::digest(&valid));
         assert!(saved_spec(root.path(), "emulator", &receipt).is_none());
     }
 }

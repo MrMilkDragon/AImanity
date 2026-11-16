@@ -293,15 +293,9 @@ impl Modes {
         };
         [self.mode_time, self.edge, goal, self.speech.visual()]
     }
-    pub fn dock(&self, chat: &wire::ChatState) -> Element<'_, Message> {
+    pub fn liberty_button(&self) -> Element<'_, Message> {
         let liberty = self.state.as_ref().is_some_and(|state| state.exploring);
         let ready = self.state.is_some() && !self.saving && (!self.goal_active() || liberty);
-        let copilot = self.speech.active();
-        let voice_status = if copilot {
-            "关闭 Copilot"
-        } else {
-            "开启 Copilot"
-        };
         let liberty_status = if self.goal_active() {
             "目标运行中"
         } else {
@@ -314,29 +308,35 @@ impl Modes {
                 _ => "待机",
             }
         };
-        row![
-            iced::widget::tooltip(
-                mode_button(
-                    "Liberty",
-                    if liberty { Icon::Pause } else { Icon::Compass },
-                    liberty,
-                    ready.then_some(Message::ToggleLiberty)
-                ),
-                text(self.locale.tr(liberty_status)).size(12),
-                iced::widget::tooltip::Position::Top,
+        iced::widget::tooltip(
+            mode_button(
+                "Liberty",
+                if liberty { Icon::Pause } else { Icon::Compass },
+                liberty,
+                ready.then_some(Message::ToggleLiberty),
             ),
-            iced::widget::tooltip(
-                mode_button(
-                    "Copilot",
-                    if copilot { Icon::Mic } else { Icon::MicOff },
-                    copilot,
-                    (copilot || !chat.conversation_id.is_empty()).then_some(Message::ToggleCopilot)
-                ),
-                text(self.locale.tr(voice_status)).size(12),
-                iced::widget::tooltip::Position::Top,
-            )
-        ]
-        .spacing(4)
+            text(self.locale.tr(liberty_status)).size(12),
+            iced::widget::tooltip::Position::Top,
+        )
+        .into()
+    }
+    pub fn copilot_button(&self, conversation_ready: bool) -> Element<'_, Message> {
+        let active = self.speech.active();
+        iced::widget::tooltip(
+            mode_button(
+                "Copilot",
+                if active { Icon::Mic } else { Icon::MicOff },
+                active,
+                (active || conversation_ready).then_some(Message::ToggleCopilot),
+            ),
+            text(self.locale.tr(if active {
+                "关闭 Copilot"
+            } else {
+                "开启 Copilot"
+            }))
+            .size(12),
+            iced::widget::tooltip::Position::Top,
+        )
         .into()
     }
     fn can_save_goal(&self, value: &str) -> bool {
@@ -419,14 +419,11 @@ impl Modes {
         } else {
             &self.goal_error
         };
-        let mut body = column![text("Task & Goal").size(14), editor].spacing(14);
+        let mut body = column![editor].spacing(14);
         if !error.is_empty() {
             body = body.push(text(error).size(12).style(style::error_text));
         }
-        container(body.push(actions))
-            .padding(24)
-            .width(Length::Fill)
-            .into()
+        body.push(actions).width(Length::Fill).into()
     }
 }
 

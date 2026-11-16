@@ -49,7 +49,7 @@ fn rootfs(folder: &Path) -> (PathBuf, String) {
         .unwrap()
         .write_all(b"synthetic rootfs fixture")
         .unwrap();
-    let identity = format!("{:x}", Sha256::digest(fs::read(&path).unwrap()));
+    let identity = hex::encode(Sha256::digest(fs::read(&path).unwrap()));
     (path, identity)
 }
 

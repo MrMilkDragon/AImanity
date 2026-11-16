@@ -497,5 +497,10 @@
   "请使用 6 MB 以内的 PNG、JPEG 或 WebP 图片": "PNG-, JPEG- oder WebP-Bild bis 6 MB verwenden",
   "文档已更新，当前草稿已保留": "Dokument aktualisiert. Dein Entwurf bleibt erhalten.",
   "放弃草稿": "Entwurf verwerfen",
-  "知识网络": "Wissensgraph"
+  "知识网络": "Wissensgraph",
+  "选择语言": "Sprache wählen",
+  "继续": "Weiter",
+  "配置设备": "Geräte einrichten",
+  "开始安装": "Installation starten",
+  "本机资源不足，请检查内存和可用空间。": "Arbeitsspeicher und freien Speicher prüfen."
 }

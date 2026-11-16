@@ -1,16 +1,108 @@
 use crate::{
     Message,
     connection::DeviceInput,
+    controls::{Icon, sized_icon_button},
     scene::{Pointer, Scene},
+    style,
 };
 use iced::advanced::{
     Clipboard, InputMethod, Layout, Shell, Widget, clipboard, input_method, layout, renderer,
     widget::{Tree, tree},
 };
 use iced::{
-    Element, Event, Length, Rectangle, Renderer, Size, Theme, keyboard, mouse,
-    widget::{Shader, shader},
+    Element, Event, Font, Length, Point, Rectangle, Renderer, Size, Theme, font, keyboard, mouse,
+    widget::{Shader, container, row, scrollable, shader, text},
 };
+
+pub fn tool_rect(view: Size, anchor: Rectangle, preferred: Size, beside: bool) -> Rectangle {
+    let available_height = if beside {
+        view.height - 88.
+    } else {
+        view.height - anchor.y - anchor.height - 26.
+    };
+    let width = preferred.width.min((view.width - 32.).max(0.));
+    let height = preferred.height.min(available_height.max(80.));
+    let right = anchor.x + anchor.width;
+    let (left, top) = if beside {
+        (right + 10., anchor.y)
+    } else {
+        (right - width, anchor.y + anchor.height + 10.)
+    };
+    Rectangle::new(
+        Point::new(
+            left.clamp(16., (view.width - width - 16.).max(16.)),
+            top.clamp(16., (view.height - height - 16.).max(16.)),
+        ),
+        Size::new(width, height),
+    )
+}
+
+pub fn tool_motion(anchor: Rectangle, panel: Rectangle, amount: f32) -> Rectangle {
+    let center = anchor.center();
+    let factor = |trigger: f32, extent: f32| {
+        let folded = (trigger / extent).max(0.035);
+        folded + (1. - folded) * amount
+    };
+    let x = factor(anchor.width, panel.width);
+    let y = factor(anchor.height, panel.height);
+    Rectangle::new(
+        Point::new(
+            center.x + (panel.x - center.x) * x,
+            center.y + (panel.y - center.y) * y,
+        ),
+        Size::new(panel.width * x, panel.height * y),
+    )
+}
+
+pub fn tool_header<'a, M: 'a>(
+    title: &'a str,
+    viewport_width: f32,
+    actions: impl Into<Element<'a, M>>,
+) -> Element<'a, M> {
+    let (inset, trailing, height) = style::window_insets(viewport_width);
+    let label = text(title)
+        .size(14)
+        .line_height(iced::Pixels(20.))
+        .font(Font {
+            weight: font::Weight::Medium,
+            ..Font::DEFAULT
+        })
+        .wrapping(text::Wrapping::None);
+    container(
+        row![
+            container(label).width(Length::Fill).clip(true),
+            actions.into()
+        ]
+        .align_y(iced::Center)
+        .spacing(12),
+    )
+    .height(height)
+    .width(Length::Fill)
+    .padding(iced::Padding::ZERO.left(inset).right(trailing))
+    .align_y(iced::Center)
+    .into()
+}
+
+pub fn tool_padding(viewport_width: f32) -> iced::Padding {
+    let (inset, _, _) = style::window_insets(viewport_width);
+    iced::Padding::ZERO
+        .top(8)
+        .right(inset)
+        .bottom(24)
+        .left(inset)
+}
+
+pub fn tool_action<'a, M: Clone + 'a>(
+    icon: Icon,
+    label: &'a str,
+    message: Option<M>,
+) -> Element<'a, M> {
+    sized_icon_button(icon, label, message, 32., 32.)
+}
+
+pub fn tool_scroll() -> scrollable::Direction {
+    scrollable::Direction::Vertical(scrollable::Scrollbar::new().width(4).scroller_width(4))
+}
 
 pub struct Surface {
     shader: Shader<Message, Scene>,

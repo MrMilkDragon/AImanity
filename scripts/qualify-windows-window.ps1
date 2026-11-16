@@ -27,10 +27,11 @@ $deadline = [DateTime]::UtcNow.AddSeconds(45)
 do {
   $process = Get-Process -Id $AppId
   $handle = $process.MainWindowHandle
-  if ($handle -ne [IntPtr]::Zero -and $process.MainWindowTitle -eq "AImanity") { break }
+  $ready = $handle -ne [IntPtr]::Zero -and ($Action -ne "capture" -or $process.MainWindowTitle -eq "AImanity")
+  if ($ready) { break }
   Start-Sleep -Milliseconds 300
 } while ([DateTime]::UtcNow -lt $deadline)
-if ($handle -eq [IntPtr]::Zero -or $process.MainWindowTitle -ne "AImanity") { throw "The expected native AImanity window did not appear." }
+if (!$ready) { throw "The expected native AImanity window did not appear." }
 if ($Action -eq "close") {
   if (!$process.CloseMainWindow()) { throw "Could not send the native window close request." }
   return
@@ -69,22 +70,20 @@ if ($Action -eq "capture") {
 }
 (Capture "native-language.png").Dispose()
 # English is in the first row of the right column.
-Click .55 .402
+# English is selected in place; Continue advances the setup.
+Click .70 .34
+Click .50 .895
 Start-Sleep -Milliseconds 450
 $image = Capture "native-devices.png"
 try {
   # Detect the solid install button before sending the only advancing click.
   $hits = @()
-  for ($y = [int]($height*.55); $y -lt $height*.82; $y+=2) {
-    $solid = $true
-    foreach ($x in @(.35,.40,.45,.55,.60,.65)) {
-      $color = $image.GetPixel([int]($x*$width), $y)
-      if ($color.R -gt 65 -or $color.G -gt 65 -or $color.B -gt 65) { $solid = $false; break }
-    }
-    if ($solid) { $hits += $y }
+  for ($y = [int]($height*.87); $y -lt $height*.955; $y+=2) {
+    $color = $image.GetPixel([int]($width*.917), $y)
+    if ($color.R -le 65 -and $color.G -le 65 -and $color.B -le 65) { $hits += $y }
   }
   if ($hits.Count -lt 5) { throw "Install button did not render after choosing English." }
   $center = ($hits[0] + $hits[-1]) / 2
-  Click .5 ($center/$height)
+  Click .85 ($center/$height)
   Write-Host "Native GUI selected English and activated the visually verified install button."
 } finally { $image.Dispose() }

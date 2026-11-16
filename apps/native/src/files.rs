@@ -462,7 +462,7 @@ impl Files {
         Task::none()
     }
     pub fn view(&self, height: f32, locale: crate::locale::Locale) -> Element<'_, Message> {
-        let mut body = column![text(locale.tr("文件管理")).size(14)].spacing(12);
+        let mut body = column![].spacing(16);
         if self.busy || !self.error.is_empty() {
             body = body.push(
                 text(if self.busy {
@@ -478,11 +478,12 @@ impl Files {
                 }),
             );
         }
-        let pane_height = ((height - 120.) / 2.).clamp(170., 300.);
-        body = body.push(self.pane(0, pane_height, locale)).push(
+        let workspace_height = (height * 0.36).max(150.);
+        let devices_height = (height - workspace_height - 16.).max(150.);
+        body = body.push(self.pane(0, workspace_height, locale)).push(
             row![
-                self.pane(1, pane_height, locale),
-                self.pane(2, pane_height, locale)
+                self.pane(1, devices_height, locale),
+                self.pane(2, devices_height, locale)
             ]
             .spacing(16),
         );

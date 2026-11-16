@@ -3,9 +3,9 @@
   "kind": "dependency-license-metadata",
   "scope": "locked-source-build-dependencies; server and native client installed metadata, not a redistribution clearance",
   "locks": {
-    "Cargo.lock": "9f8a83b44c566d419887196a84f707e61ce5195ef6f61dae78e6082fa23302a4",
+    "Cargo.lock": "54547f07e17b405b1534b25d42ed35c6b1c6ef3e120afce59ed14781ffa3140d",
     "bun.lock": "7dac714f9ddf99a559c6abaaf0ee41df45a9510de74c60a1782675fcfc5779e4",
-    "apps/native/Cargo.lock": "7315e9376406fc0a408f1cfc0d7df6d96650be6600f5f31704ccc7b49287f258"
+    "apps/native/Cargo.lock": "a8d82fdbce71f7a215e5d770f1e9c84198b86913620329bd74b4b3588bddc180"
   },
   "rust": [
     {
@@ -777,7 +777,8 @@
         }
       ],
       "workspaces": [
-        "Cargo.toml"
+        "Cargo.toml",
+        "apps/native/Cargo.toml"
       ]
     },
     {
@@ -1396,6 +1397,26 @@
     },
     {
       "name": "const-oid",
+      "version": "0.10.2",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/RustCrypto/formats",
+      "notices": [
+        {
+          "file": "LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "file": "LICENSE-MIT",
+          "sha256": "73b9dc2e79c7308998dd30296e073aefaefb944a68fb89aa412c23c0edcabcaa"
+        }
+      ],
+      "workspaces": [
+        "Cargo.toml",
+        "apps/native/Cargo.toml"
+      ]
+    },
+    {
+      "name": "const-oid",
       "version": "0.9.6",
       "license": "Apache-2.0 OR MIT",
       "repository": "https://github.com/RustCrypto/formats/tree/master/const-oid",
@@ -1860,7 +1881,8 @@
         }
       ],
       "workspaces": [
-        "Cargo.toml"
+        "Cargo.toml",
+        "apps/native/Cargo.toml"
       ]
     },
     {
@@ -2122,7 +2144,8 @@
         }
       ],
       "workspaces": [
-        "Cargo.toml"
+        "Cargo.toml",
+        "apps/native/Cargo.toml"
       ]
     },
     {
@@ -3667,7 +3690,8 @@
         }
       ],
       "workspaces": [
-        "Cargo.toml"
+        "Cargo.toml",
+        "apps/native/Cargo.toml"
       ]
     },
     {
@@ -3882,7 +3906,8 @@
         }
       ],
       "workspaces": [
-        "Cargo.toml"
+        "Cargo.toml",
+        "apps/native/Cargo.toml"
       ]
     },
     {
@@ -8024,8 +8049,7 @@
         }
       ],
       "workspaces": [
-        "Cargo.toml",
-        "apps/native/Cargo.toml"
+        "Cargo.toml"
       ]
     },
     {
@@ -8044,7 +8068,8 @@
         }
       ],
       "workspaces": [
-        "Cargo.toml"
+        "Cargo.toml",
+        "apps/native/Cargo.toml"
       ]
     },
     {

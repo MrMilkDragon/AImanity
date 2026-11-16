@@ -74,7 +74,7 @@ fn state_path(data: &Path, home: &Path, user: &Path) -> Result<PathBuf> {
     let state = if fs::symlink_metadata(&legacy).is_ok() {
         legacy
     } else {
-        let digest = format!("{:x}", Sha256::digest(data.as_os_str().as_bytes()));
+        let digest = hex::encode(Sha256::digest(data.as_os_str().as_bytes()));
         user.canonicalize()?
             .join(".aiphone-vms")
             .join(&digest[..16])
@@ -187,7 +187,7 @@ fn executable(path: &Path, home: &Path) -> Result<String> {
         }
         digest.update(&bytes[..count]);
     }
-    Ok(format!("{:x}", digest.finalize()))
+    Ok(hex::encode(digest.finalize()))
 }
 
 fn selection(root: &Path, user: &Path) -> Result<Option<Selection>> {

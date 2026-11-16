@@ -1,13 +1,15 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, field, icon_button, tab_button},
+    controls::{Icon, action_button, sized_icon_button, tab_button},
     style,
+    surface::tool_scroll,
 };
 use ai_phone_api::wire;
 use iced::{
-    Element, Length, Size, Task,
+    Border, Element, Font, Length, Padding, Size, Task, font,
     widget::{
-        button, column, container, pick_list, row, scrollable, sensor, space, text, text_input,
+        button, column, container, pick_list, row, rule, scrollable, sensor, space, text,
+        text_input,
     },
 };
 use std::collections::HashMap;
@@ -99,6 +101,9 @@ impl Agents {
     }
     pub fn is_editing(&self) -> bool {
         self.current.is_some()
+    }
+    pub fn adding(&self) -> bool {
+        self.current.as_deref() == Some("")
     }
     pub fn update(&mut self, message: Message, client: &Connection) -> Task<Message> {
         if self.busy && matches!(message, Message::Field(..) | Message::Provider(_)) {
@@ -383,29 +388,58 @@ impl Agents {
             _ => iced::Subscription::none(),
         }
     }
-    pub fn view(&self, locale: crate::locale::Locale) -> Element<'_, Message> {
-        let mut body = column![].spacing(16);
-        if let Some(editor) = self.current.as_ref().and_then(|id| self.editors.get(id)) {
-            body = body.push(
-                row![
-                    icon_button(
-                        Icon::Back,
-                        locale.tr("返回"),
-                        (!self.busy).then_some(Message::Back)
-                    ),
-                    text(if editor.agent.revision == 0 {
-                        locale.tr("添加 Agent")
-                    } else {
-                        "Agent"
-                    })
+    pub fn view<'a>(
+        &'a self,
+        locale: crate::locale::Locale,
+        editing: bool,
+        width: f32,
+    ) -> Element<'a, Message> {
+        let adding = editing && self.adding();
+        let control = style::REGISTRY_CONTROL;
+        let (top, inset, bottom, gap) = style::registry_insets(width, adding);
+        let semibold = Font {
+            weight: font::Weight::Semibold,
+            ..Font::DEFAULT
+        };
+        let title_size = if adding { 18. } else { 34. };
+        let title_line = if adding { 22. } else { 41. };
+        let mut heading = column![].spacing(16);
+        let mut body = column![].spacing(if editing { 8 } else { 0 });
+        let mut footer = row![].spacing(10).align_y(iced::Center);
+        let model_field = |label: &'a str, value: &'a str, field| {
+            column![
+                text(label).size(12).style(style::muted_text),
+                text_input("", value)
+                    .on_input_maybe(
+                        (!self.busy).then_some(move |value| Message::Field(field, value))
+                    )
                     .size(14)
-                ]
-                .align_y(iced::Alignment::Center),
+                    .line_height(iced::Pixels(20.))
+                    .padding([12, 12])
+                    .style(style::registry_input),
+            ]
+            .spacing(6)
+        };
+        if let Some(editor) = self
+            .current
+            .as_ref()
+            .filter(|_| editing)
+            .and_then(|id| self.editors.get(id))
+        {
+            heading = heading.push(
+                text(locale.tr(if adding {
+                    "添加 Agent"
+                } else {
+                    "编辑 Agent"
+                }))
+                .size(title_size)
+                .font(semibold)
+                .line_height(iced::Pixels(title_line)),
             );
             if editor.agent.revision > 0 {
-                body = body.push(
+                heading = heading.push(
                     row([
-                        (Tab::Model, locale.tr("模型")),
+                        (Tab::Model, locale.tr("配置")),
                         (Tab::Connections, locale.tr("连接应用")),
                         (Tab::Memory, locale.tr("记忆")),
                         (Tab::Voice, locale.tr("语音")),
@@ -421,12 +455,22 @@ impl Agents {
                     .spacing(6),
                 );
             }
+            if !self.error.is_empty() {
+                body = body.push(text(&self.error).size(14).style(style::error_text));
+            }
             if editor.tab != Tab::Model {
                 body = body.push(
                     editor
                         .details
                         .view(editor.tab, locale)
                         .map(|m| Message::Detail(editor.agent.id.clone(), m)),
+                );
+                footer = footer.push(space::horizontal()).push(
+                    button(locale.tr("返回"))
+                        .height(control)
+                        .padding([0, 17])
+                        .style(style::quiet)
+                        .on_press(Message::Back),
                 );
             } else {
                 let selected = self
@@ -439,34 +483,27 @@ impl Agents {
                 let provider = column![
                     text(locale.tr("服务商")).size(12).color(style::MUTED),
                     pick_list(self.providers.clone(), selected, Message::Provider)
-                        .placeholder(locale.tr("自定义"))
+                        .placeholder(locale.tr("兼容服务"))
                         .width(Length::Fill)
-                        .padding([10, 12])
+                        .padding([12, 12])
                         .text_size(14)
                         .text_line_height(iced::Pixels(20.))
-                        .style(style::select)
+                        .style(style::registry_select)
                         .menu_style(style::menu)
                 ]
                 .spacing(6);
                 body = body
-                    .push(field(
-                        locale.tr("名称"),
-                        &editor.name,
-                        |v| Message::Field(Field::Name, v),
-                        !self.busy,
-                    ))
+                    .push(model_field(locale.tr("名称"), &editor.name, Field::Name))
                     .push(provider)
-                    .push(field(
+                    .push(model_field(
                         locale.tr("模型"),
                         &editor.draft.model,
-                        |v| Message::Field(Field::Model, v),
-                        !self.busy,
+                        Field::Model,
                     ))
-                    .push(field(
+                    .push(model_field(
                         locale.tr("API 地址"),
                         &editor.draft.base_url,
-                        |v| Message::Field(Field::Url, v),
-                        !self.busy,
+                        Field::Url,
                     ))
                     .push(
                         column![
@@ -476,26 +513,28 @@ impl Agents {
                                     if editor.draft.use_saved_key {
                                         locale.tr("已保存")
                                     } else {
-                                        ""
+                                        locale.tr("填写 API Key")
                                     },
                                     &editor.draft.api_key
                                 )
                                 .secure(!editor.visible)
                                 .size(14)
                                 .line_height(iced::Pixels(20.))
-                                .padding([10, 12])
-                                .style(style::input)
+                                .padding([12, 12])
+                                .style(style::registry_input)
                                 .on_input_maybe(
                                     (!self.busy).then_some(|v| Message::Field(Field::Key, v))
                                 ),
-                                icon_button(
+                                sized_icon_button(
                                     if editor.visible {
                                         Icon::EyeOff
                                     } else {
                                         Icon::Eye
                                     },
                                     locale.tr("显示 / 隐藏密钥"),
-                                    (!self.busy).then_some(Message::Reveal)
+                                    (!self.busy).then_some(Message::Reveal),
+                                    control,
+                                    control,
                                 )
                             ]
                             .spacing(4)
@@ -532,43 +571,90 @@ impl Agents {
                                     Message::Field(Field::Protocol, v)
                                 })
                                 .width(Length::Fill)
-                                .padding([10, 12])
+                                .padding([12, 12])
                                 .text_size(14)
                                 .text_line_height(iced::Pixels(20.))
-                                .style(style::select)
+                                .style(style::registry_select)
                                 .menu_style(style::menu)
                             ]
                             .spacing(6),
                         )
-                        .push(field(
+                        .push(model_field(
                             locale.tr("代理地址"),
                             &editor.draft.proxy_url,
-                            |v| Message::Field(Field::Proxy, v),
-                            !self.busy,
+                            Field::Proxy,
                         ));
                 }
-                body = body.push(action_button(
-                    if self.busy {
-                        locale.tr("正在保存…")
-                    } else {
-                        locale.tr("保存")
-                    },
-                    (!self.busy).then_some(Message::Save),
-                ));
+                footer = footer
+                    .push(space::horizontal())
+                    .push(
+                        button(locale.tr("取消"))
+                            .height(control)
+                            .padding([0, 17])
+                            .style(style::quiet)
+                            .on_press_maybe((!self.busy).then_some(Message::Back)),
+                    )
+                    .push(
+                        button(
+                            text(if self.busy {
+                                locale.tr("正在保存…")
+                            } else {
+                                locale.tr("保存")
+                            })
+                            .size(14),
+                        )
+                        .height(control)
+                        .padding([0, 17])
+                        .style(style::primary)
+                        .on_press_maybe((!self.busy).then_some(Message::Save)),
+                    );
             }
         } else {
-            body = body.push(
+            heading = heading.push(
                 row![
-                    text("Agent").size(14),
+                    text("Agent")
+                        .size(title_size)
+                        .font(semibold)
+                        .line_height(iced::Pixels(title_line)),
                     space::horizontal(),
-                    icon_button(
-                        Icon::Plus,
-                        locale.tr("添加 Agent"),
-                        (!self.busy).then_some(Message::New)
-                    )
+                    iced::widget::tooltip(
+                        button(container(Icon::Plus.view()).center(Length::Fill))
+                            .width(control)
+                            .height(control)
+                            .style(|theme, status| {
+                                let mut appearance = style::quiet(theme, status);
+                                appearance.border = Border {
+                                    radius: style::CONTROL_RADIUS.into(),
+                                    width: 1.,
+                                    color: theme.palette().text.scale_alpha(0.16),
+                                };
+                                appearance
+                            })
+                            .on_press_maybe((!self.busy).then_some(if self.adding() {
+                                Message::Back
+                            } else {
+                                Message::New
+                            })),
+                        text(locale.tr("添加 Agent")).size(12),
+                        iced::widget::tooltip::Position::Bottom,
+                    ),
                 ]
                 .align_y(iced::Alignment::Center),
             );
+            if !self.error.is_empty() && !self.adding() {
+                body = body.push(text(&self.error).size(14).style(style::error_text));
+            }
+            body = body.push(rule::horizontal(1));
+            if self.registry.agents.is_empty() {
+                body = body.push(
+                    container(
+                        text(locale.tr("暂无 Agent"))
+                            .size(14)
+                            .style(style::muted_text),
+                    )
+                    .padding([20, 0]),
+                );
+            }
             for agent in &self.registry.agents {
                 let subtitle = self
                     .registry
@@ -579,10 +665,10 @@ impl Agents {
                     .map(|p| format!("{} · {}", p.provider, p.model))
                     .unwrap_or_default();
                 let label = column![
-                    text(&agent.name).size(14),
-                    text(subtitle).size(12).color(style::MUTED)
+                    text(&agent.name).size(14).font(semibold),
+                    text(subtitle).size(12).style(style::muted_text)
                 ]
-                .spacing(4);
+                .spacing(3);
                 let actions = if self.deleting.as_ref() == Some(&agent.id) {
                     row![
                         action_button(
@@ -604,59 +690,110 @@ impl Agents {
                     ]
                 } else {
                     row![
-                        icon_button(
+                        sized_icon_button(
                             Icon::Edit,
                             locale.tr("编辑"),
-                            (!self.busy).then_some(Message::Edit(agent.id.clone()))
+                            (!self.busy).then_some(Message::Edit(agent.id.clone())),
+                            control,
+                            control,
                         ),
-                        icon_button(
+                        sized_icon_button(
                             Icon::Trash,
                             locale.tr("删除"),
-                            (!self.busy).then_some(Message::Delete(agent.id.clone()))
+                            (!self.busy).then_some(Message::Delete(agent.id.clone())),
+                            control,
+                            control,
                         )
                     ]
                 };
-                body = body.push(
-                    row![
-                        button(
-                            row![
-                                container(if agent.id == self.registry.active_agent_id {
-                                    Icon::Check.view()
-                                } else {
-                                    Icon::Right.view()
-                                })
-                                .width(24),
-                                label
-                            ]
-                            .spacing(8)
-                            .align_y(iced::Alignment::Center)
-                        )
-                        .width(Length::Fill)
-                        .style(style::quiet)
-                        .on_press_maybe((!self.busy).then_some(Message::Select(agent.id.clone()))),
-                        actions
-                    ]
-                    .align_y(iced::Alignment::Center),
-                );
+                let active = agent.id == self.registry.active_agent_id;
+                let mark = container(
+                    Icon::Check
+                        .view()
+                        .opacity(if active { 1. } else { 0. })
+                        .style(|theme, _| iced::widget::svg::Style {
+                            color: Some(theme.palette().background),
+                        }),
+                )
+                .width(19)
+                .height(19)
+                .center(19)
+                .style(move |theme| {
+                    container::Style::default()
+                        .border(Border {
+                            radius: (10.).into(),
+                            width: 1.,
+                            color: theme
+                                .palette()
+                                .text
+                                .scale_alpha(if active { 1. } else { 0.55 }),
+                        })
+                        .background(if active {
+                            theme.palette().text
+                        } else {
+                            iced::Color::TRANSPARENT
+                        })
+                });
+                body = body
+                    .push(
+                        row![
+                            button(
+                                row![mark, label]
+                                    .spacing(12)
+                                    .align_y(iced::Alignment::Center)
+                            )
+                            .width(Length::Fill)
+                            .height(64)
+                            .padding([10, 0])
+                            .style(style::quiet)
+                            .on_press_maybe(
+                                (!self.busy).then_some(Message::Select(agent.id.clone()))
+                            ),
+                            actions
+                        ]
+                        .align_y(iced::Alignment::Center),
+                    )
+                    .push(rule::horizontal(1));
             }
         }
-        if self.current.is_none() {
-            body = body.push(
+        if !editing {
+            footer = footer.push(text("Agent").size(12).font(semibold)).push(
                 button(text(locale.tr("设备")).size(13))
                     .style(style::quiet)
-                    .height(style::CONTROL_HEIGHT)
+                    .height(control)
                     .on_press(Message::Devices),
             );
         }
-        if !self.error.is_empty() {
-            body = body.push(text(&self.error).size(12).color(style::ERROR));
-        }
-        scrollable(sensor(container(body).padding(24)).on_resize(Message::Measured))
-            .direction(scrollable::Direction::Vertical(
-                scrollable::Scrollbar::new().width(4).scroller_width(4),
-            ))
-            .height(Length::Fill)
-            .into()
+        let sides = Padding::ZERO.left(inset).right(inset);
+        let heading = container(heading)
+            .padding(sides.top(top).bottom(gap))
+            .width(Length::Fill);
+        let footer = container(column![rule::horizontal(1), footer].spacing(13))
+            .padding(sides.bottom(bottom))
+            .width(Length::Fill);
+        let padded = container(body)
+            .padding(sides.bottom(16))
+            .width(Length::Fill);
+        let content: Element<'a, Message> = if adding {
+            sensor(padded)
+                .on_resize(move |size| {
+                    Message::Measured(Size::new(
+                        size.width,
+                        size.height + top + title_line + gap + 14. + control + bottom,
+                    ))
+                })
+                .into()
+        } else {
+            padded.into()
+        };
+        column![
+            heading,
+            scrollable(content)
+                .direction(tool_scroll())
+                .height(Length::Fill),
+            footer
+        ]
+        .into()
     }
 }
 

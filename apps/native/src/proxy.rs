@@ -77,7 +77,7 @@ impl Proxy {
         })
     }
     pub fn view(&self, locale: crate::locale::Locale) -> Element<'_, Message> {
-        let mut body = column![text(locale.tr("工作台代理")).size(14)].spacing(12);
+        let mut body = column![].spacing(12);
         if let Some(state) = &self.state {
             let import = (!self.busy && !self.url.trim().is_empty()).then_some(Message::Import);
             body = body

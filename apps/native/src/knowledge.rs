@@ -580,6 +580,14 @@ impl Knowledge {
         }
     }
 
+    pub fn new_action(&self, locale: Locale) -> Element<'_, Message> {
+        crate::surface::tool_action(
+            Icon::Plus,
+            locale.tr("新建知识文档"),
+            (!self.busy).then_some(Message::New),
+        )
+    }
+
     pub fn view(&self, locale: Locale) -> Element<'_, Message> {
         let search = row![
             Icon::Search.view(),
@@ -623,21 +631,7 @@ impl Knowledge {
             .height(Length::Fill)
             .into()
         };
-        let mut body = column![
-            row![
-                text(locale.tr("知识库")).size(14),
-                space::horizontal(),
-                icon_button(
-                    Icon::Plus,
-                    locale.tr("新建知识文档"),
-                    (!self.busy).then_some(Message::New)
-                )
-            ]
-            .align_y(iced::Alignment::Center),
-            search,
-            rule::horizontal(1),
-        ]
-        .spacing(8);
+        let mut body = column![search, rule::horizontal(1)].spacing(8);
         if !self.error.is_empty() {
             body = body.push(
                 text(locale.tr(&self.error))
@@ -645,14 +639,17 @@ impl Knowledge {
                     .style(style::error_text),
             );
         }
-        container(body.push(graph))
-            .padding(24)
+        body.push(graph)
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
     }
 
-    pub fn document_view(&self, locale: Locale) -> Option<Element<'_, Message>> {
+    pub fn document_view(
+        &self,
+        locale: Locale,
+        viewport_width: f32,
+    ) -> Option<Element<'_, Message>> {
         if !self.document_open {
             return None;
         }
@@ -667,37 +664,37 @@ impl Knowledge {
                     .map(|doc| doc.title.as_str())
             })
             .unwrap_or(locale.tr("新建文档"));
-        let mut actions = row![container(text(title).size(14)).width(Length::Fill)]
-            .align_y(iced::Alignment::Center);
+        use crate::surface::{tool_action, tool_header, tool_padding, tool_scroll};
+        let mut actions = row![].spacing(2).align_y(iced::Alignment::Center);
         if let Some(draft) = draft {
             if self.editing {
                 actions = actions
-                    .push(icon_button(
+                    .push(tool_action(
                         Icon::Image,
                         locale.tr("插入图片"),
                         (!self.busy).then_some(Message::PickImage),
                     ))
-                    .push(icon_button(
+                    .push(tool_action(
                         Icon::Check,
                         locale.tr("保存文档"),
                         (!self.busy && draft.savable()).then_some(Message::Save),
                     ));
             } else {
-                actions = actions.push(icon_button(
+                actions = actions.push(tool_action(
                     Icon::Edit,
                     locale.tr("编辑文档"),
                     Some(Message::Edit),
                 ));
             }
             if !draft.document.id.is_empty() {
-                actions = actions.push(icon_button(
+                actions = actions.push(tool_action(
                     Icon::Trash,
                     locale.tr("移除当前文档"),
                     (!self.busy).then_some(Message::Delete),
                 ));
             }
         }
-        let actions = actions.push(icon_button(
+        let actions = actions.push(tool_action(
             Icon::Close,
             locale.tr("关闭文档"),
             Some(Message::CloseDocument),
@@ -796,9 +793,13 @@ impl Knowledge {
             );
         }
         Some(
-            container(column![actions, scrollable(body).height(Length::Fill)].spacing(16))
-                .padding(24)
-                .into(),
+            column![
+                tool_header(title, viewport_width, actions),
+                scrollable(container(body).padding(tool_padding(viewport_width)))
+                    .direction(tool_scroll())
+                    .height(Length::Fill),
+            ]
+            .into(),
         )
     }
 

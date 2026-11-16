@@ -14,7 +14,7 @@ use std::{
 };
 
 fn sha(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 fn free(_path: &Path) -> u64 {
     64 * 1024 * 1024 * 1024

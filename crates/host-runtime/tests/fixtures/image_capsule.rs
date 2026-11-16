@@ -9,7 +9,7 @@ use std::{
 
 pub const ROLES: [&str; 4] = ["workspace", "desktop", "postgres", "redis"];
 pub fn hash(body: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(body))
+    hex::encode(Sha256::digest(body))
 }
 pub fn tar(entries: Vec<(String, Vec<u8>)>) -> Vec<u8> {
     let mut archive = tar::Builder::new(Vec::new());

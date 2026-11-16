@@ -18,7 +18,7 @@ impl<'a> Probe<'a> {
             path: path
                 .to_str()
                 .ok_or(Error::Invalid("phone_input_resource"))?,
-            digest: format!("{:x}", Sha512::digest(&bytes)),
+            digest: hex::encode(Sha512::digest(&bytes)),
         })
     }
 

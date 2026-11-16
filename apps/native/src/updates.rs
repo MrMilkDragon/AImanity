@@ -1,8 +1,8 @@
 use crate::{client_update, controls::action_button, locale::Locale, style};
 use futures_util::SinkExt;
 use iced::{
-    Element, Task,
-    widget::{column, text},
+    Element, Font, Task, font,
+    widget::{column, row, text},
 };
 use semver::Version;
 use std::path::PathBuf;
@@ -100,8 +100,16 @@ impl State {
             return column![].into();
         };
         let mut body = column![
-            text(format!("{} · {}", offer.version, offer.name)).size(18),
-            text(&offer.notes).size(13)
+            row![
+                text(offer.version.to_string()).size(14),
+                text(&offer.name).size(14).font(Font {
+                    weight: font::Weight::Bold,
+                    ..Font::DEFAULT
+                })
+            ]
+            .spacing(8)
+            .align_y(iced::Center),
+            text(&offer.notes).size(14)
         ]
         .spacing(12);
         if let Some(progress) = self.progress {
@@ -111,7 +119,11 @@ impl State {
             body = body.push(text(&self.error).size(12).color(style::ERROR));
         }
         body.push(action_button(
-            locale.tr("安装并重启"),
+            locale.tr(if self.progress.is_some() {
+                "正在更新…"
+            } else {
+                "确认更新"
+            }),
             self.progress.is_none().then_some(Message::Install),
         ))
         .into()

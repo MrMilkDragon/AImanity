@@ -864,13 +864,41 @@ impl Chat {
         &'a self,
         modes: &'a modes::Modes,
         locale: crate::locale::Locale,
+        device_name: &'a str,
+        width: f32,
     ) -> Element<'a, Message> {
-        let theme = if modes.copilot_active() {
+        let copilot = modes.copilot_active();
+        let theme = if copilot {
             style::copilot_theme()
         } else {
             style::theme()
         };
-        let mut messages = column![].spacing(18);
+        let bubble = |item| {
+            row![
+                space::horizontal(),
+                container(item)
+                    .max_width(width * 0.85)
+                    .padding([10, 16])
+                    .style(move |_| {
+                        container::Style {
+                            background: Some(
+                                if copilot {
+                                    iced::Color::from_rgb8(58, 58, 58)
+                                } else {
+                                    iced::Color::from_rgb8(242, 242, 242)
+                                }
+                                .into(),
+                            ),
+                            border: iced::Border {
+                                radius: iced::border::Radius::new(14.).bottom_right(4.),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }
+                    })
+            ]
+        };
+        let mut messages = column![].spacing(22);
         if self.has_older {
             messages = messages.push(
                 button(
@@ -896,18 +924,7 @@ impl Chat {
             {
                 continue;
             }
-            let mut item = column![
-                text(if message.role == "user" {
-                    locale.tr("你")
-                } else if self.state.agent_name.is_empty() {
-                    "Agent"
-                } else {
-                    &self.state.agent_name
-                })
-                .size(11)
-                .style(style::muted_text)
-            ]
-            .spacing(7);
+            let mut item = column![].spacing(7);
             if message.has_activity {
                 item = item.push(self.trace(message, &theme, locale));
             }
@@ -921,12 +938,15 @@ impl Chat {
                 );
             }
             if !message.text.is_empty() || message.has_activity || !message.attachments.is_empty() {
-                messages = messages.push(item);
+                messages = messages.push(if message.role == "user" {
+                    Element::from(bubble(item))
+                } else {
+                    container(item).padding([0, 4]).into()
+                });
             }
         }
         for pending in &self.pending {
             let mut item = column![
-                text(locale.tr("你")).size(11).style(style::muted_text),
                 text(&pending.message.text).size(14),
                 self.attachments(&pending.message.attachments, locale)
             ]
@@ -943,12 +963,12 @@ impl Chat {
                     .into()
             };
             item = item.push(delivery);
-            messages = messages.push(item);
+            messages = messages.push(bubble(item));
         }
         let editor = text_editor(&self.draft)
             .placeholder(locale.tr("发送消息…"))
             .height(84)
-            .padding(10)
+            .padding([0, 4])
             .size(14)
             .on_action(Message::Edit)
             .key_binding(|press| {
@@ -973,8 +993,11 @@ impl Chat {
             });
         let mut actions = row![
             icon_button(Icon::Paperclip, locale.tr("添加附件"), Some(Message::Pick)),
-            modes.dock(&self.state).map(Message::Mode),
-            space::horizontal()
+            modes.liberty_button().map(Message::Mode),
+            space::horizontal(),
+            modes
+                .copilot_button(!self.state.conversation_id.is_empty())
+                .map(Message::Mode),
         ]
         .spacing(4);
         if self.state.run_status == "paused" {
@@ -1001,10 +1024,14 @@ impl Chat {
                 (!self.control_busy).then_some(Message::Command(Command::Stop)),
             ));
         }
-        actions = actions.push(icon_button(
-            Icon::Send,
-            locale.tr("发送 · ⌘ / Ctrl + Enter"),
-            self.can_send().then_some(Message::Send),
+        actions = actions.push(iced::widget::tooltip(
+            button(container(Icon::Send.view()).center(Length::Fill))
+                .width(36)
+                .height(36)
+                .style(style::primary)
+                .on_press_maybe(self.can_send().then_some(Message::Send)),
+            text(locale.tr("发送 · ⌘ / Ctrl + Enter")).size(12),
+            iced::widget::tooltip::Position::Top,
         ));
         let mut composer = column![].spacing(3);
         for upload in &self.uploads {
@@ -1036,18 +1063,52 @@ impl Chat {
         if !modes.transcript().is_empty() {
             composer = composer.push(container(text(modes.transcript()).size(13)).padding([6, 10]));
         }
-        composer = composer.push(editor).push(actions);
+        composer = composer.push(editor).push(actions.align_y(iced::Center));
+        let agent_name = if self.state.agent_name.is_empty() {
+            "Agent"
+        } else {
+            &self.state.agent_name
+        };
         column![
-            scrollable(messages)
+            container(
+                row![
+                    text(device_name).size(13),
+                    text(agent_name).size(12).style(style::muted_text)
+                ]
+                .spacing(8)
+                .align_y(iced::Center)
+            )
+            .height(28),
+            scrollable(container(messages).padding([12, 2]))
                 .direction(scrollable::Direction::Vertical(
                     scrollable::Scrollbar::new().width(4).scroller_width(4)
                 ))
                 .id("shared-chat")
                 .on_scroll(|v| Message::Scroll(v.relative_offset().y > 0.98))
                 .height(Length::Fill),
-            composer
+            container(composer.spacing(8))
+                .padding(12)
+                .style(move |_| container::Style {
+                    background: Some(
+                        if copilot {
+                            iced::Color::from_rgb8(41, 41, 41)
+                        } else {
+                            iced::Color::WHITE
+                        }
+                        .into()
+                    ),
+                    border: iced::Border {
+                        color: if copilot {
+                            iced::Color::from_rgb8(67, 67, 67)
+                        } else {
+                            iced::Color::from_rgb8(222, 222, 222)
+                        },
+                        width: 1.,
+                        radius: style::PANEL_RADIUS.into()
+                    },
+                    ..Default::default()
+                }),
         ]
-        .spacing(10)
         .into()
     }
     pub fn preview_view(&self, locale: crate::locale::Locale) -> Element<'_, Message> {

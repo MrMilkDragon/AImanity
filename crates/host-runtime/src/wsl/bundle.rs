@@ -28,7 +28,7 @@ struct Inventory {
 fn read(source: &Path, expected: &str) -> Result<Bundle> {
     filesystem::existing_directory(source)?;
     let bytes = filesystem::bounded_file(&source.join("manifest.json"))?;
-    if !manifest::identity(expected) || format!("{:x}", Sha256::digest(&bytes)) != expected {
+    if !manifest::identity(expected) || hex::encode(Sha256::digest(&bytes)) != expected {
         return Err(Error::Invalid("wsl_bundle_changed"));
     }
     let value: Bundle =
@@ -248,11 +248,11 @@ mod tests {
         fs::create_dir(&source).unwrap();
         fs::write(source.join("rootfs.tar.gz"), b"rootfs-fixture").unwrap();
         let manifest = json!({"format":1,"host":"windows-x64","backend_host":"linux-x64","runtime":"wsl2-backend",
-            "rootfs":{"path":"rootfs.tar.gz","size":14,"sha256":format!("{:x}",Sha256::digest(b"rootfs-fixture"))},
+            "rootfs":{"path":"rootfs.tar.gz","size":14,"sha256":hex::encode(Sha256::digest(b"rootfs-fixture"))},
             "inventory":{"uncompressed_bytes":1024},"complete_device_bundle":false});
         let bytes = serde_json::to_vec(&manifest).unwrap();
         fs::write(source.join("manifest.json"), &bytes).unwrap();
-        (root, source, format!("{:x}", Sha256::digest(&bytes)))
+        (root, source, hex::encode(Sha256::digest(&bytes)))
     }
     fn available(_: &Path) -> u64 {
         128 * 1024_u64.pow(3)
@@ -317,7 +317,7 @@ mod tests {
         value["rootfs"]["path"] = json!("../../user/chat");
         let bytes = serde_json::to_vec(&value).unwrap();
         fs::write(path, &bytes).unwrap();
-        let changed = format!("{:x}", Sha256::digest(&bytes));
+        let changed = hex::encode(Sha256::digest(&bytes));
         assert_eq!(
             installation
                 .ensure_wsl_bundle(&source, &changed, &mut host, &available, &|| false)

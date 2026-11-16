@@ -1,12 +1,12 @@
 use crate::{
-    controls::{Icon, action_button, icon_button},
+    controls::{Icon, action_button},
     host::Host,
     locale::Locale,
     style,
 };
 use iced::{
     Element, Length,
-    widget::{button, column, container, row, slider, space, text},
+    widget::{button, column, container, image, radio, row, rule, slider, space, stack, text},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -23,6 +23,41 @@ mod host_memory;
 #[cfg(not(windows))]
 const ID: &str = "dev.aiphone.client";
 const GIB: u64 = 1024_u64.pow(3);
+const SETUP_CONTROL: f32 = 44.;
+const SETUP_LINE: iced::Color = iced::Color::from_rgb8(222, 222, 222);
+const SETUP_TITLE: iced::Font = iced::Font {
+    weight: iced::font::Weight::Semibold,
+    ..iced::Font::DEFAULT
+};
+
+pub fn glass_background<'a, M: 'a>(content: Element<'a, M>) -> Element<'a, M> {
+    static BACKDROP: LazyLock<image::Handle> = LazyLock::new(|| {
+        let pixels: Vec<u8> = (0..64)
+            .flat_map(|y: u8| {
+                (0..64).flat_map(move |x: u8| {
+                    let dx = (f32::from(x) / 63. - 0.15) / 0.85;
+                    let dy = (f32::from(y) / 63. - 0.05) / 0.95;
+                    let opacity = style::GLASS_OPACITY
+                        + (1. - style::GLASS_OPACITY)
+                            * (1. - dx.hypot(dy) / (std::f32::consts::SQRT_2 * 0.68)).max(0.);
+                    [233_u8, 236, 238]
+                        .map(|c| f32::from(c).mul_add(1. - opacity, 255. * opacity).round() as u8)
+                        .into_iter()
+                        .chain([255])
+                })
+            })
+            .collect();
+        image::Handle::from_rgba(64, 64, pixels)
+    });
+    stack![
+        image(BACKDROP.clone())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .content_fit(iced::ContentFit::Fill),
+        content
+    ]
+    .into()
+}
 
 #[derive(Deserialize)]
 struct CapacityPolicy {
@@ -157,7 +192,7 @@ pub fn verify_bundle(resource: &Path) -> Result<(), String> {
             }
             hash.update(&bytes[..count]);
         }
-        if format!("{:x}", hash.finalize()) != expected {
+        if hex::encode(hash.finalize()) != expected {
             return Err(format!("离线组件损坏 · {name}"));
         }
     }
@@ -283,7 +318,7 @@ pub enum Field {
 #[derive(Clone, Copy, Debug)]
 pub enum Message {
     Choose(Locale),
-    Back,
+    Continue,
     Set(bool, Field, u16),
     RefreshCapacity,
     Start,
@@ -293,6 +328,7 @@ pub struct Setup {
     pub bundle: Bundle,
     pub request: Request,
     pub locale: Option<Locale>,
+    language: Locale,
     pub attempted: bool,
     pub installed: bool,
     capacity: Result<Capacity, String>,
@@ -309,6 +345,7 @@ impl Setup {
             attempted,
             request: request.unwrap_or_default(),
             locale,
+            language: locale.unwrap_or_default(),
             installed,
             capacity,
             #[cfg(target_os = "macos")]
@@ -317,12 +354,12 @@ impl Setup {
     }
     pub fn update(&mut self, message: Message) {
         match message {
-            Message::Choose(locale) => {
-                self.locale = Some(locale);
-                self.request.locale = locale.code().into();
+            Message::Choose(locale) => self.language = locale,
+            Message::Continue => {
+                self.locale = Some(self.language);
+                self.request.locale = self.language.code().into();
                 self.capacity = self.bundle.capacity(false);
             }
-            Message::Back => self.locale = None,
             Message::RefreshCapacity => self.capacity = self.bundle.capacity(false),
             Message::Set(desktop, field, value) => {
                 let guest = if desktop {
@@ -375,11 +412,11 @@ impl Setup {
         } else {
             phase
         });
-        let mut content = column![].spacing(16).align_x(iced::Center);
+        let mut content = column![].spacing(20).align_x(iced::Center);
         if !phase.is_empty() {
             content = content.push(loading(elapsed));
         }
-        content = content.push(text(title).size(18));
+        content = content.push(text(title).size(22).font(SETUP_TITLE));
         if !error.is_empty() {
             content = content.push(text(error).size(13).style(style::error_text));
         }
@@ -393,8 +430,7 @@ impl Setup {
         } else if can_stop {
             content = content.push(action_button(locale.tr("停止安装"), Some(Message::Stop)));
         }
-        let centered =
-            container(container(content).max_width(560).padding(24)).center(Length::Fill);
+        let centered = container(container(content).max_width(592)).center(Length::Fill);
         #[cfg(target_os = "macos")]
         if !self.activities.is_empty() {
             use crate::host::ActivityState::{Completed, Failed, Running};
@@ -415,7 +451,7 @@ impl Setup {
             return iced::widget::stack![
                 centered,
                 container(activity)
-                    .padding(24)
+                    .padding([26, 44])
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .align_y(iced::alignment::Vertical::Bottom)
@@ -425,24 +461,44 @@ impl Setup {
         centered.into()
     }
 
-    pub fn view<'a>(&self, error: &'a str) -> Element<'a, Message> {
-        let content = if let Some(locale) = self.locale {
+    pub fn view<'a>(&'a self, error: &'a str) -> Element<'a, Message> {
+        if let Some(locale) = self.locale {
             let tr = |key: &'static str| locale.tr(key);
-            let mut body = column![
-                row![
-                    icon_button(Icon::Back, tr("返回"), Some(Message::Back)),
-                    text(tr("设备配置")).size(22)
-                ]
-                .spacing(8)
-                .align_y(iced::Center),
+            let line = || {
+                rule::horizontal(1).style(|_| rule::Style {
+                    color: SETUP_LINE,
+                    radius: 0.into(),
+                    fill_mode: rule::FillMode::Full,
+                    snap: true,
+                })
+            };
+            let mut content = column![text(tr("配置设备")).size(34).font(SETUP_TITLE)].spacing(28);
+            let capacity_error = match (&self.capacity, error) {
+                (_, error) if !error.is_empty() => error,
+                (Ok(capacity), _) if !capacity.eligible() => {
+                    tr("本机资源不足，请检查内存和可用空间。")
+                }
+                _ => "",
+            };
+            if !capacity_error.is_empty() {
+                content = content.push(text(capacity_error).size(14).style(style::error_text));
+            }
+            content = content.push(column![
+                line(),
                 Self::guest(false, self.request.phone, locale),
-                Self::guest(true, self.request.desktop, locale)
-            ]
-            .spacing(22);
-            let eligible = match &self.capacity {
-                Ok(capacity) => {
-                    let checks = row(capacity.rows().map(|(label, available, required)| {
-                        text(format!("{} {available} / {required} GiB", tr(label)))
+                line(),
+                Self::guest(true, self.request.desktop, locale),
+                line(),
+            ]);
+            let (checks, eligible): (Element<'_, Message>, _) = match &self.capacity {
+                Ok(capacity) => (
+                    row(capacity.rows().map(|(label, available, required)| {
+                        let status = if available < required {
+                            format!("{} {available} GB / {required} GB", tr(label))
+                        } else {
+                            format!("{} {available} GB", tr(label))
+                        };
+                        text(status)
                             .size(12)
                             .style(move |theme| {
                                 if available < required {
@@ -453,53 +509,145 @@ impl Setup {
                             })
                             .into()
                     }))
-                    .spacing(16);
-                    body = body.push(checks);
-                    capacity.eligible()
-                }
-                Err(error) => {
-                    body = body.push(text(error.clone()).size(13).style(style::error_text));
-                    false
-                }
+                    .spacing(11)
+                    .into(),
+                    capacity.eligible(),
+                ),
+                Err(error) => (text(error).size(13).style(style::error_text).into(), false),
             };
-            body = body.push(action_button(
-                tr("安装"),
-                eligible.then_some(Message::Start),
-            ));
-            if !error.is_empty() {
-                body = body.push(text(error).size(13).style(style::error_text));
-            }
-            body
+            column![
+                container(content)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_y(iced::Center),
+                space::vertical().height(16),
+                line(),
+                row![
+                    column![
+                        text(if cfg!(target_os = "macos") {
+                            "macOS · Apple Silicon"
+                        } else {
+                            "Windows 11"
+                        })
+                        .size(12)
+                        .font(SETUP_TITLE),
+                        checks
+                    ]
+                    .spacing(2)
+                    .width(Length::Fill),
+                    button(text(tr("开始安装")).size(14))
+                        .height(SETUP_CONTROL)
+                        .padding([8, 17])
+                        .style(style::primary)
+                        .on_press_maybe(eligible.then_some(Message::Start))
+                ]
+                .spacing(10)
+                .padding(iced::Padding::ZERO.top(14))
+                .align_y(iced::Center)
+            ]
+            .padding(iced::Padding {
+                top: 46.,
+                right: 44.,
+                bottom: 26.,
+                left: 44.,
+            })
+            .into()
         } else {
             let options: Vec<_> = Locale::all().collect();
+            let locale = self.language;
             column![
-                text("Language").size(22),
-                column(options.chunks(2).map(|pair| {
-                    row(pair.iter().map(|locale| {
-                        button(
-                            row![
-                                text(locale.glyph()).size(12).width(33),
-                                text(locale.name()).size(14)
-                            ]
+                container(
+                    column![
+                        text(locale.tr("选择语言")).size(34).font(SETUP_TITLE),
+                        container(
+                            column(options.chunks(2).map(|pair| {
+                                row(pair.iter().map(|option| {
+                                    let selected = *option == locale;
+                                    container(
+                                        radio(
+                                            option.name(),
+                                            *option,
+                                            Some(locale),
+                                            Message::Choose,
+                                        )
+                                        .width(Length::Fill)
+                                        .spacing(10)
+                                        .size(12)
+                                        .font(if selected {
+                                            SETUP_TITLE
+                                        } else {
+                                            iced::Font::DEFAULT
+                                        })
+                                        .text_size(14)
+                                        .style(
+                                            move |_, _| radio::Style {
+                                                background: if selected {
+                                                    style::FOREGROUND.into()
+                                                } else {
+                                                    iced::Color::TRANSPARENT.into()
+                                                },
+                                                dot_color: iced::Color::WHITE,
+                                                border_width: 1.5,
+                                                border_color: if selected {
+                                                    style::FOREGROUND
+                                                } else {
+                                                    iced::Color::from_rgb8(150, 150, 150)
+                                                },
+                                                text_color: Some(if selected {
+                                                    style::FOREGROUND
+                                                } else {
+                                                    style::MUTED
+                                                }),
+                                            },
+                                        ),
+                                    )
+                                    .width(Length::Fill)
+                                    .height(SETUP_CONTROL)
+                                    .align_y(iced::Center)
+                                    .padding([0, 12])
+                                    .style(move |_| container::Style {
+                                        background: Some(
+                                            iced::Color::WHITE
+                                                .scale_alpha(style::GLASS_OPACITY)
+                                                .into(),
+                                        ),
+                                        border: iced::Border {
+                                            color: if selected {
+                                                style::FOREGROUND
+                                            } else {
+                                                SETUP_LINE
+                                            },
+                                            width: 1.,
+                                            radius: style::CONTROL_RADIUS.into(),
+                                        },
+                                        ..Default::default()
+                                    })
+                                    .into()
+                                }))
+                                .spacing(8)
+                                .into()
+                            }))
                             .spacing(8)
-                            .align_y(iced::Center),
                         )
-                        .width(Length::Fill)
-                        .height(style::CONTROL_HEIGHT)
-                        .style(style::quiet)
-                        .on_press(Message::Choose(*locale))
-                        .into()
-                    }))
-                    .spacing(8)
-                    .into()
-                }))
-                .spacing(8)
+                        .width(434),
+                    ]
+                    .spacing(28)
+                    .align_x(iced::Center)
+                )
+                .center(Length::Fill),
+                action_button(locale.tr("继续"), Some(Message::Continue))
+                    .width(142)
+                    .height(SETUP_CONTROL)
             ]
-            .spacing(18)
-        };
-        container(container(content).max_width(590).padding(24))
-            .center(Length::Fill)
+            .align_x(iced::Center)
+            .padding(iced::Padding {
+                top: 20.,
+                right: 44.,
+                bottom: 33.,
+                left: 44.,
+            })
             .into()
+        }
     }
     fn guest(desktop: bool, guest: Guest, locale: Locale) -> Element<'static, Message> {
         let tr = |key: &'static str| locale.tr(key);
@@ -531,7 +679,7 @@ impl Setup {
         ];
         let fields = row(specs.into_iter().map(|(label, field, values, current)| {
             let value = match field {
-                Field::Cpu => format!("{current} {}", tr("核")),
+                Field::Cpu => current.to_string(),
                 Field::Memory => format!("{} GB", f32::from(current) / 1024.),
                 Field::Storage => format!("{current} GB"),
             };
@@ -540,44 +688,55 @@ impl Setup {
                 .position(|&value| value == current)
                 .unwrap_or(0);
             column![
-                row![
-                    text(label).size(13).style(style::muted_text),
-                    space::horizontal(),
-                    text(value).size(13)
-                ]
-                .spacing(6),
-                slider(0..=values.len() as u8 - 1, selected as u8, move |index| {
-                    Message::Set(desktop, field, values[usize::from(index)])
-                })
-                .height(24)
-                .style(style::range),
+                container(
+                    row![
+                        text(label).size(12).style(style::muted_text),
+                        space::horizontal(),
+                        text(value).size(14).font(SETUP_TITLE)
+                    ]
+                    .spacing(6)
+                )
+                .height(21)
+                .align_y(iced::Center),
+                container(
+                    slider(0..=values.len() as u8 - 1, selected as u8, move |index| {
+                        Message::Set(desktop, field, values[usize::from(index)])
+                    })
+                    .height(16)
+                    .style(style::range)
+                )
+                .height(44)
+                .align_y(iced::Center),
             ]
-            .spacing(6)
             .into()
         }))
-        .spacing(10);
-        column![
+        .spacing(18);
+        row![
             row![
                 if desktop {
                     Icon::Screen.view()
                 } else {
-                    Icon::Camera.view()
+                    Icon::PhonePortrait.view()
                 },
-                text(tr(if desktop { "电脑" } else { "手机" })).size(15),
-                space::horizontal()
+                text(tr(if desktop { "电脑" } else { "手机" }))
+                    .size(16)
+                    .font(SETUP_TITLE),
             ]
             .spacing(8)
+            .width(120)
             .align_y(iced::Center),
             fields
         ]
-        .spacing(10)
+        .spacing(16)
+        .padding([21, 0])
+        .align_y(iced::Center)
         .into()
     }
 }
 pub fn loading<M: 'static>(elapsed: std::time::Duration) -> iced::widget::canvas::Canvas<Orb, M> {
     iced::widget::canvas::Canvas::new(Orb(elapsed.as_secs_f32()))
-        .width(64)
-        .height(64)
+        .width(180)
+        .height(180)
 }
 pub struct Orb(f32);
 impl<M> iced::widget::canvas::Program<M> for Orb {
@@ -590,22 +749,63 @@ impl<M> iced::widget::canvas::Program<M> for Orb {
         bounds: iced::Rectangle,
         _: iced::mouse::Cursor,
     ) -> Vec<iced::widget::canvas::Geometry> {
-        use iced::widget::canvas::{Frame, Path};
+        use iced::{
+            Color, Point, Vector,
+            widget::canvas::{Frame, Path},
+        };
         let mut frame = Frame::new(renderer, bounds.size());
-        let (s, c) = (self.0 * 1.5).sin_cos();
-        for point in 0..150 {
-            let y = 1. - 2. * (point as f32 + 0.5) / 150.;
-            let r = (1. - y * y).sqrt();
-            let (u, v) = (point as f32 * 2.3999631).sin_cos();
-            let x = r * v;
-            let z = r * u;
-            let depth = z * c - x * s;
-            let x = x * c + z * s;
-            let p = iced::Point::new(32. + x * 24., 32. + y * 24.);
-            frame.fill(
-                &Path::circle(p, 0.7 + (depth + 1.) * 0.35),
-                iced::Color::from_rgba(0.09, 0.09, 0.09, 0.25 + (depth + 1.) * 0.34),
-            );
+        let size = bounds.width;
+        let unit = size * 0.235;
+        frame.with_save(|frame| {
+            frame.translate(Vector::new(size * 0.5, size * 0.875));
+            frame.scale_nonuniform(Vector::new(1., 0.25));
+            for ring in (1_u8..=16).rev() {
+                frame.fill(
+                    &Path::circle(Point::ORIGIN, unit * 1.51 * f32::from(ring) / 16.),
+                    Color::BLACK.scale_alpha(0.01),
+                );
+            }
+        });
+        let (sin_elevation, cos_elevation) = 0.49_f32.sin_cos();
+        let yaw = -0.44 + self.0 * 0.91;
+        let pulse = (self.0 * 3.7 - 1.95).cos();
+        let return_fold = ((1. - pulse) / 2.).powi(7);
+        let torsion = 0.43 * ((1. + pulse) / 2.).powi(6) - 0.29 * return_fold;
+        let seam = -0.06 + 0.4 * return_fold;
+        let coordinate = |index: u8| f32::from(index) / 4. - 1.;
+        let normal = |index: u8| match index {
+            0 => -1.,
+            8 => 1.,
+            _ => 0.,
+        };
+        for layer in 0..=8 {
+            let y = coordinate(layer);
+            let (s, c) = (yaw + torsion * ((y - seam) * 4.).tanh()).sin_cos();
+            let facing_y = normal(layer) * sin_elevation;
+            for column in 0..=8 {
+                let x = coordinate(column);
+                let facing_x = -normal(column) * s * cos_elevation;
+                for row in 0..=8 {
+                    let facing = (normal(row) * c * cos_elevation)
+                        .max(facing_x)
+                        .max(facing_y);
+                    if facing <= 0. {
+                        continue;
+                    }
+                    let z = coordinate(row);
+                    let depth = z * c - x * s;
+                    let light = 0.66 + (depth * cos_elevation + y * sin_elevation) * 0.17;
+                    let point = Point::new(
+                        size * 0.5 + unit * (x * c + z * s),
+                        size * 0.455 + unit * (depth * sin_elevation - y * cos_elevation),
+                    );
+                    frame.fill(
+                        &Path::circle(point, size * (0.0051 + 0.0043 * light)),
+                        style::FOREGROUND
+                            .scale_alpha((0.35 + 0.65 * light) * (facing * 3.15).min(1.)),
+                    );
+                }
+            }
         }
         vec![frame.into_geometry()]
     }

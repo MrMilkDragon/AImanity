@@ -35,7 +35,7 @@ fn prepare(
     )
 }
 fn digest(data: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(data))
+    hex::encode(Sha256::digest(data))
 }
 
 #[test]

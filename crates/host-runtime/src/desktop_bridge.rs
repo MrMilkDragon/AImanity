@@ -25,7 +25,7 @@ impl DesktopBridge {
     pub async fn staged(root: &Path) -> Result<Option<Self>> {
         match tokio::fs::read(root.join("runtime/services/bin/desktop-bridge")).await {
             Ok(bytes) => Ok(Some(Self {
-                sha256: format!("{:x}", Sha256::digest(&bytes)),
+                sha256: hex::encode(Sha256::digest(&bytes)),
                 bytes,
             })),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),

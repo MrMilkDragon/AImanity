@@ -73,7 +73,7 @@ fn source_staging_termination_waits_for_the_writer_and_leaves_no_partial_release
         Compression::fast(),
     ));
     let body = vec![b'x'; 12 * 1024 * 1024];
-    let checksum = format!("{:x}", Sha256::digest(&body));
+    let checksum = hex::encode(Sha256::digest(&body));
     let mut records = Vec::new();
     for i in 0..4 {
         let name = format!("scripts/fixture-{i}.rs");
@@ -97,7 +97,7 @@ fn source_staging_termination_waits_for_the_writer_and_leaves_no_partial_release
         .append_data(&mut header, "HOST-MANIFEST.json", manifest.as_slice())
         .unwrap();
     archive.into_inner().unwrap().finish().unwrap();
-    let identity = format!("{:x}", Sha256::digest(fs::read(&payload).unwrap()));
+    let identity = hex::encode(Sha256::digest(fs::read(&payload).unwrap()));
     let home = temporary.path().join("owned installation");
     fs::create_dir_all(home.join("user/data")).unwrap();
     fs::write(home.join("user/data/chat"), b"preserve fixture history").unwrap();

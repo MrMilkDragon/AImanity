@@ -271,7 +271,7 @@ fn verified_inventory(
 ) -> Result<Inventory> {
     let mut digest = Sha256::new();
     let index = archive::visit(file, control, Some(&mut digest), body)?;
-    if format!("{:x}", digest.finalize()) != expected {
+    if hex::encode(digest.finalize()) != expected {
         return Err(Error::Invalid("source_resource_changed"));
     }
     Ok(index)

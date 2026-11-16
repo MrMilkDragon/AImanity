@@ -497,5 +497,10 @@
   "请使用 6 MB 以内的 PNG、JPEG 或 WebP 图片": "Utilisez une image PNG, JPEG ou WebP de 6 Mo maximum",
   "文档已更新，当前草稿已保留": "Document mis à jour. Votre brouillon est conservé.",
   "放弃草稿": "Ignorer le brouillon",
-  "知识网络": "Graphe de connaissances"
+  "知识网络": "Graphe de connaissances",
+  "选择语言": "Choisir votre langue",
+  "继续": "Continuer",
+  "配置设备": "Configurer vos appareils",
+  "开始安装": "Lancer l’installation",
+  "本机资源不足，请检查内存和可用空间。": "Vérifiez la mémoire et l’espace libre."
 }

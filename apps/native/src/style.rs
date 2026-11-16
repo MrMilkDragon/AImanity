@@ -1,5 +1,5 @@
 use iced::{
-    Color, Theme,
+    Color, Size, Theme,
     theme::Palette,
     widget::{button, slider, text},
 };
@@ -13,12 +13,48 @@ const COPILOT_BACKGROUND: Color = Color::from_rgb8(34, 34, 34);
 pub const CONTROL_RADIUS: f32 = 8.;
 pub const PANEL_RADIUS: f32 = 14.;
 pub const GLASS_OPACITY: f32 = 0.35;
-pub const GLASS_BLUR: f32 = 11.;
+pub const GLASS_BLUR: f32 = 18.;
 pub const BORDER_WIDTH: f32 = 0.75;
 pub const CONTROL_HEIGHT: f32 = 40.;
-pub const MOTION_ENTER: f32 = 0.28;
-pub const MOTION_EXIT: f32 = 0.18;
-pub const MOTION_DEVICE: f32 = 0.58;
+pub const MOTION_DEVICE: f32 = 0.56;
+pub const WINDOW_ENTER: f32 = 0.46;
+pub const WINDOW_EXIT: f32 = 0.24;
+pub const NAV_ICON_WIDTH: f32 = 36.;
+pub const REGISTRY_CONTROL: f32 = 44.;
+
+pub fn navigation(size: Size) -> (f32, f32, f32, f32) {
+    if size.width <= 760. {
+        (10., 6., 4., 42.)
+    } else {
+        (24., 11., 5., 38.)
+    }
+}
+
+pub fn navigation_group(size: Size) -> (f32, f32) {
+    if size.width <= 760. {
+        (0., 8.)
+    } else {
+        (3., 19.)
+    }
+}
+
+pub fn window_insets(width: f32) -> (f32, f32, f32) {
+    if width <= 640. {
+        (18., 12., 52.)
+    } else {
+        (24., 16., 56.)
+    }
+}
+
+pub fn registry_insets(width: f32, adding: bool) -> (f32, f32, f32, f32) {
+    if adding {
+        (16., 18., 16., 16.)
+    } else if width <= 540. {
+        (32., 20., 14., 18.)
+    } else {
+        (46., 44., 26., 28.)
+    }
+}
 
 pub fn theme() -> Theme {
     static THEME: OnceLock<Theme> = OnceLock::new();
@@ -81,6 +117,11 @@ pub fn control_fill(theme: &Theme) -> Color {
     Color::from_rgba(gray, gray, gray, GLASS_OPACITY)
 }
 
+pub fn accent(theme: &Theme) -> Color {
+    let gray = if dark(theme) { 0x42 } else { 0xea };
+    Color::from_rgb8(gray, gray, gray)
+}
+
 pub fn primary(theme: &Theme, status: button::Status) -> button::Style {
     let mut style = button::primary(theme, status);
     style.border.radius = CONTROL_RADIUS.into();
@@ -99,15 +140,26 @@ pub fn quiet(theme: &Theme, status: button::Status) -> button::Style {
 }
 
 pub fn range(theme: &Theme, status: slider::Status) -> slider::Style {
-    let mut style = slider::default(theme, status).with_circular_handle(match status {
-        slider::Status::Active => 5.,
-        slider::Status::Hovered => 6.,
-        slider::Status::Dragged => 7.,
-    });
+    let mut style = slider::default(theme, status);
     let ink = theme.palette().text;
-    style.rail.width = 3.;
-    style.rail.backgrounds = (ink.scale_alpha(0.64).into(), ink.scale_alpha(0.14).into());
+    let rail = if dark(theme) {
+        ink.scale_alpha(0.24)
+    } else {
+        Color::from_rgb8(222, 222, 222)
+    };
+    style.rail.width = 4.;
+    style.rail.backgrounds = (rail.into(), rail.into());
+    style.rail.border.radius = 1.into();
+    style.handle.shape = slider::HandleShape::Rectangle {
+        width: match status {
+            slider::Status::Active => 12,
+            slider::Status::Hovered => 13,
+            slider::Status::Dragged => 15,
+        },
+        border_radius: 4.into(),
+    };
     style.handle.background = ink.into();
+    style.handle.border_width = 0.;
     style
 }
 
@@ -136,6 +188,34 @@ pub fn select(
     s.border.width = BORDER_WIDTH;
     s.border.color = theme.palette().text.scale_alpha(0.16);
     s
+}
+
+pub fn registry_input(
+    theme: &Theme,
+    status: iced::widget::text_input::Status,
+) -> iced::widget::text_input::Style {
+    let mut style = input(theme, status);
+    style.background = if dark(theme) {
+        accent(theme)
+    } else {
+        Color::WHITE
+    }
+    .into();
+    style
+}
+
+pub fn registry_select(
+    theme: &Theme,
+    status: iced::widget::pick_list::Status,
+) -> iced::widget::pick_list::Style {
+    let mut style = select(theme, status);
+    style.background = if dark(theme) {
+        accent(theme)
+    } else {
+        Color::WHITE
+    }
+    .into();
+    style
 }
 pub fn menu(theme: &Theme) -> iced::overlay::menu::Style {
     let mut s = iced::overlay::menu::default(theme);

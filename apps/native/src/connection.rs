@@ -18,7 +18,6 @@ pub struct Connection {
 pub struct Session {
     pub client: Connection,
     pub registry: wire::RegistryState,
-    pub chat: wire::ChatState,
     pub links: wire::DeviceLinkState,
 }
 #[derive(Clone, Debug)]
@@ -83,15 +82,13 @@ impl Connection {
             assistant: bearer(&assistant)?,
             phone: bearer(&phone)?,
         };
-        let (registry, chat, links) = tokio::try_join!(
+        let (registry, links) = tokio::try_join!(
             client.rpc("registry/state", wire::RegistryRequest {}),
-            client.history(),
             client.rpc("desktop/state", wire::RegistryRequest {}),
         )?;
         Ok(Session {
             client,
             registry,
-            chat,
             links,
         })
     }
@@ -313,13 +310,12 @@ impl Connection {
                     let (mut socket, _) = tokio_tungstenite::connect_async(request)
                         .await
                         .map_err(|e| e.to_string())?;
-                    if reconnecting {
-                        output
-                            .send(Ok(self.history().await?))
-                            .await
-                            .map_err(|e| e.to_string())?;
-                        reconnecting = false;
-                    }
+                    // The subscription must be live before reading its initial snapshot.
+                    output
+                        .send(Ok(self.history().await?))
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    reconnecting = false;
                     while let Some(event) = socket.next().await {
                         match event.map_err(|e| e.to_string())? {
                             tokio_tungstenite::tungstenite::Message::Binary(bytes) => {
@@ -372,6 +368,7 @@ impl Connection {
                         .map_err(|e| e.to_string())?;
                     let mut stream = response.bytes_stream();
                     let mut bytes = BytesMut::new();
+                    let mut last_jpeg = None;
                     while let Some(chunk) = stream.next().await {
                         bytes.extend_from_slice(&chunk.map_err(|e| e.to_string())?);
                         let mut latest = None;
@@ -398,7 +395,9 @@ impl Connection {
                             let packet = bytes.split_to(end + 4 + length).freeze();
                             latest = Some((packet.slice(end + 4..), captured_ms));
                         }
-                        if let Some((jpeg, captured_ms)) = latest {
+                        if let Some((jpeg, captured_ms)) = latest
+                            && last_jpeg.as_ref() != Some(&jpeg)
+                        {
                             let received = Instant::now();
                             let decoded = image::load_from_memory_with_format(
                                 &jpeg,
@@ -406,6 +405,7 @@ impl Connection {
                             )
                             .map_err(|e| e.to_string())?
                             .into_rgba8();
+                            last_jpeg = Some(jpeg);
                             sequence += 1;
                             reconnecting = false;
                             output

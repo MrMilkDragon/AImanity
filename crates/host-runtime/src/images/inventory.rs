@@ -122,7 +122,7 @@ fn objects(input: impl Read) -> Result<Inventory> {
                 data.extend_from_slice(&buffer[..count]);
             }
         }
-        let digest = format!("{:x}", hash.finalize());
+        let digest = hex::encode(hash.finalize());
         if addressed && filename.strip_suffix(".json").unwrap_or(filename) != digest {
             return Err(Error::Invalid("image_object_digest"));
         }
