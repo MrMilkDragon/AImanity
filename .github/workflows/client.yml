@@ -10,7 +10,11 @@ concurrency:
   cancel-in-progress: true
 jobs:
   native-workbench:
-    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-2022]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     env:
       CARGO_BUILD_JOBS: '2'
@@ -51,7 +55,7 @@ jobs:
           ./scripts/bun scripts/prepare-client.ts
       - name: Native OCR qualification tools
         run: |
-          brew install tesseract
+          brew install --force-bottle tesseract
           ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/aiphone-ocr-models"
           echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
           echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aiphone-ocr-models" >> "$GITHUB_ENV"

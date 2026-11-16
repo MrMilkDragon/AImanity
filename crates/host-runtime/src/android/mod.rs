@@ -7,6 +7,8 @@ use std::{
 pub mod cli;
 mod device;
 pub mod input;
+#[cfg(any(windows, test))]
+pub mod launch;
 pub mod maintenance;
 mod manifest;
 mod resources;

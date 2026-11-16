@@ -13,7 +13,7 @@ AIMANITY_ANDROID_SDK_INPUT=/factory/android-sdk \
   --guest build/windows-guest.payload --guest-identity "$GUEST_SHA256"
 ```
 
-To reuse a sealed Android capsule, set `AIMANITY_ANDROID_PAYLOAD` and `AIMANITY_ANDROID_PAYLOAD_SHA256` in place of `AIMANITY_ANDROID_SDK_INPUT`. In the private **Desktop installer factory** workflow, select `platform=windows` and enter the Android capsule’s `android_draft_id` and `android_payload_sha256`. The workflow builds QEMU and the Linux guest in parallel, then assembles the EXE with Inno Setup.
+To reuse a sealed Android capsule, set `AIMANITY_ANDROID_PAYLOAD` and `AIMANITY_ANDROID_PAYLOAD_SHA256` in place of `AIMANITY_ANDROID_SDK_INPUT`. In the private **Desktop installer factory** workflow, select `platform=windows` and enter the Android capsule’s `android_draft_id` and `android_payload_sha256`. The workflow prepares the qualified QEMU runtime and builds the Linux guest in parallel, then assembles the EXE with Inno Setup.
 
 For distribution, add `--sign-release` on a Windows builder with SignTool and a trusted code-signing certificate in the current user’s certificate store. Set `AIMANITY_WINDOWS_CERT_THUMBPRINT` to the certificate thumbprint and `AIMANITY_WINDOWS_TIMESTAMP_URL` to its RFC 3161 timestamp service. The factory signs, timestamps and verifies both the client and the installer.
 

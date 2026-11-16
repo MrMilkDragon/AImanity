@@ -29,12 +29,13 @@ export async function unpackWindowsInstaller(
   root: string,
   installer: string,
   folder: string,
+  members = ["{app}\\*"],
 ) {
   run(
     [
       await unpacker(root),
       "-x", "-b", "-q", "-a", "-c{app}",
-      "-d" + folder, installer, "{app}\\*",
+      "-d" + folder, installer, ...members,
     ],
     { stdio: ["ignore", "inherit", "inherit"] },
   );

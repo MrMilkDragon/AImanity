@@ -51,7 +51,8 @@ jobs:
             fi
           done
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y curl xvfb xauth openbox xterm x11-utils x11-xserver-utils xdotool xclip ffmpeg
+          sudo apt-get install --no-install-recommends -y curl xvfb xauth xterm x11-utils x11-xserver-utils xdotool xclip ffmpeg
+          sudo sh infra/desktop/install-openbox.sh
       - name: Rust tests
         run: |
           cargo fmt --all --check

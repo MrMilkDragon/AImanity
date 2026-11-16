@@ -9,7 +9,9 @@ mod copilot;
 #[cfg(target_os = "macos")]
 mod macos_uninstall;
 #[cfg(windows)]
-mod uninstall;
+mod uninstall {
+    include!("../../windows-lifecycle.rs");
+}
 mod updates;
 
 static WORKBENCH_URL: LazyLock<Url> = LazyLock::new(|| {
@@ -409,16 +411,7 @@ pub fn run() {
         }
         #[cfg(windows)]
         if arguments.len() == 1 && arguments[0] == "--stop-windows-backend" {
-            let result = std::env::var_os("APPDATA")
-                .map(std::path::PathBuf::from)
-                .ok_or("windows_app_data")
-                .and_then(|home| {
-                    let home = home.join("dev.aiphone.client/host");
-                    tauri::async_runtime::block_on(
-                        ai_phone_host_runtime::qemu_host::stop_installed(&home),
-                    )
-                    .map_err(|error| error.code())
-                });
+            let result = uninstall::roaming_host().and_then(|home| uninstall::stop_host(&home));
             std::process::exit(if result.is_ok() { 0 } else { 1 });
         }
         #[cfg(windows)]

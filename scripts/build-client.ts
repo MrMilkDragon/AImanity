@@ -56,4 +56,5 @@ console.log(JSON.stringify(await buildClient(platform, root, {
   packageOnly,
   temporarySigning,
   releaseSigning,
+  nativeWorkbench: args.includes("--native-workbench"),
 })));

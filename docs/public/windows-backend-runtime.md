@@ -47,13 +47,13 @@ WSL registration follows [Microsoft's import interface](https://learn.microsoft.
 
 ## QEMU build inputs
 
-On Windows x64, use an MSYS2 UCRT64 shell with native symlinks enabled. Install the UCRT64 compiler, Meson, Ninja, GLib, libslirp and zlib, then build the host component:
+On Windows x64, prepare the host component with the pinned Bun toolchain:
 
 ```sh
 ./scripts/bun scripts/windows-qemu.ts build/windows-qemu
 ```
 
-The factory pins QEMU 11.1.3 and builds the WHPX system emulator and `qemu-img`. It records the PE import tree, DLL package versions, firmware, notices and source archive.
+The factory verifies the signed Calcium installer against its pinned digest, extracts the qualified QEMU 11.1.3 executables, firmware, DLLs and notices, and checks WHPX support. Pass the exact downloaded Calcium installer as the optional second argument to reuse a local copy. The component manifest retains the original source and DLL inventory.
 
 On a disposable Linux builder, build the pinned x86_64 kernel and convert a fresh sealed backend. Linux ARM64 builders use the `x86_64-linux-gnu-` cross toolchain.
 

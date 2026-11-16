@@ -40,6 +40,8 @@ pub use unix_initializer::shutdown as stop_macos_installation;
 #[cfg(target_os = "macos")]
 pub use unix_initializer::uninstall as remove_macos_devices;
 pub mod vm_control;
+#[cfg(windows)]
+pub mod windows_native;
 pub mod wsl;
 
 use std::{

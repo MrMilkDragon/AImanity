@@ -202,7 +202,7 @@ export function installerMetadata(file: string, host: string) {
     github_asset_eligible: info.size < 2 * 1024 ** 3,
   };
 }
-export function deliveryMetadata(components: string[], host: string) {
+export function deliveryMetadata(components: string[], host: string, nativeWorkbench = false) {
   const known = new Set([
       ...Object.keys(componentManifests),
       "android-runtime",
@@ -223,7 +223,7 @@ export function deliveryMetadata(components: string[], host: string) {
         ? ["android-runtime", "windows-qemu"]
         : ["android-runtime", "wsl-backend", "windows-host"]
       : [
-          ...Object.keys(componentManifests),
+          ...Object.keys(componentManifests).filter((name) => !nativeWorkbench || name !== "web"),
           "android-runtime",
           "container-images",
         ];
@@ -232,7 +232,7 @@ export function deliveryMetadata(components: string[], host: string) {
     prebuilt_components: components,
     server_included:
       selected.has("wsl-backend") || selected.has("windows-qemu") ||
-      ["web", "native-services"].every((name) => selected.has(name)),
+      (nativeWorkbench ? ["native-services"] : ["web", "native-services"]).every((name) => selected.has(name)),
     runtime_payload_complete: !missing.length,
     complete_device_bundle: !missing.length,
     missing_runtime_components: missing,

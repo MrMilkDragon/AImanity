@@ -30,36 +30,17 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
-        with:
-          msystem: UCRT64
-          path-type: inherit
-          update: true
-          install: >-
-            tar xz
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-binutils
-            mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-meson
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-python
-            mingw-w64-ucrt-x86_64-python-pip
-            mingw-w64-ucrt-x86_64-python-setuptools
-            mingw-w64-ucrt-x86_64-python-wheel
-            mingw-w64-ucrt-x86_64-glib2
-            mingw-w64-ucrt-x86_64-libslirp
-            mingw-w64-ucrt-x86_64-zlib
       - name: Fixed Bun tooling
-        shell: msys2 {0}
+        shell: bash
         run: ./scripts/bootstrap.sh
-      - name: Build the Windows x64 QEMU component
+      - name: Prepare the qualified Windows x64 QEMU component
         id: build
-        shell: msys2 {0}
+        shell: pwsh
         run: |
-          set -euo pipefail
-          ./scripts/bun scripts/windows-qemu.ts dist/windows-qemu
-          identity=$(sha256sum dist/windows-qemu/windows-qemu.json)
-          printf 'sha256=%s\n' "${identity%% *}" >> "$GITHUB_OUTPUT"
+          ./.tools/bin/bun.exe scripts/windows-qemu.ts dist/windows-qemu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $identity = (Get-FileHash dist/windows-qemu/windows-qemu.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          "sha256=$identity" >> $env:GITHUB_OUTPUT
       - name: Transfer the runtime and source receipt
         id: handoff
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

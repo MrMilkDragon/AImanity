@@ -16,7 +16,7 @@
 
 Liberty 与 Task & Goal 读取共享助手已保存的模式状态。Copilot 采集默认麦克风，使用随包离线模型转写，再以系统声音播报。转写草稿在对话区实时显示，完成后的文本进入共享发送队列。构建原生客户端需要 CMake，以编译本机识别器。
 
-键盘与无障碍交互、物理麦克风及外放回声、安装包首装和更新、Windows 宿主入口仍待验收或迁移。
+macOS 和 Windows 原生安装包沿用原有应用标识与数据目录。Windows 宿主启动随包的 Android 和 WHPX 桌面，并通过经过认证的回环连接转发本地 protobuf 服务。macOS 0.0.3 的更新助手已在隔离目录安装原生候选包并重新打开应用。完整离线首装、Windows 更新、物理麦克风及外放回声、键盘和无障碍交互仍待验收。
 
 ```sh
 cargo build --release --manifest-path apps/native/Cargo.toml
@@ -24,6 +24,8 @@ apps/native/target/release/aimanity-native /absolute/path/native-launch.json
 ```
 
 私有启动文件通过 `home`、`resource`、`request`、`source`、`android`、`images` 指定部署位置、离线组件标识和设备配置请求。凭据和设备状态保存在该部署目录。组件结构见[运行包布局](runtime-bundles.md)。
+
+平台工厂使用 `--native-workbench` 打包原生工作台与完整离线载荷。Windows 工厂在 Windows 11 x64 上运行。
 
 ## 已发行客户端
 

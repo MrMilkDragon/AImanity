@@ -106,6 +106,7 @@ dependencies = [
  "bytes",
  "chrono",
  "cpal",
+ "fs2",
  "futures-util",
  "iced",
  "image",
@@ -119,10 +120,13 @@ dependencies = [
  "rodio",
  "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
  "tokio",
  "tokio-tungstenite",
  "uuid",
  "windows 0.61.3",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

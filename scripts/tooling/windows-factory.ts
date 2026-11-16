@@ -154,6 +154,7 @@ export async function windowsFactory(
       "--platform",
       "windows",
       releaseSigning ? "--sign-release" : "--sign-temporary",
+      ...(input.runtime === "qemu" ? ["--native-workbench"] : []),
       "--android-runtime",
       android.file,
       ...runtimeArgs,

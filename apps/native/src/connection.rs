@@ -57,11 +57,7 @@ pub enum DeviceInput {
 impl Connection {
     pub async fn connect(root: String) -> Result<Session, String> {
         let root = std::path::Path::new(&root);
-        let (assistant, phone) = tokio::try_join!(
-            tokio::fs::read_to_string(root.join("data/assistant/token")),
-            tokio::fs::read_to_string(root.join("data/phone-runner/token")),
-        )
-        .map_err(|e| e.to_string())?;
+        let (assistant, phone) = crate::host::credentials(root).await?;
         let bearer = |token: &str| -> Result<HeaderValue, String> {
             let mut header = HeaderValue::from_str(&format!("Bearer {}", token.trim()))
                 .map_err(|e| e.to_string())?;

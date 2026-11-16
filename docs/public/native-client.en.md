@@ -16,7 +16,7 @@ The global toolbar opens the language selector, Skill manager, simulated locatio
 
 Liberty and Task & Goal use the shared assistant's persisted mode state. Copilot captures the default microphone, uses the bundled offline recognizer, and reads replies with the system voice. Partial recognition appears in the composer; final text enters the shared message outbox. Building the native client requires CMake for the bundled recognizer.
 
-Remaining work covers full keyboard and accessibility parity, physical microphone and loudspeaker echo validation, packaged setup and updates, and the Windows host entry.
+The native delivery path uses the existing application identity and data locations on macOS and Windows. The Windows host starts the bundled Android and WHPX desktop and relays the local protobuf services over authenticated loopback. The macOS 0.0.3 installer helper has applied a local native candidate and reopened the application. Full offline setup, the Windows upgrade, physical microphone and loudspeaker echo, and keyboard and accessibility parity remain in development.
 
 ```sh
 cargo build --release --manifest-path apps/native/Cargo.toml
@@ -24,6 +24,8 @@ apps/native/target/release/aimanity-native /absolute/path/native-launch.json
 ```
 
 The private launch file selects an installation with `home`, `resource`, `request`, `source`, `android` and `images`. It reuses the host runtime's offline component identifiers and device setup request. Credentials and device state stay in that installation. See the [runtime bundle layout](runtime-bundles.md).
+
+Use `--native-workbench` with the platform factory to package the native workbench and the complete offline payload. The Windows factory runs on Windows 11 x64.
 
 ## Released client
 

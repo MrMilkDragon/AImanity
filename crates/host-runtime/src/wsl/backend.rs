@@ -471,7 +471,7 @@ async fn initialize<E: Execute>(
     if qemu && request.desktop.storage_gb.is_some() {
         crate::linux_vm::grow_root()?;
     }
-    let web_bind = if qemu { "0.0.0.0" } else { "127.0.0.1" };
+    let web_bind = (!request.native_ui).then_some(if qemu { "0.0.0.0" } else { "127.0.0.1" });
     phase("preflight");
     let parent = home
         .parent()
@@ -541,7 +541,7 @@ async fn initialize<E: Execute>(
             &bundle.join("images.payload"),
             None,
             Path::new("/root"),
-            Some(web_bind),
+            web_bind,
         )
         .await
 }

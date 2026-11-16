@@ -1,9 +1,11 @@
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 mod agent_details;
 mod agents;
 mod audio;
 mod chat;
 mod connection;
 mod controls;
+mod deployment;
 mod devices;
 mod files;
 mod host;
@@ -35,6 +37,7 @@ use std::{sync::Arc, time::Instant};
 #[derive(Clone, Debug)]
 enum Message {
     Host(host::Event),
+    Setup(deployment::Message),
     Connected(Result<Box<connection::Session>, String>),
     Frame(usize, Result<Frame, String>),
     Chat(Result<wire::ChatState, String>),
@@ -87,6 +90,7 @@ enum Panel {
     Capture(usize),
 }
 struct App {
+    setup: Option<deployment::Setup>,
     stop: Option<tokio::sync::oneshot::Sender<()>>,
     host_home: std::path::PathBuf,
     phase: String,
@@ -135,17 +139,13 @@ struct App {
 }
 impl App {
     fn boot() -> (Self, Task<Message>) {
-        let configuration = std::env::args()
-            .nth(1)
-            .unwrap_or_else(|| "native-launch.json".into());
-        let host = host::Host::load(&configuration);
-        let (stop, receiver) = tokio::sync::oneshot::channel();
         let size = Size::new(1200., 800.);
         let layout = Layout::target(size, 0, false, [0.5, 1.6]);
         let mut app = Self {
-            stop: Some(stop),
+            setup: None,
+            stop: None,
             host_home: std::path::PathBuf::new(),
-            phase: "正在启动设备".into(),
+            phase: String::new(),
             closing: false,
             connection: None,
             devices: [None, None],
@@ -189,28 +189,57 @@ impl App {
             started: Instant::now(),
             input_started: None,
         };
-        let task = match host {
-            Ok(host) => {
-                app.host_home = host.home.clone();
-                app.location.set_root(&host.home);
-                app.locale = std::fs::read_to_string(host.home.join("user/native-locale"))
-                    .map_or_else(
-                        |_| locale::Locale::default(),
-                        |s| locale::Locale::parse(s.trim()),
-                    );
-                app.modes.set_language(app.locale.code());
-                app.modes
-                    .set_speech_model(host.resource.join("speech/ggml-tiny-q5_1.bin"));
-                Task::run(host.events(receiver), Message::Host)
-            }
-            Err(error) => {
-                app.error = error;
-                app.phase.clear();
-                app.stop = None;
-                Task::none()
+        let task = if let Some(path) = std::env::args().nth(1) {
+            app.start(host::Host::load(&path))
+        } else {
+            match deployment::Bundle::load().and_then(|bundle| {
+                let request = bundle.request()?;
+                let installed = bundle.installed()?;
+                Ok((bundle, request, installed))
+            }) {
+                Ok((bundle, request, installed)) => {
+                    app.setup = Some(deployment::Setup::new(bundle, request));
+                    if installed {
+                        app.update(Message::Setup(deployment::Message::Start))
+                    } else {
+                        Task::none()
+                    }
+                }
+                Err(error) => {
+                    app.error = error;
+                    Task::none()
+                }
             }
         };
         (app, task)
+    }
+    fn start(&mut self, host: Result<host::Host, String>) -> Task<Message> {
+        match host {
+            Ok(host) => {
+                self.phase = "正在启动设备".into();
+                self.error.clear();
+                self.started = Instant::now();
+                self.host_home = host.home.clone();
+                self.location.set_root(&host.home);
+                let locale = self
+                    .setup
+                    .as_ref()
+                    .and_then(|setup| setup.locale)
+                    .unwrap_or_default();
+                self.locale = std::fs::read_to_string(host.home.join("user/native-locale"))
+                    .map_or(locale, |s| locale::Locale::parse(s.trim()));
+                self.modes.set_language(self.locale.code());
+                self.modes
+                    .set_speech_model(host.resource.join("speech/ggml-tiny-q5_1.bin"));
+                let (stop, receiver) = tokio::sync::oneshot::channel();
+                self.stop = Some(stop);
+                Task::run(host.events(receiver), Message::Host)
+            }
+            Err(error) => {
+                self.error = error;
+                Task::none()
+            }
+        }
     }
     fn aspects(&self) -> [f32; 2] {
         std::array::from_fn(|i| {
@@ -275,6 +304,22 @@ impl App {
     }
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::Setup(message) => {
+                if let Some(setup) = &mut self.setup {
+                    match message {
+                        deployment::Message::Start => {
+                            if let Some(stop) = self.stop.take() {
+                                let _ = stop.send(());
+                                self.phase = "正在重新启动设备".into();
+                            } else {
+                                let host = setup.bundle.host(&setup.request);
+                                return self.start(host);
+                            }
+                        }
+                        _ => setup.update(message),
+                    }
+                }
+            }
             Message::Host(host::Event::Phase(phase)) => {
                 self.phase = match phase.as_str() {
                     "source" => "正在加载组件",
@@ -289,7 +334,7 @@ impl App {
             }
             Message::Host(host::Event::Ready(root)) => {
                 self.root = root.clone();
-                self.phase.clear();
+                self.phase = "正在连接设备".into();
                 return Task::perform(Connection::connect(root), |r| {
                     Message::Connected(r.map(Box::new))
                 });
@@ -299,7 +344,8 @@ impl App {
                 self.phase.clear();
             }
             Message::Host(host::Event::Stopped(result)) => match result {
-                Ok(()) => return iced::exit(),
+                Ok(()) if self.closing => return iced::exit(),
+                Ok(()) => return self.update(Message::Setup(deployment::Message::Start)),
                 Err(error) => {
                     self.error = error;
                     self.closing = false;
@@ -313,6 +359,11 @@ impl App {
                         chat,
                         links,
                     } = *session;
+                    if let Some(setup) = self.setup.take()
+                        && let Err(error) = setup.bundle.mark_installed()
+                    {
+                        self.error = error;
+                    }
                     self.devices = std::array::from_fn(|i| {
                         registry
                             .devices
@@ -328,7 +379,7 @@ impl App {
                     self.files.set_devices(&self.devices);
                     let chat_task = self.chat.accept(chat, &client).map(Message::Conversation);
                     let restore = self.chat.restore(&self.root).map(Message::Conversation);
-                    self.error.clear();
+                    self.phase.clear();
                     self.connection = Some(client.clone());
                     self.rearrange();
                     eprintln!(
@@ -362,7 +413,10 @@ impl App {
                     self.streams = Some(handle.abort_on_drop());
                     return task;
                 }
-                Err(error) => self.error = error,
+                Err(error) => {
+                    self.error = error;
+                    self.phase.clear();
+                }
             },
             Message::Frame(index, result) => match result {
                 Ok(frame) => {
@@ -445,7 +499,9 @@ impl App {
                 }
             }
             Message::Audio(i, message) => {
-                self.keyboard_target = None;
+                if matches!(message, audio::Message::Toggle | audio::Message::Volume(_)) {
+                    self.keyboard_target = None;
+                }
                 return self.audio[i]
                     .update(message, self.connection.as_ref(), i)
                     .map(move |m| Message::Audio(i, m));
@@ -861,6 +917,7 @@ impl App {
             || self.popup_transition.is_some()
             || self.input_started.is_some()
             || self.modes.animating()
+            || (self.connection.is_none() && !self.phase.is_empty())
         {
             subscriptions.push(window::frames().map(Message::Tick));
         }
@@ -1115,6 +1172,21 @@ impl App {
             .into()
     }
     fn view(&self) -> Element<'_, Message> {
+        if self.connection.is_none() && !self.phase.is_empty() {
+            return container(
+                column![
+                    deployment::loading(self.started.elapsed()),
+                    text(self.locale.tr(&self.phase)).size(14)
+                ]
+                .spacing(16)
+                .align_x(iced::Center),
+            )
+            .center(Length::Fill)
+            .into();
+        }
+        if let Some(setup) = &self.setup {
+            return setup.view(&self.error).map(Message::Setup);
+        }
         use controls::{Icon, icon_button};
         let tr = |key: &'static str| self.locale.tr(key);
         let popup = self.popup_rect();
@@ -1144,7 +1216,10 @@ impl App {
         let error = if error_message.is_empty() {
             text(self.locale.tr(&self.phase)).size(12)
         } else {
-            text(error_message).size(12).color(style::ERROR)
+            text(error_message)
+                .size(12)
+                .color(style::ERROR)
+                .wrapping(iced::widget::text::Wrapping::None)
         };
         let mut nav = row![
             container(error).width(Length::Fill).clip(true),
@@ -1342,17 +1417,33 @@ impl App {
     }
 }
 fn main() -> iced::Result {
-    if let Some(result) =
-        ai_phone_host_runtime::component::run(&std::env::args_os().skip(1).collect::<Vec<_>>())
+    let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    #[cfg(windows)]
+    if let Some(code) = host::windows_command(&arguments) {
+        std::process::exit(code);
+    }
+    if let [command, resource] = arguments.as_slice()
+        && command == "--verify-bundled-host"
     {
+        if let Err(error) = deployment::bundle_integrity(std::path::Path::new(resource)) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if let Some(result) = ai_phone_host_runtime::component::run(&arguments) {
         if let Err(error) = result {
             eprintln!("{error}");
             std::process::exit(1);
         }
         return Ok(());
     }
+    #[cfg(windows)]
+    let Ok(_uninstall_guard) = host::windows_guard() else {
+        return Ok(());
+    };
     iced::application(App::boot, App::update, App::view)
-        .title("AImanity · Native")
+        .title("AImanity")
         .subscription(App::subscription)
         .theme(|app: &App| {
             if app.modes.copilot_active() {

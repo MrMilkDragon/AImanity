@@ -1,9 +1,7 @@
-import { buildWindowsQemu } from "./tooling/windows-qemu";
+import { prepareWindowsQemu } from "./tooling/windows-qemu";
 
-const [destination, archive, ...rest] = process.argv.slice(2);
+const [destination, calcium, ...rest] = process.argv.slice(2);
 if (!destination || rest.length)
-  throw Error(
-    "Usage: scripts/windows-qemu.ts <new-output-dir> [qemu-11.1.3.tar.xz]",
-  );
+  throw Error("Usage: scripts/windows-qemu.ts <new-output-dir> [Calcium-installer.exe]");
 
-console.log(JSON.stringify(await buildWindowsQemu(destination, archive)));
+console.log(JSON.stringify(await prepareWindowsQemu(destination, calcium)));

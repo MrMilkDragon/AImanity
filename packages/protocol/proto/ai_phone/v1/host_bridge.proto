@@ -90,6 +90,18 @@ enum LinuxVmOperation {
   LINUX_VM_OPERATION_PHONE_STATUS = 3;
   LINUX_VM_OPERATION_SETUP_DEVICES = 4;
   LINUX_VM_OPERATION_SHUTDOWN = 5;
+  LINUX_VM_OPERATION_NATIVE_CREDENTIALS = 6;
+  LINUX_VM_OPERATION_NATIVE_SERVICE = 7;
+}
+
+message LinuxVmNativeCredentials {
+  string assistant_token = 1;
+  string phone_token = 2;
+}
+
+// Only the fixed local workbench services can be relayed.
+message LinuxVmNativeService {
+  uint32 port = 1;
 }
 
 message LinuxVmControlRequest {

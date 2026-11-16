@@ -11,6 +11,9 @@ import {
   symlinkSync,
   renameSync,
   existsSync,
+  copyFileSync,
+  chmodSync,
+  writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, relative, resolve, basename, dirname, sep } from "node:path";
@@ -147,7 +150,7 @@ export async function inspectPackage(file: string, root = ROOT) {
     rmSync(folder, { recursive: true, force: true });
   }
 }
-export async function inspectMacBundle(bundle: string, root = ROOT) {
+export async function inspectMacBundle(bundle: string, root = ROOT, nativeWorkbench = false) {
   const native = join(root, "apps/client/src-tauri"),
     config = json(join(native, "tauri.conf.json"));
   const info = JSON.parse(
@@ -162,7 +165,7 @@ export async function inspectMacBundle(bundle: string, root = ROOT) {
   );
   const version = json(join(root, "config/release-policy.json")).version;
   if (
-    config.version !== version ||
+    (!nativeWorkbench && config.version !== version) ||
     info.CFBundleIdentifier !== config.identifier ||
     info.CFBundleShortVersionString !== version ||
     info.LSMinimumSystemVersion !== config.bundle.macOS.minimumSystemVersion
@@ -197,6 +200,53 @@ export async function inspectMacBundle(bundle: string, root = ROOT) {
     minimum_macos: info.LSMinimumSystemVersion,
     files: inspected,
   };
+}
+function nativeBinary(root: string, platform: Platform) {
+  const folder = join(root, "apps/native"),
+    target = platform === "windows" ? "x86_64-pc-windows-msvc" : "aarch64-apple-darwin",
+    env = nativeEnvironment();
+  env.AIMANITY_BUNDLE_INTEGRITY = join(root, "apps/client/src-tauri/gen/host/integrity.json");
+  if (platform === "windows")
+    env.CARGO_ENCODED_RUSTFLAGS += "\x1f-Ctarget-feature=+crt-static";
+  run(["cargo", "build", "--release", "--locked", "--target", target,
+    "--manifest-path", join(folder, "Cargo.toml")], { cwd: root, env });
+  return join(folder, "target", target, "release", platform === "windows" ? "aimanity-native.exe" : "aimanity-native");
+}
+
+function macNativeBundle(root: string, stage: string, binary: string, version: string) {
+  const bundle = join(stage, "AImanity.app"),
+    contents = join(bundle, "Contents"),
+    executable = join(contents, "MacOS/ai-phone-client"),
+    resources = join(contents, "Resources"),
+    legacy = join(root, "apps/client/src-tauri");
+  mkdirSync(dirname(executable), { recursive: true });
+  copyFileSync(binary, executable);
+  chmodSync(executable, 0o755);
+  mkdirSync(resources);
+  linkSync(join(legacy, "icons/icon.icns"), join(resources, "icon.icns"));
+  for (const [input, output] of Object.entries(resourceMap(root))) {
+    const target = join(resources, output);
+    mkdirSync(dirname(target), { recursive: true });
+    linkSync(join(legacy, input), target);
+  }
+  const info = join(contents, "Info.plist");
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw Error("Invalid app version");
+  writeFileSync(info, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>dev.aiphone.client</string>
+  <key>CFBundleName</key><string>AImanity</string>
+  <key>CFBundleDisplayName</key><string>AImanity</string>
+  <key>CFBundleExecutable</key><string>ai-phone-client</string>
+  <key>CFBundleIconFile</key><string>icon.icns</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>${version}</string>
+  <key>CFBundleShortVersionString</key><string>${version}</string>
+  <key>LSMinimumSystemVersion</key><string>15.0</string>
+  <key>NSMicrophoneUsageDescription</key><string>Copilot transcribes your speech locally.</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict></plist>`);
+  return bundle;
 }
 export function nativeEnvironment(): NodeJS.ProcessEnv {
   const home = homedir();
@@ -307,6 +357,7 @@ export async function recordInstaller(
   inspection: unknown,
   root = ROOT,
   signature: InstallerSignature = { signing: "unsigned" },
+  nativeWorkbench = false,
 ) {
   const githubHash = createHash("sha256"),
     updateHash = createHash("sha512");
@@ -315,10 +366,11 @@ export async function recordInstaller(
     updateHash.update(chunk);
   }
   const host = platform + "-" + arch;
-  const delivery = deliveryMetadata(await payloadComponents(root), host);
+  const delivery = deliveryMetadata(await payloadComponents(root), host, nativeWorkbench);
   const manifest = {
     version: json(join(root, "config/release-policy.json")).version,
     kind: "native-client",
+    ...(nativeWorkbench ? { interface: "iced-wgpu" } : {}),
     os: platform,
     arch,
     sha256: githubHash.digest("hex"),
@@ -332,7 +384,7 @@ export async function recordInstaller(
     builder_commit: output(["git", "rev-parse", "HEAD"], { cwd: ROOT }),
     source_locks: Object.fromEntries(
       await Promise.all(
-        ["bun.lock", "apps/client/src-tauri/Cargo.lock"].map(async (name) => [
+        ["bun.lock", nativeWorkbench ? "apps/native/Cargo.lock" : "apps/client/src-tauri/Cargo.lock"].map(async (name) => [
           name,
           await digest(join(root, name)),
         ]),
@@ -364,7 +416,7 @@ export async function recordInstaller(
 export async function buildClient(
   platform: Platform,
   root = ROOT,
-  { packageOnly = false, temporarySigning = false, releaseSigning = false } = {},
+  { packageOnly = false, temporarySigning = false, releaseSigning = false, nativeWorkbench = false } = {},
 ) {
   if (releaseSigning && temporarySigning)
     throw Error("Select release signing or a local test build");
@@ -387,6 +439,20 @@ export async function buildClient(
     if (process.platform !== "darwin" || process.arch !== "arm64")
       throw Error("macOS packaging requires Apple Silicon");
     const credentials = releaseSigning ? macReleaseSigning() : undefined;
+    if (nativeWorkbench) {
+      const binary = nativeBinary(root, platform), stage = mkdtempSync(join(dist, ".native-app-"));
+      try {
+        source = macNativeBundle(root, stage, binary, version);
+        if (credentials || temporarySigning) signMacArtifact(source, credentials?.identity);
+        const inspection = await inspectMacBundle(source, root, true);
+        destination = join(dist, `AImanity-${version}-macos-arm64.dmg`);
+        buildDmg(source, destination, { temporarySigning, releaseSigning: credentials });
+        return { artifact: destination, ...(await recordInstaller(destination, platform, "arm64", inspection, root,
+          credentials ? releaseMacSignature : temporarySigning ? temporaryMacSignature : undefined, true)) };
+      } finally {
+        rmSync(stage, {recursive:true,force:true});
+      }
+    }
     run(
       [...command, "--bundles", "app", "--ci", "--no-sign", "--", "--locked"],
       { cwd: root, env },
@@ -411,9 +477,9 @@ export async function buildClient(
   if (!packageOnly && process.platform !== "win32")
     throw Error("Build Windows clients on Windows");
   const credentials = releaseSigning ? windowsReleaseSigning() : undefined;
-  if (!packageOnly) windowsCargo("build", root);
+  if (!packageOnly && !nativeWorkbench) windowsCargo("build", root);
   arch = "x64";
-  source = join(
+  source = nativeWorkbench ? nativeBinary(root, platform) : join(
     native,
     "target/x86_64-pc-windows-msvc/release/ai-phone-client.exe",
   );
@@ -433,6 +499,7 @@ export async function buildClient(
       await inspectPackage(destination, root),
       root,
       signature,
+      nativeWorkbench,
     )),
   };
 }
