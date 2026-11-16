@@ -8,7 +8,6 @@ AI Phone separates versioned application code, clean device baselines and persis
 
 | Component | Contents | Launch requirement |
 |---|---|---|
-| Web | Next.js standalone output, static/public assets, pinned host-matched Bun | Installed file hashes and contained dependency aliases must match |
 | Native services | Release Rust assistant and phone runner, matched Rust PNG/OCR helper and generated fixture | Host, hashes, inventory and executable permissions must match; CPU Tesseract runs in the managed OCR service or the verified [Linux offline closure](engineering/linux-offline-ocr.md) |
 | Phone applications | Unicode input/notification service and no-drawer launcher APKs | Source fingerprint, complete inventory and APK hashes must match; factory signatures/package IDs are verified |
 | Container host | App-owned Lima, clean Alpine ISO and offline Docker/Compose packages; Linux also includes QEMU/SSH/firmware | Matching host runtime, ownership and persisted selection must match; [host component contract](container-host-runtime.md) |
@@ -40,21 +39,20 @@ These commands are for maintainers building components. Native OCR qualification
 
 ```sh
 ./scripts/bootstrap.sh
-./scripts/bun run build
 ./scripts/bun scripts/artifacts.ts native
-./scripts/bun scripts/prepare-client.ts --with-web-runtime --with-service-runtime  --verify-web-runtime --verify-service-runtime
-./scripts/bun scripts/build-client.ts --platform macos --with-web-runtime --with-service-runtime
+./scripts/bun scripts/prepare-client.ts --with-service-runtime  --verify-service-runtime
+./scripts/bun scripts/build-client.ts --platform macos --with-service-runtime
 ```
 
 For full distribution commands and factory-resource requirements, use the [Apple Silicon build guide](engineering/macos-full-runtime.md#build) or [Windows factory guide](windows-client-factory.md). The commands above exercise individual components.
 
-Build on the matching host. Native services currently target macOS and Linux; Windows carries native Android and its matched QEMU Linux guest, including web and Rust services. Cross-compiling a client does not produce matching host services.
+Build on the matching host. Windows carries native Android and its matched QEMU Linux guest with Rust services.
 
-Verification stages the actual archive into an empty temporary installation. It launches the copied web runtime, checks `/phone`, JavaScript and PNG byte hashes, executes side-effect-free native version commands and recognizes a generated OCR image. An optional labelled, loopback-only disposable PostgreSQL fixture checks embedded migrations, the runtime role and DDL denial. No model credentials, user devices or production database are test inputs.
+Verification stages the archive into an empty temporary installation, executes the native version commands and recognizes a generated OCR image. A disposable PostgreSQL fixture checks embedded migrations and the runtime role.
 
 ## Privacy and licensing
 
-Next tracing excludes private state and environment files. The packager checks paths, credentials, escaping aliases and developer-home paths. Binary packages retain upstream component notices, terms and applicable corresponding source.
+The packager checks paths and credentials. Binary packages include upstream notices and applicable corresponding source.
 
 ## Complete distribution requirements
 

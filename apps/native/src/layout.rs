@@ -4,6 +4,7 @@ pub struct Layout {
     pub devices: [Rectangle; 2],
     pub chat: Rectangle,
     pub angles: [f32; 2],
+    pub cable: f32,
 }
 fn fit(area: Rectangle, aspect: f32) -> Rectangle {
     let width = area.width.min(area.height * aspect);
@@ -80,6 +81,7 @@ impl Layout {
                 } else {
                     [0.16, 0.]
                 },
+                cable: if linked { 1. } else { 0. },
             }
         } else {
             let width = (w * 0.51).min(w - 380.);
@@ -110,6 +112,7 @@ impl Layout {
                     height: h - 104.,
                 },
                 angles: [0., -0.18],
+                cable: 0.,
             }
         }
     }
@@ -132,6 +135,7 @@ impl Layout {
                 self.angles[0] + (target.angles[0] - self.angles[0]) * t,
                 self.angles[1] + (target.angles[1] - self.angles[1]) * t,
             ],
+            cable: self.cable + (target.cable - self.cable) * t,
         }
     }
     pub fn local(&self, index: usize, p: Point) -> Option<Point> {

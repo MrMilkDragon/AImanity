@@ -37,6 +37,7 @@ pub enum Press {
     Left,
     Right,
     Hold,
+    Double,
 }
 
 #[derive(Clone, Debug)]
@@ -52,6 +53,7 @@ pub enum DeviceInput {
         to_x: u32,
         to_y: u32,
         duration: u32,
+        hold: bool,
     },
     Scroll {
         x: u32,
@@ -477,7 +479,7 @@ impl Connection {
                 DeviceInput::Tap {
                     x,
                     y,
-                    press: Press::Left,
+                    press: Press::Left | Press::Double,
                 } => Action::Tap(wire::TapAction { x, y }),
                 DeviceInput::Tap { x, y, .. } => Action::LongPress(wire::LongPressAction {
                     x,
@@ -490,7 +492,22 @@ impl Connection {
                     to_x,
                     to_y,
                     duration,
+                    hold: true,
                 } => Action::Drag(wire::DragAction {
+                    x1: x,
+                    y1: y,
+                    x2: to_x,
+                    y2: to_y,
+                    duration_ms: duration,
+                }),
+                DeviceInput::Drag {
+                    x,
+                    y,
+                    to_x,
+                    to_y,
+                    duration,
+                    hold: false,
+                } => Action::Swipe(wire::SwipeAction {
                     x1: x,
                     y1: y,
                     x2: to_x,
@@ -551,7 +568,7 @@ impl Connection {
                     request.x = x as i32;
                     request.y = y as i32;
                     request.button = if matches!(press, Press::Right) { 3 } else { 1 };
-                    request.clicks = 1;
+                    request.clicks = if matches!(press, Press::Double) { 2 } else { 1 };
                 }
                 DeviceInput::Drag {
                     x, y, to_x, to_y, ..

@@ -10,15 +10,7 @@ use std::{
 };
 use tokio::sync::watch;
 
-const ROLES: [&str; 7] = [
-    "emulator",
-    "runner",
-    "media",
-    "assistant",
-    "channels",
-    "web",
-    "lan",
-];
+const ROLES: [&str; 5] = ["emulator", "runner", "media", "assistant", "channels"];
 fn text(path: &Path) -> Result<String> {
     path.to_str()
         .map(str::to_owned)
@@ -50,33 +42,11 @@ fn specification(root: &Path, role: &str) -> Result<Specification> {
             vec![("AI_PHONE_OCR", text(&binary(root, "vision"))?)],
         ),
         "media" => (vec![runner()?, "--media".into()], vec![]),
-        "lan" => (vec![runner()?, "--lan".into()], vec![]),
         "assistant" => (vec![text(&binary(root, "assistant"))?], vec![]),
         "channels" => (
             vec![text(&binary(root, "assistant"))?, "--channels".into()],
             vec![],
         ),
-        "web" => {
-            let bundled = root.join("runtime/manifest.json").is_file();
-            let command = if bundled {
-                vec![
-                    text(&root.join("runtime/bin/bun"))?,
-                    text(&root.join("runtime/web/apps/web/server.js"))?,
-                ]
-            } else {
-                vec![
-                    text(&root.join(".tools/bin/bun"))?,
-                    "run".into(),
-                    "--cwd".into(),
-                    text(&root.join("apps/web"))?,
-                    "start".into(),
-                ]
-            };
-            (
-                command,
-                vec![("HOSTNAME", "127.0.0.1".into()), ("PORT", "17860".into())],
-            )
-        }
         _ => return Err(Error::Invalid("source_service_role")),
     };
     Ok(Specification {

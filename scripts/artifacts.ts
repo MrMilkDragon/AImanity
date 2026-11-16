@@ -5,7 +5,6 @@ import {
   installerApk,
   notificationHelper,
 } from "./tooling/phone-apps";
-import { webCommand } from "./tooling/web-runtime";
 const [operation, ...args] = process.argv.slice(2);
 const root = args.includes("--root") ? args[args.indexOf("--root") + 1]! : ROOT;
 switch (operation) {
@@ -22,9 +21,6 @@ switch (operation) {
         installerApk(root, args[args.indexOf("--app") + 1] as "home" | "input"),
       );
     break;
-  case "web":
-    console.log(JSON.stringify(await webCommand(root)));
-    break;
   default:
-    throw Error("Expected artifacts native|phone|web");
+    throw Error("Expected artifacts native|phone");
 }

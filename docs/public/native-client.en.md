@@ -4,7 +4,7 @@
 
 ## 0.0.4 Dysprosium development
 
-`apps/native` contains the Iced + wgpu workbench. Its Rust host integration starts the phone, desktop and local services without the Next.js page server. Device frames upload directly to GPU textures; input and the shared conversation use the existing protobuf services.
+`apps/native` contains the Iced + wgpu workbench. Its Rust host integration starts the phone, desktop and local services. Device frames upload directly to GPU textures; input and the shared conversation use the existing protobuf services.
 
 The macOS development build connects real devices and preserves one conversation across device switches. Its anchored Agent editor uses the shared provider catalogue and the existing model verification/save flow. Saved profiles include connection, memory and voice settings.
 
@@ -25,11 +25,11 @@ apps/native/target/release/aimanity-native /absolute/path/native-launch.json
 
 The private launch file selects an installation with `home`, `resource`, `request`, `source`, `android` and `images`. It reuses the host runtime's offline component identifiers and device setup request. Credentials and device state stay in that installation. See the [runtime bundle layout](runtime-bundles.md).
 
-Use `--native-workbench` with the platform factory to package the native workbench and the complete offline payload. The Windows factory runs on Windows 11 x64.
+The platform factory packages the Rust workbench with the complete offline payload. The Windows factory runs on Windows 11 x64.
 
 ## Released client
 
-The Tauri client manages local setup. Both platforms run native Android. macOS uses Lima for the Linux environment. Windows starts the bundled Linux guest with QEMU and Windows Hypervisor Platform. The workbench connects to the local services after initialization.
+The Rust native client manages local setup. Both platforms run native Android. macOS uses Lima for the Linux environment. Windows starts the bundled Linux guest with QEMU and Windows Hypervisor Platform. The workbench connects to the local services after initialization.
 
 The setup screen supports ten languages, keyboard-accessible selectors, retry and cancellation. Return to setup through **AImanity → Setup**.
 
@@ -37,7 +37,7 @@ The setup screen supports ten languages, keyboard-accessible selectors, retry an
 
 ```sh
 ./scripts/bootstrap.sh
-./scripts/bun scripts/build-client.ts --with-web-runtime
+./scripts/bun scripts/build-client.ts
 ```
 
 This command builds a development client. For complete packages, see the [macOS factory](engineering/macos-full-runtime.md) and [Windows factory](windows-client-factory.md).

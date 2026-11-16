@@ -10,7 +10,7 @@ import {
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { ROOT, hostKey, run, output, digest, bunProgram } from "./process";
+import { ROOT, hostKey, run, output, digest } from "./process";
 import { json, save } from "./inventory";
 import { releaseTools, buildReleaseTools } from "./archive";
 import { checkDocker, prepareApps, prepareImages, fetchPin } from "./factory";
@@ -27,11 +27,11 @@ import {
 } from "./wsl-factory";
 import { verifyWsl } from "./wsl-capsule";
 import { imageManifest } from "./image-capsule";
+import { hostResources } from "./resources";
 
 const label = "dev.aiphone.qualification",
   checks = [
     "assistant",
-    "web",
     "channels",
     "runner_endpoint",
     "database_roles",
@@ -313,7 +313,6 @@ export async function buildWslBackend(
   root = ROOT,
   deviceApps = false,
   linuxOcr?: string,
-  nativeUi = false,
 ) {
   disposable(root);
   if (hostKey() !== "linux-x64" || free(root) < 4 * 1024 ** 3)
@@ -337,14 +336,12 @@ export async function buildWslBackend(
     await buildFactoryDependency(root, join(work, "ocr-context"), ocr, "linux-ocr");
   buildReleaseTools(root);
   await buildNative(root);
-  if (!nativeUi) run([bunProgram(root), "run", "build"], { cwd: root });
   await preparePayload(root, {
-    web: !nativeUi,
     nativeServices: true,
     phoneApps: deviceApps,
     linuxOcr: ocr,
   });
-  const source = join(root, "apps/client/src-tauri/gen/host/source.payload"),
+  const source = join(root, hostResources, "source.payload"),
     retired: any = await retireCompilerCache(root, source);
   const images = (
     await prepareImages(

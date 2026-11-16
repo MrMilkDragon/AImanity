@@ -2,7 +2,7 @@
 
 [简体中文](source-release.zh-CN.md) · [Repository](https://github.com/MrMilkDragon/AImanity)
 
-The source contains the Next.js workbench, Rust execution services, Android bridges, Linux desktop recipe, protobuf contracts, built-in Skills, installation/backup/recovery tools, tests and CI workflows. The phone and computer share the selected Agent. PostgreSQL persists task checkpoints; Redis provides caching.
+The source contains the Rust workbench, Rust execution services, Android bridges, Linux desktop recipe, protobuf contracts, built-in Skills, installation/backup/recovery tools, tests and CI workflows. The phone and computer share the selected Agent. PostgreSQL persists task checkpoints; Redis provides caching.
 
 Original code uses [Apache-2.0](../../LICENSE). Dependencies, assets and guest applications retain their own terms; see [third-party notices](../../THIRD_PARTY_NOTICES.md). [Download the macOS or Windows client](release-status.md).
 
@@ -32,6 +32,6 @@ Export requires a new destination and produces a source manifest and local revie
 
 ## Automated checks
 
-Source CI checks protobuf, TypeScript, Rust, isolated UI/adapters, archive/installation contracts and a production web build. Prebuilt component verification stages and executes actual packaged files. Disposable PostgreSQL fixtures exercise migrations, role restrictions, backup/restore and worker recovery; restart tests run sequentially. CI does not use real devices, account credentials or paid model calls.
+Source CI checks protobuf, TypeScript, Rust, native workbench, adapters and archive/installation contracts. Prebuilt component verification stages and executes actual packaged files. Disposable PostgreSQL fixtures exercise migrations, role restrictions, backup/restore and worker recovery; restart tests run sequentially. CI does not use real devices, account credentials or paid model calls.
 
 Native CI builds macOS ARM64 and Windows x64 desktop clients, inspects package contents and verifies virtual-phone control applications on matching workers. See [runtime components](engineering/index.md), [release status](release-status.md) and [compatibility](compatibility.md).

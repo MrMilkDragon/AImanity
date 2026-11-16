@@ -20,8 +20,7 @@ import { extractTar } from "./archive";
 import { prepareDependency } from "./linux-dependencies";
 
 export function minimumMac(root = ROOT) {
-  return json(join(root, "apps/client/src-tauri/tauri.conf.json")).bundle.macOS
-    .minimumSystemVersion as string;
+  return json(join(root, "config/native-client.json")).minimum_macos as string;
 }
 export function versionParts(value: string) {
   return [...value.split(".").map(Number), 0, 0].slice(0, 3);

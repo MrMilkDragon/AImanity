@@ -4,7 +4,7 @@
 
 ## 0.0.4 Dysprosium 开发
 
-`apps/native` 是 Iced + wgpu 原生工作台。Rust 宿主入口启动手机、电脑和本地服务，原生模式不启动 Next.js 页面服务。设备画面直接上传 GPU 纹理，输入和共享对话复用既有 protobuf 服务。
+`apps/native` 是 Iced + wgpu 原生工作台。Rust 宿主入口启动手机、电脑和本地服务。设备画面直接上传 GPU 纹理，输入和共享对话复用既有 protobuf 服务。
 
 当前 Mac 开发构建已接通真实双设备，切换设备时保持唯一共享会话。就地展开的 Agent 编辑器复用服务商目录和模型检测/保存流程；已保存配置包含连接应用、记忆和语音设置。
 
@@ -25,11 +25,11 @@ apps/native/target/release/aimanity-native /absolute/path/native-launch.json
 
 私有启动文件通过 `home`、`resource`、`request`、`source`、`android`、`images` 指定部署位置、离线组件标识和设备配置请求。凭据和设备状态保存在该部署目录。组件结构见[运行包布局](runtime-bundles.md)。
 
-平台工厂使用 `--native-workbench` 打包原生工作台与完整离线载荷。Windows 工厂在 Windows 11 x64 上运行。
+平台工厂打包 Rust 原生工作台与完整离线载荷。Windows 工厂在 Windows 11 x64 上运行。
 
 ## 已发行客户端
 
-Tauri 客户端负责本机配置。两端都运行原生 Android。macOS 使用 Lima 运行 Linux 环境，Windows 使用 QEMU 和 Windows Hypervisor Platform 启动内置 Linux 客体。初始化完成后，工作台连接本地服务。
+Rust 原生客户端负责本机配置。两端都运行原生 Android。macOS 使用 Lima 运行 Linux 环境，Windows 使用 QEMU 和 Windows Hypervisor Platform 启动内置 Linux 客体。初始化完成后，工作台连接本地服务。
 
 配置界面支持十种语言、键盘操作、重试和取消。通过 **AImanity → 设置** 返回配置。
 
@@ -37,7 +37,7 @@ Tauri 客户端负责本机配置。两端都运行原生 Android。macOS 使用
 
 ```sh
 ./scripts/bootstrap.sh
-./scripts/bun scripts/build-client.ts --with-web-runtime
+./scripts/bun scripts/build-client.ts
 ```
 
 这条命令构建开发客户端。完整安装包见 [macOS 工厂](engineering/macos-full-runtime.md)及 [Windows 工厂](windows-client-factory.md)。

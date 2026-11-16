@@ -11,8 +11,6 @@ ai-phone-adb = { path = "../adb-client" }
 ai-phone-vision = { path = "../vision" }
 ai-phone-api = { path = "../api" }
 axum = "=0.8.9"
-hyper = { version = "=1.12.0", features = ["http1", "server"] }
-hyper-util = { version = "=0.1.21", features = ["client-legacy", "http1", "tokio"] }
 prost = "=0.14.4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "process", "io-util", "time", "sync"] }
 serde = { version = "1", features = ["derive"] }
@@ -28,7 +26,6 @@ tonic-prost = "=0.14.9"
 image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png"] }
 futures-util = "0.3"
 rustix = { version = "1", features = ["process"] }
-if-addrs = "=0.15.0"
 
 [build-dependencies]
 tonic-prost-build = "=0.14.9"

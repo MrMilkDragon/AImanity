@@ -73,7 +73,6 @@ impl Deployment<'_> {
         guest_profile["android_qemu"] = serde_json::Value::Bool(
             android::Engine::installed(&phone.sdk_root) == android::Engine::Whpx,
         );
-        guest_profile["native_ui"] = serde_json::Value::Bool(true);
         let guest_profile =
             serde_json::to_vec(&guest_profile).map_err(|_| "invalid_device_resources")?;
         let vm = self.home.join("user/qemu");

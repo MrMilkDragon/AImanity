@@ -85,13 +85,27 @@ export async function dependencyInventory(root = ROOT) {
       "Cargo.lock": await digest(join(root, "Cargo.lock")),
       "bun.lock": await digest(join(root, "bun.lock")),
     };
-  for (const manifest of ["Cargo.toml", "apps/client/src-tauri/Cargo.toml"]) {
-    const graph = metadata(root, manifest),
-      workspace = new Set([...owned, ...graph.workspace_members]);
+  const builds = [
+    ["Cargo.toml", [undefined]],
+    ["apps/native/Cargo.toml", ["aarch64-apple-darwin", "x86_64-pc-windows-msvc"]],
+  ] as const;
+  for (const [manifest, targets] of builds) {
+    const graphs = targets.map((target) => metadata(root, manifest, false, target));
+    const workspace = new Set([...owned, ...graphs.flatMap((graph) => graph.workspace_members)]);
+    const packages = new Map<string, {
+      id: string;
+      name: string;
+      version: string;
+      license: string | null;
+      repository: string | null;
+      manifest_path: string;
+    }>();
+    for (const graph of graphs)
+      for (const pkg of graph.packages) packages.set(pkg.id, pkg);
     locks[join(dirname(manifest), "Cargo.lock")] = await digest(
       join(root, dirname(manifest), "Cargo.lock"),
     );
-    for (const pkg of graph.packages) {
+    for (const pkg of packages.values()) {
       if (workspace.has(pkg.id)) continue;
       const key = pkg.name + "@" + pkg.version;
       if (!rust.has(key))

@@ -52,45 +52,23 @@ impl Rpc<'_> {
             .map_err(|_| Failure::invalid("qualification_failed"))
     }
 }
-async fn health(
-    context: &Context,
-    url: &str,
-    body: Option<Vec<u8>>,
-    content: &str,
-    token: &str,
-) -> Result<()> {
+async fn health(context: &Context, url: &str, body: Vec<u8>, token: &str) -> Result<()> {
     let until = Instant::now() + Duration::from_secs(60);
     loop {
-        let mut request = context
+        let request = context
             .client
-            .request(
-                if body.is_some() {
-                    reqwest::Method::POST
-                } else {
-                    reqwest::Method::GET
-                },
-                url,
-            )
-            .timeout(Duration::from_secs(5));
-        if let Some(body) = &body {
-            request = request
-                .bearer_auth(token)
-                .header("content-type", "application/x-protobuf")
-                .body(body.clone());
-        }
+            .post(url)
+            .timeout(Duration::from_secs(5))
+            .bearer_auth(token)
+            .header("content-type", "application/x-protobuf")
+            .body(body.clone());
         match request.send().await {
-            Ok(mut response) if response.status() == 200 => {
-                if !response
+            Ok(response) if response.status() == 200 => {
+                if response
                     .headers()
                     .get("content-type")
                     .and_then(|value| value.to_str().ok())
-                    .is_some_and(|value| value.contains(content))
-                {
-                    return Err(Failure::invalid("qualification_failed"));
-                }
-                // The protobuf default message is legitimately empty; HTML must have a body.
-                if content != "application/x-protobuf"
-                    && response.chunk().await?.is_none_or(|bytes| bytes.is_empty())
+                    != Some("application/x-protobuf")
                 {
                     return Err(Failure::invalid("qualification_failed"));
                 }
@@ -112,37 +90,27 @@ pub(super) async fn ready(context: &Context, receipt: &mut Receipt) -> Result<()
         ..Default::default()
     }
     .encode_to_vec();
-    for (name, url, body, content, credential) in [
+    for (name, url, body, credential) in [
         (
             "assistant",
             format!("{}/v1/setup/status", context.endpoints.assistant),
-            Some(vec![]),
-            "application/x-protobuf",
-            token.as_str(),
-        ),
-        (
-            "web",
-            format!("{}/phone", context.endpoints.web),
-            None,
-            "text/html",
+            vec![],
             token.as_str(),
         ),
         (
             "channels",
             format!("{}/v1/list", context.endpoints.channels),
-            Some(vec![]),
-            "application/x-protobuf",
+            vec![],
             token.as_str(),
         ),
         (
             "runner_endpoint",
             format!("{}/v1/cursor", context.endpoints.runner),
-            Some(cursor),
-            "application/x-protobuf",
+            cursor,
             runner.as_str(),
         ),
     ] {
-        health(context, &url, body, content, credential).await?;
+        health(context, &url, body, credential).await?;
         receipt.checked(name);
     }
     Ok(())
@@ -424,32 +392,11 @@ async fn first_jpeg(mut response: reqwest::Response) -> Result<Vec<u8>> {
     }
     Err(Failure::invalid("qualification_observation"))
 }
-pub(super) async fn desktop_media(context: &Context, device: &str) -> Result<()> {
-    let web = &context.endpoints.web;
-    let entry = context
-        .client
-        .post(format!("{web}/api/auth/enter"))
-        .header("origin", web.as_str())
-        .header("content-type", "application/x-protobuf")
-        .body(vec![])
-        .timeout(Duration::from_secs(5))
-        .send()
-        .await?;
-    if entry.status() != 200 {
-        return Err(Failure::invalid("qualification_observation"));
-    }
-    let cookies = entry
-        .headers()
-        .get_all("set-cookie")
-        .iter()
-        .filter_map(|value| value.to_str().ok())
-        .filter_map(|value| value.split(';').next())
-        .collect::<Vec<_>>()
-        .join("; ");
+pub(super) async fn desktop_media(context: &Context) -> Result<()> {
     let response = context
         .client
-        .get(format!("{web}/api/desktop/media?device_id={device}&raw=1"))
-        .header("cookie", cookies)
+        .get(format!("{}/desktop/screen", context.endpoints.media))
+        .bearer_auth(context.token("phone-runner")?)
         .timeout(Duration::from_secs(5))
         .send()
         .await?;
@@ -460,7 +407,7 @@ pub(super) async fn desktop_media(context: &Context, device: &str) -> Result<()>
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.split(';').next())
             .map(str::trim)
-            != Some("application/octet-stream")
+            != Some("multipart/x-mixed-replace")
     {
         return Err(Failure::invalid("qualification_observation"));
     }
@@ -573,14 +520,12 @@ mod tests {
     struct Reply {
         status: u16,
         content: &'static str,
-        extra: &'static str,
         chunks: Vec<Vec<u8>>,
     }
     fn reply(content: &'static str, body: Vec<u8>) -> Reply {
         Reply {
             status: 200,
             content,
-            extra: "",
             chunks: vec![body],
         }
     }
@@ -624,7 +569,7 @@ mod tests {
                 let response = respond(index, &request);
                 let mut socket = reader.into_inner();
                 let size: usize = response.chunks.iter().map(Vec::len).sum();
-                socket.write_all(format!("HTTP/1.1 {} fixture\r\ncontent-type: {}\r\ncontent-length: {size}\r\nconnection: close\r\n{}\r\n",response.status,response.content,response.extra).as_bytes()).await.unwrap();
+                socket.write_all(format!("HTTP/1.1 {} fixture\r\ncontent-type: {}\r\ncontent-length: {size}\r\nconnection: close\r\n\r\n",response.status,response.content).as_bytes()).await.unwrap();
                 for chunk in response.chunks {
                     socket.write_all(&chunk).await.unwrap();
                     tokio::task::yield_now().await;
@@ -658,48 +603,38 @@ mod tests {
     async fn health_uses_the_runner_token_and_scoped_protobuf_without_claiming_phone_readiness() {
         let root = tempfile::tempdir().unwrap();
         let mut context = context(root.path());
-        let (url, server) = http(4, |index, request| {
+        let (url, server) = http(3, |index, request| {
             let headers = request.head.to_ascii_lowercase();
-            if index == 3 {
+            if index == 2 {
                 assert!(headers.contains("authorization: bearer runner-fixture"));
                 let message = wire::DeviceRequest::decode(request.body.as_slice()).unwrap();
                 assert_eq!(message.phone_id, "phone-local-01");
                 assert_eq!(message.owner_id, "local-user");
-            } else if index != 1 {
+            } else {
                 assert!(headers.contains("authorization: bearer assistant-fixture"));
             }
-            if index == 1 {
-                reply("text/html", b"<main>workbench</main>".to_vec())
-            } else {
-                reply("application/x-protobuf", vec![])
-            }
+            reply("application/x-protobuf", vec![])
         })
         .await;
         context.endpoints.assistant = url.clone();
-        context.endpoints.web = url.clone();
         context.endpoints.channels = url.clone();
         context.endpoints.runner = url;
         let mut receipt = Receipt::new(context.nonce.clone(), 1, root.path());
         ready(&context, &mut receipt).await.unwrap();
         let requests = server.await.unwrap();
         assert_eq!(requests[0].path(), "/v1/setup/status");
-        assert_eq!(requests[3].path(), "/v1/cursor");
+        assert_eq!(requests[1].path(), "/v1/list");
+        assert_eq!(requests[2].path(), "/v1/cursor");
         assert!(!receipt.phone_ready);
-        assert_eq!(receipt.checks.values().filter(|value| **value).count(), 4);
+        assert_eq!(receipt.checks.values().filter(|value| **value).count(), 3);
     }
     #[tokio::test]
-    async fn html_health_does_not_accept_empty_or_wrong_type_bodies() {
-        for (content, body) in [("text/html", vec![]), ("application/json", b"{}".to_vec())] {
-            let root = tempfile::tempdir().unwrap();
-            let context = context(root.path());
-            let (url, server) = http(1, move |_, _| reply(content, body.clone())).await;
-            assert!(
-                health(&context, &url, None, "text/html", "unused")
-                    .await
-                    .is_err()
-            );
-            server.await.unwrap();
-        }
+    async fn health_rejects_non_protobuf_responses() {
+        let root = tempfile::tempdir().unwrap();
+        let context = context(root.path());
+        let (url, server) = http(1, |_, _| reply("application/json", b"{}".to_vec())).await;
+        assert!(health(&context, &url, vec![], "unused").await.is_err());
+        server.await.unwrap();
     }
     #[tokio::test]
     async fn desktop_creation_and_restart_reuse_one_owned_device_through_real_protobuf_http() {
@@ -839,7 +774,7 @@ mod tests {
         server.await.unwrap();
     }
     #[tokio::test]
-    async fn raw_media_requires_web_auth_and_decodes_the_actual_jpeg_without_guest_python() {
+    async fn media_uses_runner_auth_and_decodes_the_actual_jpeg() {
         let image = image::RgbImage::from_pixel(3, 2, image::Rgb([30, 40, 50]));
         let mut encoded = Cursor::new(vec![]);
         image
@@ -847,43 +782,32 @@ mod tests {
             .unwrap();
         let encoded = encoded.into_inner();
         for (content, image, passed) in [
-            ("application/octet-stream", encoded, true),
-            ("multipart/x-mixed-replace", vec![], false),
+            ("multipart/x-mixed-replace; boundary=phone", encoded, true),
+            ("application/octet-stream", vec![], false),
             (
-                "application/octet-stream",
+                "multipart/x-mixed-replace; boundary=phone",
                 b"\xff\xd8\xff\xd9".to_vec(),
                 false,
             ),
         ] {
             let root = tempfile::tempdir().unwrap();
             let mut context = context(root.path());
-            let (url, server) = http(2, move |index, request| {
-                if index == 0 {
-                    assert_eq!(request.path(), "/api/auth/enter");
-                    assert!(request.head.contains("origin:"));
-                    let mut response = reply("application/x-protobuf", vec![]);
-                    response.extra = "set-cookie: fixture-session=accepted; HttpOnly\r\n";
-                    response
-                } else {
-                    assert_eq!(
-                        request.path(),
-                        "/api/desktop/media?device_id=fixture-device&raw=1"
-                    );
-                    assert!(request.head.contains("cookie: fixture-session=accepted"));
-                    Reply {
-                        status: 200,
-                        content,
-                        extra: "",
-                        chunks: vec![vec![b' ', 0xff], image.iter().copied().skip(1).collect()],
-                    }
+            let (url, server) = http(1, move |_, request| {
+                assert_eq!(request.path(), "/desktop/screen");
+                assert!(
+                    request
+                        .head
+                        .contains("authorization: Bearer runner-fixture")
+                );
+                Reply {
+                    status: 200,
+                    content,
+                    chunks: vec![vec![b' ', 0xff], image.iter().copied().skip(1).collect()],
                 }
             })
             .await;
-            context.endpoints.web = url;
-            assert_eq!(
-                desktop_media(&context, "fixture-device").await.is_ok(),
-                passed
-            );
+            context.endpoints.media = url;
+            assert_eq!(desktop_media(&context).await.is_ok(), passed);
             server.await.unwrap();
         }
     }

@@ -42,7 +42,7 @@ Private Actions storage retains the DMG, inventory and receipt. The maintainer p
 Use a reviewed source checkout and architecture-matched factory resources. The distribution command is:
 
 ```sh
-./scripts/bun scripts/build-client.ts --platform macos --native-workbench \
+./scripts/bun scripts/build-client.ts --platform macos \
   --with-service-runtime --with-phone-apps \
   --with-container-host \
   --android-runtime /factory/android.payload \

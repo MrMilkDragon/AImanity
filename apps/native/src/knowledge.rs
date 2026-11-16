@@ -365,31 +365,14 @@ impl Knowledge {
                 return Task::perform(
                     async move {
                         if paste {
-                            let mut clipboard =
-                                arboard::Clipboard::new().map_err(|e| e.to_string())?;
-                            let image = match clipboard.get_image() {
-                                Ok(image) => image,
-                                Err(arboard::Error::ContentNotAvailable) => {
-                                    return match clipboard.get_text() {
-                                        Ok(text) => Ok(Some(text)),
-                                        Err(arboard::Error::ContentNotAvailable) => Ok(None),
-                                        Err(error) => Err(error.to_string()),
-                                    };
+                            use crate::platform::ClipboardContent;
+                            return match crate::platform::read_clipboard().await? {
+                                Some(ClipboardContent::Text(text)) => Ok(Some(text)),
+                                Some(ClipboardContent::Png(png)) => {
+                                    upload_image(&connection, png, "图片").await.map(Some)
                                 }
-                                Err(error) => return Err(error.to_string()),
+                                None => Ok(None),
                             };
-                            let width = u32::try_from(image.width).map_err(|e| e.to_string())?;
-                            let height = u32::try_from(image.height).map_err(|e| e.to_string())?;
-                            let mut png = Vec::new();
-                            ::image::ImageEncoder::write_image(
-                                ::image::codecs::png::PngEncoder::new(&mut png),
-                                &image.bytes,
-                                width,
-                                height,
-                                ::image::ExtendedColorType::Rgba8,
-                            )
-                            .map_err(|e| e.to_string())?;
-                            return upload_image(&connection, png, "图片").await.map(Some);
                         }
                         let Some(file) = rfd::AsyncFileDialog::new()
                             .add_filter("图片", &["png", "jpg", "jpeg", "webp"])

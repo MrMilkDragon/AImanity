@@ -56,7 +56,7 @@ export function audit(root = ROOT) {
   const rust: Record<string, any> = {};
   for (const [name, manifest] of [
     ["server", "Cargo.toml"],
-    ["client", "apps/client/src-tauri/Cargo.toml"],
+    ["client", "apps/native/Cargo.toml"],
   ]) {
     const lock = join(dirname(manifest!), "Cargo.lock"),
       report = auditCommand(

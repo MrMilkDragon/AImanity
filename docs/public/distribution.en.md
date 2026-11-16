@@ -6,7 +6,7 @@ The installer supplies the devices and services. Configure resources and models 
 
 ## Implemented storage boundaries
 
-Native setup uses Tauri's application data directory, with an owned `host` subdirectory:
+Native setup uses its application data directory, with an owned `host` subdirectory:
 
 ```text
 host/

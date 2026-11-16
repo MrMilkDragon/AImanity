@@ -12,7 +12,7 @@ const args = process.argv.slice(2),
 if (args.includes("--client-notices-output")) {
   const value = await rustNotices(
       ROOT,
-      "apps/client/src-tauri/Cargo.toml",
+      "apps/native/Cargo.toml",
       "native client",
     ),
     file = option("--client-notices-output");

@@ -21,8 +21,7 @@ See [model and channel setup](docs/public/model-and-channel-setup.md), [notifica
 
 | Layer | Technology | Directory |
 | --- | --- | --- |
-| Workbench | Next.js App Router, TypeScript, Tailwind, shadcn/ui | `apps/web` |
-| Native client | Tauri 2 | `apps/client` |
+| Desktop client and workbench | Rust (Iced/wgpu) | `apps/native` |
 | Backend, devices and media | Rust, Axum, Tokio | `crates` |
 | Business API and state | protobuf, PostgreSQL, SQLx | `packages/protocol` |
 | Device runtimes | AOSP, Avo, QEMU with WHPX, Linux containers, Docker Compose | `infra`, `scripts` |

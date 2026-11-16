@@ -170,7 +170,6 @@ jobs:
     env:
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
-      NEXT_TELEMETRY_DISABLED: '1'
       HOMEBREW_NO_AUTO_UPDATE: '1'
       AI_PHONE_IMAGE_HANDOFF_TAG: ${{ needs.native-arm-images.outputs.candidate_tag }}
       AI_PHONE_IMAGE_HANDOFF_RELEASE_ID: ${{ needs.native-arm-images.outputs.candidate_release_id }}

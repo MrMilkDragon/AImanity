@@ -272,7 +272,7 @@ fn traversal_private_names_duplicates_and_nonregular_tar_entries_are_rejected() 
         ".git/config",
         "a\\b",
         ".env",
-        "runtime/bin/bun",
+        "runtime/services/bin/assistant",
         "a/./b",
     ]
     .iter()
@@ -374,89 +374,39 @@ fn real_pax_and_gnu_unicode_long_names_keep_their_original_path() {
     }
 }
 
-fn runtime_tar(escape: bool) -> Vec<u8> {
-    let link = if escape {
-        "../../../outside"
-    } else {
-        ".store/library"
-    };
-    let metadata = serde_json::to_vec(
-        &json!({"format":1,"links":[{"path":"runtime/web/node_modules/library","target":link}]}),
-    )
-    .unwrap();
+#[test]
+fn staged_runtime_records_belong_to_declared_components() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
     let files = [
-        ("runtime/bin/bun", b"binary".as_slice()),
-        (
-            "runtime/web/node_modules/.store/library/index.js",
-            b"module".as_slice(),
-        ),
-        ("runtime/manifest.json", metadata.as_slice()),
-        ("outside", b"outside".as_slice()),
+        ("runtime/services/manifest.json", b"{}".as_slice()),
+        ("runtime/services/bin/assistant", b"assistant".as_slice()),
+        ("runtime/phone-apps/manifest.json", b"{}".as_slice()),
+        ("runtime/container-host/manifest.json", b"{}".as_slice()),
     ];
     let rows: Vec<_> = files
         .iter()
-        .map(|(name, data)| record(name, data, 0o644))
+        .map(|(name, body)| record(name, body, 0o644))
         .collect();
-    tar_bytes(
-        &files,
-        &json!({"format":2,"components":["web"],"files":rows}),
-        false,
-    )
-}
-
-#[test]
-fn component_links_are_created_verified_and_cannot_escape_or_replace_files() {
-    let temporary = tempfile::tempdir().unwrap();
-    let root = temporary.path();
-    let (path, identity) = payload(root, &runtime_tar(false), false);
-    let mut install = Installation::lock(&root.join("install")).unwrap();
-    let source = install
-        .stage_source(&path, &identity, &free, &|| false)
-        .unwrap();
-    assert_eq!(source.components, vec!["web"]);
-    let alias = source.directory.join("runtime/web/node_modules/library");
-    assert_eq!(fs::read(alias.join("index.js")).unwrap(), b"module");
-    #[cfg(unix)]
-    crate::capsule::HASHED_BYTES.with(|bytes| bytes.set(0));
-    assert!(
-        install
-            .stage_source(&path, &identity, &free, &|| false)
-            .unwrap()
-            .reused
-    );
-    #[cfg(unix)]
-    {
-        let healthy_bytes = crate::capsule::HASHED_BYTES.with(|bytes| bytes.replace(0));
-        fs::remove_file(&alias).unwrap();
-        install
-            .recover_source(&path, &identity, &free, &|| false)
-            .unwrap();
-        assert_eq!(fs::read(alias.join("index.js")).unwrap(), b"module");
-        let repaired_bytes = crate::capsule::HASHED_BYTES.with(Cell::get);
-        assert_eq!(repaired_bytes, healthy_bytes);
+    let complete = ["native-services", "phone-apps", "container-host"];
+    for count in [2, 3] {
+        let manifest = json!({"format": 2, "components": &complete[..count], "files": rows});
+        let (path, identity) = payload(root, &tar_bytes(&files, &manifest, false), false);
+        let home = root.join(format!("install-{count}"));
+        let mut install = Installation::lock(&home).unwrap();
+        let result = install.stage_source(&path, &identity, &free, &|| false);
+        if count == 3 {
+            let source = result.unwrap();
+            assert_eq!(source.components, complete);
+            assert_eq!(
+                fs::read(source.directory.join(files[1].0)).unwrap(),
+                files[1].1
+            );
+        } else {
+            assert_eq!(result.unwrap_err().code(), "source_resource_components");
+            assert!(empty_releases(&home));
+        }
     }
-    fs::remove_file(&alias).unwrap();
-    fs::create_dir(&alias).unwrap();
-    assert!(
-        install
-            .stage_source(&path, &identity, &free, &|| false)
-            .is_err()
-    );
-    #[cfg(unix)]
-    assert!(
-        install
-            .recover_source(&path, &identity, &free, &|| false)
-            .is_err()
-    );
-    let (bad, identity) = payload(root, &runtime_tar(true), false);
-    let home = root.join("escape");
-    let mut other = Installation::lock(&home).unwrap();
-    assert!(
-        other
-            .stage_source(&bad, &identity, &free, &|| false)
-            .is_err()
-    );
-    assert!(empty_releases(&home));
 }
 
 #[test]
@@ -467,7 +417,7 @@ fn bad_manifest_types_components_and_body_hash_never_activate() {
     for (number, manifest) in [
         json!({"format":true,"files":[good.clone()]}),
         json!({"format":1,"files":[{"path":"a","size":true,"mode":420,"sha256":sha(b"a")}]}),
-        json!({"format":2,"components":["web","web"],"files":[good.clone()]}),
+        json!({"format":2,"components":["native-services","native-services"],"files":[good.clone()]}),
         json!({"format":2,"components":["unknown"],"files":[good.clone()]}),
         json!({"format":1,"files":[record("a",b"b",0o644)]}),
     ]
@@ -565,6 +515,7 @@ fn concurrent_owner_is_refused_and_does_not_change_lock_or_home_permissions() {
     }
     let owner = Installation::lock(&home).unwrap();
     assert!(matches!(Installation::lock(&home), Err(Error::Busy)));
+    drop(owner);
     assert_eq!(
         fs::read(home.join("bootstrap.lock")).unwrap(),
         b"existing lock"
@@ -585,7 +536,6 @@ fn concurrent_owner_is_refused_and_does_not_change_lock_or_home_permissions() {
             0o640
         );
     }
-    drop(owner);
     let reopened = Installation::lock(&home);
     assert!(
         reopened.is_ok(),

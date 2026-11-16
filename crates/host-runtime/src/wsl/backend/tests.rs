@@ -185,7 +185,6 @@ async fn first_boot_runs_every_native_phase_with_one_owned_socket() {
             "--migrate",
             "runner-start",
             "assistant-start",
-            "web-start",
             "channels-start",
             "media-start"
         ]
@@ -209,7 +208,6 @@ async fn each_failed_initialization_phase_stops_before_later_effects() {
         "--migrate",
         "runner-start",
         "assistant-start",
-        "web-start",
         "channels-start",
         "media-start",
     ];
@@ -352,12 +350,7 @@ async fn malformed_container_receipts_and_failed_listing_stop_before_import() {
         );
         assert_eq!(
             backend
-                .start(
-                    Path::new("images.payload"),
-                    None,
-                    Path::new("/root"),
-                    Some("127.0.0.1")
-                )
+                .start(Path::new("images.payload"), None, Path::new("/root"))
                 .await
                 .unwrap_err()
                 .code(),
@@ -382,12 +375,7 @@ async fn malformed_container_receipts_and_failed_listing_stop_before_import() {
     );
     assert_eq!(
         backend
-            .start(
-                Path::new("images.payload"),
-                None,
-                Path::new("/root"),
-                Some("127.0.0.1")
-            )
+            .start(Path::new("images.payload"), None, Path::new("/root"))
             .await
             .unwrap_err()
             .code(),
@@ -431,38 +419,12 @@ fn fixture(root: &Path, execute: Fixture) -> Backend<'_, Fixture> {
 }
 
 #[tokio::test]
-async fn native_frontend_starts_runtime_without_web_service() {
-    let folder = tempfile::tempdir().unwrap();
-    let root = folder.path().canonicalize().unwrap();
-    let mut backend = fixture(&root, Fixture::default());
-    backend
-        .start(Path::new("images.payload"), None, Path::new("/root"), None)
-        .await
-        .unwrap();
-    let names: Vec<_> = backend
-        .execute
-        .calls
-        .iter()
-        .filter(|(_, args, _)| {
-            args.first().map(String::as_str) == Some("--service-control") && args[3] == "start"
-        })
-        .map(|(_, args, _)| args[2].as_str())
-        .collect();
-    assert_eq!(names, ["runner", "assistant", "channels", "media"]);
-}
-
-#[tokio::test]
 async fn fresh_backend_uses_native_services_and_never_creates_desktop_or_starts_phone() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path().canonicalize().unwrap();
     let mut backend = fixture(&root, Fixture::default());
     backend
-        .start(
-            Path::new("images.payload"),
-            None,
-            Path::new("/root"),
-            Some("127.0.0.1"),
-        )
+        .start(Path::new("images.payload"), None, Path::new("/root"))
         .await
         .unwrap();
     let calls = &backend.execute.calls;
@@ -473,7 +435,7 @@ async fn fresh_backend_uses_native_services_and_never_creates_desktop_or_starts_
         })
         .map(|(_, args, _)| args[2].as_str())
         .collect();
-    assert_eq!(names, ["runner", "assistant", "web", "channels", "media"]);
+    assert_eq!(names, ["runner", "assistant", "channels", "media"]);
     assert!(calls.iter().any(|(_, args, _)| args.ends_with(&[
         "postgres".into(),
         "redis".into(),
@@ -499,14 +461,8 @@ async fn fresh_backend_uses_native_services_and_never_creates_desktop_or_starts_
             .unwrap()
             .ends_with("/runtime/services/bin/vision")
     );
-    assert_eq!(specifications[2]["environment"]["PORT"], "17860");
-    for index in [1, 3, 4] {
-        assert!(specifications[index]["environment"].get("PORT").is_none());
-        assert!(
-            specifications[index]["environment"]
-                .get("AI_PHONE_OCR")
-                .is_none()
-        );
+    for specification in &specifications[1..] {
+        assert!(specification["environment"].get("AI_PHONE_OCR").is_none());
     }
 }
 
@@ -545,12 +501,7 @@ async fn resume_keeps_tokens_skips_live_database_and_only_starts_exact_stopped_d
             .unwrap();
         }
         backend
-            .start(
-                Path::new("images.payload"),
-                None,
-                Path::new("/root"),
-                Some("127.0.0.1"),
-            )
+            .start(Path::new("images.payload"), None, Path::new("/root"))
             .await
             .unwrap();
         assert_eq!(
@@ -663,12 +614,7 @@ async fn foreign_container_rejects_before_import_database_or_service_changes() {
     );
     assert_eq!(
         backend
-            .start(
-                Path::new("images.payload"),
-                None,
-                Path::new("/root"),
-                Some("127.0.0.1")
-            )
+            .start(Path::new("images.payload"), None, Path::new("/root"))
             .await
             .unwrap_err()
             .code(),
@@ -696,12 +642,7 @@ async fn unknown_image_import_does_not_run_database_or_services() {
     );
     assert_eq!(
         backend
-            .start(
-                Path::new("images.payload"),
-                None,
-                Path::new("/root"),
-                Some("127.0.0.1")
-            )
+            .start(Path::new("images.payload"), None, Path::new("/root"))
             .await
             .unwrap_err()
             .code(),

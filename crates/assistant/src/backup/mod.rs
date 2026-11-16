@@ -177,9 +177,7 @@ fn service_spec(_root: &Path, role: &str) -> Result<Value> {
     #[cfg(target_os = "macos")]
     {
         let labels = [
-            ("lan", "dev.aiphone.lan"),
             ("channels", "dev.aiphone.channels"),
-            ("web", "dev.aiphone.web.p2"),
             ("assistant", "dev.aiphone.assistant"),
             ("runner", "dev.aiphone.runner.p2"),
             ("media", "dev.aiphone.device-stream"),
@@ -218,15 +216,7 @@ fn freeze<T>(
         return action();
     }
     let mut units = vec![];
-    for role in [
-        "lan",
-        "channels",
-        "web",
-        "assistant",
-        "runner",
-        "media",
-        "emulator",
-    ] {
+    for role in ["channels", "assistant", "runner", "media", "emulator"] {
         let status = service(root, role, "status", None)?;
         if !status.is_null() {
             units.push((role, service_spec(root, role)?));

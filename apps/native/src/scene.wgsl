@@ -91,10 +91,22 @@ fn copilot_background(p:vec2<f32>)->vec3<f32> {
  let plane=smoothstep(.58,.70,uv.y)*(1.-smoothstep(.72,.90,uv.y));
  return vec3(.013+.022*top+grid*plane*.019)+vec3(dot*sparkle*.64);
 }
+fn cable(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
+ let a=vec2(scene.phone.x+scene.phone.z*.5,scene.phone.y+scene.phone.w);
+ let b=vec2(scene.desktop.x+scene.desktop.z*.5,scene.desktop.y+scene.desktop.w);
+ let t=clamp((p.x-a.x)/max(b.x-a.x,1.),0.,1.);
+ let shelf=max(a.y,b.y)+16.;
+ let y=mix(mix(a.y,shelf,smoothstep(0.,.24,t)),b.y,smoothstep(.76,1.,t));
+ let wire=(1.-smoothstep(1.,2.,abs(p.y-y)))*step(a.x,p.x)*step(p.x,b.x);
+ let plug_a=1.-smoothstep(-.45,.55,sdf(p,vec4(a-vec2(3.5,2.),7.,8.),2.));
+ let plug_b=1.-smoothstep(-.45,.55,sdf(p,vec4(b-vec2(3.5,2.),7.,8.),2.));
+ return mix(under,vec3(.22,.24,.27),max(wire,max(plug_a,plug_b))*scene.size.z);
+}
 fn base(p:vec2<f32>)->vec3<f32>{
  var c=scene.background.rgb;
  if scene.mode_effects.w>0. {c=copilot_background(p);}
  if scene.mode_effects.z>0. {c=goal_background(p,c);}
+ if scene.size.z>0. {c=cable(p,c);}
  if scene.state.z<.5 {
   c=device(p,scene.desktop,scene.state.y,1u,c);c=device(p,scene.phone,scene.state.x,0u,c);
  }else{

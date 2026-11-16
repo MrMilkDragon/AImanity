@@ -3,7 +3,7 @@ mod agent_details;
 mod agents;
 mod audio;
 mod chat;
-#[path = "../../client/update_core.rs"]
+#[path = "update_core.rs"]
 mod client_update;
 mod connection;
 mod controls;
@@ -23,9 +23,11 @@ mod scene;
 mod skills;
 mod style;
 mod surface;
+#[cfg(target_os = "macos")]
+mod uninstall;
 mod updates;
 use ai_phone_api::wire;
-use connection::{Connection, DeviceInput, Frame};
+use connection::{Connection, DeviceInput, Frame, Press};
 use iced::{
     Element, Event, Length, Rectangle, Size, Subscription, Task, keyboard,
     widget::{
@@ -35,7 +37,14 @@ use iced::{
     window,
 };
 use layout::Layout;
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+const SETUP_SIZE: Size = Size::new(680., 600.);
+const WORKBENCH_MIN: Size = Size::new(700., 600.);
+const DESKTOP_DOUBLE_CLICK: Duration = Duration::from_millis(320);
 
 #[derive(Clone, Debug)]
 enum Message {
@@ -64,6 +73,7 @@ enum Message {
     CaptureSaved(Result<(), String>),
     Focus(usize),
     Input(usize, DeviceInput),
+    DesktopClickElapsed(Instant),
     InputDone(usize, Result<(), String>, Instant),
     Retry,
     Tick(Instant),
@@ -74,8 +84,14 @@ enum Message {
     PanelFocus,
     Link,
     Linked(Result<wire::DeviceLinkState, String>),
+    RefreshLink,
+    LinkSnapshot(Result<wire::DeviceLinkState, String>),
     Rotate,
     Update(updates::Message),
+    #[cfg(target_os = "macos")]
+    Uninstall,
+    #[cfg(target_os = "macos")]
+    UninstallPrepared(Result<Option<uninstall::Plan>, String>),
 }
 #[derive(Clone, Debug)]
 struct Capture {
@@ -107,6 +123,8 @@ struct App {
     stop: Option<tokio::sync::oneshot::Sender<()>>,
     host_home: std::path::PathBuf,
     updates: updates::State,
+    #[cfg(target_os = "macos")]
+    uninstall: Option<uninstall::Plan>,
     phase: String,
     after_stop: Option<AfterStop>,
     connection: Option<Connection>,
@@ -133,9 +151,11 @@ struct App {
     root: String,
     focus: usize,
     linked: bool,
+    link_revision: u64,
     keyboard_target: Option<usize>,
     busy: [bool; 2],
     input_queue: [std::collections::VecDeque<DeviceInput>; 2],
+    desktop_click: Option<(Instant, DeviceInput)>,
     streams: Option<iced::task::Handle>,
     size: Size,
     layout: Layout,
@@ -156,13 +176,15 @@ struct App {
 }
 impl App {
     fn boot() -> (Self, Task<Message>) {
-        let size = Size::new(1200., 800.);
+        let size = SETUP_SIZE;
         let layout = Layout::target(size, 0, false, [0.5, 1.6]);
         let mut app = Self {
             setup: None,
             stop: None,
             host_home: std::path::PathBuf::new(),
             updates: Default::default(),
+            #[cfg(target_os = "macos")]
+            uninstall: None,
             phase: String::new(),
             after_stop: None,
             connection: None,
@@ -189,9 +211,11 @@ impl App {
             root: String::new(),
             focus: 0,
             linked: false,
+            link_revision: 0,
             keyboard_target: None,
             busy: [false, false],
             input_queue: Default::default(),
+            desktop_click: None,
             streams: None,
             size,
             layout,
@@ -282,6 +306,21 @@ impl App {
         self.target = Layout::target(self.size, self.focus, self.linked, self.aspects());
         self.transition = Some(Instant::now());
     }
+    fn accept_link(&mut self, state: wire::DeviceLinkState) {
+        if let [Some(phone), Some(pc)] = &self.devices
+            && let Some(link) = state.links.into_iter().find(|link| {
+                (link.source_device_id == phone.id && link.target_device_id == pc.id)
+                    || (link.source_device_id == pc.id && link.target_device_id == phone.id)
+            })
+            && link.revision >= self.link_revision
+        {
+            self.link_revision = link.revision;
+            if self.linked != link.connected {
+                self.linked = link.connected;
+                self.rearrange();
+            }
+        }
+    }
     fn set_popup(&mut self, open: bool) {
         if self.popup != open {
             self.popup = open;
@@ -289,6 +328,59 @@ impl App {
             self.from_panel = self.panel_size;
             self.popup_transition = Some(Instant::now());
         }
+    }
+    fn finish_exit(&mut self) -> Task<Message> {
+        #[cfg(target_os = "macos")]
+        if let Some(plan) = self.uninstall.take()
+            && let Err(error) = plan.launch()
+        {
+            self.phase.clear();
+            self.error = error;
+            return Task::none();
+        }
+        iced::exit()
+    }
+    fn desktop_input(&mut self, input: DeviceInput) -> Task<Message> {
+        let pending = self.desktop_click.take();
+        let now = Instant::now();
+        let primary = matches!(
+            input,
+            DeviceInput::Tap {
+                press: Press::Left,
+                ..
+            }
+        );
+        if let (
+            Some((previous, DeviceInput::Tap { x: x0, y: y0, .. })),
+            DeviceInput::Tap {
+                x,
+                y,
+                press: Press::Left,
+            },
+        ) = (&pending, &input)
+            && now.duration_since(*previous) < DESKTOP_DOUBLE_CLICK
+            && f64::from(x0.abs_diff(*x)).hypot(f64::from(y0.abs_diff(*y))) < 12.
+        {
+            return self.input(
+                1,
+                DeviceInput::Tap {
+                    x: *x,
+                    y: *y,
+                    press: Press::Double,
+                },
+            );
+        }
+        let previous = pending.map_or_else(Task::none, |(_, input)| self.input(1, input));
+        let next = if primary {
+            self.desktop_click = Some((now, input));
+            Task::perform(
+                async move { tokio::time::sleep_until((now + DESKTOP_DOUBLE_CLICK).into()).await },
+                move |()| Message::DesktopClickElapsed(now),
+            )
+        } else {
+            self.input(1, input)
+        };
+        Task::batch([previous, next])
     }
     fn input(&mut self, index: usize, mut input: DeviceInput) -> Task<Message> {
         if self.busy[index] {
@@ -406,13 +498,19 @@ impl App {
                 let action = self.after_stop.take();
                 match result {
                     Ok(()) => match action {
-                        Some(AfterStop::Exit) => return iced::exit(),
+                        Some(AfterStop::Exit) => return self.finish_exit(),
                         Some(AfterStop::InstallAgain) => {
                             return self.update(Message::Setup(deployment::Message::Start));
                         }
                         _ => {}
                     },
-                    Err(error) => self.error = error,
+                    Err(error) => {
+                        #[cfg(target_os = "macos")]
+                        {
+                            self.uninstall = None;
+                        }
+                        self.error = error;
+                    }
                 }
             }
             Message::Connected(result) => match result {
@@ -439,7 +537,7 @@ impl App {
                             })
                             .cloned()
                     });
-                    self.linked = links.links.iter().any(|l| l.connected);
+                    self.accept_link(links);
                     self.agents.registry = registry;
                     self.files.set_devices(&self.devices);
                     let chat_task = self.chat.accept(chat, &client).map(Message::Conversation);
@@ -452,6 +550,30 @@ impl App {
                         self.started.elapsed().as_secs_f64() * 1000.
                     );
                     let mut tasks = vec![
+                        window::latest().and_then(|id| {
+                            window::monitor_size(id).then(move |monitor| {
+                                let size = monitor.map_or(Size::new(1200., 800.), |monitor| {
+                                    Size::new(
+                                        (monitor.width - 48.).clamp(WORKBENCH_MIN.width, 1440.),
+                                        (monitor.height - 96.).clamp(WORKBENCH_MIN.height, 980.),
+                                    )
+                                });
+                                window::position(id).then(move |position| {
+                                    let expand = window::set_resizable(id, true)
+                                        .chain(window::resize(id, size))
+                                        .chain(window::set_min_size(id, Some(WORKBENCH_MIN)));
+                                    if let Some(position) = position {
+                                        let growth = iced::Vector::new(
+                                            (size.width - SETUP_SIZE.width) / 2.,
+                                            (size.height - SETUP_SIZE.height) / 2.,
+                                        );
+                                        expand.chain(window::move_to(id, position - growth))
+                                    } else {
+                                        expand
+                                    }
+                                })
+                            })
+                        }),
                         chat_task,
                         restore,
                         Task::run(client.clone().chat_events(), Message::Chat),
@@ -500,6 +622,24 @@ impl App {
                     self.updates.error = error;
                 }
             },
+            #[cfg(target_os = "macos")]
+            Message::Uninstall if self.after_stop.is_none() && self.updates.progress.is_none() => {
+                return Task::perform(uninstall::prepare(), Message::UninstallPrepared);
+            }
+            #[cfg(target_os = "macos")]
+            Message::UninstallPrepared(result)
+                if self.after_stop.is_none() && self.updates.progress.is_none() =>
+            {
+                match result {
+                    Ok(Some(plan)) => {
+                        self.uninstall = Some(plan);
+                        return self
+                            .update(Message::Event(Event::Window(window::Event::CloseRequested)));
+                    }
+                    Ok(None) => {}
+                    Err(error) => self.error = error,
+                }
+            }
             Message::Frame(index, result) => match result {
                 Ok(frame) => {
                     let resized = self.frames[index]
@@ -555,12 +695,18 @@ impl App {
                         .modes
                         .observe_chat(&self.chat.state)
                         .map(Message::Modes);
-                    let sample = if was_active != self.agent_pointer_active() {
+                    let active = self.agent_pointer_active();
+                    let sample = if was_active != active {
                         self.update(Message::PollAgentPointers)
                     } else {
                         Task::none()
                     };
-                    return Task::batch([task, speech, sample]);
+                    let link = if was_active && !active {
+                        self.update(Message::RefreshLink)
+                    } else {
+                        Task::none()
+                    };
+                    return Task::batch([task, speech, sample, link]);
                 }
             }
             Message::Conversation(message) => {
@@ -805,7 +951,15 @@ impl App {
                     self.rearrange();
                 }
             }
+            Message::Input(1, input) => return self.desktop_input(input),
             Message::Input(index, input) => return self.input(index, input),
+            Message::DesktopClickElapsed(at) => {
+                if matches!(&self.desktop_click, Some((current, _)) if *current == at)
+                    && let Some((_, input)) = self.desktop_click.take()
+                {
+                    return self.input(1, input);
+                }
+            }
             Message::InputDone(index, result, started) => {
                 self.busy[index] = false;
                 eprintln!(
@@ -870,7 +1024,7 @@ impl App {
             }
             Message::Event(Event::Window(window::Event::Opened { .. })) => {
                 #[cfg(target_os = "macos")]
-                platform::menu();
+                return platform::menu();
             }
             Message::Event(Event::Window(window::Event::Resized(size))) => {
                 self.size = size;
@@ -882,6 +1036,7 @@ impl App {
                 }
                 let stopping = self.after_stop.replace(AfterStop::Exit).is_some();
                 self.streams = None;
+                self.desktop_click = None;
                 self.agent_traces = [None, None];
                 for audio in &mut self.audio {
                     audio.stop();
@@ -893,7 +1048,7 @@ impl App {
                 } else if stopping {
                     return Task::none();
                 } else if self.host_home.as_os_str().is_empty() {
-                    return iced::exit();
+                    return self.finish_exit();
                 } else {
                     return Task::perform(host::Host::stop(self.host_home.clone()), |r| {
                         Message::Host(host::Event::Stopped(r))
@@ -978,12 +1133,18 @@ impl App {
                 }
             }
             Message::Linked(result) => match result {
-                Ok(state) => {
-                    self.linked = state.links.iter().any(|l| l.connected);
-                    self.rearrange();
-                }
+                Ok(state) => self.accept_link(state),
                 Err(error) => self.error = error,
             },
+            Message::RefreshLink => {
+                if let Some(client) = self.connection.clone() {
+                    return Task::perform(
+                        async move { client.rpc("desktop/state", wire::RegistryRequest {}).await },
+                        Message::LinkSnapshot,
+                    );
+                }
+            }
+            Message::LinkSnapshot(Ok(state)) => self.accept_link(state),
             Message::Rotate => {
                 if let Some(frame) = &self.frames[0] {
                     let rotation = u32::from(frame.width < frame.height);
@@ -1058,6 +1219,9 @@ impl App {
             subscriptions.push(
                 iced::time::every(std::time::Duration::from_millis(100))
                     .map(|_| Message::PollAgentPointers),
+            );
+            subscriptions.push(
+                iced::time::every(std::time::Duration::from_secs(4)).map(|_| Message::RefreshLink),
             );
         }
         subscriptions.push(
@@ -1596,6 +1760,10 @@ fn main() -> iced::Result {
     if let Some(code) = client_update::run(&arguments) {
         std::process::exit(code);
     }
+    #[cfg(target_os = "macos")]
+    if let Some(code) = uninstall::run(&arguments) {
+        std::process::exit(code);
+    }
     #[cfg(windows)]
     if let Some(code) = host::windows_command(&arguments) {
         std::process::exit(code);
@@ -1621,7 +1789,13 @@ fn main() -> iced::Result {
         return Ok(());
     };
     iced::application(App::boot, App::update, App::view)
-        .title("AImanity")
+        .title(|app: &App| {
+            if app.connection.is_some() {
+                "AImanity".into()
+            } else {
+                String::new()
+            }
+        })
         .subscription(App::subscription)
         .theme(|app: &App| {
             if app.modes.copilot_active() {
@@ -1631,8 +1805,9 @@ fn main() -> iced::Result {
             }
         })
         .window(window::Settings {
-            size: Size::new(1200., 800.),
-            min_size: Some(Size::new(720., 600.)),
+            size: SETUP_SIZE,
+            position: window::Position::Centered,
+            resizable: false,
             exit_on_close_request: false,
             ..Default::default()
         })

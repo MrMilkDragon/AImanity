@@ -4,7 +4,7 @@
 
 | 组件 | 实现 | 职责 |
 | --- | --- | --- |
-| 工作台 | Next.js App Router/Turbopack、React、Tailwind、shadcn/ui、GSAP | 真实画面、设备透视切换、共享对话、配置与共享资源 |
+| 工作台 | Rust、Iced、wgpu | 真实画面、设备透视切换、共享对话、配置与共享资源 |
 | 助手 | Rust/Axum/Tokio | 持久任务循环、模型适配、调度、记忆、知识、权限与完成审计 |
 | 手机执行器 | Rust + ADB + Android桥接 | 当前观察、控件/OCR定位、输入/手势、epoch、动作去重 |
 | 电脑客体 | Rust + X11 + FFmpeg | 画面与输入、光标回执、音频监督、连接采集租约、持久通知及 Chromium 定位会话 |
@@ -20,7 +20,7 @@
 
 设备音频使用48kHz、双声道、有符号16位PCM；各设备的播放流独立于当前聚焦设备。电脑的PulseAudio监听使用50ms、无回绕的时钟窗口；Rust采集租约持有编码器，连接关闭时释放。
 
-浏览器业务请求使用 `application/x-protobuf`，契约在 `packages/protocol/proto`；媒体字节和健康检查例外。流式业务事件使用protobuf WebSocket帧，不要与模型SSE混淆。
+客户端业务请求使用 `application/x-protobuf`，契约在 `packages/protocol/proto`；媒体字节和健康检查例外。流式业务事件使用protobuf WebSocket帧，不要与模型SSE混淆。
 
 Android无桌面入口的辅助服务提供按需、只读的原生控件层级请求，由系统`DUMP`权限保护。Rust优先接收绑定当前请求ID的完整回执，再使用UIAutomator及OCR后备；层级正文不包含密码文字。观察与动作校验分别负责数据读取和控制权，快速快照不替代动作后的结果核对。
 

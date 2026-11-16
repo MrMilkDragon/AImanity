@@ -45,12 +45,6 @@ pub(crate) struct Request {
     #[cfg(windows)]
     #[serde(default, rename = "android_qemu")]
     _android_qemu: bool,
-    #[cfg(unix)]
-    #[serde(default)]
-    pub(crate) native_ui: bool,
-    #[cfg(windows)]
-    #[serde(default, rename = "native_ui")]
-    _native_ui: bool,
 }
 
 #[cfg(unix)]

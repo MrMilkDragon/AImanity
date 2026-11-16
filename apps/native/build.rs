@@ -15,8 +15,7 @@ fn main() {
     )
     .expect("embed the package resource inventory");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
-        let plist =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../client/src-tauri/Info.plist");
+        let plist = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Info.plist");
         println!("cargo::rerun-if-changed={}", plist.display());
         println!(
             "cargo::rustc-link-arg-bin=aimanity-native=-Wl,-sectcreate,__TEXT,__info_plist,{}",

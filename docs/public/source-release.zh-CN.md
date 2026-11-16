@@ -2,7 +2,7 @@
 
 [English](source-release.en.md) · [源码仓库](https://github.com/MrMilkDragon/AImanity)
 
-源码包含 Next.js 工作台、Rust 执行服务、Android 桥接、Linux 桌面配方、protobuf 契约、内置 Skill、安装与备份恢复工具、测试及 CI。手机与电脑共用当前 Agent。PostgreSQL 保存任务检查点，Redis 提供缓存。
+源码包含 Rust 原生工作台、Rust 执行服务、Android 桥接、Linux 桌面配方、protobuf 契约、内置 Skill、安装与备份恢复工具、测试及 CI。手机与电脑共用当前 Agent。PostgreSQL 保存任务检查点，Redis 提供缓存。
 
 原创代码采用 [Apache-2.0](../../LICENSE)，第三方依赖、素材与客体应用保留各自许可，见[第三方声明](../../THIRD_PARTY_NOTICES.md)。[下载 macOS 或 Windows 客户端](release-status.md)。
 
@@ -32,6 +32,6 @@ SDK 对实际请求的包提示许可确认。宿主默认直联，客体各有 
 
 ## 自动检查
 
-Source CI 执行 protobuf、TypeScript、Rust、隔离前端与适配器、归档和安装契约、生产网页构建。预构建验证展开并执行实际包内文件。临时 PostgreSQL 检查迁移、受限角色、备份恢复与 worker 故障；重启测试按顺序运行，不使用真实设备、账号或付费模型。
+Source CI 执行 protobuf、TypeScript、Rust、原生工作台、适配器、归档和安装契约。预构建验证展开并执行实际包内文件。临时 PostgreSQL 检查迁移、受限角色、备份恢复与 worker 故障；重启测试按顺序运行，不使用真实设备、账号或付费模型。
 
 Native CI 在匹配环境构建 macOS ARM64 和 Windows x64 桌面客户端，检查包体并验证虚拟手机控制应用。详见[组件目录](engineering/index.md)、[发行状态](release-status.md)与[兼容矩阵](compatibility.md)。

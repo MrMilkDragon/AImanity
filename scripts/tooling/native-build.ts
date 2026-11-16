@@ -36,7 +36,7 @@ export function sourceFingerprint(root = ROOT) {
               "Cargo.toml",
               "Cargo.lock",
               "scripts/tooling/native-build.ts",
-              "apps/client/src-tauri/tauri.conf.json",
+              "config/native-client.json",
               "config/ocr-models.json",
             ].includes(f.path),
         )

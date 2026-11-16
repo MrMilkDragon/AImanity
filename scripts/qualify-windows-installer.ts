@@ -1,42 +1,52 @@
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { deepEqual, equal, match, ok } from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { createConnection } from "node:net";
 import { join } from "node:path";
+import { LinuxVmControlReplySchema, LinuxVmControlRequestSchema, LinuxVmNativeCredentialsSchema, LinuxVmOperation } from "../packages/protocol/src/gen/ai_phone/v1/host_bridge_pb";
 import { ControlStateSchema, DeviceActionRequestSchema, DeviceActionResponseSchema, TakeControlRequestSchema } from "../packages/protocol/src/gen/ai_phone/v1/phone_runtime_pb";
 import type { MessageInitShape } from "@bufbuild/protobuf";
 import { RegistryRequestSchema, RegistryStateSchema } from "../packages/protocol/src/gen/ai_phone/v1/registry_pb";
 
 const root = process.env.AIMANITY_QA_ROOT;
-if (!root || process.platform !== "win32") throw Error("Run on the disposable Windows acceptance host");
+const source = process.env.AIMANITY_QA_SOURCE;
+ok(root && process.platform === "win32" && process.env.RUNNER_ENVIRONMENT === "github-hosted" && /^[A-Z]:\\Dysprosium-QA-/.test(root), "Run on the disposable Windows acceptance host");
+ok(source && /^[0-9a-f]{40}$/.test(source), "Supply the reviewed source commit");
 const started = performance.now();
 const install = join(root, "installed");
 const appData = join(root, "profile");
 const home = join(appData, "dev.aiphone.client", "host");
-const installer = join(root, "AImanity-0.0.1-windows-x64-setup.exe");
+ok(!existsSync(home) && !existsSync(install), "fresh isolated Windows runtime");
+const { version } = await Bun.file("config/release-policy.json").json();
+const installer = join(root, "candidate", "AImanity-" + version + "-windows-x64-setup.exe");
+const receipt = await Bun.file(installer + ".manifest.json").json();
+equal(receipt.source_commit, source);
+equal(receipt.interface, "iced-wgpu");
+ok(receipt.complete_device_bundle && receipt.authenticode.cryptographically_verified);
+equal(statSync(installer).size, receipt.installer_delivery.size);
+const hash = createHash("sha256");
+for await (const part of Bun.file(installer).stream()) hash.update(part);
+equal(hash.digest("hex"), receipt.sha256, "candidate matches its signed installer receipt");
+const payload = receipt.payload.files.find(({ path }: { path: string }) => path.replaceAll("\\", "/") === "host/source.payload");
+ok(payload && /^[0-9a-f]{64}$/.test(payload.sha256), "installer includes the identified source payload");
+const env = { ...process.env, APPDATA: appData, LOCALAPPDATA: appData };
 const installation = Bun.spawn([installer, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/SP-",
-  "/NORESTART", "/RESTARTEXITCODE=3010", `/DIR=${install}`,
-], { stdout: "ignore", stderr: "inherit" });
-const exit = await installation.exited;
-if (exit === 3010) throw Error("Windows requires a reboot after enabling the Hypervisor Platform");
-equal(exit, 0, "Inno Setup exit code");
-console.log(JSON.stringify({ installerExit: exit, ms: Math.round(performance.now() - started) }));
+  "/NORESTART", "/RESTARTEXITCODE=3010", "/NORESTARTAPPLICATIONS", "/DIR=" + install,
+], { env, stdout: "ignore", stderr: "inherit" });
+equal(await installation.exited, 0, "signed Inno installation succeeds without pending Windows reboot");
+console.log(JSON.stringify({ installerExit: 0, ms: Math.round(performance.now() - started) }));
 
-const env = { ...process.env, APPDATA: appData, LOCALAPPDATA: appData,
-  WEBVIEW2_USER_DATA_FOLDER: join(root, "webview"),
-};
 const program = join(install, "ai-phone-client.exe");
-const app = Bun.spawn([program], { cwd: install, env, stdout: "ignore", stderr: "inherit" });
-console.log("Started installed AImanity GUI process " + app.pid);
-const origin = "http://127.0.0.1:17860";
-let webReady = false;
-const watchWeb = setInterval(async () => {
-  if (webReady) return;
-  const response = await fetch(`${origin}/phone`, { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(2400) }).catch(() => undefined);
-  if (!response?.ok || !response.headers.get("content-type")?.startsWith("text/html")) return;
-  webReady = true;
-  console.log(`Installed Windows workbench HTTP: ${response.status} ${response.headers.get("content-type")} at ${Math.round(performance.now() - started)} ms`);
-}, 4000);
+const log = join(root, "native.log");
+const app = Bun.spawn([program], { cwd: install, env, stdout: "ignore", stderr: Bun.file(log) });
 const checkpoint = join(home, "deployment.json");
+function gui(action: "fresh" | "capture" | "close") {
+  return Bun.spawn(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
+    "scripts/qualify-windows-window.ps1", "-AppId", String(app.pid), "-Action", action],
+  { env, stdout: "inherit", stderr: "inherit" }).exited;
+}
 const androidRoot = join(home, "user", "data", "android");
 const logPaths = ["user/qemu/owner.log", "user/qemu/boot.log", "user/qemu/qemu.log",
   "user/data/android/native/sdk.log", "user/data/android/whpx-avd/cuttlefish/kernel.log", "deployment.json"];
@@ -71,154 +81,94 @@ const watchAndroid = setInterval(() => {
   }
 }, 10000);
 
-const automation = String.raw`
-  $ErrorActionPreference = 'Stop'
-  Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
-  $checkpoint = Join-Path $env:APPDATA 'dev.aiphone.client\host\deployment.json'
-  $element = [System.Windows.Automation.AutomationElement]
-  $descendants = [System.Windows.Automation.TreeScope]::Descendants
-  $buttonType = [System.Windows.Automation.PropertyCondition]::new($element::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
-  $enabled = [System.Windows.Automation.PropertyCondition]::new($element::IsEnabledProperty, $true)
-  $visible = [System.Windows.Automation.PropertyCondition]::new($element::IsOffscreenProperty, $false)
-  $lastPhase = ''
-
-  function Find-Button($name, $seconds) {
-    $named = [System.Windows.Automation.PropertyCondition]::new($element::NameProperty, $name)
-    $selector = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]] @($buttonType, $enabled, $visible, $named))
-    $deadline = [DateTime]::UtcNow.AddSeconds($seconds)
-    do {
-      $process = Get-Process -Id $env:AIMANITY_QA_PID
-      if ($process.MainWindowHandle) {
-        $window = $element::FromHandle($process.MainWindowHandle)
-        $button = $window.FindFirst($descendants, $selector)
-        if ($button) { return $button }
+async function vmCredentials() {
+  const key = await readFile(join(home, "user", "qemu", "control.key"));
+  equal(key.length, 32, "isolated VM control key size");
+  const socket = createConnection({ host: "127.0.0.1", port: 17861 });
+  socket.setTimeout(10_000, () => socket.destroy(Error("QA native VM credential handshake timeout")));
+  const chunks = socket[Symbol.asyncIterator]();
+  let rest = Buffer.alloc(0);
+  async function read() {
+    let size = 0;
+    for (;;) {
+      if (rest.length >= 4) {
+        size = rest.readUInt32BE();
+        ok(size <= 512, "native VM response bounded frame");
+        if (rest.length >= size + 4) break;
       }
-      if (Test-Path $checkpoint) {
-        $progress = (Get-Content $checkpoint -Raw | ConvertFrom-Json).progress
-        $phase = "$($progress.phase): $($progress.state)"
-        if ($phase -ne $script:lastPhase) {
-          Write-Host "Native setup: $phase"
-          $script:lastPhase = $phase
-        }
-        if ($progress.state -in @('failed', 'blocked', 'interrupted')) {
-          throw "Native setup $phase ($($progress.error))"
-        }
-      }
-      Start-Sleep -Milliseconds 450
-    } while ([DateTime]::UtcNow -lt $deadline)
-    if ($window) {
-      $window.FindAll($descendants, $buttonType) |
-        ForEach-Object { 'Button: {0}; enabled={1}; offscreen={2}' -f $_.Current.Name, $_.Current.IsEnabled, $_.Current.IsOffscreen } |
-        Select-Object -First 15 | Write-Host
+      const item = await chunks.next();
+      ok(!item.done);
+      rest = Buffer.concat([rest, item.value]);
     }
-    throw "Installed window did not expose the enabled '$name' button."
+    const reply = fromBinary(LinuxVmControlReplySchema, rest.subarray(4, size + 4));
+    rest = rest.subarray(size + 4);
+    ok(!reply.error, "native VM returned a control error");
+    return reply;
   }
-
-  function Invoke-Button($button) {
-    $name = $button.Current.Name
-    $action = $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-    $action.Invoke()
-    Write-Host "Clicked installed client button: $name"
+  function write(input: MessageInitShape<typeof LinuxVmControlRequestSchema>) {
+    const wire = toBinary(LinuxVmControlRequestSchema, create(LinuxVmControlRequestSchema, input));
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(wire.length);
+    socket.write(Buffer.concat([length, wire]));
   }
-
-  function Wait-WorkbenchHealth {
-    Add-Type -AssemblyName System.Net.Http
-    $handler = [System.Net.Http.HttpClientHandler]::new()
-    $handler.UseProxy = $false
-    $handler.AllowAutoRedirect = $false
-    $client = [System.Net.Http.HttpClient]::new($handler)
-    $client.Timeout = [TimeSpan]::FromSeconds(4)
-    $deadline = [DateTime]::UtcNow.AddSeconds(35)
-    $observed = ''
-    try {
-      do {
-        $probe = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Head, 'http://127.0.0.1:17860/phone')
-        $response = $null
-        try {
-          $response = $client.SendAsync($probe).GetAwaiter().GetResult()
-          $media = $response.Content.Headers.ContentType.MediaType
-          $observed = "{0} {1}; redirect={2}" -f [int]$response.StatusCode, $media, $response.Headers.Location
-          if ($response.IsSuccessStatusCode -and $media -eq 'text/html') {
-            Write-Host "Pre-open workbench HEAD /phone: $observed"
-            return
-          }
-        } catch {
-          $observed = $_.Exception.GetBaseException().Message
-        } finally {
-          if ($response) { $response.Dispose() }
-          $probe.Dispose()
-        }
-        Start-Sleep -Milliseconds 350
-      } while ([DateTime]::UtcNow -lt $deadline)
-      throw "Workbench HEAD /phone did not return HTML: $observed"
-    } finally {
-      $client.Dispose()
-    }
+  const sign = (...parts: (string | Uint8Array)[]) => {
+    const mac = createHmac("sha256", key);
+    for (const item of parts) mac.update(item);
+    return mac.digest();
+  };
+  try {
+    const nonce = randomBytes(32);
+    write({ payload: nonce });
+    const challenge = await read();
+    equal(challenge.payload.length, 32);
+    ok(timingSafeEqual(challenge.proof, sign("control-challenge", nonce, challenge.payload)), "VM authenticated itself");
+    const op = LinuxVmOperation.NATIVE_CREDENTIALS;
+    const opBytes = Buffer.alloc(4);
+    opBytes.writeInt32BE(op);
+    write({ operation: op, proof: sign(opBytes, challenge.payload) });
+    const ready = await read();
+    ok(timingSafeEqual(ready.proof, sign("control-reply", challenge.payload, ready.payload)), "VM credential reply authenticated");
+    return fromBinary(LinuxVmNativeCredentialsSchema, ready.payload);
+  } finally {
+    socket.destroy();
   }
-
-  Invoke-Button (Find-Button 'Continue' 45)
-  $start = Find-Button 'Start installation' 20
-  $deploy = [System.Diagnostics.Stopwatch]::StartNew()
-  Invoke-Button $start
-  $enter = Find-Button 'Configure model' 600
-  $ready = (Get-Content $checkpoint -Raw | ConvertFrom-Json).progress.state
-  if ($ready -ne 'ready') { throw "The native checkpoint was '$ready' after device setup." }
-  "First-run devices ready in $($deploy.ElapsedMilliseconds) ms"
-  Wait-WorkbenchHealth
-  $setupWindow = (Get-Process -Id $env:AIMANITY_QA_PID).MainWindowHandle
-  $navigation = & curl.exe --noproxy '*' --silent --show-error --max-time 4 --head 'http://127.0.0.1:17860/phone?language=en' |
-    Where-Object { $_ -match '^(HTTP/|location:)' }
-  Write-Host "First-open redirect: $($navigation -join ' ')"
-  Invoke-Button $enter
-
-  $owned = [System.Windows.Automation.PropertyCondition]::new($element::ProcessIdProperty, [int]$env:AIMANITY_QA_PID)
-  $document = [System.Windows.Automation.PropertyCondition]::new($element::ControlTypeProperty, [System.Windows.Automation.ControlType]::Document)
-  $desktop = $element::RootElement
-  $deadline = [DateTime]::UtcNow.AddSeconds(30)
-  do {
-    $windows = $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, $owned)
-    foreach ($window in $windows) {
-      if ($window.Current.NativeWindowHandle -eq $setupWindow.ToInt32() -or $window.Current.IsOffscreen) { continue }
-      $content = $window.FindFirst($descendants, $document)
-      if ($content -and $content.Current.Name -like '*AImanity*') {
-        "Installed workbench HWND $($window.Current.NativeWindowHandle); window='$($window.Current.Name)'; document='$($content.Current.Name)'"
-        exit 0
-      }
-    }
-    Start-Sleep -Milliseconds 450
-  } while ([DateTime]::UtcNow -lt $deadline)
-  $diagnostics = [System.Windows.Automation.PropertyCondition]::new($element::IsOffscreenProperty, $false)
-  foreach ($window in $windows) {
-    Write-Host "AImanity window $($window.Current.NativeWindowHandle); title='$($window.Current.Name)'; class='$($window.Current.ClassName)'"
-    $window.FindAll($descendants, $diagnostics) |
-      Where-Object { $_.Current.Name } | Select-Object -First 35 |
-      ForEach-Object { Write-Host "  $($_.Current.ControlType.ProgrammaticName) '$($_.Current.Name)' ($($_.Current.AutomationId))" }
-  }
-  throw 'The installed workbench window did not appear.'
-`;
+}
 
 try {
-  const script = Buffer.from(automation, "utf16le").toString("base64");
-  const desktopSetup = Bun.spawn(["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", script], {
-    env: { ...env, AIMANITY_QA_PID: String(app.pid) }, stdout: "inherit", stderr: "inherit",
-  });
-  const desktopSetupExit = await desktopSetup.exited;
-  if (desktopSetupExit !== 0) {
-    ok(existsSync(checkpoint), "Windows setup stopped before creating its checkpoint");
-    const state = JSON.parse(readFileSync(checkpoint, "utf8")).progress.state;
-    equal(state, "ready", "Windows setup must reach actual dual-device readiness before checking the workbench");
-    console.error("Workbench UI failed. Checking the independently served workbench and real devices.");
+  equal(await gui("fresh"), 0, "advancing the installed native language and device setup");
+  const readyDeadline = performance.now() + 600000;
+  while (performance.now() < readyDeadline) {
+    ok(app.exitCode == null, "installed client must remain running");
+    if (existsSync(checkpoint)) {
+      const status = JSON.parse(readFileSync(checkpoint, "utf8"));
+      if (status.progress?.state === "ready" && status.installed_payload === payload.sha256) break;
+      ok(!["failed", "blocked"].includes(status.progress?.state), "native deployment must advance");
+    }
+    await Bun.sleep(500);
   }
+  const status = JSON.parse(readFileSync(checkpoint, "utf8"));
+  equal(status.progress.state, "ready");
+  equal(status.installed_payload, payload.sha256);
+  const frameDeadline = performance.now() + 30000;
+  let androidFrame: RegExpMatchArray | null = null;
+  let desktopFrame: RegExpMatchArray | null = null;
+  do {
+    const rendered = readFileSync(log, "utf8");
+    androidFrame = rendered.match(/native_metric first_frame device=0 ms=([\d.]+)/);
+    desktopFrame = rendered.match(/native_metric first_frame device=1 ms=([\d.]+)/);
+    if (androidFrame && desktopFrame) break;
+    await Bun.sleep(250);
+  } while (performance.now() < frameDeadline);
+  ok(androidFrame && desktopFrame, "the owned native window received both device frames");
+  equal(await gui("capture"), 0, "installed native workbench window visible");
+  console.log(JSON.stringify({ androidFirstFrameMs: Number(androidFrame[1]), desktopFirstFrameMs: Number(desktopFrame[1]), source }));
 
+  const credentials = await vmCredentials();
+  const assistantToken = "Bearer " + credentials.assistantToken.trim();
+  const phoneToken = "Bearer " + credentials.phoneToken.trim();
   const protocol = "application/x-protobuf";
-  const login = await fetch(`${origin}/api/auth/enter`, { method: "POST",
-    headers: { "content-type": protocol, origin }, body: new Uint8Array(), signal: AbortSignal.timeout(10000) });
-  equal(login.status, 200, "workbench sign-in");
-  const setCookie = login.headers.get("set-cookie");
-  ok(setCookie, "workbench issued a session");
-  const cookie = setCookie.split(";", 1)[0]!;
-  const registry = await fetch(`${origin}/api/registry/state`, { method: "POST",
-    headers: { cookie, "content-type": protocol, origin },
+  const registry = await fetch("http://127.0.0.1:17863/v1/registry/state", { method: "POST",
+    headers: { authorization: assistantToken, "content-type": protocol },
     body: toBinary(RegistryRequestSchema, create(RegistryRequestSchema)), signal: AbortSignal.timeout(10000) });
   equal(registry.status, 200, "installed service registry");
   const devices = fromBinary(RegistryStateSchema, new Uint8Array(await registry.arrayBuffer())).devices;
@@ -227,7 +177,7 @@ try {
   ok(desktop, "installed desktop is registered");
   ok(phone, "installed Android is registered");
   async function verifyFrame(endpoint: string, device: string) {
-    const screen = await fetch(`${origin}${endpoint}`, { headers: { cookie }, signal: AbortSignal.timeout(12000) });
+    const screen = await fetch(`http://127.0.0.1:17865${endpoint}`, { headers: { authorization: phoneToken }, signal: AbortSignal.timeout(12000) });
     equal(screen.status, 200, `${device} media HTTP status`);
     match(screen.headers.get("content-type") ?? "", /^multipart\/x-mixed-replace/i);
     const reader = screen.body!.getReader();
@@ -240,7 +190,7 @@ try {
         frames = Buffer.concat([frames, Buffer.from(value)]);
         const offset = frames.indexOf(start);
         if (offset >= 0 && frames.indexOf(end, offset + 3) > offset) {
-          console.log(`${device} sent a complete JPEG through the workbench`);
+          console.log(`${device} sent a complete JPEG through the native relay`);
           return;
         }
       }
@@ -248,13 +198,13 @@ try {
     throw Error(`${device} did not send a complete JPEG`);
   }
   await Promise.all([
-    verifyFrame(`/api/desktop/media?device_id=${encodeURIComponent(desktop.id)}`, "Linux"),
-    verifyFrame(`/api/phone/media/screen?device=${encodeURIComponent(phone.id)}`, "Android"),
+    verifyFrame("/desktop/screen", "Linux"),
+    verifyFrame("/screen", "Android"),
   ]);
   const scope = { phoneId: phone.id, ownerId: "local-user", controller: "manual" };
   async function phoneRequest(operation: string, body: Uint8Array) {
-    const response = await fetch(`${origin}/api/phone/${operation}`, { method: "POST",
-      headers: { cookie, origin, "content-type": protocol }, body: new Uint8Array(body), signal: AbortSignal.timeout(16000) });
+    const response = await fetch(`http://127.0.0.1:17862/v1/${operation}`, { method: "POST",
+      headers: { authorization: phoneToken, "content-type": protocol }, body: new Uint8Array(body), signal: AbortSignal.timeout(16000) });
     equal(response.status, 200, `Android ${operation} HTTP status`);
     return new Uint8Array(await response.arrayBuffer());
   }
@@ -296,7 +246,7 @@ try {
   const opened = android("shell", "am", "start", "-W", "-a", "android.settings.APP_SEARCH_SETTINGS", "-p", search).toString();
   match(opened, /Status: ok\b/);
   equal(android("shell", "settings", "get", "secure", "default_input_method").toString().trim(), "dev.aiphone.input/.UnicodeIme");
-  const uiFile = "/sdcard/aluminum-install.xml";
+  const uiFile = "/sdcard/dysprosium-install.xml";
   async function androidEditor(predicate: (xml: string) => boolean) {
     const deadline = Date.now() + 15000;
     let last = "";
@@ -319,7 +269,7 @@ try {
   const hierarchy = await androidEditor(xml => editable.test(xml));
   await tap(hierarchy.match(editable));
   await androidEditor(xml => editable.test(xml) && editable.exec(xml)?.[0].includes('focused="true"') === true);
-  const sample = "Aluminum 中文";
+  const sample = "Dysprosium 中文";
   const input = await phoneAction({case: "input", value: {text: sample}});
   ok(input.output.includes(`committed:${input.actionId}`), "installed Unicode IME returned the action receipt");
   const entered = await androidEditor(xml => editable.exec(xml)?.[0].includes(`text="${sample}"`) === true && clear.test(xml));
@@ -332,8 +282,8 @@ try {
     if (music !== "package:com.android.music") {
       match(android("shell", "cmd", "package", "install-existing", "--user", "0", "com.android.music").toString(), /installed for user: 0/);
     }
-    const audio = await fetch(`${origin}/api/phone/media/audio?device=${encodeURIComponent(phone.id)}`, {
-      headers: { cookie }, signal: AbortSignal.timeout(16000),
+    const audio = await fetch(`http://127.0.0.1:17865/audio`, {
+      headers: { authorization: phoneToken }, signal: AbortSignal.timeout(16000),
     });
     equal(audio.status, 200, "installed Android audio");
     match(audio.headers.get("content-type") ?? "", /^audio\/L16;rate=48000;channels=2$/i);
@@ -365,7 +315,6 @@ try {
     ok(min < 0 && max > 0, "installed Android audio emitted nonzero stereo PCM");
     console.log(JSON.stringify({ androidAudio: true, rate: 48000, channels: 2, samples, min, max }));
   }
-  equal(desktopSetupExit, 0, "real Windows accessibility first-run and workbench document");
 } catch (error) {
   for (const log of logPaths) {
     const file = join(home, log);
@@ -377,7 +326,10 @@ try {
   }
   throw error;
 } finally {
-  clearInterval(watchWeb);
   clearInterval(watchAndroid);
-  if (app.exitCode === null) app.kill();
+  if (app.exitCode == null) {
+    equal(await gui("close"), 0, "close the owned native client");
+    const code = await Promise.race([app.exited, Bun.sleep(120000).then(() => undefined)]);
+    equal(code, 0, "native client normal shutdown");
+  }
 }

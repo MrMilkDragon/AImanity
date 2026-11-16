@@ -45,7 +45,6 @@ export async function buildWindowsInstaller(
   root: string,
   binary: string,
   destination: string,
-  nativeWorkbench = false,
 ) {
   const folder = join(root, ".tools/windows-installer"),
     policy = json(join(root, "config/windows-installer.json")),
@@ -57,10 +56,10 @@ export async function buildWindowsInstaller(
   const stage = join(folder, "application");
   mkdirSync(stage);
   linkSync(binary, join(stage, "ai-phone-client.exe"));
-  for (const [input, output] of Object.entries(resourceMap(root, nativeWorkbench))) {
+  for (const [input, output] of Object.entries(resourceMap(root))) {
     const target = join(stage, output);
     mkdirSync(dirname(target), { recursive: true });
-    linkSync(join(root, "apps/client/src-tauri", input), target);
+    linkSync(join(root, input), target);
   }
   const version = json(join(root, "config/release-policy.json")).version;
   const qemu = join(stage, "host/qemu");
@@ -79,7 +78,7 @@ export async function buildWindowsInstaller(
     ...(base ? ["/DBaseDiskSHA256=" + base] : []),
     "/O" + dirname(destination),
     "/F" + basename(destination, ".exe"),
-    join(root, "apps/client/src-tauri/windows/installer.iss"),
+    join(root, "apps/native/windows/installer.iss"),
   ]);
   console.log(JSON.stringify({ installer: basename(destination), bytes: lstatSync(destination).size }));
 }

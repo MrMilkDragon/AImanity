@@ -33,7 +33,6 @@ import {
 } from "./wsl-capsule";
 
 export const nativeWindowsBackendComponents = ["native-services", "phone-apps"];
-export const legacyWindowsBackendComponents = [...nativeWindowsBackendComponents, "web"];
 
 export function wslPlan(root: string) {
   const policy = json(join(root, "config/wsl-backend.json")),
@@ -57,7 +56,6 @@ export function wslPlan(root: string) {
 export async function sourceInput(file: string, root: string) {
   const files: Record<string, any> = {};
   let manifest: any,
-    web: any,
     services: any,
     total = 0;
   for await (const entry of tarEntries(file, "xz", root)) {
@@ -70,10 +68,7 @@ export async function sourceInput(file: string, root: string) {
     }
     const hash = createHash("sha256"),
       chunks: Buffer[] = [],
-      metadata = [
-        "runtime/manifest.json",
-        "runtime/services/manifest.json",
-      ].includes(entry.name);
+      metadata = entry.name === "runtime/services/manifest.json";
     for await (const chunk of entry.body) {
       hash.update(chunk);
       if (metadata) chunks.push(chunk);
@@ -85,20 +80,14 @@ export async function sourceInput(file: string, root: string) {
       sha256: hash.digest("hex"),
     };
     total += entry.size;
-    if (metadata) {
-      const value = JSON.parse(Buffer.concat(chunks).toString());
-      if (entry.name === "runtime/manifest.json") web = value;
-      else services = value;
-    }
+    if (metadata) services = JSON.parse(Buffer.concat(chunks).toString());
   }
   const components = [...manifest.components].sort();
+  const [servicesRole, phoneRole, ...otherRoles] = components;
   if (
-    ![
-      ["native-services", "web"],
-      legacyWindowsBackendComponents,
-      nativeWindowsBackendComponents,
-    ].some((expected) => JSON.stringify(components) === JSON.stringify(expected)) ||
-    (components.includes("web") ? web?.host !== "linux-x64" : web !== undefined) ||
+    servicesRole !== "native-services" ||
+    (phoneRole !== undefined && phoneRole !== "phone-apps") ||
+    otherRoles.length !== 0 ||
     services?.host !== "linux-x64" ||
     services?.vision !== "linux-tesseract-bundled" ||
     Object.keys(files).length !== manifest.files.length ||

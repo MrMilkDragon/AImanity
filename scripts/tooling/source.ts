@@ -35,7 +35,6 @@ const directories = [
 const files = [
   ".cargo/config.toml",
   "ai-phone",
-  "Start AI Phone.command",
   "README.md",
   "README.en.md",
   "Cargo.toml",
@@ -105,7 +104,7 @@ const omittedSuffixes = new Set([
   ".db",
   ".key",
 ]);
-const omittedTrees = ["apps/client/src-tauri/gen"];
+const omittedTrees = ["apps/native/gen"];
 const secret =
   /(?<![A-Za-z0-9_-])(?:sk-[A-Za-z0-9_-]{24,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,})/;
 export type SourceFile = { path: string; data: Buffer; mode: number };

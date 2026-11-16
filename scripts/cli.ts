@@ -73,45 +73,9 @@ function configure() {
   profile(ROOT, "write", [], value);
   return value;
 }
-async function ready() {
-  const response = await fetch("http://127.0.0.1:17860/api/setup/status", {
-    method: "POST",
-    body: new Uint8Array(),
-    headers: {
-      "Content-Type": "application/x-protobuf",
-      Origin: "http://127.0.0.1:17860",
-    },
-  });
-  if (
-    !response.ok ||
-    response.headers.get("content-type") !== "application/x-protobuf"
-  )
-    throw Error("Local service is not ready");
-}
-async function openClient() {
-  await ready();
-  if (process.platform === "darwin") {
-    const application = [
-      join(
-        ROOT,
-        "apps/client/src-tauri/target/release/bundle/macos/AImanity.app",
-      ),
-      join(homedir(), "Applications/AImanity.app"),
-      "/Applications/AImanity.app",
-      join(homedir(), "Applications/AI Phone.app"),
-      "/Applications/AI Phone.app",
-    ].find((p) => existsSync(join(p, "Contents/Info.plist")));
-    run(
-      application
-        ? ["open", "-a", application]
-        : ["open", "http://127.0.0.1:17860/phone"],
-    );
-  } else if (process.platform === "linux") {
-    run(["xdg-open", "http://127.0.0.1:17860/phone"]);
-  } else
-    throw Error(
-      "Source host commands require macOS or Linux; use the Windows installer",
-    );
+function openClient() {
+  if (process.platform !== "darwin") throw Error("Open the native client from Windows Start");
+  run(["open", "-a", "AImanity"]);
 }
 switch (operation) {
   case "doctor": {
@@ -149,7 +113,7 @@ switch (operation) {
       ? JSON.parse(readFileSync(profileFile, "utf8"))
       : configure();
     const resource =
-        option("--resources") || join(ROOT, "apps/client/src-tauri/gen/host"),
+        option("--resources") || join(ROOT, "apps/native/gen/host"),
       integrity = JSON.parse(
         readFileSync(join(resource, "integrity.json"), "utf8"),
       );
@@ -189,6 +153,7 @@ switch (operation) {
         request,
         integrity["source.payload"],
         integrity["android.payload"],
+        integrity["images.payload"],
       ]);
     } finally {
       rmSync(temporary, { recursive: true, force: true });
@@ -197,13 +162,12 @@ switch (operation) {
   }
   case "start":
     startExecutionServices();
-    await openClient();
     break;
   case "stop":
     stopServices();
     break;
   case "open":
-    await openClient();
+    openClient();
     break;
   case "env":
     for (const [key, value] of Object.entries(environment()))

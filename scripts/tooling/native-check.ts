@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { ROOT, run, output } from "./process";
 import { json } from "./inventory";
-import { isolatedEnvironment } from "./verify";
+import { isolatedEnvironment } from "./isolated-env";
 
 export function requireNativeDatabase(container: string, port: number) {
   if (

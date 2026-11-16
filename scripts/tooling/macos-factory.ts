@@ -135,7 +135,6 @@ export async function macosFactory(
       "--platform",
       "macos",
       releaseSigning ? "--sign-release" : "--sign-temporary",
-      "--native-workbench",
       "--with-service-runtime",
       "--with-phone-apps",
       "--with-container-host",
@@ -149,7 +148,7 @@ export async function macosFactory(
   const version = json(join(root, "config/release-policy.json")).version,
     file = join(root, "dist", `AImanity-${version}-macos-arm64.dmg`),
     manifest = json(file + ".manifest.json"),
-    delivery = deliveryMetadata(manifest.prebuilt_components, "macos-arm64", true);
+    delivery = deliveryMetadata(manifest.prebuilt_components, "macos-arm64");
   if (
     !delivery.complete_device_bundle ||
     manifest.signing !== (releaseSigning ? "developer-id" : "ad-hoc") ||

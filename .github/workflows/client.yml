@@ -38,19 +38,18 @@ jobs:
         run: cargo build --locked
       - name: Test native workbench
         run: cargo test --locked
+      - name: Test native host runtime
+        working-directory: .
+        run: cargo test -p ai-phone-host-runtime --lib --locked
   macos-arm64:
     runs-on: macos-26
     timeout-minutes: 45
     env:
       CARGO_BUILD_JOBS: '2'
-      NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '22'
       - name: Toolchain and locked dependencies
         run: |
           test "$(uname -m)" = arm64
@@ -58,20 +57,12 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
           rustup default 1.96.0
           ./scripts/bootstrap.sh
-          cargo build --locked -p ai-phone-release-tools --bin release-tools
-          ./scripts/bun scripts/prepare-client.ts
       - name: Native OCR qualification tools
         run: |
           brew install --force-bottle tesseract
           ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/aiphone-ocr-models"
           echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
           echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aiphone-ocr-models" >> "$GITHUB_ENV"
-      - name: Native tests and lint
-        run: |
-          cargo build -p ai-phone-host-runtime --bin host-resources --locked
-          cargo fmt --manifest-path apps/client/src-tauri/Cargo.toml --check
-          cargo test --manifest-path apps/client/src-tauri/Cargo.toml --locked
-          cargo clippy --manifest-path apps/client/src-tauri/Cargo.toml --all-targets --locked -- -D warnings
       - name: Qualify native services and dependency advisories
         run: |
           set -euo pipefail
@@ -99,69 +90,6 @@ jobs:
           path: audit.json
           if-no-files-found: error
           retention-days: 14
-      - name: Local unsigned bundle and privacy checks
-        run: ./scripts/bun scripts/build-client.ts --with-web-runtime --with-service-runtime
-
-  desktop-packages:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-2022
-            platform: windows
-            arch: x64
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    env:
-      CARGO_BUILD_JOBS: '2'
-      CARGO_INCREMENTAL: '0'
-      CARGO_HTTP_MULTIPLEXING: ${{ matrix.platform == 'windows' && 'false' || 'true' }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-      - name: Rust toolchain
-        run: rustup default 1.96.0
-      - name: Locked client CLI
-        shell: bash
-        run: |
-          cmake --version
-          ./scripts/bootstrap.sh
-          ./scripts/bun -e "import {noticeManifest} from './scripts/tooling/client-build'; noticeManifest()"
-      - name: Native host fixture executable
-        run: |
-          cargo build -p ai-phone-host-runtime --bin host-resources --locked
-          cargo build --locked -p ai-phone-release-tools --bin release-tools
-          ./.tools/bin/bun.exe scripts/prepare-client.ts
-      - name: Windows host ownership and device adapters
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          rustup component add clippy --toolchain 1.96.0
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test -p ai-phone-host-runtime --lib wsl:: --locked
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test -p ai-phone-host-runtime --bin wsl-host --locked
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test -p ai-phone-host-runtime --lib device_bridge:: --locked
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test -p ai-phone-host-runtime --lib android:: --locked
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test -p ai-phone-host-runtime --test device_bridge_cli --locked
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo clippy -p ai-phone-host-runtime --all-targets --locked -- -D warnings
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo build -p ai-phone-host-runtime --bin wsl-host --release --locked
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Native Windows tests with the installer compiler profile
-        if: runner.os == 'Windows'
-        run: ./.tools/bin/bun.exe -e "import {windowsCargo} from './scripts/tooling/client-build'; windowsCargo('test')"
-      - name: Build and inspect the Windows development EXE
-        if: runner.os == 'Windows'
-        run: ./.tools/bin/bun.exe scripts/build-client.ts --platform ${{ matrix.platform }} --with-web-runtime
 
   android-arm64:
     # Phone-control helpers run inside the virtual Android guest.

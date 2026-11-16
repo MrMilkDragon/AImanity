@@ -2,7 +2,7 @@
 
 [简体中文](architecture.zh-CN.md)
 
-Next.js App Router/Turbopack, React, Tailwind, shadcn/ui and GSAP provide the workbench. Rust/Axum/Tokio own durable runs, model adapters, tools, permissions and completion auditing. PostgreSQL and SQLx store registry, conversations, WhatsApp linked-device sessions, and the task queue. Redis wakes the connected-app delivery process after a committed task result. PostgreSQL remains the source for the result. Cross-device handoffs wake their scheduler immediately after commit. [Kafka export](event-relay.md) streams committed handoff receipts for external consumers.
+Rust, Iced and wgpu provide the workbench. Rust/Axum/Tokio own durable runs, model adapters, tools, permissions and completion auditing. PostgreSQL and SQLx store registry, conversations, WhatsApp linked-device sessions, and the task queue. Redis wakes the connected-app delivery process after a committed task result. PostgreSQL remains the source for the result. Cross-device handoffs wake their scheduler immediately after commit. [Kafka export](event-relay.md) streams committed handoff receipts for external consumers.
 
 Desktop installers run AOSP with Avo on macOS and QEMU WHPX on Windows. Rust owns the session, device control and media. Native UI targets with OCR/screenshot fallback ground actions. The media runner uses Avo shared buffers on macOS and ADB-backed capture on Windows. Native touch indicators/pointers are captured in the same frame. The Linux computer uses Docker, Debian/Openbox and Xvfb. A native Rust guest service owns X11 capture and input, cursor receipts, audio-process supervision, capture leases, durable notifications and Chromium location sessions. Its location CLI and loopback daemon use protobuf and preserve the existing private state file. FFmpeg provides screen/audio encoding. The workbench supports screenshot-based control and read-only regional zoom.
 
@@ -12,7 +12,7 @@ Text and Markdown files open in Mousepad by default. The desktop includes file-t
 
 Device audio uses stereo 48 kHz signed 16-bit PCM, with independent playback streams across device focus changes. The desktop's PulseAudio monitor uses a 50 ms clock window without rewinds; the Rust capture lease owns the encoder and releases it when its connection closes.
 
-Business APIs use protobuf (`packages/protocol/proto`). Browser requests use `application/x-protobuf`; streaming business events use protobuf WebSocket frames. Media and health checks are separate. Model SSE is a separate transport.
+Business APIs use protobuf (`packages/protocol/proto`). Native requests use `application/x-protobuf`; streaming business events use protobuf WebSocket frames. Media and health checks are separate. Model SSE is a separate transport.
 
 The service-only Android helper supplies live accessibility hierarchies through a read-only request protected by Android's `DUMP` permission. Rust accepts a complete reply bound to the current request ID before trying UIAutomator and OCR. Password text is excluded from the hierarchy. Actions still require a control lease and post-action verification.
 

@@ -58,7 +58,7 @@ On a disposable Linux builder, build the pinned x86_64 kernel and convert a fres
 
 ```sh
 ./scripts/bun scripts/windows-guest-disk.ts kernel build/guest-kernel
-./scripts/bun scripts/wsl-backend.ts --native-ui
+./scripts/bun scripts/wsl-backend.ts
 sudo ./scripts/bun scripts/windows-guest-disk.ts \
   .tools/wsl-backend-qualification/assembled/wsl-backend.payload "$BACKEND_SHA256" build/guest-kernel/bzImage \
   build/guest-kernel/modules.tar.gz build/guest-kernel/kernel-receipt.json \

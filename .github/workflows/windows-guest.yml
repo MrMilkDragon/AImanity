@@ -20,7 +20,6 @@ jobs:
     env:
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
-      NEXT_TELEMETRY_DISABLED: '1'
       AI_PHONE_TEST_TESSERACT: /usr/bin/tesseract
     steps:
       - name: Require a private build repository
@@ -62,7 +61,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AI_PHONE_DISPOSABLE_QUALIFICATION: '1'
-        run: ./scripts/bun scripts/wsl-backend.ts --native-ui
+        run: ./scripts/bun scripts/wsl-backend.ts
       - name: Assemble the QEMU guest disk
         id: disk
         run: |

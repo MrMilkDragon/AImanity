@@ -30,7 +30,7 @@ Review the built images and digest-pinned PostgreSQL/Redis defaults in `compose.
   --output /path/to/images.payload
 
 ./scripts/bun scripts/build-client.ts --platform macos \
-  --with-web-runtime --with-service-runtime \
+  --with-service-runtime \
   --android-runtime /path/to/android.payload \
   --images-runtime /path/to/images.payload
 ```

@@ -5,8 +5,11 @@ use crate::{
     style,
 };
 use ai_phone_api::wire;
-use iced::{Event, Point, Rectangle, Size, keyboard, mouse, wgpu, widget::shader};
-use std::{sync::Arc, time::Instant};
+use iced::{Event, Point, Rectangle, Size, keyboard, mouse, touch, wgpu, widget::shader};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 #[derive(Clone)]
 pub struct Scene {
@@ -84,10 +87,118 @@ impl AgentTrace {
 }
 #[derive(Default)]
 pub struct Pointer {
-    pressed: Option<(usize, Point, Instant, mouse::Button)>,
+    pressed: Option<PointerPress>,
+    touch_released: Option<(Point, Instant)>,
     pub anchor: Point,
     pub preedit: Option<iced::advanced::input_method::Preedit>,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PointerSource {
+    Mouse(mouse::Button),
+    Touch(touch::Finger),
+}
+
+#[derive(Clone, Copy)]
+struct PointerPress {
+    device: usize,
+    from: Point,
+    source: PointerSource,
+    started: Instant,
+    moved: Option<Instant>,
+    focused: bool,
+}
+
+impl Scene {
+    fn begin_press(
+        &self,
+        state: &mut Pointer,
+        position: Point,
+        source: PointerSource,
+    ) -> Option<shader::Action<Message>> {
+        for device in [self.focus, 1 - self.focus] {
+            if let Some(from) = self.layout.local(device, position) {
+                state.anchor = position;
+                state.pressed = Some(PointerPress {
+                    device,
+                    from,
+                    source,
+                    started: Instant::now(),
+                    moved: None,
+                    focused: device == self.focus,
+                });
+                return Some(shader::Action::publish(Message::Focus(device)).and_capture());
+            }
+        }
+        None
+    }
+
+    fn release_press(
+        &self,
+        state: &mut Pointer,
+        position: Option<Point>,
+        source: PointerSource,
+    ) -> Option<shader::Action<Message>> {
+        let press = state.pressed.filter(|press| press.source == source)?;
+        state.pressed = None;
+        let position = position?;
+        let now = Instant::now();
+        if matches!(source, PointerSource::Touch(_)) {
+            state.touch_released = Some((position, now));
+        }
+        if !press.focused || self.popup.contains(position) || self.child_popup.contains(position) {
+            return Some(shader::Action::capture());
+        }
+        let to = self.layout.local(press.device, position)?;
+        let frame = self.frames[press.device].as_ref()?;
+        let pixel = |point: Point| {
+            (
+                (point.x * frame.width as f32).min((frame.width - 1) as f32) as u32,
+                (point.y * frame.height as f32).min((frame.height - 1) as f32) as u32,
+            )
+        };
+        let (x, y) = pixel(press.from);
+        let input = if press.from.distance(to) > 0.015 {
+            let (to_x, to_y) = pixel(to);
+            let (began, hold, longest) = match source {
+                PointerSource::Mouse(_) => (press.started, true, 2000),
+                PointerSource::Touch(_) => {
+                    let moved = press.moved.unwrap_or(press.started);
+                    (
+                        moved,
+                        moved.duration_since(press.started) >= Duration::from_millis(400),
+                        650,
+                    )
+                }
+            };
+            DeviceInput::Drag {
+                x,
+                y,
+                to_x,
+                to_y,
+                duration: now.duration_since(began).as_millis().clamp(120, longest) as u32,
+                hold,
+            }
+        } else {
+            let gesture = match source {
+                PointerSource::Mouse(mouse::Button::Right) => Press::Right,
+                _ if press.device == 0
+                    && now.duration_since(press.started) >= Duration::from_millis(500) =>
+                {
+                    Press::Hold
+                }
+                _ => Press::Left,
+            };
+            DeviceInput::Tap {
+                x,
+                y,
+                press: gesture,
+            }
+        };
+        Some(shader::Action::publish(Message::Input(press.device, input)).and_capture())
+    }
+}
+
 impl shader::Program<Message> for Scene {
     type State = Pointer;
     type Primitive = Primitive;
@@ -98,59 +209,76 @@ impl shader::Program<Message> for Scene {
         _bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> Option<shader::Action<Message>> {
-        if matches!(event, Event::Mouse(_))
-            && cursor
+        let touch_active = state
+            .pressed
+            .is_some_and(|press| matches!(press.source, PointerSource::Touch(_)));
+        if let Event::Mouse(mouse) = event {
+            if touch_active
+                || (matches!(
+                    mouse,
+                    mouse::Event::ButtonPressed(_) | mouse::Event::ButtonReleased(_)
+                ) && state
+                    .touch_released
+                    .is_some_and(|(touch_position, released)| {
+                        released.elapsed() < Duration::from_millis(120)
+                            && cursor
+                                .position()
+                                .is_some_and(|p| p.distance(touch_position) < 8.)
+                    }))
+            {
+                return Some(shader::Action::capture());
+            }
+            if cursor
                 .position()
                 .is_some_and(|p| self.popup.contains(p) || self.child_popup.contains(p))
-        {
-            state.pressed = None;
-            return None;
+            {
+                state.pressed = None;
+                return None;
+            }
         }
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(
                 button @ (mouse::Button::Left | mouse::Button::Right),
             )) => {
-                let p = cursor.position()?;
-                for index in [self.focus, 1 - self.focus] {
-                    if let Some(local) = self.layout.local(index, p) {
-                        state.anchor = p;
-                        state.pressed = (index == self.focus).then_some((
-                            index,
-                            local,
-                            Instant::now(),
-                            *button,
-                        ));
-                        return Some(shader::Action::publish(Message::Focus(index)).and_capture());
-                    }
-                }
+                return self.begin_press(state, cursor.position()?, PointerSource::Mouse(*button));
             }
             Event::Mouse(mouse::Event::ButtonReleased(button)) => {
-                let (index, from, started, pressed_button) = state.pressed?;
-                if *button != pressed_button {
+                return self.release_press(state, cursor.position(), PointerSource::Mouse(*button));
+            }
+            Event::Touch(touch::Event::FingerPressed { id, position }) => {
+                if touch_active {
+                    return Some(shader::Action::capture());
+                }
+                if self.popup.contains(*position) || self.child_popup.contains(*position) {
                     return None;
                 }
+                return self.begin_press(state, *position, PointerSource::Touch(*id));
+            }
+            Event::Touch(touch::Event::FingerMoved { id, position }) => {
+                let press = state
+                    .pressed
+                    .as_mut()
+                    .filter(|p| p.source == PointerSource::Touch(*id))?;
+                if press.moved.is_none()
+                    && self
+                        .layout
+                        .local(press.device, *position)
+                        .is_some_and(|point| press.from.distance(point) > 0.015)
+                {
+                    press.moved = Some(Instant::now());
+                }
+                return Some(shader::Action::capture());
+            }
+            Event::Touch(touch::Event::FingerLifted { id, position }) => {
+                return self.release_press(state, Some(*position), PointerSource::Touch(*id));
+            }
+            Event::Touch(touch::Event::FingerLost { id, position }) => {
+                state
+                    .pressed
+                    .filter(|press| press.source == PointerSource::Touch(*id))?;
                 state.pressed = None;
-                let to = self.layout.local(index, cursor.position()?)?;
-                let frame = self.frames[index].as_ref()?;
-                let x = (from.x * frame.width as f32).min((frame.width - 1) as f32) as u32;
-                let y = (from.y * frame.height as f32).min((frame.height - 1) as f32) as u32;
-                let input = if from.distance(to) > 0.015 {
-                    DeviceInput::Drag {
-                        x,
-                        y,
-                        to_x: (to.x * frame.width as f32).min((frame.width - 1) as f32) as u32,
-                        to_y: (to.y * frame.height as f32).min((frame.height - 1) as f32) as u32,
-                        duration: started.elapsed().as_millis().clamp(120, 2000) as u32,
-                    }
-                } else {
-                    let press = match button {
-                        mouse::Button::Right => Press::Right,
-                        _ if index == 0 && started.elapsed().as_millis() >= 500 => Press::Hold,
-                        _ => Press::Left,
-                    };
-                    DeviceInput::Tap { x, y, press }
-                };
-                return Some(shader::Action::publish(Message::Input(index, input)).and_capture());
+                state.touch_released = Some((*position, Instant::now()));
+                return Some(shader::Action::capture());
             }
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
                 let p = self.layout.local(self.focus, cursor.position()?)?;
@@ -177,9 +305,42 @@ impl shader::Program<Message> for Scene {
                 modifiers,
                 ..
             }) => {
+                use keyboard::key::Named;
                 let target = self.keyboard_target?;
+                let control = modifiers.command() || modifiers.control();
+                if target == 0 {
+                    let phone_key = match key.as_ref() {
+                        keyboard::Key::Character(value)
+                            if control && value.eq_ignore_ascii_case("a") =>
+                        {
+                            Some("SELECT_ALL")
+                        }
+                        keyboard::Key::Named(name) if !control && !modifiers.alt() => match name {
+                            Named::Enter => Some("ENTER"),
+                            Named::Backspace => Some("DEL"),
+                            Named::Delete => Some("FORWARD_DEL"),
+                            Named::Escape => Some("BACK"),
+                            Named::Tab => Some("TAB"),
+                            Named::ArrowLeft => Some("DPAD_LEFT"),
+                            Named::ArrowRight => Some("DPAD_RIGHT"),
+                            Named::ArrowUp => Some("DPAD_UP"),
+                            Named::ArrowDown => Some("DPAD_DOWN"),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let input = match phone_key {
+                        Some(key) => DeviceInput::Key(key.into()),
+                        None if !control && !modifiers.alt() => {
+                            DeviceInput::Text(text.as_ref()?.to_string())
+                        }
+                        _ => return None,
+                    };
+                    return Some(
+                        shader::Action::publish(Message::Input(target, input)).and_capture(),
+                    );
+                }
                 if target == 1 {
-                    use keyboard::key::Named;
                     let named = match key.as_ref() {
                         keyboard::Key::Named(name) => match name {
                             Named::Enter => Some("Return"),
@@ -199,7 +360,6 @@ impl shader::Program<Message> for Scene {
                         },
                         _ => None,
                     };
-                    let control = modifiers.command() || modifiers.control();
                     if named.is_some() || control || modifiers.alt() {
                         let value = match (named, key.as_ref()) {
                             (Some(name), _) => name,
@@ -226,24 +386,7 @@ impl shader::Program<Message> for Scene {
                         );
                     }
                 }
-                let input = match key.as_ref() {
-                    keyboard::Key::Named(keyboard::key::Named::Enter) => {
-                        DeviceInput::Key(if target == 0 { "ENTER" } else { "Return" }.into())
-                    }
-                    keyboard::Key::Named(keyboard::key::Named::Backspace) => {
-                        DeviceInput::Key(if target == 0 { "DEL" } else { "BackSpace" }.into())
-                    }
-                    keyboard::Key::Named(keyboard::key::Named::Tab) => {
-                        DeviceInput::Key(if target == 0 { "TAB" } else { "Tab" }.into())
-                    }
-                    keyboard::Key::Named(keyboard::key::Named::Escape) => {
-                        DeviceInput::Key(if target == 0 { "BACK" } else { "Escape" }.into())
-                    }
-                    _ if !modifiers.command() && !modifiers.control() => {
-                        DeviceInput::Text(text.as_ref()?.to_string())
-                    }
-                    _ => return None,
-                };
+                let input = DeviceInput::Text(text.as_ref()?.to_string());
                 return Some(shader::Action::publish(Message::Input(target, input)).and_capture());
             }
             _ => {}
@@ -254,7 +397,7 @@ impl shader::Program<Message> for Scene {
         let rect = |r: Rectangle| [r.x, r.y, r.width, r.height];
         Primitive {
             uniforms: Uniforms {
-                size: [self.size.width, self.size.height, 0., 0.],
+                size: [self.size.width, self.size.height, self.layout.cable, 0.],
                 phone: rect(self.layout.devices[0]),
                 desktop: rect(self.layout.devices[1]),
                 chat: rect(self.layout.chat),

@@ -21,7 +21,7 @@ AImanity 將 Android 手機與 Linux 桌面放在同一個工作台，兩台裝�
 
 ## 架構與資料
 
-`apps/web`：Next.js App Router、React、Tailwind、shadcn；`apps/client`：Tauri 2；`crates`：Rust/Axum/Tokio；`packages/protocol`：protobuf。PostgreSQL/SQLx 保存狀態，Redis 預留為選用快取，非任務佇列。Bun/Cargo 為開發工具，Compose 承載服務。`infra`、`scripts`、`skills`、`config` 存放執行環境和內建能力。
+`apps/native`：Rust（Iced/wgpu）；`crates`：Rust/Axum/Tokio；`packages/protocol`：protobuf。PostgreSQL/SQLx 保存狀態，Redis 預留為選用快取，非任務佇列。Bun/Cargo 為開發工具，Compose 承載服務。`infra`、`scripts`、`skills`、`config` 存放執行環境和內建能力。
 
 程式碼與使用者狀態分離。裝置磁碟、帳號、聊天、附件、金鑰及私有證據不進入公開儲存庫。更新應使用版本化產物、備份、遷移與回復，不直接在使用者資料上執行 `git pull`。
 

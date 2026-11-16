@@ -50,9 +50,8 @@ See [distribution requirements](docs/public/distribution-requirements.md) for th
 
 Binary releases include the component notices and applicable corresponding-source references.
 
-GSAP 3.15.0 uses its own [Standard No Charge licence](https://gsap.com/community/standard-license/). The source depends on the separately installed package and preserves its notices. Its restrictions on competing visual animation builders remain applicable. Native libvips (LGPL), lightningcss/@vercel/og (MPL), caniuse-lite data (CC BY) and mixed-licence packages remain identified in the inventory.
 
-The native client bundles collected licence texts in `docs/public/native-client-licenses.txt`. The locked notice inventory reports every required file present.
+The native client bundles licence texts generated from the locked Rust dependencies for each platform.
 
 The 40 native-client notice supplements record source URLs, exact revisions or archive checksums, and licence text hashes in `config/native-notice-supplements.json`. The objc2 grant includes the original Apple SDK provision, MIT text and attribution.
 
@@ -60,7 +59,6 @@ The 40 native-client notice supplements record source URLs, exact revisions or a
 
 The Alpine ISO lists package names, licences and aports commits in `apks/aarch64/APKINDEX.tar.gz`. Each separate APK records its `origin` and `commit` in `.PKGINFO`. Use those fields to open the corresponding `APKBUILD` and its patches in aports. [BusyBox 1.37.0-r31 build recipe](https://github.com/alpinelinux/aports/blob/c3ef5d10e6ef6528852c51f0564963e2f8c1be19/main/busybox/APKBUILD)
 
-For MPL-2.0 client dependencies such as selectors/cssparser, exact crate versions and public source URLs are retained in the notice collection and Cargo.lock. selectors corresponding source is https://crates.io/api/v1/crates/selectors/0.36.1/download (checksum in the supplement record). The unmodified source can be downloaded and rebuilt; any in-repository native patch is separately preserved with its upstream license/source under apps/client/src-tauri/vendor.
 
 Complete installers must include these attribution texts together with the notices and source access required by their runtime images and server dependencies. Signing and installation acceptance are reported separately in release status. Component terms and copyright notices apply independently of Apache-2.0.
 
@@ -70,7 +68,7 @@ The clients are built with Rust 1.96.0. Its standard-library copyright collectio
 
 ### Location interface
 
-The map uses Leaflet 1.9.4 under BSD-2-Clause. Its full [copyright and license](docs/public/licenses/javascript/leaflet/LICENSE) are retained. OpenStreetMap map data is attributed in the map and governed by [ODbL](https://www.openstreetmap.org/copyright); hosted tiles follow the provider's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/). Tiles and the optional network-location lookup are contacted only after simulated location is enabled. No FakeLocation source or application binary is bundled.
+OpenStreetMap map data is attributed in the map and governed by [ODbL](https://www.openstreetmap.org/copyright); hosted tiles follow the provider's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/). Tiles and the optional network-location lookup are contacted only after simulated location is enabled. No FakeLocation source or application binary is bundled.
 
 ## Local WhatsApp connection
 
@@ -78,19 +76,16 @@ WhatsApp uses the MIT-licensed `whatsapp-rust` 0.7.0 linked-device implementatio
 
 The linked-device adapter is unofficial. The platform's terms apply to pairing and delivery. Session databases, linked-device state and QR payloads remain private user data. Chromium in the Linux desktop retains its own notices and source obligations.
 
-The locked archive dependencies use glob 14.0.3 and minimatch 11.0.3, covering [glob cancellation](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) and [minimatch pattern amplification](https://github.com/advisories/GHSA-g3hv-75wg-m249). The SDK archive directory/pattern integration is tested with Unicode, hidden files and ignore rules.
 
-## Web and installer runtimes
+## Installer runtime
 
-Complete clients include Next.js standalone output and pinned Bun, with Rust host initialization. Windows runs the web and Rust services in its bundled Linux guest. The web, native and image components each have their own notices and source requirements. See [runtime bundles](docs/public/runtime-bundles.md).
+Windows and macOS clients use the native Rust workbench. See [runtime bundles](docs/public/runtime-bundles.md).
 
-The client uses the WebView2 Runtime included in Windows 11 under Microsoft's terms. See [Microsoft's WebView2 documentation](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/evergreen-vs-fixed-version).
 
 Windows installers are produced by unmodified Inno Setup 7.1.1. Its original installer copyright and notices are preserved; the [full upstream grant](docs/public/licenses/windows-installer/LICENSE) is included in the source. Compiler and InnoUnp 2.71.3 source/download identities are pinned in config/windows-installer.json. The build enables the pinned x86 unpacker’s PE large-address flag after archive verification. The compiler and unpacker are maintainer tools, excluded from the installed application runtime.
 
 ## Media and channel runtime component
 
-The frontend uses the pinned Bun runtime and preserves its locked production dependency notices. First-party messaging and media services are Rust. Guest Chromium and Clash applications retain their own redistribution requirements.
 
 ## Native host and guest services
 

@@ -64,7 +64,6 @@ fn environment(
         )?,
     );
     env.insert("PATH".into(), PATH.into());
-    env.insert("NEXT_TELEMETRY_DISABLED".into(), "1".into());
     Ok(env)
 }
 pub(crate) struct Backend<'a, E> {
@@ -237,7 +236,6 @@ impl<E: Execute> Backend<'_, E> {
         images: &Path,
         digest: Option<&str>,
         user: &Path,
-        web_bind: Option<&str>,
     ) -> Result<()> {
         phase("container_ownership");
         let existing = self.containers().await?;
@@ -333,18 +331,6 @@ impl<E: Execute> Backend<'_, E> {
         .await?;
         self.unit("assistant", "start", vec![assistant.clone()], &[])
             .await?;
-        if let Some(web_bind) = web_bind {
-            self.unit(
-                "web",
-                "start",
-                vec![
-                    text(&self.root.join("runtime/bin/bun"))?,
-                    text(&self.root.join("runtime/web/apps/web/server.js"))?,
-                ],
-                &[("HOSTNAME", web_bind.into()), ("PORT", "17860".into())],
-            )
-            .await?;
-        }
         self.unit(
             "channels",
             "start",
@@ -461,17 +447,16 @@ async fn initialize<E: Execute>(
     home: &Path,
     run: &Path,
     request: &[u8],
-    qemu: bool,
+    _qemu: bool,
     execute: E,
     available: &dyn Fn(&Path) -> Result<u64>,
 ) -> Result<()> {
     let request = profile::parse_request(request)
         .map_err(|_| Error::Invalid("wsl_initialization_request"))?;
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    if qemu && request.desktop.storage_gb.is_some() {
+    if _qemu && request.desktop.storage_gb.is_some() {
         crate::linux_vm::grow_root()?;
     }
-    let web_bind = (!request.native_ui).then_some(if qemu { "0.0.0.0" } else { "127.0.0.1" });
     phase("preflight");
     let parent = home
         .parent()
@@ -537,12 +522,7 @@ async fn initialize<E: Execute>(
     )?;
     backend.start_engine(home, run).await?;
     backend
-        .start(
-            &bundle.join("images.payload"),
-            None,
-            Path::new("/root"),
-            web_bind,
-        )
+        .start(&bundle.join("images.payload"), None, Path::new("/root"))
         .await
 }
 

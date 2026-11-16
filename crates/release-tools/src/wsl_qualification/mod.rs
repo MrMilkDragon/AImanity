@@ -17,9 +17,8 @@ use std::{
 const STATE: &str = "/var/lib/aiphone";
 const BOOTSTRAP: &str = "/usr/local/libexec/aiphone-bootstrap";
 const BUNDLE: &str = "/opt/aiphone/bundle";
-const CHECKS: [&str; 11] = [
+const CHECKS: [&str; 10] = [
     "assistant",
-    "web",
     "channels",
     "runner_endpoint",
     "database_roles",
@@ -155,7 +154,7 @@ fn prepare_cgroups(root: &Path) -> Result<()> {
     Ok(())
 }
 async fn shutdown(context: &Context) -> Result<()> {
-    for name in ["channels", "media", "web", "assistant", "runner"] {
+    for name in ["channels", "media", "assistant", "runner"] {
         context
             .execute(
                 [
@@ -230,11 +229,11 @@ async fn perform(receipt: &mut Receipt, context: &Context) -> Result<()> {
         probes::ready(context, receipt).await?;
         probes::database_roles(context, receipt).await?;
         receipt.checkpoint("desktop")?;
-        let device = probes::desktop_registration(context).await?;
+        probes::desktop_registration(context).await?;
         receipt.checked("desktop_registered");
         receipt.frame = probes::desktop_frame(context).await?;
         receipt.checked("desktop_frame");
-        probes::desktop_media(context, &device).await?;
+        probes::desktop_media(context).await?;
         receipt.checked("desktop_media");
         receipt.checkpoint("persistence")?;
         probes::work_file(context).await?;

@@ -4,60 +4,20 @@ use std::{collections::HashMap, sync::OnceLock};
 pub struct Locale(usize);
 const LOCALES: [(&str, &str, &str, &str); 10] = [
     ("zh-CN", "简体中文", "汉", ""),
-    (
-        "en",
-        "English",
-        "EN",
-        include_str!("../../web/src/locales/en.json"),
-    ),
+    ("en", "English", "EN", include_str!("../locales/en.json")),
     (
         "zh-TW",
         "繁體中文",
         "漢",
-        include_str!("../../web/src/locales/zh-TW.json"),
+        include_str!("../locales/zh-TW.json"),
     ),
-    (
-        "ja",
-        "日本語",
-        "日",
-        include_str!("../../web/src/locales/ja.json"),
-    ),
-    (
-        "ko",
-        "한국어",
-        "한",
-        include_str!("../../web/src/locales/ko.json"),
-    ),
-    (
-        "de",
-        "Deutsch",
-        "DE",
-        include_str!("../../web/src/locales/de.json"),
-    ),
-    (
-        "fr",
-        "Français",
-        "FR",
-        include_str!("../../web/src/locales/fr.json"),
-    ),
-    (
-        "es",
-        "Español",
-        "ES",
-        include_str!("../../web/src/locales/es.json"),
-    ),
-    (
-        "ru",
-        "Русский",
-        "РУ",
-        include_str!("../../web/src/locales/ru.json"),
-    ),
-    (
-        "ar",
-        "العربية",
-        "ع",
-        include_str!("../../web/src/locales/ar.json"),
-    ),
+    ("ja", "日本語", "日", include_str!("../locales/ja.json")),
+    ("ko", "한국어", "한", include_str!("../locales/ko.json")),
+    ("de", "Deutsch", "DE", include_str!("../locales/de.json")),
+    ("fr", "Français", "FR", include_str!("../locales/fr.json")),
+    ("es", "Español", "ES", include_str!("../locales/es.json")),
+    ("ru", "Русский", "РУ", include_str!("../locales/ru.json")),
+    ("ar", "العربية", "ع", include_str!("../locales/ar.json")),
 ];
 impl Locale {
     pub fn all() -> impl Iterator<Item = Self> {

@@ -7,7 +7,7 @@ node_modules/
 out/
 target/
 dist/
-apps/client/src-tauri/gen/
+apps/native/gen/
 data/
 .DS_Store
 *.log

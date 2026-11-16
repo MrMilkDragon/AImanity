@@ -8,7 +8,7 @@ import {
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { ROOT, hash } from "./process";
-import { json, save, secret, canonical } from "./inventory";
+import { json, secret, canonical } from "./inventory";
 
 const WINDOW = 4096;
 type Vector = { size: number; sha256: string };
@@ -90,55 +90,43 @@ export function fileReceipt(
   );
 }
 export const workbenchNotices = ".tools/iced-workbench-licenses.txt";
+export const hostResources = "apps/native/gen/host";
 
-export function resourceMap(root = ROOT, nativeWorkbench = false) {
-  const native = join(root, "apps/client/src-tauri"),
-    resources = {
-      ...json(join(native, "tauri.conf.json")).bundle.resources,
-    } as Record<string, string>,
-    integrity = join(native, "gen/host/integrity.json");
-  if (nativeWorkbench) {
-    delete resources["../../../docs/public/native-client-licenses.txt"];
-    resources["../../../" + workbenchNotices] = "legal/native-client-licenses.txt";
-  }
+export function resourceMap(root = ROOT) {
+  const integrity = join(root, hostResources, "integrity.json");
+  const resources: Record<string, string> = {
+    LICENSE: "legal/LICENSE",
+    NOTICE: "legal/NOTICE",
+    "PRIVACY.md": "legal/PRIVACY.md",
+    "DISCLAIMER.md": "legal/DISCLAIMER.md",
+    "THIRD_PARTY_NOTICES.md": "legal/THIRD_PARTY_NOTICES.md",
+    "docs/public/licenses/guest-apps/GPL-3.0.txt": "legal/GPL-3.0.txt",
+    [workbenchNotices]: "legal/native-client-licenses.txt",
+    "docs/public/licenses/whisper/LICENSE": "legal/whisper-LICENSE.txt",
+    "docs/public/licenses/native/whisper-rs-LICENSE": "legal/whisper-rs-LICENSE.txt",
+    "docs/public/licenses/native/whisper.cpp-LICENSE": "legal/whisper.cpp-LICENSE.txt",
+    [hostResources + "/speech/ggml-tiny-q5_1.bin"]: "host/speech/ggml-tiny-q5_1.bin",
+    [hostResources + "/source.payload"]: "host/source.payload",
+  };
   if (existsSync(integrity)) {
     const expected = json(integrity);
     for (const name of ["android.payload", "images.payload"])
-      if (name in expected) resources["gen/host/" + name] = "host/" + name;
-    if ("windows/wsl.msi" in expected)
-      resources["gen/host/windows/wsl.msi"] = "host/windows/wsl.msi";
-    for (const group of ["wsl", "qemu"])
-      if (group + "/manifest.json" in expected) {
-        const folder = join(native, "gen/host", group),
-          manifest = json(join(folder, "manifest.json"));
+      if (name in expected) resources[hostResources + "/" + name] = "host/" + name;
+    if ("qemu/manifest.json" in expected) {
+        const manifestFile = join(root, hostResources, "qemu/manifest.json"),
+          manifest = json(manifestFile);
         if (
-          hash(readFileSync(join(folder, "manifest.json"))) !==
-          expected[group + "/manifest.json"]
+          hash(readFileSync(manifestFile)) !== expected["qemu/manifest.json"]
         )
           throw Error("Resource manifest changed");
-        const names = ["manifest.json", ...(group === "qemu"
-          ? manifest.files.map((row: { path: string }) => row.path)
-          : ["rootfs.tar.gz"])];
+        const names = ["manifest.json", ...manifest.files.map((row: { path: string }) => row.path)];
         for (const name of names) {
           canonical(name);
-          resources[`gen/host/${group}/${name}`] = `host/${group}/${name}`;
+          resources[`${hostResources}/qemu/${name}`] = `host/qemu/${name}`;
         }
-      }
+    }
   }
   return resources;
-}
-export function buildConfig(root = ROOT) {
-  const resources = resourceMap(root);
-  for (const group of ["wsl", "qemu"]) {
-    const members = Object.keys(resources).filter((name) =>
-      name.startsWith("gen/host/" + group + "/"),
-    );
-    for (const name of members) delete resources[name];
-    if (members.length) resources["gen/host/" + group] = "host/" + group;
-  }
-  const target = join(root, "apps/client/src-tauri/gen/host/resources.json");
-  save(target, { bundle: { resources } });
-  return target;
 }
 export async function verifyCompiledInventory(
   binary: string,

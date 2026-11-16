@@ -1,7 +1,9 @@
 use crate::{
     connection::Connection,
     controls::{Icon, icon_button},
-    modes, style,
+    modes,
+    platform::{self, ClipboardContent},
+    style,
 };
 use ai_phone_api::wire;
 use iced::{
@@ -14,6 +16,7 @@ use prost::Message as _;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
+    sync::Arc,
 };
 
 #[derive(Clone, Debug)]
@@ -28,6 +31,8 @@ pub enum Message {
     Older,
     Scroll(bool),
     Pick,
+    Paste,
+    Pasted(Result<Option<ClipboardContent>, String>),
     Files(Vec<PathBuf>),
     Capture(String, Vec<u8>),
     Uploaded(String, Result<wire::ChatAttachment, String>),
@@ -78,6 +83,7 @@ pub struct Chat {
     draft: text_editor::Content,
     pending: Vec<Pending>,
     uploads: Vec<Upload>,
+    pasting: bool,
     markdown: HashMap<String, Vec<markdown::Item>>,
     traces: HashMap<String, Trace>,
     expanded: HashSet<String>,
@@ -99,6 +105,7 @@ impl Chat {
             draft: text_editor::Content::new(),
             pending: Vec::new(),
             uploads: Vec::new(),
+            pasting: false,
             markdown: HashMap::new(),
             traces: HashMap::new(),
             expanded: HashSet::new(),
@@ -332,9 +339,7 @@ impl Chat {
             Message::Mode(_) => {}
             Message::Edit(action) => self.draft.perform(action),
             Message::Send => {
-                if (self.draft.text().trim().is_empty() && self.uploads.is_empty())
-                    || self.uploads.iter().any(|u| u.attachment.is_none())
-                {
+                if !self.can_send() {
                     return Task::none();
                 }
                 let id = uuid::Uuid::now_v7().to_string();
@@ -465,6 +470,31 @@ impl Chat {
                     },
                     Message::Files,
                 );
+            }
+            Message::Paste if !self.pasting => {
+                self.pasting = true;
+                return Task::perform(platform::read_clipboard(), Message::Pasted);
+            }
+            Message::Paste => {}
+            Message::Pasted(result) => {
+                self.pasting = false;
+                match result {
+                    Ok(Some(ClipboardContent::Png(png))) => {
+                        return self.update(
+                            Message::Capture("clipboard.png".into(), png),
+                            client,
+                            device_id,
+                        );
+                    }
+                    Ok(Some(ClipboardContent::Text(text))) => {
+                        self.draft
+                            .perform(text_editor::Action::Edit(text_editor::Edit::Paste(
+                                Arc::new(text),
+                            )));
+                    }
+                    Ok(None) => {}
+                    Err(error) => self.error = error,
+                }
             }
             Message::Capture(name, bytes) => {
                 if self.uploads.len() == 8 {
@@ -822,6 +852,14 @@ impl Chat {
         }
         body.into()
     }
+    fn can_send(&self) -> bool {
+        !self.pasting
+            && (!self.draft.text().trim().is_empty() || !self.uploads.is_empty())
+            && self
+                .uploads
+                .iter()
+                .all(|upload| upload.attachment.is_some())
+    }
     pub fn view<'a>(
         &'a self,
         modes: &'a modes::Modes,
@@ -915,11 +953,16 @@ impl Chat {
             .on_action(Message::Edit)
             .key_binding(|press| {
                 if press.key == keyboard::Key::Named(keyboard::key::Named::Enter)
-                    && press.modifiers.command()
+                    && (press.modifiers.command() || press.modifiers.control())
                 {
                     Some(text_editor::Binding::Custom(Message::Send))
                 } else {
-                    text_editor::Binding::from_key_press(press)
+                    match text_editor::Binding::from_key_press(press) {
+                        Some(text_editor::Binding::Paste) => {
+                            Some(text_editor::Binding::Custom(Message::Paste))
+                        }
+                        binding => binding,
+                    }
                 }
             })
             .style(|theme, status| {
@@ -961,9 +1004,7 @@ impl Chat {
         actions = actions.push(icon_button(
             Icon::Send,
             locale.tr("发送 · ⌘ / Ctrl + Enter"),
-            ((!self.draft.text().trim().is_empty() || !self.uploads.is_empty())
-                && self.uploads.iter().all(|u| u.attachment.is_some()))
-            .then_some(Message::Send),
+            self.can_send().then_some(Message::Send),
         ));
         let mut composer = column![].spacing(3);
         for upload in &self.uploads {

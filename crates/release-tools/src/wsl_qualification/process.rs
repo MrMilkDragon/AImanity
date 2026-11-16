@@ -95,9 +95,9 @@ pub(super) struct Context {
 }
 pub(super) struct Endpoints {
     pub assistant: String,
-    pub web: String,
     pub channels: String,
     pub runner: String,
+    pub media: String,
 }
 impl Context {
     pub fn new(root: PathBuf, nonce: String, phase: u8) -> Result<Self> {
@@ -112,9 +112,9 @@ impl Context {
             bootstrap: BOOTSTRAP.into(),
             endpoints: Endpoints {
                 assistant: "http://127.0.0.1:17863".into(),
-                web: "http://127.0.0.1:17860".into(),
                 channels: "http://127.0.0.1:17864".into(),
                 runner: "http://127.0.0.1:17862".into(),
+                media: "http://127.0.0.1:17865".into(),
             },
         })
     }

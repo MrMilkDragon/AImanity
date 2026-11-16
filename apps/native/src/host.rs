@@ -74,7 +74,7 @@ impl Host {
                 if self.resume {
                     command.arg("--resume");
                 }
-                let mut child = command.arg("--native-ui").stdout(Stdio::piped()).spawn().map_err(|e|e.to_string())?;
+                let mut child = command.stdout(Stdio::piped()).spawn().map_err(|e|e.to_string())?;
                 let mut lines=BufReader::new(child.stdout.take().unwrap()).lines();
                 let mut failure = None;
                 loop {
@@ -239,7 +239,7 @@ pub async fn credentials(root: &Path) -> Result<(String, String), String> {
 
 #[cfg(windows)]
 mod lifecycle {
-    include!("../../client/windows-lifecycle.rs");
+    include!("windows-lifecycle.rs");
 }
 
 #[cfg(windows)]

@@ -28,7 +28,6 @@ mod action_store;
 mod cursor;
 mod gestures;
 mod grounding;
-mod lan;
 mod location;
 mod media;
 mod native_tree;
@@ -1004,11 +1003,6 @@ async fn refresh_root_readiness(runner: &Runner) {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match std::env::args().nth(1).as_deref() {
-        Some("--lan") => {
-            return lan::run()
-                .await
-                .map_err(|e| -> Box<dyn std::error::Error> { e });
-        }
         Some("--media") => {
             return media::run()
                 .await

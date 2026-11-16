@@ -15,23 +15,20 @@ import { ROOT, hash, digest, output, nativeProgram } from "./process";
 import { sourceFiles, type SourceFile } from "./source";
 import { json, save, records, canonical } from "./inventory";
 import { writeTar, tarEntries, entryBytes, type ArchiveFile } from "./archive";
-import { prepareWeb } from "./web-runtime";
 import { prepareServices } from "./native-build";
 import { preparePhone } from "./phone-apps";
 import { prepareContainerHost } from "./container-host";
-import { buildConfig } from "./resources";
+import { hostResources } from "./resources";
 import { fetchPin } from "./factory";
 import { stageWindowsVm, type WindowsVmInputs } from "./windows-vm-payload";
 import { prepareSpeechModel } from "./speech-model";
 
 export const componentManifests = {
-  web: "runtime/manifest.json",
   "native-services": "runtime/services/manifest.json",
   "phone-apps": "runtime/phone-apps/manifest.json",
   "container-host": "runtime/container-host/manifest.json",
 };
 export type PayloadOptions = {
-  web?: boolean;
   nativeServices?: boolean;
   phoneApps?: boolean;
   containerHost?: boolean;
@@ -47,7 +44,7 @@ export async function preparePayload(
 ) {
   if (options.windowsVm && options.wslRuntime)
     throw Error("Select one Windows backend");
-  const folder = join(root, "apps/client/src-tauri/gen/host");
+  const folder = join(root, hostResources);
   mkdirSync(folder, { recursive: true });
   const speech = await prepareSpeechModel(root);
   const selected: SourceFile[] = sourceFiles(root),
@@ -57,7 +54,6 @@ export async function preparePayload(
     keyof typeof componentManifests,
     () => SourceFile[] | Promise<SourceFile[]>,
   ][] = [
-    ["web", "web", () => prepareWeb(root)],
     [
       "nativeServices",
       "native-services",
@@ -148,11 +144,10 @@ export async function preparePayload(
     integrity["qemu/manifest.json"] = await stageWindowsVm(root, windowsVm, options.windowsVm);
   else rmSync(windowsVm, { recursive: true, force: true });
   save(join(folder, "integrity.json"), integrity);
-  buildConfig(root);
   return integrity;
 }
 export async function payloadComponents(root = ROOT) {
-  const folder = join(root, "apps/client/src-tauri/gen/host"),
+  const folder = join(root, hostResources),
     payload = join(folder, "source.payload");
   if (!existsSync(payload)) return [];
   let components: string[] = [];
@@ -203,7 +198,7 @@ export function installerMetadata(file: string, host: string) {
     github_asset_eligible: info.size < 2 * 1024 ** 3,
   };
 }
-export function deliveryMetadata(components: string[], host: string, nativeWorkbench = false) {
+export function deliveryMetadata(components: string[], host: string) {
   const known = new Set([
       ...Object.keys(componentManifests),
       "android-runtime",
@@ -220,11 +215,11 @@ export function deliveryMetadata(components: string[], host: string, nativeWorkb
     throw Error("Unknown client component");
   const required =
     host === "windows-x64"
-      ? selected.has("windows-qemu")
-        ? ["android-runtime", "windows-qemu"]
-        : ["android-runtime", "wsl-backend", "windows-host"]
+      ? ["android-runtime", "windows-qemu"]
       : [
-          ...Object.keys(componentManifests).filter((name) => !nativeWorkbench || name !== "web"),
+          "native-services",
+          "phone-apps",
+          "container-host",
           "android-runtime",
           "container-images",
         ];
@@ -232,8 +227,7 @@ export function deliveryMetadata(components: string[], host: string, nativeWorkb
   return {
     prebuilt_components: components,
     server_included:
-      selected.has("wsl-backend") || selected.has("windows-qemu") ||
-      (nativeWorkbench ? ["native-services"] : ["web", "native-services"]).every((name) => selected.has(name)),
+      selected.has("windows-qemu") || selected.has("native-services"),
     runtime_payload_complete: !missing.length,
     complete_device_bundle: !missing.length,
     missing_runtime_components: missing,

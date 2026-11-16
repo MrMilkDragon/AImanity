@@ -19,7 +19,7 @@ The default guests are Android 15 and Debian 13/Openbox. CPU, memory and initial
 4. Rust initializes the container host, images, database and services, boots the native phone, provisions input/notifications and checks actual device frames before reporting ready.
 5. Resume reuses existing profiles, credentials, devices and running services. Cancellation retains completed work and preserves unknown device outcomes for observation.
 
-The Rust host runtime owns source staging, device creation, pairing and process supervision. SQLx owns PostgreSQL role preparation and migrations. The assistant also contains messaging-channel adapters; the phone runner owns media/control. Next.js/TypeScript supplies the interface, with Bun for frontend execution and build tooling.
+The Rust host runtime owns source staging, device creation, pairing and process supervision. SQLx owns PostgreSQL role preparation and migrations. The assistant also contains messaging-channel adapters; the phone runner owns media/control. Iced and wgpu supply the Rust workbench. Bun runs build tooling.
 
 The Windows client opens the bundled Linux disk read-only and keeps writes in a persistent QCOW2 overlay. Setup completes after the Linux guest and native Android worker return their paired protobuf receipt.
 
