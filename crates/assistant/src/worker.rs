@@ -26,7 +26,6 @@ pub(crate) async fn claim_due_run(app: &App) -> Result<Option<(Uuid, Uuid)>, sql
 async fn finish_attempt(
     app: &App,
     id: Uuid,
-    _message: Uuid,
     result: &Result<RunDisposition, String>,
     cancelled: bool,
 ) -> Result<(), sqlx::Error> {
@@ -152,7 +151,7 @@ async fn attempt(app: Shared, id: Uuid, message: Uuid, cancel: CancellationToken
     // Retain the device leases across a database outage. Retry only this
     // idempotent finalization, never the model request or guest actions.
     let mut reported = false;
-    while let Err(error) = finish_attempt(&app, id, message, &result, cancel.is_cancelled()).await {
+    while let Err(error) = finish_attempt(&app, id, &result, cancel.is_cancelled()).await {
         if matches!(error, sqlx::Error::RowNotFound) {
             break;
         }
@@ -5480,7 +5479,7 @@ mod loop_persistence_tests {
             sqlx::query("INSERT INTO harness_events(id,run_id,message_id,kind,title,status) VALUES($1,$2,$3,'tool','真实工具失败','failed')").bind(Uuid::now_v7()).bind(run).bind(error_only).execute(&app.db).await.unwrap();
             assert!(crate::http::state(&app,conversation).await.unwrap().messages.iter().find(|m|m.id==error_only.to_string()).unwrap().has_activity,"tool failure remains in the execution ledger");
             sqlx::query("UPDATE messages SET text='已有真实回复' WHERE id=$1").bind(message).execute(&app.db).await.unwrap();
-            finish_attempt(&app,run,message,&Err("database transport failed".into()),false).await.unwrap();
+            finish_attempt(&app,run,&Err("database transport failed".into()),false).await.unwrap();
             let completed_error=crate::http::state(&app,conversation).await.unwrap();
             assert_eq!(completed_error.error,"database transport failed");
             assert_eq!(completed_error.notice_kind,wire::RunNoticeKind::SystemFailure as i32);

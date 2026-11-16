@@ -619,7 +619,6 @@ async fn failed_attempt_after_steering_does_not_rewrite_the_prior_fragment() {
         finish_attempt(
             &app,
             run.id,
-            claimed_message,
             &Err("fixture model disconnected".into()),
             false,
         )
