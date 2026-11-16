@@ -261,11 +261,15 @@ export function checkSource(
       throw Error(`Required source missing: ${required}`);
   for (const f of selected) {
     if (f.path === "scripts/tooling/source.ts") continue;
+    const source = f.data.toString();
     if (
-      /\/Users\/[A-Za-z0-9._-]+\//.test(f.data.toString()) ||
-      /https?:\/\/(?:172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(
-        f.data.toString(),
-      )
+      /\.py[ciow]?$/i.test(f.path) ||
+      /^#![^\r\n]*\b(?:python|pypy)(?:[\d.]+)?\b/.test(source)
+    )
+      throw Error(`Python source is not allowed: ${f.path}`);
+    if (
+      /\/Users\/[A-Za-z0-9._-]+\//.test(source) ||
+      /https?:\/\/(?:172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(source)
     )
       throw Error(`Private origin in source: ${f.path}`);
   }

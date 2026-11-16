@@ -313,6 +313,7 @@ export async function buildWslBackend(
   root = ROOT,
   deviceApps = false,
   linuxOcr?: string,
+  nativeUi = false,
 ) {
   disposable(root);
   if (hostKey() !== "linux-x64" || free(root) < 4 * 1024 ** 3)
@@ -336,9 +337,9 @@ export async function buildWslBackend(
     await buildFactoryDependency(root, join(work, "ocr-context"), ocr, "linux-ocr");
   buildReleaseTools(root);
   await buildNative(root);
-  run([bunProgram(root), "run", "build"], { cwd: root });
+  if (!nativeUi) run([bunProgram(root), "run", "build"], { cwd: root });
   await preparePayload(root, {
-    web: true,
+    web: !nativeUi,
     nativeServices: true,
     phoneApps: deviceApps,
     linuxOcr: ocr,

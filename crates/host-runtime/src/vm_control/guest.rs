@@ -1,6 +1,12 @@
-use super::{GUEST_PORT, LIMIT};
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+use super::GUEST_PORT;
+use super::{LIMIT, NATIVE_PORTS};
 use crate::{Error, Result, linux_vm, native_ipc};
-use ai_phone_api::wire::{LinuxVmControlReply, LinuxVmControlRequest, LinuxVmOperation};
+use ai_phone_api::wire::{
+    LinuxVmControlReply, LinuxVmControlRequest, LinuxVmNativeCredentials, LinuxVmNativeService,
+    LinuxVmOperation,
+};
+use prost::Message;
 use ring::hmac;
 use std::{net::Ipv4Addr, process::Stdio, sync::Arc, time::Duration};
 use tokio::{
@@ -12,6 +18,7 @@ use tokio::{
 const BOOTSTRAP: &str = "/usr/local/libexec/aiphone-bootstrap";
 const BUSYBOX: &str = "/opt/aiphone/engine/bin/busybox";
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub(crate) async fn listen() -> Result<TcpListener> {
     Ok(TcpListener::bind((Ipv4Addr::new(10, 0, 2, 15), GUEST_PORT)).await?)
 }
@@ -81,6 +88,36 @@ async fn reply(
     Ok(())
 }
 
+async fn native_credentials() -> Result<Vec<u8>> {
+    let release = tokio::fs::read_to_string("/opt/aiphone/bundle/source.sha256").await?;
+    let release = release.trim();
+    if !crate::manifest::identity(release) {
+        return Err(Error::Invalid("source_resource_identity"));
+    }
+    let data = std::path::Path::new("/var/lib/aiphone/installation/releases")
+        .join(release)
+        .join("data");
+    let (assistant_token, phone_token) = tokio::try_join!(
+        tokio::fs::read_to_string(data.join("assistant/token")),
+        tokio::fs::read_to_string(data.join("phone-runner/token")),
+    )?;
+    Ok(LinuxVmNativeCredentials {
+        assistant_token,
+        phone_token,
+    }
+    .encode_to_vec())
+}
+
+async fn native_service(payload: &[u8]) -> Result<TcpStream> {
+    let request =
+        LinuxVmNativeService::decode(payload).map_err(|_| Error::Invalid("vm_native_service"))?;
+    let port = u16::try_from(request.port).map_err(|_| Error::Invalid("vm_native_service"))?;
+    if !NATIVE_PORTS.contains(&port) {
+        return Err(Error::Invalid("vm_native_service"));
+    }
+    Ok(TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await?)
+}
+
 async fn handle(mut stream: TcpStream, key: &hmac::Key) -> Result<()> {
     let mut nonce = [0; 32];
     getrandom::fill(&mut nonce).map_err(|_| Error::Invalid("vm_control_nonce"))?;
@@ -105,6 +142,18 @@ async fn handle(mut stream: TcpStream, key: &hmac::Key) -> Result<()> {
                 .success()
                 .then_some(())
                 .ok_or(Error::Invalid("vm_guest_shutdown"));
+        }
+        LinuxVmOperation::NativeCredentials => {
+            return reply(&mut stream, key, &nonce, native_credentials().await).await;
+        }
+        LinuxVmOperation::NativeService => {
+            let mut service = match native_service(&request.payload).await {
+                Ok(service) => service,
+                Err(error) => return reply(&mut stream, key, &nonce, Err(error)).await,
+            };
+            reply(&mut stream, key, &nonce, Ok(Vec::new())).await?;
+            tokio::io::copy_bidirectional(&mut stream, &mut service).await?;
+            return Ok(());
         }
         LinuxVmOperation::PhonePeer => "--phone-peer",
         LinuxVmOperation::PhoneStatus => "--phone-peer-status",

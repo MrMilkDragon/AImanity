@@ -49,6 +49,10 @@ pub(super) fn open_guard() -> io::Result<OwnedHandle> {
     Ok(mutex)
 }
 
+pub(super) fn roaming_host() -> Result<PathBuf, String> {
+    Ok(app_directory(&FOLDERID_RoamingAppData, null_mut())?.join("host"))
+}
+
 fn desktop_user() -> io::Result<Option<OwnedHandle>> {
     let shell = unsafe { GetShellWindow() };
     if shell.is_null() {
@@ -106,8 +110,7 @@ pub(super) fn remove() -> Result<(), String> {
     }) {
         return Err("AImanity’s device folder is a Windows reparse point.".into());
     }
-    tauri::async_runtime::block_on(ai_phone_host_runtime::qemu_host::stop_installed(&host))
-        .map_err(|error| error.code().to_string())?;
+    stop_host(&host)?;
     for folder in [local, roaming] {
         if let Err(error) = fs::remove_dir_all(&folder)
             && error.kind() != io::ErrorKind::NotFound
@@ -116,4 +119,13 @@ pub(super) fn remove() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+pub(super) fn stop_host(home: &std::path::Path) -> Result<(), String> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| error.to_string())?
+        .block_on(ai_phone_host_runtime::qemu_host::stop_installed(home))
+        .map_err(|error| error.code().into())
 }

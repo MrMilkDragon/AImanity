@@ -32,6 +32,9 @@ import {
   qemuBootstrapContract,
 } from "./wsl-capsule";
 
+export const nativeWindowsBackendComponents = ["native-services", "phone-apps"];
+export const legacyWindowsBackendComponents = [...nativeWindowsBackendComponents, "web"];
+
 export function wslPlan(root: string) {
   const policy = json(join(root, "config/wsl-backend.json")),
     engine = json(join(root, "config/container-host-runtime.json")).hosts[
@@ -88,14 +91,14 @@ export async function sourceInput(file: string, root: string) {
       else services = value;
     }
   }
-  const components = [...manifest.components].sort(),
-    base = ["native-services", "web"],
-    complete = ["native-services", "phone-apps", "web"];
+  const components = [...manifest.components].sort();
   if (
-    ![JSON.stringify(base), JSON.stringify(complete)].includes(
-      JSON.stringify(components),
-    ) ||
-    web?.host !== "linux-x64" ||
+    ![
+      ["native-services", "web"],
+      legacyWindowsBackendComponents,
+      nativeWindowsBackendComponents,
+    ].some((expected) => JSON.stringify(components) === JSON.stringify(expected)) ||
+    (components.includes("web") ? web?.host !== "linux-x64" : web !== undefined) ||
     services?.host !== "linux-x64" ||
     services?.vision !== "linux-tesseract-bundled" ||
     Object.keys(files).length !== manifest.files.length ||
@@ -262,6 +265,9 @@ RUN printf '%s\\n' '/opt/aiphone/engine/lib:/opt/aiphone/engine/usr/lib' > /etc/
 RUN /usr/bin/env -i PATH=/usr/bin:/bin /opt/aiphone/engine/usr/bin/runc --version
 RUN /usr/local/bin/docker --version && /usr/local/bin/docker compose version && /usr/local/bin/dockerd --version
 RUN /opt/aiphone/native-phone-bridge/platform-tools/adb version
+RUN rm -rf /usr/share/gcc/python && rm -f /usr/share/gdb/auto-load/usr/lib/x86_64-linux-gnu/libstdc++.so.*-gdb.py /usr/share/apport/package-hooks/source_shadow.py && \
+    ! command -v python && ! command -v python3 && ! /usr/bin/test -x /opt/aiphone/engine/usr/bin/python3 && \
+    test -z "$(find /usr /opt/aiphone/engine -type f -name '*.py' -print -quit)"
 RUN test "$(/usr/bin/timeout 10 /usr/local/libexec/aiphone-bootstrap --source-staging-contract)" = ai-phone-source-staging-v1 && test "$(/usr/bin/timeout 10 /usr/local/libexec/aiphone-bootstrap --wsl-backend-initializer-contract)" = ai-phone-wsl-initializer-v1
 RUN test "$(/usr/bin/timeout 10 /usr/local/libexec/aiphone-bootstrap --qemu-guest-control-contract)" = ${qemuBootstrapContract}
 ENTRYPOINT ["/usr/local/libexec/aiphone-bootstrap", "--initialize-wsl-backend"]

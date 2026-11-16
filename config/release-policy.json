@@ -1,7 +1,7 @@
 {
-  "version": "0.0.3",
-  "release_name": "Calcium",
-  "release_notes": "Resume saved tasks after reopening, reconnect chat and device streams, and reduce repeated work in startup, desktop observations, and model requests.",
+  "version": "0.0.4",
+  "release_name": "Dysprosium",
+  "release_notes": "Native Iced and wgpu client, consistent workbench interactions, and faster startup, rendering, and device input.",
   "source_preview": {
     "license": "Apache-2.0",
     "remote_publication_authorized": true,

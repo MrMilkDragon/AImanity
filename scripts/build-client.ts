@@ -20,6 +20,7 @@ if (!["macos", "windows"].includes(platform))
 const packageOnly = args.includes("--package-only");
 const releaseSigning = args.includes("--sign-release");
 const temporarySigning = args.includes("--sign-temporary");
+const nativeWorkbench = args.includes("--native-workbench");
 if (packageOnly && platform === "macos")
   throw Error("macOS requires a current application build");
 if (releaseSigning) {
@@ -28,7 +29,7 @@ if (releaseSigning) {
   else windowsReleaseSigning();
 }
 checkSource(root);
-noticeManifest(root);
+if (!nativeWorkbench) noticeManifest(root);
 if (!packageOnly) {
   if (output(["rustc", "--version"]).split(" ")[1] !== "1.96.0")
     throw Error("Rust 1.96.0 is required");
@@ -56,4 +57,5 @@ console.log(JSON.stringify(await buildClient(platform, root, {
   packageOnly,
   temporarySigning,
   releaseSigning,
+  nativeWorkbench,
 })));

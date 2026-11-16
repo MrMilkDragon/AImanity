@@ -194,7 +194,7 @@ jobs:
           rustup target add --toolchain 1.96.0 aarch64-unknown-linux-musl
           ./scripts/bootstrap.sh
           brew update
-          brew install tesseract
+          brew install --force-bottle tesseract
           ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/aiphone-ocr-models"
           echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
           echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aiphone-ocr-models" >> "$GITHUB_ENV"

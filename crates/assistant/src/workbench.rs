@@ -1012,8 +1012,16 @@ pub(crate) async fn upload_knowledge_image(
     }
 }
 pub async fn skill_text(app: &App, name: &str) -> Result<String, String> {
-    let row=sqlx::query("SELECT * FROM runtime_skills WHERE (id=$1 OR lower(name)=lower($1)) AND deleted_at IS NULL ORDER BY builtin DESC,created_at LIMIT 1").bind(name).fetch_optional(&app.db).await.map_err(|e|e.to_string())?.ok_or("Skill不存在")?;
-    let row = skill_resources::publish(&app.db, &app.root, &row.get::<String, _>("id")).await?;
+    let id: String = sqlx::query_scalar(
+        "SELECT id FROM runtime_skills WHERE (id=$1 OR lower(name)=lower($1))
+         AND deleted_at IS NULL ORDER BY builtin DESC,created_at LIMIT 1",
+    )
+    .bind(name)
+    .fetch_optional(&app.db)
+    .await
+    .map_err(|error| error.to_string())?
+    .ok_or("Skill不存在")?;
+    let row = skill_resources::publish(&app.db, &app.root, &id).await?;
     let item = skill(&row);
     Ok(format!(
         "Skill id={}，name={}，enabled={}，content_version={}\n\n{}\n\n资源目录：/skills/{}（只读，可通过workspace_run读取或在隔离环境执行；停用的Skill仅供管理，不应作为当前任务指令）。",

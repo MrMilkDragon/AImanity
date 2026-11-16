@@ -62,7 +62,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AI_PHONE_DISPOSABLE_QUALIFICATION: '1'
-        run: ./scripts/bun scripts/wsl-backend.ts --with-device-apps
+        run: ./scripts/bun scripts/wsl-backend.ts --native-ui
       - name: Assemble the QEMU guest disk
         id: disk
         run: |

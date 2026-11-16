@@ -50,7 +50,7 @@ async fn probe(
     }
     Ok(())
 }
-pub(super) async fn wait(root: &Path, mut stop: watch::Receiver<bool>) -> Result<()> {
+pub(super) async fn wait(root: &Path, mut stop: watch::Receiver<bool>, web: bool) -> Result<()> {
     let client = Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
@@ -90,6 +90,9 @@ pub(super) async fn wait(root: &Path, mut stop: watch::Receiver<bool>) -> Result
             "application/x-protobuf",
         ),
     ] {
+        if port == 17860 && !web {
+            continue;
+        }
         loop {
             if *stop.borrow() {
                 return Err(Error::Cancelled);
@@ -228,7 +231,7 @@ mod tests {
         }
         let (_send, stop) = watch::channel(true);
         assert_eq!(
-            wait(temp.path(), stop).await.unwrap_err().code(),
+            wait(temp.path(), stop, true).await.unwrap_err().code(),
             "installation_cancelled"
         );
     }

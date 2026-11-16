@@ -56,11 +56,7 @@ impl<R: Read> Read for Cancelled<R> {
         self.input.read(&mut bytes[..limit])
     }
 }
-fn prepare(
-    path: &Path,
-    outer_digest: Option<&str>,
-    cancel: watch::Receiver<bool>,
-) -> Result<Prepared> {
+fn open(path: &Path) -> Result<Prepared> {
     let mut file = File::open(path)?;
     let before = file.metadata()?;
     let mut entries = BTreeMap::new();
@@ -91,38 +87,58 @@ fn prepare(
             }
         }
     }
-    let mut manifest = Manifest::parse(&metadata.ok_or(Error::Invalid("image_capsule_manifest"))?)?;
+    let manifest = Manifest::parse(&metadata.ok_or(Error::Invalid("image_capsule_manifest"))?)?;
     let (offset, size) = *entries
         .get(&manifest.archive.path)
         .ok_or(Error::Invalid("image_capsule_archive"))?;
     if entries.len() != 2 || size != manifest.archive.size {
         return Err(Error::Invalid("image_capsule_archive"));
     }
+    Ok(Prepared {
+        file,
+        manifest,
+        offset,
+        before,
+        layout: None,
+    })
+}
+fn inspect_archive(
+    mut prepared: Prepared,
+    outer_digest: Option<&str>,
+    cancel: watch::Receiver<bool>,
+) -> Result<Prepared> {
+    let Prepared {
+        file,
+        manifest,
+        offset,
+        layout,
+        ..
+    } = &mut prepared;
     let mut hash = Sha256::new();
     if outer_digest.is_some() {
         file.rewind()?;
         io::copy(
             &mut Cancelled {
-                input: (&mut file).take(offset),
+                input: (&mut *file).take(*offset),
                 cancel: cancel.clone(),
             },
             &mut hash,
         )?;
     } else {
-        file.seek(SeekFrom::Start(offset))?;
+        file.seek(SeekFrom::Start(*offset))?;
     }
     let mut compressed = Hashed {
-        input: (&mut file).take(size),
+        input: (&mut *file).take(manifest.archive.size),
         hash,
     };
-    let layout = {
+    *layout = {
         let decoder = inventory::decoder(&mut compressed, manifest.xz())?;
         inventory::inspect(
             inventory::Bounded::new(Cancelled {
                 input: decoder,
                 cancel: cancel.clone(),
             }),
-            &mut manifest,
+            manifest,
         )?
     };
     io::copy(
@@ -136,7 +152,7 @@ fn prepare(
     let expected = if let Some(expected) = outer_digest {
         io::copy(
             &mut Cancelled {
-                input: &mut file,
+                input: file,
                 cancel,
             },
             &mut hash,
@@ -148,20 +164,41 @@ fn prepare(
     if format!("{:x}", hash.finalize()) != expected {
         return Err(Error::Invalid("image_archive_digest"));
     }
-    Ok(Prepared {
-        file,
-        manifest,
-        offset,
-        before,
-        layout,
-    })
+    Ok(prepared)
+}
+
+async fn inspect(
+    prepared: Prepared,
+    digest: Option<String>,
+    cancel: watch::Receiver<bool>,
+) -> Result<Prepared> {
+    tokio::task::spawn_blocking(move || inspect_archive(prepared, digest.as_deref(), cancel))
+        .await
+        .map_err(|_| Error::Invalid("image_worker"))?
 }
 
 async fn activate(
     root: &Path,
     mut prepared: Prepared,
+    digest: Option<String>,
     cancel: watch::Receiver<bool>,
 ) -> Result<()> {
+    let installed = match std::fs::read(root.join("data/deployment/image-runtime.json")) {
+        Ok(bytes) => Some(Manifest::parse(&bytes)?),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    let resume = if let Some(installed) = installed.filter(|installed| {
+        installed.archive.sha256 == prepared.manifest.archive.sha256
+            && installed.archive.size == prepared.manifest.archive.size
+            && installed.architecture == prepared.manifest.architecture
+    }) {
+        prepared.manifest = installed;
+        true
+    } else {
+        prepared = inspect(prepared, digest.clone(), cancel.clone()).await?;
+        false
+    };
     let architecture = engine::architecture(cancel.clone()).await?;
     if architecture != prepared.manifest.architecture {
         return Err(Error::Invalid("image_engine_architecture"));
@@ -179,6 +216,9 @@ async fn activate(
             != (prepared.before.len(), prepared.before.modified()?)
         {
             return Err(Error::Invalid("image_capsule_changed"));
+        }
+        if resume {
+            prepared = inspect(prepared, digest, cancel.clone()).await?;
         }
         engine::load(&mut prepared, cancel.clone()).await?;
         for image in prepared.manifest.images.values() {
@@ -221,16 +261,10 @@ pub(crate) async fn run(arguments: &[OsString]) -> Result<()> {
     let root = Path::new(root);
     let payload = Path::new(payload).to_owned();
     let (signal, cancel) = watch::channel(false);
-    let input_cancel = cancel.clone();
     let interrupt = crate::component::interrupt();
     tokio::pin!(interrupt);
-    let mut worker =
-        tokio::task::spawn_blocking(move || prepare(&payload, digest.as_deref(), input_cancel));
-    let prepared = tokio::select! {
-        result=&mut worker=>result.map_err(|_|Error::Invalid("image_worker"))??,
-        result=&mut interrupt=>{signal.send_replace(true);let _=worker.await;result?;return Err(Error::Cancelled);}
-    };
-    let operation = activate(root, prepared, cancel);
+    let prepared = open(&payload)?;
+    let operation = activate(root, prepared, digest, cancel);
     tokio::pin!(operation);
     tokio::select! {
         result=&mut operation=>result,

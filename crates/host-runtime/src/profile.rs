@@ -21,23 +21,23 @@ pub(crate) fn checked_launch_path(value: Option<&str>) -> Result<&str> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Phone {
-    cpus: u32,
-    memory_mb: u32,
-    storage_gb: u32,
+pub(crate) struct Phone {
+    pub(crate) cpus: u32,
+    pub(crate) memory_mb: u32,
+    pub(crate) storage_gb: u32,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Desktop {
-    cpus: u32,
-    memory_mb: u32,
+    pub(crate) cpus: u32,
+    pub(crate) memory_mb: u32,
     pub(crate) storage_gb: Option<u32>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Request {
     locale: String,
-    phone: Phone,
+    pub(crate) phone: Phone,
     pub(crate) desktop: Desktop,
     #[cfg(unix)]
     #[serde(default)]
@@ -45,6 +45,12 @@ pub(crate) struct Request {
     #[cfg(windows)]
     #[serde(default, rename = "android_qemu")]
     _android_qemu: bool,
+    #[cfg(unix)]
+    #[serde(default)]
+    pub(crate) native_ui: bool,
+    #[cfg(windows)]
+    #[serde(default, rename = "native_ui")]
+    _native_ui: bool,
 }
 
 #[cfg(unix)]

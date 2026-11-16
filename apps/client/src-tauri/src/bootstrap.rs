@@ -14,8 +14,8 @@ use std::{
 };
 use tauri::Manager;
 mod checkpoint;
-#[cfg(any(windows, test))]
-mod native_phone;
+#[cfg(windows)]
+use ai_phone_host_runtime::android::launch as native_phone;
 #[cfg(unix)]
 mod process;
 mod resources;
@@ -526,7 +526,7 @@ fn start_windows_backend(
         let key = qemu_host::key_path(&home);
         manager.set(folder, "android", "running", "")?;
         let boot = manager.track("ai-phone-client --android-session", || {
-            native_phone::start(
+            tauri::async_runtime::block_on(native_phone::start(
                 &phone,
                 "",
                 Some(NativeAndroidVmEndpoint {
@@ -534,7 +534,7 @@ fn start_windows_backend(
                     key_file: key.to_str().ok_or("vm_control_key_path")?.into(),
                 }),
                 &cancelled,
-            )
+            ))
         })?;
         manager.set(folder, "devices", "running", "")?;
         tauri::async_runtime::block_on(async {
@@ -568,7 +568,12 @@ fn start_windows_backend(
     // The detached worker owns the phone and bridge. Completion observes the
     // same pair and durable device setup; registration alone is never ready.
     let boot = manager.track("ai-phone-client --android-session", || {
-        native_phone::start(&phone, &registered.distribution, None, &cancelled)
+        tauri::async_runtime::block_on(native_phone::start(
+            &phone,
+            &registered.distribution,
+            None,
+            &cancelled,
+        ))
     })?;
     manager.set(folder, "devices", "running", "")?;
     native

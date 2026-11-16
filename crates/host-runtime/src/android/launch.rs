@@ -1,14 +1,14 @@
 //! Start the fixed native component; viewport changes never own its lifetime.
+use super::{Engine, Prepared};
+use crate::native_ipc;
 use ai_phone_api::wire::{
     NativeAndroidBooted, NativeAndroidSessionControl, NativeAndroidSessionReply,
     NativeAndroidStart, NativeAndroidVmEndpoint, native_android_session_reply::Result as Reply,
 };
-use ai_phone_host_runtime::android::{Engine, Prepared};
-use ai_phone_host_runtime::native_ipc;
 use std::{process::Stdio, time::Duration};
 use tokio::process::{Child, Command};
 
-pub(super) async fn cancelled(test: &dyn Fn() -> bool) {
+pub async fn cancelled(test: &dyn Fn() -> bool) {
     while !test() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -39,7 +39,7 @@ async fn launch(
     // Always close both pipes before reaping: EOF unblocks the worker's stdin.
     // A missing/truncated reply cannot prove whether the phone already started.
     let receipt = exchange(&mut child, &request, engine.boot_timeout(), cancel).await;
-    tauri::async_runtime::spawn(async move {
+    tokio::spawn(async move {
         let _ = child.wait().await;
     });
     interpret(
@@ -117,7 +117,7 @@ fn interpret(
     }
 }
 
-pub(super) fn start(
+pub async fn start(
     phone: &Prepared,
     distribution: &str,
     linux_vm: Option<NativeAndroidVmEndpoint>,
@@ -131,14 +131,14 @@ pub(super) fn start(
         wsl_distribution: distribution.into(),
         linux_vm,
     };
-    tauri::async_runtime::block_on(launch(request, cancel))
+    launch(request, cancel).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn cancelled_initialization_never_launches_a_worker() {
+    #[tokio::test]
+    async fn cancelled_initialization_never_launches_a_worker() {
         let phone = Prepared {
             sdk_root: "unused-sdk".into(),
             avd_home: "unused-avd".into(),
@@ -146,7 +146,7 @@ mod tests {
             reused_device: false,
         };
         assert_eq!(
-            start(&phone, "", None, &|| true),
+            start(&phone, "", None, &|| true).await,
             Err("installation_cancelled".into())
         );
     }

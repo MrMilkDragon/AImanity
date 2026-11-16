@@ -290,8 +290,8 @@ async fn control(app: &App, device: &str, run: Option<Uuid>, take: bool) -> Resu
     let old: String = row.get("controller");
     let mut epoch: i64 = row.get("epoch");
     if take && old != owner {
-        if run.is_some() && !old.is_empty() && row.get::<i64, _>("idle") < 15 {
-            return Err("电脑正在被用户或其他任务操作，请等待后重新观察".into());
+        if run.is_some() && old == "manual" && row.get::<i64, _>("idle") < 15 {
+            return Err("device_busy:你刚操作过电脑；请等待后再观察。".into());
         }
         epoch += 1;
     }
@@ -1889,6 +1889,51 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "real disposable PostgreSQL; desktop control must follow the current execution lease"]
+    async fn released_desktop_control_is_reusable_without_stealing_manual_control() {
+        use crate::worker::steering_regressions::database_case;
+
+        database_case(|app| async move {
+            crate::registry::initialize(&app.db, &app.settings).await.unwrap();
+            let device = "desktop-control-rollover";
+            let agent = Uuid::from_u128(2);
+            sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state) VALUES($1,'Fixture','desktop','fixture','managed')")
+                .bind(device).execute(&app.db).await.unwrap();
+            sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'docker-desktop','ai-phone-desktop')")
+                .bind(device).execute(&app.db).await.unwrap();
+            sqlx::query("INSERT INTO agent_device_bindings(agent_id,device_id) VALUES($1,$2)")
+                .bind(agent).bind(device).execute(&app.db).await.unwrap();
+            sqlx::query("INSERT INTO desktop_controls(device_id,epoch,controller) VALUES($1,7,$2)")
+                .bind(device).bind(Uuid::now_v7().to_string()).execute(&app.db).await.unwrap();
+
+            // The prior attempt's desktop epoch exists but its execution lease has ended.
+            let message = Uuid::now_v7();
+            let run = Uuid::now_v7();
+            sqlx::query("WITH next_message AS (
+                INSERT INTO messages(id,conversation_id,role)
+                SELECT $1,id,'assistant' FROM conversations WHERE owner_id='local-user'
+                RETURNING id,conversation_id
+            )
+            INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status,origin,agent_id,device_id)
+            SELECT $2,conversation_id,id,$2,'desktop-control-regression','running','exploration',$3,$4 FROM next_message")
+                .bind(message).bind(run).bind(agent).bind(device).execute(&app.db).await.unwrap();
+            sqlx::query("INSERT INTO run_device_bindings(run_id,device_id) VALUES($1,$2)")
+                .bind(run).bind(device).execute(&app.db).await.unwrap();
+
+            assert_eq!(control(&app, device, Some(run), true).await.unwrap(), 8);
+            assert_eq!(control(&app, device, Some(run), true).await.unwrap(), 8);
+            sqlx::query("UPDATE desktop_controls SET controller='manual',epoch=9,touched_at=now() WHERE device_id=$1")
+                .bind(device).execute(&app.db).await.unwrap();
+            let busy = control(&app, device, Some(run), true).await.unwrap_err();
+            assert!(busy.starts_with("device_busy:"), "{busy}");
+            assert_eq!(control(&app, device, Some(run), false).await.unwrap(), 9);
+            sqlx::query("UPDATE desktop_controls SET touched_at=now()-interval '16 seconds' WHERE device_id=$1")
+                .bind(device).execute(&app.db).await.unwrap();
+            assert_eq!(control(&app, device, Some(run), true).await.unwrap(), 10);
+        }).await;
     }
 
     #[tokio::test]

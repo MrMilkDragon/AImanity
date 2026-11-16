@@ -17,7 +17,7 @@ pub(super) async fn shutdown(home: &std::path::Path) -> Result<()> {
     }
     let flush = crate::android::session::flush_attached(home).await;
     let output = Command::new("/usr/sbin/lsof")
-        .args(["-nP", "-Fpc", "--"])
+        .args(["-nP", "-Fp", "--"])
         .arg(&lock)
         .output()
         .await?;
@@ -25,8 +25,8 @@ pub(super) async fn shutdown(home: &std::path::Path) -> Result<()> {
         return flush;
     }
     let body = String::from_utf8_lossy(&output.stdout);
-    let mut lines = body.lines();
-    let Some(value) = lines.next().and_then(|pid| pid.strip_prefix('p')) else {
+    let mut owners = body.lines().filter_map(|line| line.strip_prefix('p'));
+    let Some(value) = owners.next() else {
         return Err(Error::Invalid("android_session_stop_owner"));
     };
     let pid = value
@@ -34,16 +34,21 @@ pub(super) async fn shutdown(home: &std::path::Path) -> Result<()> {
         .ok()
         .and_then(Pid::from_raw)
         .ok_or(Error::Invalid("android_session_stop_owner"))?;
-    if lines.next() != Some("cai-phone-client") || lines.any(|line| line.starts_with('p')) {
+    if owners.next().is_some() {
         return Err(Error::Invalid("android_session_stop_owner"));
     }
     let process = Command::new("/bin/ps")
         .args(["-ww", "-p", value, "-o", "command="])
         .output()
         .await?;
+    let program = std::env::current_exe()?;
+    let name = program
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or(Error::Invalid("android_session_stop_owner"))?;
     if !String::from_utf8_lossy(&process.stdout)
         .trim_end()
-        .ends_with("ai-phone-client --android-session")
+        .ends_with(&format!("/{name} --android-session"))
     {
         return Err(Error::Invalid("android_session_stop_owner"));
     }

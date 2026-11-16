@@ -10,6 +10,8 @@ New owner instructions take priority. Existing tasks yield at checkpoints to let
 
 `pending` events are deduplicated by ID and newer versions of a source key are coalesced per device. A scheduled run owns `assigned` events; events delivered to an existing run become `attending`. Successful audited work seals those events. Interrupted attention becomes a summary in the task history.
 
+Each new notification batch is classified and inserted in one database statement. Phone heartbeat updates share the deduplication read. Context updates serialize existing history by reference and append the new receipts in memory after the transaction commits.
+
 ## Desktop screen attention trial
 
 With notification wake enabled, two consecutive samples of a changed title fingerprint on the same foreground X11 window can wake an idle Agent for a read-only check. Focus switches set a new baseline. The three-second notification poll carries only the window identity, application class and title fingerprint. The run receives the application class and time, then observes the source desktop to decide whether the owner needs an update. Ordinary notifications, running tasks and recent manual control take priority. Each desktop can wake this way once per minute.
@@ -61,6 +63,8 @@ Native model protocols and channel-specific delivery guarantees remain separate 
 通知在 Liberty 关闭时也可唤醒设备对应的 Agent。普通消息自行判断、默认回复；工作请求可连接授权设备、处理附件、保留工作目录副本并回原会话交付。任务、事件和实际动作回执分别持久化，旧暂停任务保留，未知动作不自动重放。
 
 手机采集、接管核对和手机入队保持原顺序；电脑采集与入队独立运行，各自只调度对应设备。某设备采集挂起不再拖住另一设备已有通知；采集仍为3秒周期并保留去重，新事件在同一轮即可入队，不再额外等待通知年龄。新摘要提交后立即唤醒独立的转发任务；3秒轮询跟踪待送达状态，并在重启后发现已保存的报告。停止协调器后所有分支一同取消。
+
+每批新通知在一次数据库写入中完成分类与保存，手机心跳与查重共用一次读取。上下文保存借用已有历史，事务提交成功后再向内存追加新回执。
 
 桌面界面变化试验复用通知唤醒。Linux 前台窗口的标题指纹连续两次采样确认变化后，可以唤醒空闲 Agent 只读查看该桌面，再判断是否需要告诉用户。窗口切换时重建基线。普通通知、执行中的任务和近期手动操作优先。每台电脑最多每分钟由此唤醒一次。
 

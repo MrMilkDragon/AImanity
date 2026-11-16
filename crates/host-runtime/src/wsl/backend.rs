@@ -237,7 +237,7 @@ impl<E: Execute> Backend<'_, E> {
         images: &Path,
         digest: Option<&str>,
         user: &Path,
-        web_bind: &str,
+        web_bind: Option<&str>,
     ) -> Result<()> {
         phase("container_ownership");
         let existing = self.containers().await?;
@@ -333,17 +333,18 @@ impl<E: Execute> Backend<'_, E> {
         .await?;
         self.unit("assistant", "start", vec![assistant.clone()], &[])
             .await?;
-        let bun = text(&self.root.join("runtime/bin/bun"))?;
-        self.unit(
-            "web",
-            "start",
-            vec![
-                bun.clone(),
-                text(&self.root.join("runtime/web/apps/web/server.js"))?,
-            ],
-            &[("HOSTNAME", web_bind.into()), ("PORT", "17860".into())],
-        )
-        .await?;
+        if let Some(web_bind) = web_bind {
+            self.unit(
+                "web",
+                "start",
+                vec![
+                    text(&self.root.join("runtime/bin/bun"))?,
+                    text(&self.root.join("runtime/web/apps/web/server.js"))?,
+                ],
+                &[("HOSTNAME", web_bind.into()), ("PORT", "17860".into())],
+            )
+            .await?;
+        }
         self.unit(
             "channels",
             "start",
@@ -470,7 +471,7 @@ async fn initialize<E: Execute>(
     if qemu && request.desktop.storage_gb.is_some() {
         crate::linux_vm::grow_root()?;
     }
-    let web_bind = if qemu { "0.0.0.0" } else { "127.0.0.1" };
+    let web_bind = (!request.native_ui).then_some(if qemu { "0.0.0.0" } else { "127.0.0.1" });
     phase("preflight");
     let parent = home
         .parent()

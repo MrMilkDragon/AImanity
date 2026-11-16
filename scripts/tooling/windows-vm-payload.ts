@@ -16,6 +16,7 @@ import { pipeline } from "node:stream/promises";
 import { entryBytes, readTar } from "./archive";
 import { json, save } from "./inventory";
 import { digest, output } from "./process";
+import { nativeWindowsBackendComponents } from "./wsl-factory";
 
 export type WindowsVmInputs = {
   qemu: string;
@@ -24,9 +25,7 @@ export type WindowsVmInputs = {
   guestIdentity: string;
 };
 type FileReceipt = { path: string; size: number; sha256: string };
-export const windowsBackendComponents = [
-  "native-services", "phone-apps", "web",
-];
+export type WindowsQemuManifest = { format: number; component: string; version: string; files: FileReceipt[] };
 const guestManifest = "WINDOWS-VM-DISK-MANIFEST.json";
 const guestFiles = ["bzImage", "guest.qcow2", "kernel.config", "KERNEL-LICENSE.txt"];
 const qemuPrograms = [
@@ -85,7 +84,7 @@ async function stageGuest(source: string, identity: string, stage: string) {
     manifest.host !== "windows-x64" ||
     manifest.runtime !== "qemu-linux-backend" ||
     JSON.stringify([...manifest.source_components].sort()) !==
-      JSON.stringify(windowsBackendComponents) ||
+      JSON.stringify(nativeWindowsBackendComponents) ||
     files.size !== guestFiles.length
   )
     throw Error("Invalid Windows guest capsule");
@@ -106,17 +105,17 @@ async function stageGuest(source: string, identity: string, stage: string) {
   return { manifest, files: [...files.values()] };
 }
 
-async function stageQemu(source: string, identity: string, stage: string) {
+export async function stageWindowsQemu(
+  source: string,
+  manifest: WindowsQemuManifest,
+  stage: string,
+) {
   source = realpathSync(source);
-  const path = join(source, "windows-qemu.json");
-  if ((await digest(path)) !== identity)
-    throw Error("Windows QEMU factory manifest changed");
-  const manifest = json(path);
   if (manifest.format !== 1 || manifest.component !== "windows-qemu-whpx")
     throw Error("Invalid Windows QEMU factory manifest");
   const files: FileReceipt[] = [],
     paths = new Set<string>();
-  for (const row of manifest.files as FileReceipt[]) {
+  for (const row of manifest.files) {
     if (row.path.startsWith("source/")) continue;
     const allowed =
       qemuPrograms.includes(row.path) ||
@@ -155,7 +154,10 @@ export async function stageWindowsVm(
   try {
     mkdirSync(join(stage, "guest"));
     const source = await windowsSourceIdentity(root);
-    const qemu = await stageQemu(input.qemu, input.qemuIdentity, stage);
+    const qemuManifest = join(input.qemu, "windows-qemu.json");
+    if ((await digest(qemuManifest)) !== input.qemuIdentity)
+      throw Error("Windows QEMU factory manifest changed");
+    const qemu = await stageWindowsQemu(input.qemu, json(qemuManifest), stage);
     const guest = await stageGuest(input.guest, input.guestIdentity, stage);
     if (
       guest.manifest.source_commit !== source.source_commit ||

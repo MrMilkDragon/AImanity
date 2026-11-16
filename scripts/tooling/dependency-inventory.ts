@@ -3,7 +3,7 @@ import { join, dirname, resolve, relative, isAbsolute } from "node:path";
 import { ROOT, digest, output } from "./process";
 import { json } from "./inventory";
 
-function metadata(root: string, manifest: string, noDependencies = false) {
+function metadata(root: string, manifest: string, noDependencies = false, target?: string) {
   return JSON.parse(
     output(
       [
@@ -15,6 +15,7 @@ function metadata(root: string, manifest: string, noDependencies = false) {
         "--format-version",
         "1",
         ...(noDependencies ? ["--no-deps"] : []),
+        ...(target ? ["--filter-platform", target] : []),
       ],
       { cwd: root },
     ),
@@ -40,7 +41,7 @@ function within(root: string, file: string) {
   if (name === ".." || name.startsWith("../") || isAbsolute(name))
     throw Error("Notice path outside its source tree");
 }
-async function supplements(root: string, pkg: any, folder: string) {
+async function supplements(root: string, manifest: string, pkg: any, folder: string) {
   const config = join(root, "config/native-notice-supplements.json");
   if (!existsSync(config)) return [];
   const key = pkg.name + "@" + pkg.version,
@@ -53,7 +54,7 @@ async function supplements(root: string, pkg: any, folder: string) {
       throw Error("Supplemental source differs: " + key);
   } else {
     const lock = Bun.TOML.parse(
-        readFileSync(join(root, "apps/client/src-tauri/Cargo.lock"), "utf8"),
+        readFileSync(join(root, dirname(manifest), "Cargo.lock"), "utf8"),
       ) as any,
       row = lock.package.find(
         (row: any) => row.name === pkg.name && row.version === pkg.version,
@@ -167,16 +168,17 @@ export async function rustNotices(
   root: string,
   manifest: string,
   component: string,
+  target?: string,
 ) {
-  const graph = metadata(root, manifest),
+  const graph = metadata(root, manifest, false, target),
     owned = new Set([
       ...metadata(root, "Cargo.toml", true).workspace_members,
       ...graph.workspace_members,
     ]),
     blocks = [
-      "AI Phone " +
+      "AImanity " +
         component +
-        " dependency notices\n\nExact locked build graph, including platform/build dependencies. Component licences remain independent. This collection is not a final redistribution clearance.\n",
+        ` dependency notices\n\nLocked build graph${target ? " for " + target : ""}, including build dependencies. Component licences remain independent.\n`,
     ],
     missing: string[] = [];
   for (const pkg of graph.packages.sort(
@@ -190,7 +192,7 @@ export async function rustNotices(
       const path = resolve(folder, pkg.license_file);
       if (existsSync(path) && !paths.includes(path)) paths.push(path);
     }
-    const extra = await supplements(root, pkg, folder);
+    const extra = await supplements(root, manifest, pkg, folder);
     if (!paths.length && !extra.length)
       missing.push(pkg.name + "@" + pkg.version);
     blocks.push(

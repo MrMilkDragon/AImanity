@@ -1,16 +1,21 @@
 ARG WORKSPACE_IMAGE=ai-phone-workspace:20261103
 FROM ${WORKSPACE_IMAGE}
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
 USER root
 RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources
-RUN apt-get -o Acquire::Retries=4 update && \
+RUN --mount=type=bind,source=infra/desktop/install-openbox.sh,target=/tmp/install-openbox.sh \
+    apt-get -o Acquire::Retries=4 update && \
     DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=4 install -y --no-install-recommends \
-      xvfb openbox tint2 pcmanfm xterm xdotool xclip x11-utils x11-xserver-utils dbus-daemon at-spi2-core \
+      xvfb tint2 pcmanfm xterm xdotool xclip x11-utils x11-xserver-utils dbus-daemon at-spi2-core \
       ffmpeg libreoffice-gtk3 libreoffice-calc libreoffice-writer libreoffice-impress libreoffice-draw \
       libreoffice-l10n-zh-cn mousepad file pulseaudio pulseaudio-utils sudo dunst libnotify-bin \
       libglib2.0-bin gsettings-desktop-schemas && \
+    sh /tmp/install-openbox.sh && \
+    ! command -v python3 && ! command -v python && \
     rm -rf /var/lib/apt/lists/*
+RUN rm -f /usr/share/gdb/auto-load/usr/lib/*/*-gdb.py /usr/share/apport/package-hooks/source_*.py \
+      /usr/lib/libreoffice/program/mailmerge.py /usr/lib/libreoffice/program/msgbox.py && \
+    find /usr/lib/libreoffice/program/wizards /usr/lib/libreoffice/share/Scripts -type f -name '*.py' -delete && \
+    test -z "$(find /usr -type f -name '*.py' -print -quit)"
 RUN test -x /usr/bin/localc && test -x /usr/bin/lowriter && test -x /usr/bin/loimpress && test -x /usr/bin/lodraw
 RUN useradd -m -u 1000 -s /bin/bash ai && mkdir -p /home/ai/Files /home/ai/Desktop && chown -R ai:ai /home/ai
 RUN printf 'ai ALL=(ALL:ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/ai-phone && chmod 440 /etc/sudoers.d/ai-phone

@@ -323,10 +323,6 @@ impl Runtime<'_> {
                 &upper_https,
                 "--env",
                 "NO_PROXY=localhost,127.0.0.1",
-                "--env",
-                "PIP_USER=1",
-                "--env",
-                "PYTHONUNBUFFERED=1",
                 self.image,
             ])
             .await?

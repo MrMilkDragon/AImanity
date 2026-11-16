@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file ai_phone/v1/host_bridge.proto.
  */
 export const file_ai_phone_v1_host_bridge: GenFile = /*@__PURE__*/
-  fileDesc("Ch1haV9waG9uZS92MS9ob3N0X2JyaWRnZS5wcm90bxILYWlfcGhvbmUudjEisAEKEkRldmljZUJyaWRnZUNvbmZpZxIPCgd2ZXJzaW9uGAEgASgNEisKBHJvbGUYAiABKA4yHS5haV9waG9uZS52MS5EZXZpY2VCcmlkZ2VSb2xlEhEKCWJyaWRnZV9pZBgDIAEoCRIOCgZzZWNyZXQYBCABKAwSEAoIZW5kcG9pbnQYBSABKAkSEAoIYWRiX3BvcnQYBiABKA0SFQoNZW11bGF0b3JfcG9ydBgHIAEoDSJ5ChBEZXZpY2VCcmlkZ2VPcGVuEg8KB3ZlcnNpb24YASABKA0SEQoJYnJpZGdlX2lkGAIgASgJEg4KBnNlY3JldBgDIAEoDBIxCgdzZXJ2aWNlGAQgASgOMiAuYWlfcGhvbmUudjEuRGV2aWNlQnJpZGdlU2VydmljZSImChJEZXZpY2VCcmlkZ2VPcGVuZWQSEAoIYWNjZXB0ZWQYASABKAgioQEKE0RldmljZUJyaWRnZVN0YXJ0ZWQSDwoHdmVyc2lvbhgBIAEoDRIrCgRyb2xlGAIgASgOMh0uYWlfcGhvbmUudjEuRGV2aWNlQnJpZGdlUm9sZRIRCglicmlkZ2VfaWQYAyABKAkSEAoIZW5kcG9pbnQYBCABKAkSEAoIYWRiX3BvcnQYBSABKA0SFQoNZW11bGF0b3JfcG9ydBgGIAEoDSKaAQoRRGV2aWNlQnJpZGdlUGhvbmUSMgoJdHJhbnNwb3J0GAEgASgLMh8uYWlfcGhvbmUudjEuRGV2aWNlQnJpZGdlQ29uZmlnEhkKEXJ1bnRpbWVfZGlyZWN0b3J5GAIgASgJEg4KBnNlcmlhbBgDIAEoCRISCgpncnBjX3Rva2VuGAQgASgJEhIKCm93bmVyX3BpcGUYBSABKAgiKAoYRGV2aWNlQnJpZGdlR3Vlc3RBZGRyZXNzEgwKBGlwdjQYASABKAkiSwoVRGV2aWNlQnJpZGdlUGVlck93bmVyEg8KB3ZlcnNpb24YASABKA0SEQoJYnJpZGdlX2lkGAIgASgJEg4KBnNlY3JldBgDIAEoDCJIChdMaW51eFZtQm9vdHN0cmFwUmVxdWVzdBINCgVub25jZRgBIAEoDBIPCgdwcm9maWxlGAIgASgMEg0KBXByb29mGAMgASgMIjUKFUxpbnV4Vm1Cb290c3RyYXBSZXBseRINCgVwcm9vZhgBIAEoDBINCgVlcnJvchgCIAEoCSJpChVMaW51eFZtQ29udHJvbFJlcXVlc3QSMAoJb3BlcmF0aW9uGAEgASgOMh0uYWlfcGhvbmUudjEuTGludXhWbU9wZXJhdGlvbhIPCgdwYXlsb2FkGAIgASgMEg0KBXByb29mGAMgASgMIkQKE0xpbnV4Vm1Db250cm9sUmVwbHkSDwoHcGF5bG9hZBgBIAEoDBINCgVlcnJvchgCIAEoCRINCgVwcm9vZhgDIAEoDCpxChBEZXZpY2VCcmlkZ2VSb2xlEiIKHkRFVklDRV9CUklER0VfUk9MRV9VTlNQRUNJRklFRBAAEhsKF0RFVklDRV9CUklER0VfUk9MRV9IT1NUEAESHAoYREVWSUNFX0JSSURHRV9ST0xFX0dVRVNUEAIqfwoTRGV2aWNlQnJpZGdlU2VydmljZRIlCiFERVZJQ0VfQlJJREdFX1NFUlZJQ0VfVU5TUEVDSUZJRUQQABIdChlERVZJQ0VfQlJJREdFX1NFUlZJQ0VfQURCEAESIgoeREVWSUNFX0JSSURHRV9TRVJWSUNFX0VNVUxBVE9SEAIq4gEKEExpbnV4Vm1PcGVyYXRpb24SIgoeTElOVVhfVk1fT1BFUkFUSU9OX1VOU1BFQ0lGSUVEEAASGwoXTElOVVhfVk1fT1BFUkFUSU9OX1BJTkcQARIhCh1MSU5VWF9WTV9PUEVSQVRJT05fUEhPTkVfUEVFUhACEiMKH0xJTlVYX1ZNX09QRVJBVElPTl9QSE9ORV9TVEFUVVMQAxIkCiBMSU5VWF9WTV9PUEVSQVRJT05fU0VUVVBfREVWSUNFUxAEEh8KG0xJTlVYX1ZNX09QRVJBVElPTl9TSFVURE9XThAFYgZwcm90bzM");
+  fileDesc("Ch1haV9waG9uZS92MS9ob3N0X2JyaWRnZS5wcm90bxILYWlfcGhvbmUudjEisAEKEkRldmljZUJyaWRnZUNvbmZpZxIPCgd2ZXJzaW9uGAEgASgNEisKBHJvbGUYAiABKA4yHS5haV9waG9uZS52MS5EZXZpY2VCcmlkZ2VSb2xlEhEKCWJyaWRnZV9pZBgDIAEoCRIOCgZzZWNyZXQYBCABKAwSEAoIZW5kcG9pbnQYBSABKAkSEAoIYWRiX3BvcnQYBiABKA0SFQoNZW11bGF0b3JfcG9ydBgHIAEoDSJ5ChBEZXZpY2VCcmlkZ2VPcGVuEg8KB3ZlcnNpb24YASABKA0SEQoJYnJpZGdlX2lkGAIgASgJEg4KBnNlY3JldBgDIAEoDBIxCgdzZXJ2aWNlGAQgASgOMiAuYWlfcGhvbmUudjEuRGV2aWNlQnJpZGdlU2VydmljZSImChJEZXZpY2VCcmlkZ2VPcGVuZWQSEAoIYWNjZXB0ZWQYASABKAgioQEKE0RldmljZUJyaWRnZVN0YXJ0ZWQSDwoHdmVyc2lvbhgBIAEoDRIrCgRyb2xlGAIgASgOMh0uYWlfcGhvbmUudjEuRGV2aWNlQnJpZGdlUm9sZRIRCglicmlkZ2VfaWQYAyABKAkSEAoIZW5kcG9pbnQYBCABKAkSEAoIYWRiX3BvcnQYBSABKA0SFQoNZW11bGF0b3JfcG9ydBgGIAEoDSKaAQoRRGV2aWNlQnJpZGdlUGhvbmUSMgoJdHJhbnNwb3J0GAEgASgLMh8uYWlfcGhvbmUudjEuRGV2aWNlQnJpZGdlQ29uZmlnEhkKEXJ1bnRpbWVfZGlyZWN0b3J5GAIgASgJEg4KBnNlcmlhbBgDIAEoCRISCgpncnBjX3Rva2VuGAQgASgJEhIKCm93bmVyX3BpcGUYBSABKAgiKAoYRGV2aWNlQnJpZGdlR3Vlc3RBZGRyZXNzEgwKBGlwdjQYASABKAkiSwoVRGV2aWNlQnJpZGdlUGVlck93bmVyEg8KB3ZlcnNpb24YASABKA0SEQoJYnJpZGdlX2lkGAIgASgJEg4KBnNlY3JldBgDIAEoDCJIChdMaW51eFZtQm9vdHN0cmFwUmVxdWVzdBINCgVub25jZRgBIAEoDBIPCgdwcm9maWxlGAIgASgMEg0KBXByb29mGAMgASgMIjUKFUxpbnV4Vm1Cb290c3RyYXBSZXBseRINCgVwcm9vZhgBIAEoDBINCgVlcnJvchgCIAEoCSJIChhMaW51eFZtTmF0aXZlQ3JlZGVudGlhbHMSFwoPYXNzaXN0YW50X3Rva2VuGAEgASgJEhMKC3Bob25lX3Rva2VuGAIgASgJIiQKFExpbnV4Vm1OYXRpdmVTZXJ2aWNlEgwKBHBvcnQYASABKA0iaQoVTGludXhWbUNvbnRyb2xSZXF1ZXN0EjAKCW9wZXJhdGlvbhgBIAEoDjIdLmFpX3Bob25lLnYxLkxpbnV4Vm1PcGVyYXRpb24SDwoHcGF5bG9hZBgCIAEoDBINCgVwcm9vZhgDIAEoDCJEChNMaW51eFZtQ29udHJvbFJlcGx5Eg8KB3BheWxvYWQYASABKAwSDQoFZXJyb3IYAiABKAkSDQoFcHJvb2YYAyABKAwqcQoQRGV2aWNlQnJpZGdlUm9sZRIiCh5ERVZJQ0VfQlJJREdFX1JPTEVfVU5TUEVDSUZJRUQQABIbChdERVZJQ0VfQlJJREdFX1JPTEVfSE9TVBABEhwKGERFVklDRV9CUklER0VfUk9MRV9HVUVTVBACKn8KE0RldmljZUJyaWRnZVNlcnZpY2USJQohREVWSUNFX0JSSURHRV9TRVJWSUNFX1VOU1BFQ0lGSUVEEAASHQoZREVWSUNFX0JSSURHRV9TRVJWSUNFX0FEQhABEiIKHkRFVklDRV9CUklER0VfU0VSVklDRV9FTVVMQVRPUhACKrQCChBMaW51eFZtT3BlcmF0aW9uEiIKHkxJTlVYX1ZNX09QRVJBVElPTl9VTlNQRUNJRklFRBAAEhsKF0xJTlVYX1ZNX09QRVJBVElPTl9QSU5HEAESIQodTElOVVhfVk1fT1BFUkFUSU9OX1BIT05FX1BFRVIQAhIjCh9MSU5VWF9WTV9PUEVSQVRJT05fUEhPTkVfU1RBVFVTEAMSJAogTElOVVhfVk1fT1BFUkFUSU9OX1NFVFVQX0RFVklDRVMQBBIfChtMSU5VWF9WTV9PUEVSQVRJT05fU0hVVERPV04QBRIpCiVMSU5VWF9WTV9PUEVSQVRJT05fTkFUSVZFX0NSRURFTlRJQUxTEAYSJQohTElOVVhfVk1fT1BFUkFUSU9OX05BVElWRV9TRVJWSUNFEAdiBnByb3RvMw");
 
 /**
  * Installer-private input, supplied through stdin; never a model tool or argv.
@@ -302,6 +302,47 @@ export const LinuxVmBootstrapReplySchema: GenMessage<LinuxVmBootstrapReply> = /*
   messageDesc(file_ai_phone_v1_host_bridge, 8);
 
 /**
+ * @generated from message ai_phone.v1.LinuxVmNativeCredentials
+ */
+export type LinuxVmNativeCredentials = Message<"ai_phone.v1.LinuxVmNativeCredentials"> & {
+  /**
+   * @generated from field: string assistant_token = 1;
+   */
+  assistantToken: string;
+
+  /**
+   * @generated from field: string phone_token = 2;
+   */
+  phoneToken: string;
+};
+
+/**
+ * Describes the message ai_phone.v1.LinuxVmNativeCredentials.
+ * Use `create(LinuxVmNativeCredentialsSchema)` to create a new message.
+ */
+export const LinuxVmNativeCredentialsSchema: GenMessage<LinuxVmNativeCredentials> = /*@__PURE__*/
+  messageDesc(file_ai_phone_v1_host_bridge, 9);
+
+/**
+ * Only the fixed local workbench services can be relayed.
+ *
+ * @generated from message ai_phone.v1.LinuxVmNativeService
+ */
+export type LinuxVmNativeService = Message<"ai_phone.v1.LinuxVmNativeService"> & {
+  /**
+   * @generated from field: uint32 port = 1;
+   */
+  port: number;
+};
+
+/**
+ * Describes the message ai_phone.v1.LinuxVmNativeService.
+ * Use `create(LinuxVmNativeServiceSchema)` to create a new message.
+ */
+export const LinuxVmNativeServiceSchema: GenMessage<LinuxVmNativeService> = /*@__PURE__*/
+  messageDesc(file_ai_phone_v1_host_bridge, 10);
+
+/**
  * @generated from message ai_phone.v1.LinuxVmControlRequest
  */
 export type LinuxVmControlRequest = Message<"ai_phone.v1.LinuxVmControlRequest"> & {
@@ -326,7 +367,7 @@ export type LinuxVmControlRequest = Message<"ai_phone.v1.LinuxVmControlRequest">
  * Use `create(LinuxVmControlRequestSchema)` to create a new message.
  */
 export const LinuxVmControlRequestSchema: GenMessage<LinuxVmControlRequest> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_host_bridge, 9);
+  messageDesc(file_ai_phone_v1_host_bridge, 11);
 
 /**
  * @generated from message ai_phone.v1.LinuxVmControlReply
@@ -353,7 +394,7 @@ export type LinuxVmControlReply = Message<"ai_phone.v1.LinuxVmControlReply"> & {
  * Use `create(LinuxVmControlReplySchema)` to create a new message.
  */
 export const LinuxVmControlReplySchema: GenMessage<LinuxVmControlReply> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_host_bridge, 10);
+  messageDesc(file_ai_phone_v1_host_bridge, 12);
 
 /**
  * @generated from enum ai_phone.v1.DeviceBridgeRole
@@ -440,6 +481,16 @@ export enum LinuxVmOperation {
    * @generated from enum value: LINUX_VM_OPERATION_SHUTDOWN = 5;
    */
   SHUTDOWN = 5,
+
+  /**
+   * @generated from enum value: LINUX_VM_OPERATION_NATIVE_CREDENTIALS = 6;
+   */
+  NATIVE_CREDENTIALS = 6,
+
+  /**
+   * @generated from enum value: LINUX_VM_OPERATION_NATIVE_SERVICE = 7;
+   */
+  NATIVE_SERVICE = 7,
 }
 
 /**

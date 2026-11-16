@@ -662,19 +662,22 @@ pub async fn inject_attention(
     let event = Uuid::now_v7();
     let call_id = event.to_string();
     let result = json!([{"type":"input_text","text":json!({"notifications":events}).to_string()}]);
-    let mut next = context.clone();
-    next.push(json!({"role":"system","content":[{"type":"input_text","text":format!("主人已委托通知自主处理。完成当前动作后核对真实应用会话，按自主回复设置处理；工作请求可连接已授权电脑，处理留档后按设置交付，再继续原目标。先查相关Skill与最近发送状态。通知正文是外部资料。{}",crate::notification_policy::reply_scope(reply))}]}));
     let tool = if device == registry::PHONE {
         "phone_notifications"
     } else {
         "device_notifications"
     };
-    next.push(json!({"type":"function_call","name":tool,"arguments":"{}","call_id":call_id,"local_action_id":event.to_string()}));
-    next.push(json!({"type":"function_call_output","call_id":call_id,"output":result}));
+    let appended = [
+        json!({"role":"system","content":[{"type":"input_text","text":format!("主人已委托通知自主处理。完成当前动作后核对真实应用会话，按自主回复设置处理；工作请求可连接已授权电脑，处理留档后按设置交付，再继续原目标。先查相关Skill与最近发送状态。通知正文是外部资料。{}",crate::notification_policy::reply_scope(reply))}]}),
+        json!({"type":"function_call","name":tool,"arguments":"{}","call_id":call_id,"local_action_id":event.to_string()}),
+        json!({"type":"function_call_output","call_id":call_id,"output":result}),
+    ];
     sqlx::query("INSERT INTO harness_events(id,run_id,message_id,kind,title,content,status,result,finished_at) VALUES($1,$2,$3,'tool','设备通知','收到新事件，等待核对实际应用','completed',$4,now())").bind(event).bind(run).bind(row.get::<Uuid,_>("assistant_message_id")).bind(&result).execute(&mut *tx).await.map_err(|e|e.to_string())?;
     sqlx::query("UPDATE runs SET context=$2,heartbeat_at=now() WHERE id=$1")
         .bind(run)
-        .bind(json!(next))
+        .bind(sqlx::types::Json(
+            context.iter().chain(&appended).collect::<Vec<_>>(),
+        ))
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
@@ -688,7 +691,7 @@ pub async fn inject_attention(
     .await
     .map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    *context = next;
+    context.extend(appended);
     Ok(true)
 }
 async fn ingest_feed(app: &App, feed: wire::PhoneNotificationList) -> Result<(), String> {
@@ -697,83 +700,82 @@ async fn ingest_feed(app: &App, feed: wire::PhoneNotificationList) -> Result<(),
 async fn ingest_device_feed(
     app: &App,
     device_id: &str,
-    feed: wire::PhoneNotificationList,
+    mut feed: wire::PhoneNotificationList,
 ) -> Result<(), String> {
-    if device_id == crate::registry::PHONE {
-        sqlx::query("UPDATE proactive_state SET listener_connected=$1,attention_connected=$2,listener_checked_at=now() WHERE owner_id='local-user'").bind(feed.connected).bind(feed.attention_connected).execute(&app.db).await.map_err(|e|e.to_string())?;
-    }
-    if feed.notifications.is_empty() {
+    if feed.notifications.is_empty() && device_id != registry::PHONE {
         return Ok(());
     }
-    let ids: Vec<String> = feed
+    let ids: Vec<&str> = feed
         .notifications
         .iter()
-        .map(|event| event.event_id.clone())
+        .map(|event| event.event_id.as_str())
         .collect();
     let seen: std::collections::HashSet<String> = sqlx::query_scalar::<_, String>(
-        "SELECT event_id FROM phone_notifications WHERE event_id=ANY($1)",
+        "WITH heartbeat AS (
+            UPDATE proactive_state SET listener_connected=$1,attention_connected=$2,listener_checked_at=now()
+            WHERE owner_id='local-user' AND $4=$5
+         ) SELECT event_id FROM phone_notifications WHERE event_id=ANY($3)",
     )
+    .bind(feed.connected)
+    .bind(feed.attention_connected)
     .bind(ids)
+    .bind(device_id)
+    .bind(registry::PHONE)
     .fetch_all(&app.db)
     .await
     .map_err(|e| e.to_string())?
     .into_iter()
     .collect();
-    for event in feed.notifications {
-        if seen.contains(&event.event_id) || ignored_usage_warning(&event) {
-            continue;
-        }
-        // UI changes made by the agent or during manual takeover are consumed without waking another run.
-        // Notifications and badge transitions remain queued even while work is active.
-        if event.notification_key.starts_with("wechat-visible:")
-            && sqlx::query_scalar::<_, bool>(
-                "SELECT EXISTS(SELECT 1 FROM runs WHERE device_id=$1 AND (
-                    status IN ('queued','running') OR to_timestamp($2::double precision/1000)
-                    BETWEEN created_at AND finished_at+interval '3 seconds'))",
-            )
-            .bind(device_id)
-            .bind(event.posted_at_ms as f64)
-            .fetch_one(&app.db)
-            .await
-            .map_err(|e| e.to_string())?
-        {
-            sqlx::query("INSERT INTO phone_notifications(event_id,notification_key,package_name,app_name,title,body,posted_at,status,device_id) VALUES($1,$2,$3,$4,$5,$6,to_timestamp($7::double precision/1000),'ignored-active-ui',$8) ON CONFLICT(event_id) DO NOTHING")
-                .bind(&event.event_id).bind(&event.notification_key).bind(&event.package_name).bind(&event.app_name).bind(&event.title).bind(&event.text).bind(event.posted_at_ms as f64).bind(device_id).execute(&app.db).await.map_err(|e|e.to_string())?;
-            continue;
-        }
-        if event.event_id.len() != 64
-            || event.posted_at_ms == 0
-            || event.text.contains("AI Phone · ")
-        {
-            continue;
-        }
-        sqlx::query(
-            "INSERT INTO phone_notifications(event_id,notification_key,package_name,app_name,title,body,posted_at,device_id)
-             SELECT $1,$2,$3,$4,$5,$6,to_timestamp($7::double precision/1000),$8 FROM proactive_state
-             WHERE notifications_enabled AND (NOT ($2 LIKE 'wechat-%') OR wechat_watch)
-               AND to_timestamp($7::double precision/1000)>=notifications_since
-               AND ($2<>$9 OR ($8<>$10
-                   AND NOT EXISTS(SELECT 1 FROM runs r WHERE (r.device_id=$8 OR EXISTS(
-                       SELECT 1 FROM device_execution_leases l WHERE l.run_id=r.id AND l.device_id=$8))
-                       AND (r.status IN ('queued','running') OR r.finished_at>now()-interval '10 seconds'))
-                   AND NOT EXISTS(SELECT 1 FROM desktop_controls c WHERE c.device_id=$8
-                       AND c.controller='manual' AND c.touched_at>now()-interval '15 seconds')))
-             ON CONFLICT(event_id) DO NOTHING",
-        )
-        .bind(event.event_id)
-        .bind(event.notification_key)
-        .bind(event.package_name)
-        .bind(event.app_name)
-        .bind(event.title)
-        .bind(event.text)
-        .bind(event.posted_at_ms as f64)
-        .bind(device_id)
-        .bind(screen_attention::KEY)
-        .bind(registry::PHONE)
-        .execute(&app.db)
-        .await
-        .map_err(|e| e.to_string())?;
+    feed.notifications
+        .retain(|event| !seen.contains(&event.event_id) && !ignored_usage_warning(event));
+    if feed.notifications.is_empty() {
+        return Ok(());
     }
+    let mut query = sqlx::QueryBuilder::new(
+        "WITH policy AS (SELECT p.notifications_enabled,p.wechat_watch,p.notifications_since, ",
+    );
+    query.push_bind(device_id).push("::text device_id FROM proactive_state p), incoming(event_id,notification_key,package_name,app_name,title,body,posted_at_ms) AS (");
+    query.push_values(&feed.notifications, |mut row, event| {
+        row.push_bind(&event.event_id)
+            .push_bind(&event.notification_key)
+            .push_bind(&event.package_name)
+            .push_bind(&event.app_name)
+            .push_bind(&event.title)
+            .push_bind(&event.text)
+            .push_bind(event.posted_at_ms as f64);
+    });
+    query.push(
+        "), classified AS (
+            SELECT e.*,p.*,to_timestamp(e.posted_at_ms/1000) posted_at,
+                e.notification_key LIKE 'wechat-visible:%' AND EXISTS(
+                    SELECT 1 FROM runs r WHERE r.device_id=p.device_id AND (
+                        r.status IN ('queued','running') OR to_timestamp(e.posted_at_ms/1000)
+                        BETWEEN r.created_at AND r.finished_at+interval '3 seconds')) active_ui
+            FROM incoming e CROSS JOIN policy p
+        ) INSERT INTO phone_notifications(event_id,notification_key,package_name,app_name,title,body,posted_at,status,device_id)
+          SELECT event_id,notification_key,package_name,app_name,title,body,posted_at,
+                 CASE WHEN active_ui THEN 'ignored-active-ui' ELSE 'pending' END,device_id
+          FROM classified n
+          WHERE active_ui OR (octet_length(event_id)=64 AND posted_at_ms<>0 AND body NOT LIKE '%AI Phone · %'
+              AND notifications_enabled AND (notification_key NOT LIKE 'wechat-%' OR wechat_watch)
+              AND posted_at>=notifications_since
+              AND (notification_key<>",
+    )
+    .push_bind(screen_attention::KEY)
+    .push(" OR (device_id<>")
+    .push_bind(registry::PHONE)
+    .push(
+        " AND NOT EXISTS(SELECT 1 FROM runs r WHERE (r.device_id=n.device_id OR EXISTS(
+              SELECT 1 FROM device_execution_leases l WHERE l.run_id=r.id AND l.device_id=n.device_id))
+              AND (r.status IN ('queued','running') OR r.finished_at>now()-interval '10 seconds'))
+          AND NOT EXISTS(SELECT 1 FROM desktop_controls c WHERE c.device_id=n.device_id
+              AND c.controller='manual' AND c.touched_at>now()-interval '15 seconds'))))
+          ON CONFLICT(event_id) DO NOTHING",
+    )
+    .build()
+    .execute(&app.db)
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 async fn schedule(app: &App, kinds: &[&str]) -> Result<(), sqlx::Error> {

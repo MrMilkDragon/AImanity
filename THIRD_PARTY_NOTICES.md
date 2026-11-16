@@ -14,6 +14,15 @@ See [distribution requirements](docs/public/distribution-requirements.md) for th
 
 | Component | Source / licence evidence | Distribution scope and obligations |
 | --- | --- | --- |
+| Iced 0.14.0 | [Upstream](https://github.com/iced-rs/iced/tree/0.14.0), [MIT licence](docs/public/licenses/native-ui/iced-LICENSE) | Native workbench UI; locked dependencies in apps/native/Cargo.lock |
+| rfd 0.15.4 | [Upstream](https://github.com/PolyMeilex/rfd), [MIT licence](docs/public/licenses/native-ui/rfd-LICENSE) | Native attachment open/save dialogs |
+| Rodio 0.21.1 | [Upstream](https://github.com/RustAudio/rodio/tree/v0.21.1), [MIT licence](docs/public/licenses/native-ui/rodio-LICENSE.MIT) | Native device audio mixing and resampling |
+| CPAL 0.16.0 | [Upstream](https://github.com/RustAudio/cpal/tree/0.16.0), [Apache-2.0 licence](docs/public/licenses/native-ui/cpal-LICENSE.APACHE) | System speaker and microphone access |
+| arboard 3.7.0 | [Upstream](https://github.com/1Password/arboard), [MIT licence](docs/public/licenses/native-ui/arboard-LICENSE.MIT) | Native clipboard support |
+| Lucide / Feather icons | [Upstream](https://github.com/lucide-icons/lucide), [ISC / MIT licences](docs/public/licenses/native-ui/lucide-LICENSE) | Native SVG controls adapted from the existing workbench icon family |
+| pulldown-cmark 0.12.2 | [Upstream](https://github.com/pulldown-cmark/pulldown-cmark), [MIT licence](docs/public/licenses/native-ui/pulldown-cmark-LICENSE) | Shared conversation Markdown through Iced |
+| open 5.4.5 | [Upstream](https://github.com/Byron/open-rs), [MIT licence](docs/public/licenses/native-ui/open-LICENSE.md) | User-activated conversation links |
+| wgpu 27.0.1 | [Upstream](https://github.com/gfx-rs/wgpu/tree/v27.0.1), [MIT](docs/public/licenses/native-ui/wgpu-LICENSE.MIT) / [Apache-2.0](docs/public/licenses/native-ui/wgpu-LICENSE.APACHE) | GPU device textures and glass rendering |
 | Static Linux ARM C runtime | [musl 1.2.5 copyright](docs/public/licenses/musl/COPYRIGHT), [Rust 1.96.0 build recipe and patches](https://github.com/rust-lang/rust/blob/1.96.0/src/ci/docker/scripts/musl.sh) | The Mac factory's Linux ARM desktop bridge uses Rust's musl target. The complete upstream copyright and terms are included in the native client and service notices |
 | Runtime dependencies | Exact versions in Cargo.lock / bun.lock | [Inventory](docs/public/dependency-licenses.json): locked server and native-client build graphs, licence metadata and notice-file hashes. Redistribution/source-offer review remains open |
 | EinkBro 16.7.1 Android browser | [Pinned release/source](config/phone-browser.json), [upstream notice](docs/public/licenses/guest-apps/einkbro-LICENSE.md), [GPL-3.0 text](docs/public/licenses/guest-apps/GPL-3.0.txt) | ARM64/x86_64 APKs are selected per guest and use the Android system WebView. Application data is excluded; embedded libraries retain their own notices and source requirements |

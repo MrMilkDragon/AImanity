@@ -1,6 +1,6 @@
 [package]
 name = "ai-phone-client"
-version = "0.0.3"
+version = "0.0.4"
 description = "Native client for AImanity"
 edition = "2024"
 rust-version = "1.95"
