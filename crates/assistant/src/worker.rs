@@ -2555,7 +2555,10 @@ async fn execute(
         } else {
             "phone_notifications"
         };
-        let next_tool = pending.first().and_then(|call| call["name"].as_str()).unwrap_or("");
+        let next_tool = pending
+            .first()
+            .and_then(|call| call["name"].as_str())
+            .unwrap_or("");
         let prerequisite = if (next_tool.starts_with("phone_")
             || phone_task(&context)
             || (gui_execution(&context) && !execution_policy::desktop_target(&context))
@@ -2585,9 +2588,9 @@ async fn execute(
             None
         };
         if let Some((name, arguments)) = prerequisite
-            && pending.first().is_none_or(|call| {
-                call["name"] != name || call["arguments"] != arguments
-            })
+            && pending
+                .first()
+                .is_none_or(|call| call["name"] != name || call["arguments"] != arguments)
         {
             let call = context
                 .iter()

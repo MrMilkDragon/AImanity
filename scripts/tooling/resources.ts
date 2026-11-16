@@ -89,12 +89,18 @@ export function fileReceipt(
     publicBuildDigest,
   );
 }
-export function resourceMap(root = ROOT) {
+export const workbenchNotices = ".tools/iced-workbench-licenses.txt";
+
+export function resourceMap(root = ROOT, nativeWorkbench = false) {
   const native = join(root, "apps/client/src-tauri"),
     resources = {
       ...json(join(native, "tauri.conf.json")).bundle.resources,
     } as Record<string, string>,
     integrity = join(native, "gen/host/integrity.json");
+  if (nativeWorkbench) {
+    delete resources["../../../docs/public/native-client-licenses.txt"];
+    resources["../../../" + workbenchNotices] = "legal/native-client-licenses.txt";
+  }
   if (existsSync(integrity)) {
     const expected = json(integrity);
     for (const name of ["android.payload", "images.payload"])

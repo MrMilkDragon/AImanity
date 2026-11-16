@@ -45,6 +45,7 @@ export async function buildWindowsInstaller(
   root: string,
   binary: string,
   destination: string,
+  nativeWorkbench = false,
 ) {
   const folder = join(root, ".tools/windows-installer"),
     policy = json(join(root, "config/windows-installer.json")),
@@ -56,7 +57,7 @@ export async function buildWindowsInstaller(
   const stage = join(folder, "application");
   mkdirSync(stage);
   linkSync(binary, join(stage, "ai-phone-client.exe"));
-  for (const [input, output] of Object.entries(resourceMap(root))) {
+  for (const [input, output] of Object.entries(resourceMap(root, nativeWorkbench))) {
     const target = join(stage, output);
     mkdirSync(dirname(target), { recursive: true });
     linkSync(join(root, "apps/client/src-tauri", input), target);

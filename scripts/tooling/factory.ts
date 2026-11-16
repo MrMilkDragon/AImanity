@@ -144,6 +144,8 @@ export async function prepareImages(
       "--tag",
       reference,
     ];
+    for (const variable of ["HTTP_PROXY", "HTTPS_PROXY"])
+      if (process.env[variable]) args.push("--build-arg", variable);
     if (role === "desktop")
       args.push("--build-arg", "WORKSPACE_IMAGE=" + sources.workspace);
     if (role === "workspace" && guest)

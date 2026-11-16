@@ -1473,8 +1473,8 @@
     },
     {
       "path": "config/native-notice-supplements.json",
-      "size": 51355,
-      "sha256": "9d3ca67c208f841e6b51703f97a58e22a3c174aa0b5f2035a5966d1c5edb4b7c"
+      "size": 83295,
+      "sha256": "71eb50226ce5facf47f30b364ae602fe72ed1807bbf757237b6d672177f580a9"
     },
     {
       "path": "config/ocr-models.json",
@@ -2218,8 +2218,8 @@
     },
     {
       "path": "crates/assistant/src/skill_resources.rs",
-      "size": 6495,
-      "sha256": "e5734f9e413dc9234d1b71c1af1d59c734f6669c5b83d3e8441ffef0e52edf6e"
+      "size": 6518,
+      "sha256": "e68a530a0e7e38176713bb8285e274018661846fd558915c0182b77362952c00"
     },
     {
       "path": "crates/assistant/src/speech/activity.rs",
@@ -2313,8 +2313,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 243428,
-      "sha256": "e2049c698ba4742be42f40abb9d5ceef4c2660f8bfbae7ea3b70588f654fb4d5"
+      "size": 243469,
+      "sha256": "f71f1862c0f6fd10547de013f7956b95f42b820e4bf3ea7df9e8df75ac00e52b"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -3437,6 +3437,11 @@
       "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
     },
     {
+      "path": "docs/public/licenses/native/05c60b829931ef7f-dispatch-Cargo.toml.txt",
+      "size": 472,
+      "sha256": "05c60b829931ef7f1f130735843c11f5cf9cc69546eca5fc941d014781c68e31"
+    },
+    {
       "path": "docs/public/licenses/native/074e6e32c86a4c0e-Apache-2.0.txt",
       "size": 10280,
       "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
@@ -3447,9 +3452,24 @@
       "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
     },
     {
+      "path": "docs/public/licenses/native/10d30a673cd5e934-profiling-LICENSE-APACHE",
+      "size": 10818,
+      "sha256": "10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551"
+    },
+    {
+      "path": "docs/public/licenses/native/12121dfa58867700-gpu-alloc-COPYING",
+      "size": 347,
+      "sha256": "12121dfa588677007848ab922a45a1e3248868f6ff063598fceb3141d7897314"
+    },
+    {
       "path": "docs/public/licenses/native/1d85bd754b04ceec-LICENSE-MIT",
       "size": 1071,
       "sha256": "1d85bd754b04ceec93e98e890edd1fa3c6a22e81bcb32135806beeccefa51cd1"
+    },
+    {
+      "path": "docs/public/licenses/native/216486f29671a426-lyon-LICENSE-APACHE",
+      "size": 554,
+      "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06"
     },
     {
       "path": "docs/public/licenses/native/23f18e03dc49df91-LICENSE-MIT",
@@ -3457,9 +3477,24 @@
       "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
     },
     {
+      "path": "docs/public/licenses/native/24df2f33b48c9e75-block-Cargo.toml.txt",
+      "size": 531,
+      "sha256": "24df2f33b48c9e756a4f864f882c1ab07a159b6c2b790f45af2e8162499b6719"
+    },
+    {
       "path": "docs/public/licenses/native/39fa265207450e77-LICENSE",
       "size": 1184,
       "sha256": "39fa265207450e77c62e90c5594a06c085b655d8374c7ced4bf7894b6bd95dd2"
+    },
+    {
+      "path": "docs/public/licenses/native/3d9796539a28548f-zune-image-LICENSE.md",
+      "size": 356,
+      "sha256": "3d9796539a28548f73dcbca50b23c040b8f5b890acf5885baf0baeadfe89ba09"
+    },
+    {
+      "path": "docs/public/licenses/native/4a56dbdbc12054fd-hexf-parse-Cargo.toml.txt",
+      "size": 344,
+      "sha256": "4a56dbdbc12054fd33b7a2634a45cbbe6fe12f5e6f4081002cbfa527f7220c70"
     },
     {
       "path": "docs/public/licenses/native/4fcc5d9b5db444ad-cesu8-README.md.txt",
@@ -3475,6 +3510,16 @@
       "path": "docs/public/licenses/native/508a77d2e7b51d98-wasite-LICENSE_MIT.txt",
       "size": 1036,
       "sha256": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1"
+    },
+    {
+      "path": "docs/public/licenses/native/5226e27d5fbc683d-gpu-descriptor-MIT.txt",
+      "size": 1080,
+      "sha256": "5226e27d5fbc683db56c52853cdb9d15b69abadb525a60f95c862c2dbd77cdc8"
+    },
+    {
+      "path": "docs/public/licenses/native/58317934bf818c37-gpu-alloc-APACHE.txt",
+      "size": 569,
+      "sha256": "58317934bf818c379e4215fad7e8dfb6812edff32c9557b8b039343f69711e08"
     },
     {
       "path": "docs/public/licenses/native/5c686e0f7978412b-grpc-rust-LICENSE",
@@ -3507,14 +3552,39 @@
       "sha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172"
     },
     {
+      "path": "docs/public/licenses/native/6bec8c944a6d4251-gpu-descriptor-APACHE.txt",
+      "size": 574,
+      "sha256": "6bec8c944a6d4251be50ac86bb4ca360bcce5aea472505dee2800e160bf1cdbf"
+    },
+    {
+      "path": "docs/public/licenses/native/756c8d2ab2dc24f2-dasp-LICENSE-APACHE",
+      "size": 561,
+      "sha256": "756c8d2ab2dc24f256e1455b5f03937f4933d83d7bc9f2d55009fc962377d512"
+    },
+    {
       "path": "docs/public/licenses/native/78e66dd24c12e0ac-cesu8-Cargo.toml.txt",
       "size": 505,
       "sha256": "78e66dd24c12e0ac858e7524cdd7d51d1eee753c1e9c32e5b915dc9f1d767870"
     },
     {
+      "path": "docs/public/licenses/native/7e98bed7f100747a-rust_debug-LICENSE",
+      "size": 1070,
+      "sha256": "7e98bed7f100747aaae7d82ab94fbe6b76fd6b84b09a3aaa413bff8196d0fbb1"
+    },
+    {
       "path": "docs/public/licenses/native/7f976f7e9cb2d87d-objc2-LICENSE.md",
       "size": 1339,
       "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54"
+    },
+    {
+      "path": "docs/public/licenses/native/7fa429541e55b150-zune-image-LICENSE-ZLIB",
+      "size": 818,
+      "sha256": "7fa429541e55b1509909e058f2d21a37467e4958ec713b357f6e0cf9dc4ee352"
+    },
+    {
+      "path": "docs/public/licenses/native/80f275e90d799911-lyon-LICENSE-MIT",
+      "size": 1080,
+      "sha256": "80f275e90d799911ed3830a7f242a2ef5a4ade2092fe0aa07bfb2d2cf2f2b95e"
     },
     {
       "path": "docs/public/licenses/native/8177f97513213526-lzma-sys-COPYING.GPLv2",
@@ -3537,6 +3607,11 @@
       "sha256": "97647e63047ef75a82ee2928b335df94f45c87e08777dc033393c73294f3a57a"
     },
     {
+      "path": "docs/public/licenses/native/a2010f343487d3f7-CC0-1.0.txt",
+      "size": 7048,
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    },
+    {
       "path": "docs/public/licenses/native/a60eea8175145316-LICENSE-APACHE",
       "size": 10847,
       "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
@@ -3550,6 +3625,11 @@
       "path": "docs/public/licenses/native/b05785f9f18e6716-MIT.txt",
       "size": 1078,
       "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5"
+    },
+    {
+      "path": "docs/public/licenses/native/b1d6df41ed3aa968-dasp-LICENSE-MIT",
+      "size": 1087,
+      "sha256": "b1d6df41ed3aa96806e74c729444d7c121d90e6660a6aed01d298e03fde475a0"
     },
     {
       "path": "docs/public/licenses/native/bbb3f8dd47d61eea-image-INLINE-MIT-NOTICES.txt",
@@ -3582,9 +3662,29 @@
       "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
     },
     {
+      "path": "docs/public/licenses/native/c8167fdeeed46d3f-profiling-LICENSE-MIT",
+      "size": 1093,
+      "sha256": "c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333"
+    },
+    {
+      "path": "docs/public/licenses/native/c9bff75738922193-clipboard-win-LICENSE",
+      "size": 1338,
+      "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+    },
+    {
       "path": "docs/public/licenses/native/c9bff75738922193-wasite-LICENSE_BOOST_1_0.txt",
       "size": 1338,
       "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+    },
+    {
+      "path": "docs/public/licenses/native/cfc7749b96f63bd3-gl-rs-LICENSE",
+      "size": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "docs/public/licenses/native/cfc7749b96f63bd3-rspirv-LICENSE",
+      "size": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
     },
     {
       "path": "docs/public/licenses/native/d027e91dbc9cdbb2-r-efi-AUTHORS",
@@ -3602,6 +3702,11 @@
       "sha256": "d54c6e13e9e952dac17d209171df8657e3cae93beaddace4906150cdec8d02e9"
     },
     {
+      "path": "docs/public/licenses/native/d87624d9d117489b-malloc_buf-Cargo.toml.txt",
+      "size": 349,
+      "sha256": "d87624d9d117489bd49dbaeb70077a0721e00ac2a76eb371faec818a92da5661"
+    },
+    {
       "path": "docs/public/licenses/native/dc626520dcd53a22-lzma-sys-COPYING.LGPLv2.1",
       "size": 26530,
       "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
@@ -3612,6 +3717,11 @@
       "sha256": "e26ae9475108d3b118fe27915d36e8c5ab72732a8bbba24787eb4f45492c3300"
     },
     {
+      "path": "docs/public/licenses/native/e353f37b12aefbb9-objc2-LICENSE.txt",
+      "size": 1066,
+      "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5"
+    },
+    {
       "path": "docs/public/licenses/native/eb227437252b2a7a-libappindicator-LICENSE-MIT",
       "size": 1109,
       "sha256": "eb227437252b2a7a9c1fc342c93ade1f3d7ce38cc6dd754f613db07d53ceff0b"
@@ -3620,6 +3730,21 @@
       "path": "docs/public/licenses/native/ed60d479b8fd1f64-valuable-LICENSE",
       "size": 1065,
       "sha256": "ed60d479b8fd1f64e9cbc3de449a16a53ac1b3d1b6aeb9bf9d190a8e93061b44"
+    },
+    {
+      "path": "docs/public/licenses/native/f72143f7e9d9fb8b-gpu-descriptor-COPYING",
+      "size": 352,
+      "sha256": "f72143f7e9d9fb8bd336b139fa22f825a299591c29f2f7338c5566347b137613"
+    },
+    {
+      "path": "docs/public/licenses/native/f774bf6815171498-gpu-alloc-MIT.txt",
+      "size": 1075,
+      "sha256": "f774bf68151714985324d90adbd59e8f271b7ba518608d871b6ba16464692879"
+    },
+    {
+      "path": "docs/public/licenses/native/fc9086ba4eba4b77-iced-LICENSE",
+      "size": 1073,
+      "sha256": "fc9086ba4eba4b77e4c603906362742bc3715ffa2c7810c6074fe7780d3a0398"
     },
     {
       "path": "docs/public/licenses/native/ff92bed461f50338-r-efi-AUTHORS",
@@ -3918,8 +4043,8 @@
     },
     {
       "path": "infra/desktop/Dockerfile",
-      "size": 2310,
-      "sha256": "1ea8a230bac9c94daf52f35c0b8a96ed71096af760bc70944035a515d8d11d79"
+      "size": 2748,
+      "sha256": "4c5e46f69c44f0b11bfadc35e95e8c171e15a24f10e811d58868482b3fe92d1e"
     },
     {
       "path": "infra/desktop/dunstrc",
@@ -3963,8 +4088,8 @@
     },
     {
       "path": "infra/workspace/Dockerfile",
-      "size": 1218,
-      "sha256": "642c7f6b539d58f142fe2af622793aa6d00c6e3ca1a870c289af2ad71ba74f31"
+      "size": 1352,
+      "sha256": "fec8118ea2d9cef1ffa32ded6f51d18c8e3e1dde156d8562ea2f9b902978693e"
     },
     {
       "path": "package.json",
@@ -4273,8 +4398,8 @@
     },
     {
       "path": "scripts/build-client.ts",
-      "size": 2465,
-      "sha256": "b263de4df6586f83c0bfa9a1a38358a5e890ee3c1d5f410b04b038f00e1eddb3"
+      "size": 2511,
+      "sha256": "560a2338fe8cb2549e6dc116b66e08142df5ccdccb7cf2b56965f5d8e059c5f2"
     },
     {
       "path": "scripts/bun",
@@ -4473,8 +4598,8 @@
     },
     {
       "path": "scripts/tooling/client-build.ts",
-      "size": 18700,
-      "sha256": "d44403047c380af617e1861ffef4e24666eeda40be43ab7ad9a0d3300c21ea1a"
+      "size": 19600,
+      "sha256": "5f725ca227f479efca59163f6bb7714defaef620947290238df372aa3e04045a"
     },
     {
       "path": "scripts/tooling/client-payload.ts",
@@ -4493,8 +4618,8 @@
     },
     {
       "path": "scripts/tooling/dependency-inventory.ts",
-      "size": 8944,
-      "sha256": "c7a2e97c31788295a3c87787de83e2da02afcd858943ea06aa040c42f5ddc6f7"
+      "size": 9039,
+      "sha256": "0f529928d5cbb0f930ad44ea107a36fe4b800515448c034c39a9f25dcbffcdbb"
     },
     {
       "path": "scripts/tooling/factory-inputs.ts",
@@ -4503,8 +4628,8 @@
     },
     {
       "path": "scripts/tooling/factory.ts",
-      "size": 5238,
-      "sha256": "85c423d25f506e57f36726c5123f894f74a80568ed8edbffba112178ce2362c7"
+      "size": 5365,
+      "sha256": "64af0e33583e8b29771a935b30ac3cd2651209992c872f4c06fb857899323435"
     },
     {
       "path": "scripts/tooling/fetch-windows-aosp.ts",
@@ -4578,8 +4703,8 @@
     },
     {
       "path": "scripts/tooling/resources.ts",
-      "size": 5084,
-      "sha256": "0f0daf70962c3d6c1bb801eed2285c86d4c22d3e518aa08a9ab24e6e438b439d"
+      "size": 5366,
+      "sha256": "dd237587e4c54a69af29884e06dccb69575f254aa85dc62ada90b01afeda0357"
     },
     {
       "path": "scripts/tooling/source.ts",
@@ -4618,8 +4743,8 @@
     },
     {
       "path": "scripts/tooling/windows-installer.ts",
-      "size": 2992,
-      "sha256": "56d507edf47415f8e653a2d92ee6b022f3efcda61ffe0dc1abb8f1f676f615c3"
+      "size": 3036,
+      "sha256": "06ee6b4a39c9aa3b9cad0cce69ce0f9b623fd5caeeb5a1224cdd3d6edc733bc9"
     },
     {
       "path": "scripts/tooling/windows-qemu.ts",

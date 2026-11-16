@@ -34,7 +34,8 @@ import {
   windowsReleaseSigning,
   type InstallerSignature,
 } from "./installer-signing";
-import { resourceMap, fileReceipt, verifyCompiledInventory } from "./resources";
+import { resourceMap, fileReceipt, verifyCompiledInventory, workbenchNotices } from "./resources";
+import { rustNotices } from "./dependency-inventory";
 import {
   payloadComponents,
   deliveryMetadata,
@@ -62,24 +63,22 @@ function filesIn(base: string) {
   walk(base);
   return result;
 }
-export function noticeManifest(root = ROOT) {
+export function noticeManifest(root = ROOT, nativeWorkbench = false) {
   if (
+    !nativeWorkbench &&
     json(join(root, "docs/public/dependency-licenses.json"))
       .native_client_missing_notice_files?.length !== 0
   )
     throw Error("Native dependency notices are incomplete");
+  const path = nativeWorkbench ? workbenchNotices : "docs/public/native-client-licenses.txt";
   return {
     rust_missing_files: [],
-    texts: {
-      "native-client-licenses.txt": hash(
-        readFileSync(join(root, "docs/public/native-client-licenses.txt")),
-      ),
-    },
+    texts: { "native-client-licenses.txt": hash(readFileSync(join(root, path))) },
   };
 }
-async function inspectPayload(files: Record<string, string>, root: string) {
+async function inspectPayload(files: Record<string, string>, root: string, nativeWorkbench = false) {
   const native = join(root, "apps/client/src-tauri"),
-    resources = resourceMap(root),
+    resources = resourceMap(root, nativeWorkbench),
     integrity = json<Record<string, string>>(join(native, "gen/host/integrity.json")),
     vmManifest = "gen/host/qemu/manifest.json",
     vmFiles = new Map<string, Receipt>(
@@ -123,7 +122,7 @@ async function inspectPayload(files: Record<string, string>, root: string) {
     throw Error("Installer resources are incomplete");
   return result;
 }
-export async function inspectPackage(file: string, root = ROOT) {
+export async function inspectPackage(file: string, root = ROOT, nativeWorkbench = false) {
   const folder = mkdtempSync(join(tmpdir(), "aiphone-package-"));
   try {
     await unpackWindowsInstaller(root, file, folder);
@@ -145,7 +144,7 @@ export async function inspectPackage(file: string, root = ROOT) {
       await verifyCompiledInventory(program[1], integrity);
     if (process.platform === "win32")
       run([program[1], "--verify-bundled-host", join(dirname(program[1]), "host")]);
-    return { files: await inspectPayload(files, root) };
+    return { files: await inspectPayload(files, root, nativeWorkbench) };
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
@@ -182,7 +181,7 @@ export async function inspectMacBundle(bundle: string, root = ROOT, nativeWorkbe
     "Contents/Info.plist",
     "Contents/MacOS/" + executable,
     "Contents/Resources/icon.icns",
-    ...Object.values(resourceMap(root)).map((s) => "Contents/Resources/" + s),
+    ...Object.values(resourceMap(root, nativeWorkbench)).map((s) => "Contents/Resources/" + s),
   ]);
   const files = filesIn(bundle);
   const signature = "Contents/_CodeSignature/CodeResources";
@@ -193,7 +192,7 @@ export async function inspectMacBundle(bundle: string, root = ROOT, nativeWorkbe
   )
     throw Error("Unexpected application files");
   run([program, "--verify-bundled-host", join(bundle, "Contents/Resources/host")]);
-  const inspected = await inspectPayload(files, root);
+  const inspected = await inspectPayload(files, root, nativeWorkbench);
   return {
     bundle_id: config.identifier,
     version,
@@ -201,9 +200,21 @@ export async function inspectMacBundle(bundle: string, root = ROOT, nativeWorkbe
     files: inspected,
   };
 }
+function workbenchTarget(platform: Platform) {
+  return platform === "windows" ? "x86_64-pc-windows-msvc" : "aarch64-apple-darwin";
+}
+
+async function prepareWorkbenchNotices(root: string, platform: Platform) {
+  const value = await rustNotices(root, "apps/native/Cargo.toml", "Iced workbench", workbenchTarget(platform));
+  if (value.missing.length) throw Error("Missing workbench notices: " + value.missing.join(", "));
+  const file = join(root, workbenchNotices);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, value.text);
+}
+
 function nativeBinary(root: string, platform: Platform) {
   const folder = join(root, "apps/native"),
-    target = platform === "windows" ? "x86_64-pc-windows-msvc" : "aarch64-apple-darwin",
+    target = workbenchTarget(platform),
     env = nativeEnvironment();
   env.AIMANITY_BUNDLE_INTEGRITY = join(root, "apps/client/src-tauri/gen/host/integrity.json");
   if (platform === "windows")
@@ -224,7 +235,7 @@ function macNativeBundle(root: string, stage: string, binary: string, version: s
   chmodSync(executable, 0o755);
   mkdirSync(resources);
   linkSync(join(legacy, "icons/icon.icns"), join(resources, "icon.icns"));
-  for (const [input, output] of Object.entries(resourceMap(root))) {
+  for (const [input, output] of Object.entries(resourceMap(root, true))) {
     const target = join(resources, output);
     mkdirSync(dirname(target), { recursive: true });
     linkSync(join(legacy, input), target);
@@ -379,7 +390,7 @@ export async function recordInstaller(
     runtime_acceptance: "pending",
     dependencies_license_review_complete: false,
     remote_upload: false,
-    third_party_notices: noticeManifest(root),
+    third_party_notices: noticeManifest(root, nativeWorkbench),
     source_commit: output(["git", "rev-parse", "HEAD"], { cwd: root }),
     builder_commit: output(["git", "rev-parse", "HEAD"], { cwd: ROOT }),
     source_locks: Object.fromEntries(
@@ -420,6 +431,7 @@ export async function buildClient(
 ) {
   if (releaseSigning && temporarySigning)
     throw Error("Select release signing or a local test build");
+  if (nativeWorkbench) await prepareWorkbenchNotices(root, platform);
   const version = json(join(root, "config/release-policy.json")).version,
     native = join(root, "apps/client/src-tauri"),
     dist = join(root, "dist"),
@@ -485,7 +497,7 @@ export async function buildClient(
   );
   destination = join(dist, `AImanity-${version}-windows-x64-setup.exe`);
   if (credentials) signWindowsRelease(source, credentials);
-  await buildWindowsInstaller(root, source, destination);
+  await buildWindowsInstaller(root, source, destination, nativeWorkbench);
   if (credentials) signWindowsRelease(destination, credentials);
   const signature = credentials
     ? releaseWindowsSignature
@@ -496,7 +508,7 @@ export async function buildClient(
       destination,
       platform,
       arch,
-      await inspectPackage(destination, root),
+      await inspectPackage(destination, root, nativeWorkbench),
       root,
       signature,
       nativeWorkbench,

@@ -55,7 +55,9 @@ fn resource_folder(root: &Path, id: &str) -> Result<PathBuf, String> {
 fn create_directory(path: &Path) -> Result<bool, String> {
     match std::fs::create_dir(path) {
         Ok(()) => Ok(true),
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && path.is_dir() => Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && path.is_dir() => {
+            Ok(false)
+        }
         Err(error) => Err(error.to_string()),
     }
 }
