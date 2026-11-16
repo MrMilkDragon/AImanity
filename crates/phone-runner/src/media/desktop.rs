@@ -5,6 +5,26 @@ use tokio::{
     process::{Child, Command},
     sync::mpsc,
 };
+
+fn next_jpeg(buffer: &mut Vec<u8>, end_from: &mut usize) -> Option<Vec<u8>> {
+    let begin = buffer.windows(2).position(|marker| marker == [255, 216])?;
+    if begin > 0 {
+        buffer.drain(..begin);
+        *end_from = 2;
+    }
+    let Some(end) = buffer[*end_from..]
+        .windows(2)
+        .position(|marker| marker == [255, 217])
+    else {
+        // Keep one byte in the next scan for a marker split across two reads.
+        *end_from = buffer.len().saturating_sub(1).max(2);
+        return None;
+    };
+    let length = *end_from + end + 2;
+    *end_from = 2;
+    Some(buffer.drain(..length).collect())
+}
+
 fn capture_command(kind: &str) -> Result<Child> {
     Ok(
         Command::new(std::env::var_os("AI_PHONE_DOCKER").unwrap_or("docker".into()))
@@ -33,6 +53,7 @@ async fn screen(media: &Media) -> Result<()> {
     let next_frame = tokio::time::sleep(Duration::from_secs(3));
     tokio::pin!(next_frame);
     let mut buffer = Vec::new();
+    let mut jpeg_end_from = 2;
     let mut chunk = [0; 65536];
     let ended = 'capture: loop {
         if media.desktop.viewers.load(Ordering::Relaxed) == 0 {
@@ -46,10 +67,8 @@ async fn screen(media: &Media) -> Result<()> {
                 let bytes=bytes?;if bytes==0{break 'capture true;}
                 buffer.extend_from_slice(&chunk[..bytes]);
                 if buffer.len()>4*1024*1024{return Err("desktop frame exceeds capture buffer".into());}
-                while let Some(begin)=buffer.windows(2).position(|v|v==[255,216]){
-                    if begin>0{buffer.drain(..begin);}
-                    let Some(end)=buffer[2..].windows(2).position(|v|v==[255,217]).map(|v|v+4)else{break;};
-                    let jpeg=buffer.drain(..end).collect();media.desktop.publish(jpeg,now());
+                while let Some(jpeg) = next_jpeg(&mut buffer, &mut jpeg_end_from) {
+                    media.desktop.publish(&jpeg, now());
                     next_frame.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(3));
                 }
             }
@@ -106,4 +125,31 @@ pub async fn audio() -> Result<Body> {
         receiver,
         |mut receiver| async move { receiver.recv().await.map(|value| (value, receiver)) },
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_jpeg;
+
+    #[test]
+    fn desktop_frames_continue_past_split_markers_and_realign_after_each_frame() {
+        let mut buffer = vec![0, 255];
+        let mut end_from = 2;
+        assert_eq!(next_jpeg(&mut buffer, &mut end_from), None);
+        buffer.extend([216, 1, 255]);
+        assert_eq!(next_jpeg(&mut buffer, &mut end_from), None);
+        assert_eq!(end_from, 3);
+
+        buffer.extend([217, 0, 255, 216, 2, 255, 217, 0, 255]);
+        assert_eq!(
+            next_jpeg(&mut buffer, &mut end_from),
+            Some(vec![255, 216, 1, 255, 217])
+        );
+        assert_eq!(
+            next_jpeg(&mut buffer, &mut end_from),
+            Some(vec![255, 216, 2, 255, 217])
+        );
+        assert_eq!(next_jpeg(&mut buffer, &mut end_from), None);
+        assert_eq!(buffer, [0, 255]);
+    }
 }

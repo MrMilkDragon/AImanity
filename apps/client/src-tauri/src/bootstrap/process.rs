@@ -102,12 +102,11 @@ fn spawn(
     fs::set_permissions(log, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
     command.process_group(0);
     let mut child = command
-        .stdin(Stdio::piped())
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(error_file)
         .spawn()
         .map_err(|_| "process_start_failed")?;
-    *manager.input.lock().map_err(|_| "installer_state")? = child.stdin.take();
     let output = child.stdout.take().ok_or("process_output_unavailable")?;
     Ok((child, output))
 }
@@ -137,7 +136,6 @@ pub(super) fn execute(
     });
     let result = wait_for_installer(manager, &mut child, &errors);
     let completed = reader.join().map_err(|_| "process_output_unavailable");
-    *manager.input.lock().map_err(|_| "installer_state")? = None;
     if let Err(error) = result {
         return Err(if error == "installation_failed" {
             completed??;

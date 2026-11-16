@@ -40,7 +40,9 @@ fn append(messages: &mut Vec<Value>, role: &str, mut blocks: Vec<Value>) {
     if let Some(last) = messages.last_mut().filter(|v| v["role"] == role) {
         last["content"].as_array_mut().unwrap().append(&mut blocks);
     } else {
-        messages.push(json!({"role":role,"content":blocks}));
+        let mut message = json!({"role":role});
+        message["content"] = Value::Array(blocks);
+        messages.push(message);
     }
 }
 pub fn request_body(body: &Value) -> Result<Value, String> {
@@ -73,13 +75,9 @@ pub fn request_body(body: &Value) -> Result<Value, String> {
                 } else {
                     vec![json!({"type":"text","text":item["output"].to_string()})]
                 };
-                append(
-                    &mut messages,
-                    "user",
-                    vec![
-                        json!({"type":"tool_result","tool_use_id":item["call_id"],"content":output}),
-                    ],
-                );
+                let mut result = json!({"type":"tool_result","tool_use_id":item["call_id"]});
+                result["content"] = Value::Array(output);
+                append(&mut messages, "user", vec![result]);
             }
             _ => {
                 let role = item["role"].as_str().ok_or("上下文角色无效")?;
@@ -105,7 +103,8 @@ pub fn request_body(body: &Value) -> Result<Value, String> {
             }
         }
     }
-    let mut result = json!({"model":body["model"],"stream":true,"max_tokens":body.get("max_output_tokens").and_then(Value::as_u64).unwrap_or(8192),"messages":messages});
+    let mut result = json!({"model":body["model"],"stream":true,"max_tokens":body.get("max_output_tokens").and_then(Value::as_u64).unwrap_or(8192)});
+    result["messages"] = Value::Array(messages);
     if let Some(system) = body["instructions"].as_str() {
         result["system"] = json!(system);
     }
@@ -117,7 +116,7 @@ pub fn request_body(body: &Value) -> Result<Value, String> {
             }
             mapped.push(json!({"name":tool["name"],"description":tool["description"],"input_schema":tool["parameters"]}));
         }
-        result["tools"] = json!(mapped);
+        result["tools"] = Value::Array(mapped);
         result["tool_choice"] = match body.get("tool_choice") {
             Some(choice) if choice.is_object() => {
                 json!({"type":"tool","name":choice["name"],"disable_parallel_tool_use":true})

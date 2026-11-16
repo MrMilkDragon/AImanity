@@ -1,8 +1,9 @@
 #![cfg(target_os = "linux")]
 
+use ai_phone_api::wire::{DesktopBridgeFrame, DesktopFrameState};
 use ai_phone_guest_runtime::{DesktopRuntime, Response, Result, Settings};
-use base64::{Engine, engine::general_purpose::STANDARD};
-use serde_json::{Value, json};
+use prost::Message;
+use serde_json::json;
 use std::{
     sync::{
         Arc,
@@ -19,7 +20,7 @@ use x11rb::{
     },
 };
 
-fn exercise(wait: bool) -> (Value, image::RgbImage, Duration) {
+fn exercise(wait: bool) -> (DesktopBridgeFrame, image::RgbImage, Duration) {
     std::thread::scope(|scope| {
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let (done_tx, done_rx) = mpsc::sync_channel(1);
@@ -105,11 +106,11 @@ fn exercise(wait: bool) -> (Value, image::RgbImage, Duration) {
             ))
             .unwrap();
         let elapsed = started.elapsed();
-        let Response::Json(value) = result else {
+        let Response::Bytes(bytes) = result else {
             panic!("expected frame")
         };
-        let png = STANDARD.decode(value["png"].as_str().unwrap()).unwrap();
-        let image = image::load_from_memory(&png).unwrap().to_rgb8();
+        let value = DesktopBridgeFrame::decode(bytes.as_slice()).unwrap();
+        let image = image::load_from_memory(&value.png).unwrap().to_rgb8();
         done_tx.send(()).unwrap();
         client.join().unwrap().unwrap();
         assert_eq!(
@@ -120,7 +121,7 @@ fn exercise(wait: bool) -> (Value, image::RgbImage, Duration) {
         println!(
             "paint_wait={wait} action_ms={} frame_wait_ms={}",
             elapsed.as_millis(),
-            value["frame_wait_ms"]
+            value.frame_wait_ms
         );
         (value, image, elapsed)
     })
@@ -131,7 +132,7 @@ fn exercise(wait: bool) -> (Value, image::RgbImage, Duration) {
 fn automated_action_returns_the_real_delayed_redraw() {
     let (value, image, _) = exercise(true);
     assert_eq!(*image.get_pixel(450, 330), image::Rgb([0, 180, 40]));
-    assert_eq!(value["frame_state"], "stable");
+    assert_eq!(value.frame_state(), DesktopFrameState::Stable);
 }
 
 #[test]
@@ -139,5 +140,5 @@ fn automated_action_returns_the_real_delayed_redraw() {
 fn streamed_manual_input_keeps_its_fast_acknowledgement() {
     let (value, image, _) = exercise(false);
     assert_eq!(*image.get_pixel(450, 330), image::Rgb([31, 63, 127]));
-    assert!(value["frame_state"].is_null());
+    assert_eq!(value.frame_state(), DesktopFrameState::Unspecified);
 }

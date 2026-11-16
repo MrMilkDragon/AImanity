@@ -90,6 +90,7 @@ pub async fn run(cancelled: CancellationToken) -> Result<()> {
     if cancelled.is_cancelled() {
         return Err(Error("device_setup_cancelled_remote_may_continue"));
     }
+    super::runtime_ready(&root)?;
     native_ipc::write_bounded(
         &mut tokio::io::stdout(),
         &NativeWslDevicesReady {

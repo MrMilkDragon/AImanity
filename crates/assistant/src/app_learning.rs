@@ -12,8 +12,9 @@ fn experience_name(app_id: &str) -> String {
     )
 }
 
-const RECALL_SQL: &str =
-    "SELECT name FROM runtime_skills WHERE lower(name)=$1 AND enabled AND deleted_at IS NULL";
+const RECALL_SQL: &str = "SELECT name FROM runtime_skills
+    WHERE lower(name) IN ($1,$2) AND enabled AND deleted_at IS NULL
+    ORDER BY (lower(name)=$1) DESC LIMIT 1";
 
 fn legacy_experience_name(app_id: &str) -> String {
     format!(
@@ -23,15 +24,8 @@ fn legacy_experience_name(app_id: &str) -> String {
 }
 
 pub(crate) async fn recall(app: &App, app_id: &str) -> Result<Option<String>, String> {
-    let current: Option<String> = sqlx::query_scalar(RECALL_SQL)
-        .bind(experience_name(app_id))
-        .fetch_optional(&app.db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if current.is_some() {
-        return Ok(current);
-    }
     sqlx::query_scalar(RECALL_SQL)
+        .bind(experience_name(app_id))
         .bind(legacy_experience_name(app_id))
         .fetch_optional(&app.db)
         .await
@@ -283,10 +277,15 @@ mod database_tests {
   let run=Uuid::now_v7();message=Uuid::now_v7();runs.push(run);
   sqlx::query("INSERT INTO messages(id,conversation_id,role) VALUES($1,$2,'assistant')").bind(message).bind(conversation).execute(&db).await.unwrap();
   sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status,origin) VALUES($1,$2,$3,$1,'test',$4,'exploration')").bind(run).bind(conversation).bind(message).bind(if n<2{"succeeded"}else{"running"}).execute(&db).await.unwrap();
-  for i in 0..2{let event=Uuid::now_v7();sqlx::query("INSERT INTO harness_events(id,run_id,message_id,kind,title,status) VALUES($1,$2,$3,'tool','fixture observation','completed')").bind(event).bind(run).bind(message).execute(&db).await.unwrap();
-   observe(&app,run,event,i==1,&json!([{"type":"input_text","text":json!({"observation_id":format!("{run}-{i}"),"foreground_app":"com.example.reader/.Home"}).to_string()}])).await.unwrap();
+  for (i, title) in ["观察手机", "查看操作结果"].into_iter().enumerate(){
+   let event=Uuid::now_v7();
+   let output=json!([{"type":"input_text","text":json!({"observation_id":format!("{run}-{i}"),"foreground_app":"com.example.reader/.Home"}).to_string()}]);
+   sqlx::query("INSERT INTO harness_events(id,run_id,message_id,kind,title,status,result) VALUES($1,$2,$3,'tool',$4,'completed',$5)").bind(event).bind(run).bind(message).bind(title).bind(&output).execute(&db).await.unwrap();
+   if i == 0 {observe(&app,run,event,false,&output).await.unwrap();}
   }
  }
+ for _ in 0..2 {backfill(&app).await.unwrap();}
+ assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM app_learning_observations").fetch_one(&db).await.unwrap(),6);
  let run=runs[2];
  let args=json!({"app_id":"com.example.reader","title":"打开搜索入口","procedure":"在当前版本点击可见搜索图标，检查出现搜索输入框。","outcome":"verified","limitations":"只验证当前版本界面，不代表其他版本相同。","observation_ids":[format!("{run}-0"),format!("{run}-1")]});
  let mut invalid=args.clone();invalid["observation_ids"]=json!([format!("{}-0",runs[0])]);assert!(save(&app,run,&invalid).await.is_err());
@@ -307,9 +306,12 @@ mod database_tests {
  sqlx::query("UPDATE harness_events SET status='completed',finished_at=now() WHERE id=$1").bind(audit).execute(&db).await.unwrap();promote(&app,run).await.unwrap();
  assert_eq!(recall(&app,"com.example.reader").await.unwrap(),Some(experience_name("com.example.reader")));
  assert!(recall(&app,"com.example.other").await.unwrap().is_none());
+ let older=legacy_experience_name("com.example.other");
+ sqlx::query("INSERT INTO runtime_skills(id,name,source,content) VALUES ('legacy-fixture',$1,'fixture','legacy')").bind(&older).execute(&db).await.unwrap();
+ assert_eq!(recall(&app,"com.example.other").await.unwrap(),Some(older));
  sqlx::query("INSERT INTO runtime_skills(id,name,source,content) SELECT 'fixture-'||n,'unrelated-skill-'||n,'fixture','isolated lookup fixture' FROM generate_series(1,5000) n").execute(&db).await.unwrap();
  sqlx::query("ANALYZE runtime_skills").execute(&db).await.unwrap();
- let plan:Value=sqlx::query_scalar(&format!("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) {RECALL_SQL}")).bind(experience_name("com.example.reader")).fetch_one(&db).await.unwrap();
+ let plan:Value=sqlx::query_scalar(&format!("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) {RECALL_SQL}")).bind(experience_name("com.example.reader")).bind(legacy_experience_name("com.example.reader")).fetch_one(&db).await.unwrap();
  assert!(plan.to_string().contains("runtime_skills_active_name"),"recall must use the matching index as learned skills grow: {plan}");
  let mut guidance=crate::agent_loop::LoopState::default();
  let mut observed=vec![json!({"role":"user","content":[{"type":"input_text","text":"使用手机应用"}]}),
@@ -343,7 +345,19 @@ mod database_tests {
 }
 
 pub async fn backfill(app: &App) -> Result<(), String> {
-    let rows=sqlx::query("SELECT id,run_id,title,jsonb_path_query_array(result,'$[*] ? (@.type == \"input_text\")') AS output FROM harness_events WHERE kind='tool' AND status='completed' AND title IN ('观察手机','查看操作结果') AND result IS NOT NULL ORDER BY created_at DESC LIMIT 300").fetch_all(&app.db).await.map_err(|e|e.to_string())?;
+    let rows = sqlx::query(
+        "SELECT id,run_id,title,jsonb_path_query_array(result,'$[*] ? (@.type == \"input_text\")') AS output
+         FROM (
+             SELECT id,run_id,title,result,created_at FROM harness_events
+             WHERE kind='tool' AND status='completed' AND title IN ('观察手机','查看操作结果')
+               AND result IS NOT NULL ORDER BY created_at DESC LIMIT 300
+         ) AS recent
+         WHERE NOT EXISTS (SELECT 1 FROM app_learning_observations WHERE event_id=recent.id)
+         ORDER BY created_at DESC",
+    )
+    .fetch_all(&app.db)
+    .await
+    .map_err(|e| e.to_string())?;
     for row in rows {
         observe(
             app,

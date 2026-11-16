@@ -349,9 +349,7 @@ pub(super) async fn boot_probe(
     adb: &Adb,
     root_requested: &mut bool,
 ) -> Result<Option<NativeAndroidBooted>> {
-    if adb.boot_completed().await.unwrap_or(false)
-        && let Ok(uid) = adb.uid().await
-    {
+    if let Ok(Some(uid)) = adb.boot_identity().await {
         if uid == 0 {
             return Ok(readiness::snapshot(adb, false).await.ok());
         }

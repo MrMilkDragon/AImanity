@@ -378,8 +378,8 @@ async fn timing_projection_is_message_scoped_and_legacy_reads_remain_complete() 
         let (run,first)=queued(&app,"fixture-desktop","user").await;
         let second=Uuid::now_v7();
         sqlx::query("INSERT INTO messages(id,conversation_id,role) SELECT $2,conversation_id,'assistant' FROM runs WHERE id=$1").bind(run).bind(second).execute(&app.db).await.unwrap();
-        let old=super::model_trace::start(&app,run,first).await.unwrap();
-        let current=super::model_trace::start(&app,run,second).await.unwrap();
+        let super::model_trace::Admission::Started(old)=super::model_trace::start(&app,run,first).await.unwrap() else {panic!("first model attempt must start")};
+        let super::model_trace::Admission::Started(current)=super::model_trace::start(&app,run,second).await.unwrap() else {panic!("new model attempt must start")};
         let canceled:String=sqlx::query_scalar("SELECT status FROM harness_events WHERE id=$1").bind(old).fetch_one(&app.db).await.unwrap();
         assert_eq!(canceled,"canceled","new attempt closes stale running metadata");
         let timing=json!({"preparation_ms":2,"headers_ms":5,"first_byte_ms":9,"model_ms":20,"elapsed_ms":22,"request_bytes":100,"unpublished":"fixture-private"});

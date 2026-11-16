@@ -1,8 +1,8 @@
 # Task checkpoints and recovery / 任务检查点与恢复
 
-PostgreSQL checkpoints each task's goal, context, pending calls, action IDs, model revision, retry counters, step, control epoch and wake deadline. Closing the window leaves the task active. If the runtime restarts during an update or after an interruption, it queues the last saved step again. Pause and Resume keep the same task and its original wait deadline. Stop ends the task.
+PostgreSQL checkpoints each task's goal, context, pending calls, action IDs, model revision, retry counters, step, control epoch and wake deadline. When the desktop app reopens, interrupted tasks resume from their last checkpoint after device setup confirms Android and Linux are ready. Pause and Resume keep the same task and its original wait deadline. Stop ends the task.
 
-If a dispatched action loses its receipt, the task pauses for verification. Resume marks the outcome as unknown, withdraws the rest of that tool batch and reads the current device for an interrupted phone or computer action. The model continues from that evidence. A new instruction sent to the paused task uses the same recovery path.
+After a runtime restart, recovery marks an unconfirmed action as unknown, withdraws the rest of that tool batch and observes the affected phone or computer before continuing. When an action loses its receipt during a live session, the task pauses for verification. Resuming or sending a follow-up to the paused task uses the same recovery path.
 
 ## Model configuration on recovery
 
@@ -24,10 +24,10 @@ Recovery preserves the raw context, pending calls, action IDs and execution reco
 
 | Failure | Behavior |
 | --- | --- |
-| Worker killed/restarted | Reload persisted checkpoint; completed tool results are reused, not executed again |
+| Worker killed/restarted | Reload the checkpoint, reacquire phone control as needed and reuse completed tool results |
 | Persisted wait | Retain its original deadline; one wake event when due |
 | PostgreSQL unavailable after claim | Hold the claimed run; retry only its idempotent result transaction after recovery |
-| In-flight side effect has no result | Pause for outcome verification; never blindly run it again |
+| In-flight side effect has no result | Recover from a fresh observation after restart; pause for verification during a live session |
 | Provider 503 / temporary 429 | Persist bounded backoff/retry count, including across restart |
 | Explicit exhausted quota | Pause immediately; preserve task and records |
 | Partial/incomplete model stream | Discard unfinished output; no speculative tool execution |
@@ -39,9 +39,9 @@ Host sleep/reboot, power-loss recovery and prolonged multi-device operation have
 
 ## 任务中断与继续
 
-关闭窗口后，任务可以在后台继续。服务因更新或意外退出而重启时，运行中的任务从最近已保存的步骤重新排队。对话底部的「暂停」保留同一任务和原等待截止时间，「继续」恢复执行，「停止」结束任务。
+重新打开桌面应用时，Android 和 Linux 通过就绪检查后，退出前运行中的任务从最近的检查点继续。对话底部的「暂停」保留同一任务和原等待截止时间，「继续」恢复执行，「停止」结束任务。
 
-已派发的操作缺少回执时，任务会暂停。继续或向该任务追加指令后，执行器保留结果未知的记录，撤回同批尚未执行的操作。如果中断发生在手机或电脑上，先重新读取当前界面，再依据新的证据规划。
+服务重启后，执行器保留结果未知的记录，撤回同批尚未执行的操作，重新读取受影响的设备后续跑。运行中丢失操作回执会暂停，点击继续或追加指令后走同一恢复路径。
 
 ## 安装中断
 

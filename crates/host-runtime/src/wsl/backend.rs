@@ -285,6 +285,7 @@ impl<E: Execute> Backend<'_, E> {
             .await?
             .is_null()
         {
+            fs::write(self.root.join(crate::DEVICE_SETUP_PENDING), [])?;
             for flag in ["--prepare-database", "--migrate"] {
                 self.checked(self.command(&assistant, [flag]), Vec::new())
                     .await?;

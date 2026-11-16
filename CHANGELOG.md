@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.3 Calcium
+
+- Resume an interrupted task from its saved goal, input and tool receipts once both devices are ready.
+- Reconnect the workbench after a chat stream disconnects and show the saved goal status.
+- Check PostgreSQL and Redis sooner during startup.
+- Reduce database requests before model calls and when retrieving learned app skills.
+- Read Android boot and root status in one ADB call, without blocking device control.
+- Send Linux desktop observations as protobuf bytes, reuse unchanged Android frames on Windows, and scan desktop JPEG data once across pipe reads.
+- Remove repeated model request copies and keep chat history stable while typing.
+- Start Copilot through the native speech permissions, open Agent settings next to the toolbar, and unify loading animations.
+
 ## 0.0.2 Beryllium
 
 - Show live installation commands and prepare the local runtime in one extraction pass.

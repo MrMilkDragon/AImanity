@@ -119,12 +119,12 @@ impl Avo {
                         && sequence == last.sequence
                         && rotation == last.rotation
                     {
-                        media.screen.publish(last.jpeg.clone(), last.captured);
+                        media.screen.publish(&last.jpeg, last.captured);
                     } else {
                         let source = frame.clone();
                         match tokio::task::spawn_blocking(move || source.jpeg(rotation)).await {
                             Ok(Ok((jpeg, captured))) => {
-                                media.screen.publish(jpeg.clone(), captured);
+                                media.screen.publish(&jpeg, captured);
                                 last = Some(EncodedFrame {
                                     layout: frame,
                                     sequence,

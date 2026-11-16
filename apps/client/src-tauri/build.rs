@@ -10,7 +10,6 @@ fn main() {
         "retry_startup",
         "start_deployment",
         "cancel_deployment",
-        "accept_deployment_license",
         "check_client_update",
         "install_client_update",
         "native_voice",

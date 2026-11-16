@@ -1,3 +1,4 @@
+use ai_phone_api::wire::DesktopBridgeFrame;
 use ai_phone_guest_runtime::{
     DesktopRuntime, Response, Result, Settings,
     actions::{self, Action},
@@ -8,6 +9,7 @@ use ai_phone_guest_runtime::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use image::{Rgb, RgbImage};
+use prost::Message;
 use serde_json::{Value, json};
 use std::{sync::Mutex, time::Duration};
 
@@ -114,6 +116,12 @@ fn value(response: Response) -> Value {
         Response::Bytes(_) => panic!("expected JSON"),
     }
 }
+fn frame(response: Response) -> DesktopBridgeFrame {
+    let Response::Bytes(bytes) = response else {
+        panic!("expected protobuf frame");
+    };
+    DesktopBridgeFrame::decode(bytes.as_slice()).unwrap()
+}
 fn runtime(home: &std::path::Path) -> DesktopRuntime<FakeScreen, FakeRunner> {
     std::fs::create_dir(home.join("Files")).unwrap();
     DesktopRuntime {
@@ -129,7 +137,7 @@ async fn automated_click_waits_for_delayed_application_paint_without_repeating_i
     let home = tempfile::tempdir().unwrap();
     let mut app = runtime(home.path());
     app.screen.paint_delay = Some(Duration::from_millis(220));
-    let result = value(
+    let result = frame(
         app.dispatch(
             "action",
             json!({"kind":"click","x":50,"y":60,"wait_for_paint":true}),
@@ -137,8 +145,7 @@ async fn automated_click_waits_for_delayed_application_paint_without_repeating_i
         .await
         .unwrap(),
     );
-    let png = STANDARD.decode(result["png"].as_str().unwrap()).unwrap();
-    let image = image::load_from_memory(&png).unwrap().to_rgb8();
+    let image = image::load_from_memory(&result.png).unwrap().to_rgb8();
     assert_eq!(
         *image.get_pixel(0, 0),
         Rgb([0, 180, 40]),
@@ -186,7 +193,7 @@ async fn click_uses_real_cursor_ack_and_returns_fresh_png() {
     let home = tempfile::tempdir().unwrap();
     let mut app = runtime(home.path());
     app.screen.reported = Some((77, 66));
-    let result = value(
+    let result = frame(
         app.dispatch(
             "action",
             json!({"action_id":ACTION,"kind":"click","x":100,"y":200,"button":3,"clicks":2}),
@@ -194,10 +201,9 @@ async fn click_uses_real_cursor_ack_and_returns_fresh_png() {
         .await
         .unwrap(),
     );
-    assert_eq!(result["success"], true);
-    assert_eq!(result["title"], "Fixture 窗口");
-    let png = STANDARD.decode(result["png"].as_str().unwrap()).unwrap();
-    let image = image::load_from_memory(&png).unwrap();
+    assert_eq!(result.title, "Fixture 窗口");
+    assert_eq!((result.width, result.height), (1280, 800));
+    let image = image::load_from_memory(&result.png).unwrap();
     assert_eq!((image.width(), image.height()), (1280, 800));
     assert_eq!(
         app.screen.state.lock().unwrap().buttons,

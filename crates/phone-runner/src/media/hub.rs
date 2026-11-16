@@ -30,11 +30,11 @@ impl Hub {
             verified: AtomicU64::new(0),
         })
     }
-    pub fn publish(&self, jpeg: Vec<u8>, captured: u64) {
+    pub fn publish(&self, jpeg: &[u8], captured: u64) {
         let verified = now();
         let sequence = self.sequence.fetch_add(1, Ordering::Relaxed) + 1;
         let mut packet = format!("--phone\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\nX-Capture-Time: {captured}\r\nX-Verified-Time: {verified}\r\nX-Frame-Sequence: {sequence}\r\n\r\n",jpeg.len()).into_bytes();
-        packet.extend(jpeg);
+        packet.extend_from_slice(jpeg);
         packet.extend(b"\r\n");
         self.verified.store(verified, Ordering::Relaxed);
         self.frames.send_replace(Frame::Image(packet.into()));

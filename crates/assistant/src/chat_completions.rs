@@ -32,6 +32,12 @@ fn replay(message: &mut Value, item: &Value, enabled: bool) {
     }
 }
 
+fn message(role: &str, content: Value) -> Value {
+    let mut message = json!({"role":role});
+    message["content"] = content;
+    message
+}
+
 pub fn request_body(body: &Value, replay_reasoning: bool) -> Result<Value, String> {
     let mut messages = Vec::<Value>::new();
     if let Some(instructions) = body["instructions"].as_str() {
@@ -40,7 +46,7 @@ pub fn request_body(body: &Value, replay_reasoning: bool) -> Result<Value, Strin
     let mut images = vec![];
     for item in body["input"].as_array().ok_or("模型请求缺少上下文")? {
         if item["type"] != "function_call_output" && !images.is_empty() {
-            messages.push(json!({"role":"user","content":std::mem::take(&mut images)}));
+            messages.push(message("user", Value::Array(std::mem::take(&mut images))));
         }
         match item["type"].as_str() {
             Some("reasoning") => {} // Never fabricate, render or transplant private reasoning.
@@ -90,21 +96,21 @@ pub fn request_body(body: &Value, replay_reasoning: bool) -> Result<Value, Strin
                 }
                 let parts = content(&item["content"])?;
                 let mapped = if role == "user" {
-                    json!(parts)
+                    Value::Array(parts)
                 } else {
                     if parts.iter().any(|v| v["type"] != "text") {
                         return Err("助手与系统消息不接受图片内容".into());
                     }
-                    json!(
+                    Value::String(
                         parts
                             .iter()
                             .filter_map(|v| v["text"].as_str())
                             .collect::<Vec<_>>()
-                            .join("\n")
+                            .join("\n"),
                     )
                 };
                 let mut message =
-                    json!({"role":if role=="developer" {"system"} else {role},"content":mapped});
+                    message(if role == "developer" { "system" } else { role }, mapped);
                 if role == "assistant" {
                     replay(&mut message, item, replay_reasoning);
                 }
@@ -113,9 +119,10 @@ pub fn request_body(body: &Value, replay_reasoning: bool) -> Result<Value, Strin
         }
     }
     if !images.is_empty() {
-        messages.push(json!({"role":"user","content":images}));
+        messages.push(message("user", Value::Array(images)));
     }
-    let mut result = json!({"messages":messages,"stream":true,"model":body["model"]});
+    let mut result = json!({"stream":true,"model":body["model"]});
+    result["messages"] = Value::Array(messages);
     if let Some(tokens) = body.get("max_output_tokens") {
         result["max_tokens"] = tokens.clone();
     }
@@ -127,9 +134,11 @@ pub fn request_body(body: &Value, replay_reasoning: bool) -> Result<Value, Strin
             }
             let mut function = tool.clone();
             function.as_object_mut().unwrap().remove("type");
-            mapped.push(json!({"type":"function","function":function}));
+            let mut tool = json!({"type":"function"});
+            tool["function"] = function;
+            mapped.push(tool);
         }
-        result["tools"] = json!(mapped);
+        result["tools"] = Value::Array(mapped);
         result["parallel_tool_calls"] = json!(false);
         if let Some(choice) = body.get("tool_choice") {
             result["tool_choice"] = if choice.is_string() {

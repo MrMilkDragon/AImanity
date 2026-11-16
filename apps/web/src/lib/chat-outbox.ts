@@ -9,7 +9,7 @@ export class ChatOutbox<T> {
   entries:OutboxEntry[];
   private busy=false;
   private disposed=false;
-  private abort=new AbortController();
+  private sending: {id:string; control:AbortController}|null=null;
   constructor(private storage:Storage,private send:(input:OutboxInput,signal:AbortSignal)=>Promise<T>,private accepted:(result:T)=>void,private changed:(entries:OutboxEntry[])=>void=()=>{}){
     const value:unknown=JSON.parse(storage.read()||'[]');
     if(!Array.isArray(value)||value.some(item=>!validInput(item)))throw Error('待发送消息无法读取，请保留本机数据并重试');
@@ -27,12 +27,15 @@ export class ChatOutbox<T> {
     this.commit(this.entries.map(item=>({...item,status:item.status==='accepted'?'accepted':'queued',error:''})));
     this.start();
   }
-  /** A successful canonical projection, not a send retry, retires accepted input. */
+  /** A canonical receipt can settle a send before the HTTP response arrives. */
   projected(requestIds:ReadonlySet<string>){
-    const next=this.entries.filter(item=>item.status!=='accepted'||!requestIds.has(item.id));
-    if(next.length!==this.entries.length)this.commit(next);
+    const next=this.entries.filter(item=>!requestIds.has(item.id));
+    if(next.length===this.entries.length)return;
+    this.commit(next);
+    if(this.sending&&requestIds.has(this.sending.id))this.sending.control.abort();
+    this.start();
   }
-  dispose(){this.disposed=true;this.abort.abort();}
+  dispose(){this.disposed=true;this.sending?.control.abort();}
   private nextDelivery(){return this.entries.find(item=>item.status!=='accepted');}
   private commit(entries:OutboxEntry[]){
     // Save before clearing the composer or removing an acknowledged item.
@@ -51,15 +54,20 @@ export class ChatOutbox<T> {
     this.storage.write(JSON.stringify(this.entries));this.changed(this.entries);
   }
   private async deliver(current:OutboxEntry):Promise<boolean>{
+    const control=new AbortController();
+    this.sending={id:current.id,control};
     let result:T;
     try{
       this.commit(this.entries.map(item=>item.id===current.id?{...item,status:'sending'}:item));
-      result=await this.send(current,this.abort.signal);
+      result=await this.send(current,control.signal);
     }catch(error){
-      if(!this.disposed)this.recordError(current.id,'failed',error);
+      if(this.disposed)return false;
+      if(control.signal.aborted)return true;
+      this.recordError(current.id,'failed',error);
       return false;
-    }
+    }finally{this.sending=null;}
     if(this.disposed)return false;
+    if(control.signal.aborted)return true;
     try{this.confirm(current.id);}catch(error){this.recordError(current.id,'accepted',error);return false;}
     try{this.accepted(result);this.projected(new Set([current.id]));}
     catch(error){this.recordError(current.id,'accepted',error);}

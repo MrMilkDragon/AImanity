@@ -3,12 +3,12 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 pub(crate) async fn recover(db: &PgPool) -> Result<(), sqlx::Error> {
-    // Startup holds the installation's listening socket. Preserve checkpoints,
-    // unknown actions and wait deadlines; only the previous process's leases end.
     let mut tx = db.begin().await?;
     sqlx::query(
         "WITH interrupted AS (
-        UPDATE runs SET status='queued' WHERE status='running' RETURNING id
+        UPDATE runs SET status='queued',control_epoch=0,
+            loop_state=jsonb_set(loop_state,'{resume_requested}','true')
+        WHERE status='running' OR (status='queued' AND control_epoch<>0) RETURNING id
     ) UPDATE harness_events e SET status='waiting' FROM interrupted r
         WHERE e.id=r.id AND e.kind='task' AND e.status='running'",
     )
@@ -43,9 +43,7 @@ pub(crate) async fn claim(
             INSERT INTO device_execution_leases(device_id,run_id)
             SELECT device_id,id FROM due ON CONFLICT DO NOTHING RETURNING run_id
         )
-        UPDATE runs r SET status='running',heartbeat_at=now(),
-            loop_state=CASE WHEN r.next_wake_at IS NOT NULL THEN jsonb_set(r.loop_state,'{wait_completed_at_ms}',to_jsonb(floor(extract(epoch FROM r.next_wake_at)*1000)::bigint)) ELSE r.loop_state END,
-            next_wake_at=NULL,error=''
+        UPDATE runs r SET status='running',heartbeat_at=now(),next_wake_at=NULL,error=''
         FROM claimed WHERE r.id=claimed.run_id RETURNING r.id,r.assistant_message_id",
     )
     .bind(active)

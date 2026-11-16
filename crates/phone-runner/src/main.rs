@@ -209,22 +209,6 @@ async fn adb(runner: &Runner, args: Vec<String>) -> Result<(bool, Vec<u8>, Strin
                     stderr: vec![],
                 })
         }
-        [kind] if kind == "get-state" => runner.adb.state(128, deadline).await.map(|mut stdout| {
-            stdout.push(b'\n');
-            Output {
-                code: 0,
-                stdout,
-                stderr: vec![],
-            }
-        }),
-        [kind] if kind == "root" => runner.adb.raw("root:", 4096, deadline).await.map(|stdout| {
-            let failed = stdout.windows(6).any(|part| part == b"cannot");
-            Output {
-                code: u8::from(failed),
-                stdout,
-                stderr: vec![],
-            }
-        }),
         _ => return Err("Unsupported internal ADB command".into()),
     };
     match result {
@@ -984,6 +968,39 @@ fn adb_server_port() -> Result<u16, std::num::ParseIntError> {
     }
 }
 
+async fn refresh_root_readiness(runner: &Runner) {
+    let budget = Duration::from_secs(3);
+    let deadline = tokio::time::Instant::now() + budget;
+    let uid = runner
+        .adb
+        .shell(
+            r#"boot=$(getprop sys.boot_completed); printf '%s\n' "$boot"; [ "$boot" != 1 ] || id -u"#,
+            ai_phone_adb::Limits {
+                stdout: 128,
+                stderr: 512,
+            },
+            budget,
+        )
+        .await
+        .ok()
+        .filter(|probe| probe.code == 0)
+        .and_then(|probe| {
+            let ("1", uid) = std::str::from_utf8(&probe.stdout).ok()?.trim().split_once('\n')? else {
+                return None;
+            };
+            uid.trim().parse::<u32>().ok()
+        });
+    runner.root_ready.store(uid == Some(0), Ordering::Release);
+
+    // Restarting adbd must remain exclusive with device actions.
+    if let Some(1..) = uid
+        && let Some(remaining) = deadline.checked_duration_since(tokio::time::Instant::now())
+        && let Ok(_guard) = runner.ledger.try_lock()
+    {
+        let _ = runner.adb.raw("root:", 4096, remaining).await;
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match std::env::args().nth(1).as_deref() {
@@ -1059,40 +1076,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let monitor = runner.clone();
     tokio::spawn(async move {
         loop {
+            refresh_root_readiness(&monitor).await;
             tokio::time::sleep(Duration::from_secs(3)).await;
-            let Ok(_guard) = monitor.ledger.try_lock() else {
-                continue;
-            };
-            let _ = tokio::time::timeout(Duration::from_secs(3), async {
-                let Ok((true, state, _)) = adb(&monitor, args(&["get-state"])).await else {
-                    monitor.root_ready.store(false, Ordering::Release);
-                    return;
-                };
-                if String::from_utf8_lossy(&state).trim() != "device" {
-                    monitor.root_ready.store(false, Ordering::Release);
-                    return;
-                }
-                let Ok((true, boot, _)) =
-                    adb(&monitor, args(&["shell", "getprop", "sys.boot_completed"])).await
-                else {
-                    return;
-                };
-                if String::from_utf8_lossy(&boot).trim() != "1" {
-                    monitor.root_ready.store(false, Ordering::Release);
-                    return;
-                }
-                let Ok((true, uid, _)) = adb(&monitor, args(&["shell", "id", "-u"])).await else {
-                    return;
-                };
-                monitor.root_ready.store(
-                    String::from_utf8_lossy(&uid).trim() == "0",
-                    Ordering::Release,
-                );
-                if String::from_utf8_lossy(&uid).trim() != "0" {
-                    let _ = adb(&monitor, args(&["root"])).await;
-                }
-            })
-            .await;
         }
     });
     let app = Router::new()
@@ -1233,7 +1218,11 @@ mod observation_tests {
     #[tokio::test]
     async fn agent_control_requires_root_but_manual_control_remains_available() {
         let fixture = Fixture::new();
-        let runner = Arc::new(fixture.runner("#!/bin/sh\nexit 1\n"));
+        let runner = Arc::new(fixture.runner(concat!(
+            "#!/bin/sh\ncase \"$6\" in\n",
+            "*sys.boot_completed*'id -u'*) printf '1\\n0\\n';;\n",
+            "*) exit 1;;\nesac\n",
+        )));
         runner.root_ready.store(false, Ordering::Release);
         let request = |controller: &str| {
             let mut headers = HeaderMap::new();
@@ -1256,7 +1245,10 @@ mod observation_tests {
         );
         assert_eq!(runner.ledger.lock().await.epoch, 1);
         assert_eq!(request("manual").await.status(), StatusCode::OK);
-        runner.root_ready.store(true, Ordering::Release);
+        {
+            let _control = runner.ledger.try_lock().unwrap();
+            refresh_root_readiness(&runner).await;
+        }
         let granted = request("agent").await;
         assert_eq!(granted.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(granted.into_body(), 1024)

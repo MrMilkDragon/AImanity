@@ -230,8 +230,18 @@ async fn stalled_device_collection_cannot_delay_other_device_admission() {
                 let held = if block_phone { registry::PHONE } else { desktop };
                 assert!(!sqlx::query_scalar::<_,bool>("SELECT EXISTS(SELECT 1 FROM runs WHERE device_id=$1)").bind(held).fetch_one(&app.db).await.unwrap(), "a different collector must not bypass this device's supervision or admission");
                 assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM runs").fetch_one(&app.db).await.unwrap(), 1);
+                let wake_ms = started.elapsed().as_millis();
+                sqlx::query("UPDATE runs SET status='succeeded' WHERE device_id=$1").bind(ready).execute(&app.db).await.unwrap();
+                let settling = std::time::Instant::now();
+                app.run_signals.proactive_settled.notify_one();
+                tokio::time::timeout(Duration::from_secs(2), async {
+                    loop {
+                        if sqlx::query_scalar::<_,bool>("SELECT EXISTS(SELECT 1 FROM phone_notifications WHERE device_id=$1 AND status='succeeded')").bind(ready).fetch_one(&app.db).await.unwrap() { break; }
+                        tokio::time::sleep(Duration::from_millis(25)).await;
+                    }
+                }).await.expect("committed notification settlement wakes independently of device polling");
                 assert!(!inbox.bad_request.load(Ordering::SeqCst));
-                println!("blocked {} collector: other durable notification admitted in {}ms; no model or real device", if block_phone { "phone HTTP" } else { "desktop SQL" }, started.elapsed().as_millis());
+                println!("blocked {} collector: other notification admitted in {wake_ms} ms, settled in {} ms; no model or real device", if block_phone { "phone HTTP" } else { "desktop SQL" }, settling.elapsed().as_millis());
             }).catch_unwind().await;
             work.abort();
             assert!(work.await.unwrap_err().is_cancelled());

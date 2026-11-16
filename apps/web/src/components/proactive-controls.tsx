@@ -2,12 +2,12 @@
 import { LoadingOrb } from "@/components/ui/loading-orb";
 import {useWorkbenchNotice} from './workbench-notices';
 import {useI18n} from "./locale-provider";
-import {createContext,useContext,useCallback,useEffect,useRef,useState,type ReactNode} from 'react';
+import {createContext,useContext,useCallback,useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import type {MessageShape} from '@bufbuild/protobuf';
 import {GoalUpdateRequestSchema,ProactiveRequestSchema,ProactiveStateSchema,ProactiveUpdateRequestSchema} from '@ai-phone/protocol/ai_phone/v1/proactive_pb';
 import {settingsRpc} from '@/lib/settings-client';
-import {Cog,Compass,Pause,Target} from 'lucide-react';
+import {Compass,Pause,Target} from 'lucide-react';
 import {FloatingWindow,WindowTrigger} from './floating-window';
 import {Button} from './ui/button';
 import './proactive-controls.css';
@@ -110,6 +110,7 @@ export function TaskGoal({open,deviceId,onOpen,onClose}:{
  const {state,goalError,saving,updateGoal}=useProactive();
  const [draft,setDraft]=useState<string|null>(null);
  const saved=state?.goal??'';
+ const status=state?.goalStatus;
  const value=draft??saved;
  const goal=value.trim();
  const active=!!state?.goalActive;
@@ -145,7 +146,7 @@ export function TaskGoal({open,deviceId,onOpen,onClose}:{
     {(goalError||tooLong)&&<p className="task-goal-error" role="alert">{tooLong?t('目标内容不能超过 12 KB'):goalError}</p>}
     <div className="task-goal-actions">
      {saving==='goal'&&<LoadingOrb size={17} label={t('保存中…')}/>}
-     {active&&<span className="task-goal-status" role="status">{t(goalStatusLabels[state.goalStatus]??'目标运行中')}</span>}
+     {saved&&status&&<span className="task-goal-status" role="status">{t(goalStatusLabels[status]??status)}</span>}
      {active&&<Button type="button" variant="outline" disabled={!!saving} onClick={()=>void save('')}>{t('关闭目标')}</Button>}
      {(!active||changed)&&<Button type="submit" disabled={!canSave}>{t(active?'更新目标':'激活')}</Button>}
     </div>
@@ -156,8 +157,49 @@ export function TaskGoal({open,deviceId,onOpen,onClose}:{
 
 export function TaskGoalBackdrop(){
  const {state,visible}=useProactive();
+ const metal=useId();
  if(!state?.goalActive)return null;
- return <div className="task-goal-gears" data-paused={!visible} aria-hidden="true">
-  <Cog/><Cog/><Cog/>
- </div>;
+ const paint=`url(#${metal})`;
+ return (
+  <svg className="task-goal-backdrop" data-paused={!visible||state.goalStatus==='paused'||state.goalStatus==='failed'} aria-hidden="true" focusable="false" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
+   <defs>
+    <linearGradient id={metal} x1="0" y1="1" x2="1" y2="0">
+     <stop offset="0" stopColor="#8768b2"/>
+     <stop offset=".42" stopColor="#8098ba"/>
+     <stop offset=".8" stopColor="#c18c5d"/>
+     <stop offset="1" stopColor="#f3b682"/>
+    </linearGradient>
+   </defs>
+   <g className="goal-engraving" fill="none" stroke={paint}>
+    <path d="M-40 610H193L557 303H955l139-100h386M-40 704H181l340-283h493l176 141h295"/>
+    <path d="M-20 564h175l377-331h330M1447 619h-249l-128-106H920"/>
+   </g>
+   <g transform="translate(291 485) scale(1.29)" stroke={paint} fill="none">
+    <circle className="goal-guide" r="326"/>
+    <circle className="goal-guide" r="294"/>
+    <circle className="goal-guide" r="160"/>
+    <g className="goal-orbit">
+     <circle className="goal-ticks" r="294" pathLength="360"/>
+     <circle className="goal-sweep" r="272" pathLength="360"/>
+     <circle className="goal-thread" r="260" pathLength="360"/>
+     <circle className="goal-node" cx="272" r="3" fill={paint}/>
+    </g>
+    <g className="goal-orbit goal-orbit-reverse">
+     <circle className="goal-ticks" r="195" pathLength="360"/>
+     <circle className="goal-sweep" r="171" pathLength="360"/>
+     <circle className="goal-node" cy="-171" r="3.5" fill={paint}/>
+    </g>
+   </g>
+   <g transform="translate(1370 544) scale(1.18)" stroke={paint} fill="none">
+    <circle className="goal-guide" r="218"/>
+    <circle className="goal-guide" r="137"/>
+    <g className="goal-orbit goal-orbit-secondary">
+     <circle className="goal-ticks" r="218" pathLength="360"/>
+     <circle className="goal-sweep" r="207" pathLength="360"/>
+     <circle className="goal-thread" r="189" pathLength="360"/>
+     <circle className="goal-node" cx="-207" r="3" fill={paint}/>
+    </g>
+   </g>
+  </svg>
+ );
 }

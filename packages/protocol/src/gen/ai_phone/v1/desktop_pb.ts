@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file ai_phone/v1/desktop.proto.
  */
 export const file_ai_phone_v1_desktop: GenFile = /*@__PURE__*/
-  fileDesc("ChlhaV9waG9uZS92MS9kZXNrdG9wLnByb3RvEgthaV9waG9uZS52MSIjCg5EZXNrdG9wUmVxdWVzdBIRCglkZXZpY2VfaWQYASABKAkirAIKEkRlc2t0b3BPYnNlcnZhdGlvbhIRCglkZXZpY2VfaWQYASABKAkSFgoOb2JzZXJ2YXRpb25faWQYAiABKAkSDQoFZXBvY2gYAyABKAQSFgoOY2FwdHVyZWRfYXRfbXMYBCABKAQSDQoFd2lkdGgYBSABKA0SDgoGaGVpZ2h0GAYgASgNEg0KBXRpdGxlGAcgASgJEgsKA3BuZxgIIAEoDBIzCgtmcmFtZV9zdGF0ZRgJIAEoDjIeLmFpX3Bob25lLnYxLkRlc2t0b3BGcmFtZVN0YXRlEhUKDWZyYW1lX3dhaXRfbXMYCiABKA0SFgoOYXBwbGljYXRpb25faWQYCyABKAkSEQoJd2luZG93X2lkGAwgASgEEhIKCnByb2Nlc3NfaWQYDSABKA0ilwIKFERlc2t0b3BBY3Rpb25SZXF1ZXN0EhEKCWRldmljZV9pZBgBIAEoCRIRCglhY3Rpb25faWQYAiABKAkSFgoOb2JzZXJ2YXRpb25faWQYAyABKAkSDQoFZXBvY2gYBCABKAQSDAoEa2luZBgFIAEoCRIJCgF4GAYgASgREgkKAXkYByABKBESDAoEdG9feBgIIAEoERIMCgR0b195GAkgASgREg4KBmFtb3VudBgKIAEoERIOCgZidXR0b24YCyABKA0SDgoGY2xpY2tzGAwgASgNEgsKA2tleRgNIAEoCRIMCgR0ZXh0GA4gASgJEhYKDndhaXRfZm9yX3BhaW50GA8gASgIEg8KB3JlcGxhY2UYECABKAgiNQoSRGV2aWNlRmlsZXNSZXF1ZXN0EhEKCWRldmljZV9pZBgBIAEoCRIMCgRwYXRoGAIgASgJIkoKCkRldmljZUZpbGUSDAoEbmFtZRgBIAEoCRIMCgRwYXRoGAIgASgJEhEKCWRpcmVjdG9yeRgDIAEoCBINCgVieXRlcxgEIAEoBCI1CgtEZXZpY2VGaWxlcxImCgVmaWxlcxgBIAMoCzIXLmFpX3Bob25lLnYxLkRldmljZUZpbGUiWgoRRGV2aWNlTGlua1JlcXVlc3QSGAoQc291cmNlX2RldmljZV9pZBgBIAEoCRIYChB0YXJnZXRfZGV2aWNlX2lkGAIgASgJEhEKCWNvbm5lY3RlZBgDIAEoCCJxCgpEZXZpY2VMaW5rEgoKAmlkGAEgASgJEhgKEHNvdXJjZV9kZXZpY2VfaWQYAiABKAkSGAoQdGFyZ2V0X2RldmljZV9pZBgDIAEoCRIRCgljb25uZWN0ZWQYBCABKAgSEAoIcmV2aXNpb24YBSABKAQigwEKD1RyYW5zZmVyUmVxdWVzdBISCgpyZXF1ZXN0X2lkGAEgASgJEhgKEHNvdXJjZV9kZXZpY2VfaWQYAiABKAkSGAoQdGFyZ2V0X2RldmljZV9pZBgDIAEoCRITCgtzb3VyY2VfcGF0aBgEIAEoCRITCgt0YXJnZXRfbmFtZRgFIAEoCSLfAQoORGV2aWNlVHJhbnNmZXISCgoCaWQYASABKAkSGAoQc291cmNlX2RldmljZV9pZBgCIAEoCRIYChB0YXJnZXRfZGV2aWNlX2lkGAMgASgJEhMKC3NvdXJjZV9wYXRoGAQgASgJEhMKC3RhcmdldF9wYXRoGAUgASgJEgwKBG5hbWUYBiABKAkSDQoFYnl0ZXMYByABKAQSEAoIY2hlY2tzdW0YCCABKAkSDgoGc3RhdHVzGAkgASgJEg0KBWVycm9yGAogASgJEhUKDWNyZWF0ZWRfYXRfbXMYCyABKAQixwEKD0RldmljZUxpbmtTdGF0ZRImCgVsaW5rcxgBIAMoCzIXLmFpX3Bob25lLnYxLkRldmljZUxpbmsSLgoJdHJhbnNmZXJzGAIgAygLMhsuYWlfcGhvbmUudjEuRGV2aWNlVHJhbnNmZXISLgoEam9icxgDIAMoCzIgLmFpX3Bob25lLnYxLkRlc2t0b3BQcm92aXNpb25Kb2ISLAoIbWVzc2FnZXMYBCADKAsyGi5haV9waG9uZS52MS5EZXZpY2VNZXNzYWdlInYKF0Rlc2t0b3BQcm92aXNpb25SZXF1ZXN0EhEKCWRldmljZV9pZBgBIAEoCRISCgpyZXF1ZXN0X2lkGAIgASgJEgwKBGNwdXMYAyABKA0SEQoJbWVtb3J5X21iGAQgASgNEhMKC3RlbXBsYXRlX2lkGAUgASgJIpgBChNEZXNrdG9wUHJvdmlzaW9uSm9iEgoKAmlkGAEgASgJEhEKCWRldmljZV9pZBgCIAEoCRIOCgZzdGF0dXMYAyABKAkSDQoFc3RhZ2UYBCABKAkSDQoFZXJyb3IYBSABKAkSDAoEY3B1cxgGIAEoDRIRCgltZW1vcnlfbWIYByABKA0SEwoLdGVtcGxhdGVfaWQYCCABKAkibAoURGV2aWNlTWVzc2FnZVJlcXVlc3QSEgoKcmVxdWVzdF9pZBgBIAEoCRIYChBzb3VyY2VfZGV2aWNlX2lkGAIgASgJEhgKEHRhcmdldF9kZXZpY2VfaWQYAyABKAkSDAoEdGV4dBgEIAEoCSKjAQoNRGV2aWNlTWVzc2FnZRIKCgJpZBgBIAEoCRIYChBzb3VyY2VfZGV2aWNlX2lkGAIgASgJEhgKEHRhcmdldF9kZXZpY2VfaWQYAyABKAkSDAoEdGV4dBgEIAEoCRIOCgZzdGF0dXMYBSABKAkSDgoGcnVuX2lkGAYgASgJEg0KBWVycm9yGAcgASgJEhUKDWNyZWF0ZWRfYXRfbXMYCCABKAQqnQEKEURlc2t0b3BGcmFtZVN0YXRlEiMKH0RFU0tUT1BfRlJBTUVfU1RBVEVfVU5TUEVDSUZJRUQQABIeChpERVNLVE9QX0ZSQU1FX1NUQVRFX1NUQUJMRRABEiAKHERFU0tUT1BfRlJBTUVfU1RBVEVfQ0hBTkdJTkcQAhIhCh1ERVNLVE9QX0ZSQU1FX1NUQVRFX1VOQ0hBTkdFRBADYgZwcm90bzM");
+  fileDesc("ChlhaV9waG9uZS92MS9kZXNrdG9wLnByb3RvEgthaV9waG9uZS52MSIjCg5EZXNrdG9wUmVxdWVzdBIRCglkZXZpY2VfaWQYASABKAki3QEKEkRlc2t0b3BCcmlkZ2VGcmFtZRILCgNwbmcYASABKAwSDQoFd2lkdGgYAiABKA0SDgoGaGVpZ2h0GAMgASgNEg0KBXRpdGxlGAQgASgJEhkKEWFwcGxpY2F0aW9uX2NsYXNzGAUgASgJEhEKCXdpbmRvd19pZBgGIAEoDRISCgpwcm9jZXNzX2lkGAcgASgNEjMKC2ZyYW1lX3N0YXRlGAggASgOMh4uYWlfcGhvbmUudjEuRGVza3RvcEZyYW1lU3RhdGUSFQoNZnJhbWVfd2FpdF9tcxgJIAEoDSKsAgoSRGVza3RvcE9ic2VydmF0aW9uEhEKCWRldmljZV9pZBgBIAEoCRIWCg5vYnNlcnZhdGlvbl9pZBgCIAEoCRINCgVlcG9jaBgDIAEoBBIWCg5jYXB0dXJlZF9hdF9tcxgEIAEoBBINCgV3aWR0aBgFIAEoDRIOCgZoZWlnaHQYBiABKA0SDQoFdGl0bGUYByABKAkSCwoDcG5nGAggASgMEjMKC2ZyYW1lX3N0YXRlGAkgASgOMh4uYWlfcGhvbmUudjEuRGVza3RvcEZyYW1lU3RhdGUSFQoNZnJhbWVfd2FpdF9tcxgKIAEoDRIWCg5hcHBsaWNhdGlvbl9pZBgLIAEoCRIRCgl3aW5kb3dfaWQYDCABKAQSEgoKcHJvY2Vzc19pZBgNIAEoDSKXAgoURGVza3RvcEFjdGlvblJlcXVlc3QSEQoJZGV2aWNlX2lkGAEgASgJEhEKCWFjdGlvbl9pZBgCIAEoCRIWCg5vYnNlcnZhdGlvbl9pZBgDIAEoCRINCgVlcG9jaBgEIAEoBBIMCgRraW5kGAUgASgJEgkKAXgYBiABKBESCQoBeRgHIAEoERIMCgR0b194GAggASgREgwKBHRvX3kYCSABKBESDgoGYW1vdW50GAogASgREg4KBmJ1dHRvbhgLIAEoDRIOCgZjbGlja3MYDCABKA0SCwoDa2V5GA0gASgJEgwKBHRleHQYDiABKAkSFgoOd2FpdF9mb3JfcGFpbnQYDyABKAgSDwoHcmVwbGFjZRgQIAEoCCI1ChJEZXZpY2VGaWxlc1JlcXVlc3QSEQoJZGV2aWNlX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiSgoKRGV2aWNlRmlsZRIMCgRuYW1lGAEgASgJEgwKBHBhdGgYAiABKAkSEQoJZGlyZWN0b3J5GAMgASgIEg0KBWJ5dGVzGAQgASgEIjUKC0RldmljZUZpbGVzEiYKBWZpbGVzGAEgAygLMhcuYWlfcGhvbmUudjEuRGV2aWNlRmlsZSJaChFEZXZpY2VMaW5rUmVxdWVzdBIYChBzb3VyY2VfZGV2aWNlX2lkGAEgASgJEhgKEHRhcmdldF9kZXZpY2VfaWQYAiABKAkSEQoJY29ubmVjdGVkGAMgASgIInEKCkRldmljZUxpbmsSCgoCaWQYASABKAkSGAoQc291cmNlX2RldmljZV9pZBgCIAEoCRIYChB0YXJnZXRfZGV2aWNlX2lkGAMgASgJEhEKCWNvbm5lY3RlZBgEIAEoCBIQCghyZXZpc2lvbhgFIAEoBCKDAQoPVHJhbnNmZXJSZXF1ZXN0EhIKCnJlcXVlc3RfaWQYASABKAkSGAoQc291cmNlX2RldmljZV9pZBgCIAEoCRIYChB0YXJnZXRfZGV2aWNlX2lkGAMgASgJEhMKC3NvdXJjZV9wYXRoGAQgASgJEhMKC3RhcmdldF9uYW1lGAUgASgJIt8BCg5EZXZpY2VUcmFuc2ZlchIKCgJpZBgBIAEoCRIYChBzb3VyY2VfZGV2aWNlX2lkGAIgASgJEhgKEHRhcmdldF9kZXZpY2VfaWQYAyABKAkSEwoLc291cmNlX3BhdGgYBCABKAkSEwoLdGFyZ2V0X3BhdGgYBSABKAkSDAoEbmFtZRgGIAEoCRINCgVieXRlcxgHIAEoBBIQCghjaGVja3N1bRgIIAEoCRIOCgZzdGF0dXMYCSABKAkSDQoFZXJyb3IYCiABKAkSFQoNY3JlYXRlZF9hdF9tcxgLIAEoBCLHAQoPRGV2aWNlTGlua1N0YXRlEiYKBWxpbmtzGAEgAygLMhcuYWlfcGhvbmUudjEuRGV2aWNlTGluaxIuCgl0cmFuc2ZlcnMYAiADKAsyGy5haV9waG9uZS52MS5EZXZpY2VUcmFuc2ZlchIuCgRqb2JzGAMgAygLMiAuYWlfcGhvbmUudjEuRGVza3RvcFByb3Zpc2lvbkpvYhIsCghtZXNzYWdlcxgEIAMoCzIaLmFpX3Bob25lLnYxLkRldmljZU1lc3NhZ2UidgoXRGVza3RvcFByb3Zpc2lvblJlcXVlc3QSEQoJZGV2aWNlX2lkGAEgASgJEhIKCnJlcXVlc3RfaWQYAiABKAkSDAoEY3B1cxgDIAEoDRIRCgltZW1vcnlfbWIYBCABKA0SEwoLdGVtcGxhdGVfaWQYBSABKAkimAEKE0Rlc2t0b3BQcm92aXNpb25Kb2ISCgoCaWQYASABKAkSEQoJZGV2aWNlX2lkGAIgASgJEg4KBnN0YXR1cxgDIAEoCRINCgVzdGFnZRgEIAEoCRINCgVlcnJvchgFIAEoCRIMCgRjcHVzGAYgASgNEhEKCW1lbW9yeV9tYhgHIAEoDRITCgt0ZW1wbGF0ZV9pZBgIIAEoCSJsChREZXZpY2VNZXNzYWdlUmVxdWVzdBISCgpyZXF1ZXN0X2lkGAEgASgJEhgKEHNvdXJjZV9kZXZpY2VfaWQYAiABKAkSGAoQdGFyZ2V0X2RldmljZV9pZBgDIAEoCRIMCgR0ZXh0GAQgASgJIqMBCg1EZXZpY2VNZXNzYWdlEgoKAmlkGAEgASgJEhgKEHNvdXJjZV9kZXZpY2VfaWQYAiABKAkSGAoQdGFyZ2V0X2RldmljZV9pZBgDIAEoCRIMCgR0ZXh0GAQgASgJEg4KBnN0YXR1cxgFIAEoCRIOCgZydW5faWQYBiABKAkSDQoFZXJyb3IYByABKAkSFQoNY3JlYXRlZF9hdF9tcxgIIAEoBCqdAQoRRGVza3RvcEZyYW1lU3RhdGUSIwofREVTS1RPUF9GUkFNRV9TVEFURV9VTlNQRUNJRklFRBAAEh4KGkRFU0tUT1BfRlJBTUVfU1RBVEVfU1RBQkxFEAESIAocREVTS1RPUF9GUkFNRV9TVEFURV9DSEFOR0lORxACEiEKHURFU0tUT1BfRlJBTUVfU1RBVEVfVU5DSEFOR0VEEANiBnByb3RvMw");
 
 /**
  * @generated from message ai_phone.v1.DesktopRequest
@@ -28,6 +28,65 @@ export type DesktopRequest = Message<"ai_phone.v1.DesktopRequest"> & {
  */
 export const DesktopRequestSchema: GenMessage<DesktopRequest> = /*@__PURE__*/
   messageDesc(file_ai_phone_v1_desktop, 0);
+
+/**
+ * Frame returned by the Linux desktop bridge to the assistant.
+ *
+ * @generated from message ai_phone.v1.DesktopBridgeFrame
+ */
+export type DesktopBridgeFrame = Message<"ai_phone.v1.DesktopBridgeFrame"> & {
+  /**
+   * @generated from field: bytes png = 1;
+   */
+  png: Uint8Array;
+
+  /**
+   * @generated from field: uint32 width = 2;
+   */
+  width: number;
+
+  /**
+   * @generated from field: uint32 height = 3;
+   */
+  height: number;
+
+  /**
+   * @generated from field: string title = 4;
+   */
+  title: string;
+
+  /**
+   * @generated from field: string application_class = 5;
+   */
+  applicationClass: string;
+
+  /**
+   * @generated from field: uint32 window_id = 6;
+   */
+  windowId: number;
+
+  /**
+   * @generated from field: uint32 process_id = 7;
+   */
+  processId: number;
+
+  /**
+   * @generated from field: ai_phone.v1.DesktopFrameState frame_state = 8;
+   */
+  frameState: DesktopFrameState;
+
+  /**
+   * @generated from field: uint32 frame_wait_ms = 9;
+   */
+  frameWaitMs: number;
+};
+
+/**
+ * Describes the message ai_phone.v1.DesktopBridgeFrame.
+ * Use `create(DesktopBridgeFrameSchema)` to create a new message.
+ */
+export const DesktopBridgeFrameSchema: GenMessage<DesktopBridgeFrame> = /*@__PURE__*/
+  messageDesc(file_ai_phone_v1_desktop, 1);
 
 /**
  * @generated from message ai_phone.v1.DesktopObservation
@@ -110,7 +169,7 @@ export type DesktopObservation = Message<"ai_phone.v1.DesktopObservation"> & {
  * Use `create(DesktopObservationSchema)` to create a new message.
  */
 export const DesktopObservationSchema: GenMessage<DesktopObservation> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 1);
+  messageDesc(file_ai_phone_v1_desktop, 2);
 
 /**
  * @generated from message ai_phone.v1.DesktopActionRequest
@@ -207,7 +266,7 @@ export type DesktopActionRequest = Message<"ai_phone.v1.DesktopActionRequest"> &
  * Use `create(DesktopActionRequestSchema)` to create a new message.
  */
 export const DesktopActionRequestSchema: GenMessage<DesktopActionRequest> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 2);
+  messageDesc(file_ai_phone_v1_desktop, 3);
 
 /**
  * @generated from message ai_phone.v1.DeviceFilesRequest
@@ -229,7 +288,7 @@ export type DeviceFilesRequest = Message<"ai_phone.v1.DeviceFilesRequest"> & {
  * Use `create(DeviceFilesRequestSchema)` to create a new message.
  */
 export const DeviceFilesRequestSchema: GenMessage<DeviceFilesRequest> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 3);
+  messageDesc(file_ai_phone_v1_desktop, 4);
 
 /**
  * @generated from message ai_phone.v1.DeviceFile
@@ -261,7 +320,7 @@ export type DeviceFile = Message<"ai_phone.v1.DeviceFile"> & {
  * Use `create(DeviceFileSchema)` to create a new message.
  */
 export const DeviceFileSchema: GenMessage<DeviceFile> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 4);
+  messageDesc(file_ai_phone_v1_desktop, 5);
 
 /**
  * @generated from message ai_phone.v1.DeviceFiles
@@ -278,7 +337,7 @@ export type DeviceFiles = Message<"ai_phone.v1.DeviceFiles"> & {
  * Use `create(DeviceFilesSchema)` to create a new message.
  */
 export const DeviceFilesSchema: GenMessage<DeviceFiles> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 5);
+  messageDesc(file_ai_phone_v1_desktop, 6);
 
 /**
  * @generated from message ai_phone.v1.DeviceLinkRequest
@@ -305,7 +364,7 @@ export type DeviceLinkRequest = Message<"ai_phone.v1.DeviceLinkRequest"> & {
  * Use `create(DeviceLinkRequestSchema)` to create a new message.
  */
 export const DeviceLinkRequestSchema: GenMessage<DeviceLinkRequest> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 6);
+  messageDesc(file_ai_phone_v1_desktop, 7);
 
 /**
  * @generated from message ai_phone.v1.DeviceLink
@@ -342,7 +401,7 @@ export type DeviceLink = Message<"ai_phone.v1.DeviceLink"> & {
  * Use `create(DeviceLinkSchema)` to create a new message.
  */
 export const DeviceLinkSchema: GenMessage<DeviceLink> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 7);
+  messageDesc(file_ai_phone_v1_desktop, 8);
 
 /**
  * @generated from message ai_phone.v1.TransferRequest
@@ -379,7 +438,7 @@ export type TransferRequest = Message<"ai_phone.v1.TransferRequest"> & {
  * Use `create(TransferRequestSchema)` to create a new message.
  */
 export const TransferRequestSchema: GenMessage<TransferRequest> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 8);
+  messageDesc(file_ai_phone_v1_desktop, 9);
 
 /**
  * @generated from message ai_phone.v1.DeviceTransfer
@@ -446,7 +505,7 @@ export type DeviceTransfer = Message<"ai_phone.v1.DeviceTransfer"> & {
  * Use `create(DeviceTransferSchema)` to create a new message.
  */
 export const DeviceTransferSchema: GenMessage<DeviceTransfer> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 9);
+  messageDesc(file_ai_phone_v1_desktop, 10);
 
 /**
  * @generated from message ai_phone.v1.DeviceLinkState
@@ -478,7 +537,7 @@ export type DeviceLinkState = Message<"ai_phone.v1.DeviceLinkState"> & {
  * Use `create(DeviceLinkStateSchema)` to create a new message.
  */
 export const DeviceLinkStateSchema: GenMessage<DeviceLinkState> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 10);
+  messageDesc(file_ai_phone_v1_desktop, 11);
 
 /**
  * @generated from message ai_phone.v1.DesktopProvisionRequest
@@ -515,7 +574,7 @@ export type DesktopProvisionRequest = Message<"ai_phone.v1.DesktopProvisionReque
  * Use `create(DesktopProvisionRequestSchema)` to create a new message.
  */
 export const DesktopProvisionRequestSchema: GenMessage<DesktopProvisionRequest> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 11);
+  messageDesc(file_ai_phone_v1_desktop, 12);
 
 /**
  * @generated from message ai_phone.v1.DesktopProvisionJob
@@ -567,7 +626,7 @@ export type DesktopProvisionJob = Message<"ai_phone.v1.DesktopProvisionJob"> & {
  * Use `create(DesktopProvisionJobSchema)` to create a new message.
  */
 export const DesktopProvisionJobSchema: GenMessage<DesktopProvisionJob> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 12);
+  messageDesc(file_ai_phone_v1_desktop, 13);
 
 /**
  * @generated from message ai_phone.v1.DeviceMessageRequest
@@ -599,7 +658,7 @@ export type DeviceMessageRequest = Message<"ai_phone.v1.DeviceMessageRequest"> &
  * Use `create(DeviceMessageRequestSchema)` to create a new message.
  */
 export const DeviceMessageRequestSchema: GenMessage<DeviceMessageRequest> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 13);
+  messageDesc(file_ai_phone_v1_desktop, 14);
 
 /**
  * @generated from message ai_phone.v1.DeviceMessage
@@ -651,7 +710,7 @@ export type DeviceMessage = Message<"ai_phone.v1.DeviceMessage"> & {
  * Use `create(DeviceMessageSchema)` to create a new message.
  */
 export const DeviceMessageSchema: GenMessage<DeviceMessage> = /*@__PURE__*/
-  messageDesc(file_ai_phone_v1_desktop, 14);
+  messageDesc(file_ai_phone_v1_desktop, 15);
 
 /**
  * @generated from enum ai_phone.v1.DesktopFrameState

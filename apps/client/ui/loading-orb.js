@@ -1,51 +1,86 @@
-const turn = Math.PI * (3 - Math.sqrt(5));
-function sphere(count) {
-  return Array.from({ length: count }, (_, index) => {
-    const y = 1 - (2 * index + 1) / count;
-    const radius = Math.sqrt(1 - y * y);
-    const angle = index * turn;
-    return { x: radius * Math.cos(angle), y, z: radius * Math.sin(angle), angle };
+const fullTurn = Math.PI * 2;
+const elevation = .49;
+const elevationCos = Math.cos(elevation);
+const elevationSin = Math.sin(elevation);
+
+function lattice(count) {
+  const last = count - 1;
+  const edge = index => index === 0 ? -1 : index === last ? 1 : 0;
+  return Array.from({ length: count }, (_, layer) => {
+    const y = 2 * layer / last - 1;
+    const normalY = edge(layer);
+    const dots = [];
+    for (let column = 0; column < count; column++) {
+      const x = 2 * column / last - 1;
+      const normalX = edge(column);
+      for (let row = 0; row < count; row++) {
+        const normalZ = edge(row);
+        if (normalX || normalY || normalZ) {
+          dots.push({ x, z: 2 * row / last - 1, normalX, normalZ });
+        }
+      }
+    }
+    return { y, normalY, dots };
   });
 }
 
-const fullSphere = sphere(288);
-const smallSphere = sphere(60);
+const fullLattice = lattice(9);
+const smallLattice = lattice(4);
 
 export function mountLoadingOrb(canvas, compact = false) {
   const context = canvas.getContext('2d');
   if (!context) return { setRunning() {}, dispose() {} };
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-  const points = compact ? smallSphere : fullSphere;
-  const projected = points.map(() => ({ x: 0, y: 0, depth: 0 }));
+  const layers = compact ? smallLattice : fullLattice;
   let size = 0, frame = 0, previousTime = 0, paintedAt = 0, elapsed = 0;
   let visible = false, running = false;
+  let ink;
 
   function paint(time) {
-    const center = size / 2;
-    const radius = size * .39 * (1 + .045 * Math.sin(time * 1.7));
-    const spin = time * .32 + .15;
-    const tilt = -.28 + .05 * Math.sin(time * .45);
-    const cosine = Math.cos(spin), sine = Math.sin(spin);
-    const tiltCos = Math.cos(tilt), tiltSin = Math.sin(tilt);
-
-    points.forEach((point, index) => {
-      const output = projected[index];
-      const depth = point.z * cosine - point.x * sine;
-      const wave = 1 + .026 * Math.sin(point.angle * .6 + point.y * 4 - time * 2.1);
-      output.depth = (1 + point.y * tiltSin + depth * tiltCos) / 2;
-      const distance = radius * wave / (1 - (output.depth - .5) * .12);
-      output.x = center + (point.x * cosine + point.z * sine) * distance;
-      output.y = center + (point.y * tiltCos - depth * tiltSin) * distance;
-    });
-
-    projected.sort((a, b) => a.depth - b.depth);
+    const centerX = size * .5;
+    const centerY = size * (compact ? .5 : .455);
+    const unit = size * (compact ? .25 : .235);
+    const yaw = -.44 + time * .91;
+    const foldPhase = time * 3.7 - 1.95;
+    const pulse = Math.cos(foldPhase);
+    const forwardFold = ((1 + pulse) / 2) ** 6;
+    const returnFold = ((1 - pulse) / 2) ** 7;
+    const torsion = .43 * forwardFold - .29 * returnFold;
+    const seam = -.06 + .4 * returnFold;
     context.clearRect(0, 0, size, size);
-    for (const point of projected) {
-      context.beginPath();
-      const dot = compact ? .016 + .021 * point.depth : .004 + .008 * point.depth ** 1.5;
-      context.arc(point.x, point.y, size * dot, 0, Math.PI * 2);
-      context.globalAlpha = .08 + .92 * point.depth ** 1.65;
-      context.fill();
+
+    if (!compact) {
+      const shadowRadius = unit * 1.51;
+      context.save();
+      context.translate(centerX, size * .875);
+      context.scale(1, .25);
+      const shadow = context.createRadialGradient(0, 0, 0, 0, 0, shadowRadius);
+      shadow.addColorStop(0, 'rgba(0, 0, 0, .15)');
+      shadow.addColorStop(1, 'transparent');
+      context.fillStyle = shadow;
+      context.fillRect(-shadowRadius, -shadowRadius, shadowRadius * 2, shadowRadius * 2);
+      context.restore();
+    }
+
+    context.fillStyle = ink;
+    for (const { y, normalY, dots } of layers) {
+      const angle = yaw + torsion * Math.tanh((y - seam) * 4);
+      const cosine = Math.cos(angle), sine = Math.sin(angle);
+      const viewX = -sine * elevationCos, viewZ = cosine * elevationCos;
+      const facingY = normalY * elevationSin;
+      for (const { x, z, normalX, normalZ } of dots) {
+        const facing = Math.max(normalX * viewX, normalZ * viewZ, facingY);
+        if (facing <= 0) continue;
+        const depth = z * cosine - x * sine;
+        const dotX = centerX + unit * (x * cosine + z * sine);
+        const dotY = centerY + unit * (depth * elevationSin - y * elevationCos);
+        const light = .66 + (depth * elevationCos + y * elevationSin) * .17;
+        const dotRadius = size * (compact ? .043 : .0051 + .0043 * light);
+        context.globalAlpha = (.35 + .65 * light) * Math.min(1, facing * 3.15);
+        context.beginPath();
+        context.arc(dotX, dotY, dotRadius, 0, fullTurn);
+        context.fill();
+      }
     }
     context.globalAlpha = 1;
   }
@@ -64,7 +99,7 @@ export function mountLoadingOrb(canvas, compact = false) {
     cancelAnimationFrame(frame);
     previousTime = 0;
     if (!visible || !size || document.hidden) return;
-    context.fillStyle = getComputedStyle(canvas).color;
+    ink = getComputedStyle(canvas).color;
     paint(reducedMotion.matches ? 0 : elapsed);
     if (running && !reducedMotion.matches) frame = requestAnimationFrame(tick);
   }

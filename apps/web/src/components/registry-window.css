@@ -259,3 +259,13 @@
 .channel-advanced summary{cursor:pointer;min-height:36px;display:flex;align-items:center;color:var(--muted-foreground)}
 .channel-advanced label{display:block;margin:8px 0}
 .channel-tabs{flex-wrap:wrap}
+.registry-setup-cue {color:var(--destructive)}
+@media (prefers-reduced-motion:no-preference) {
+  [aria-expanded=false] > .registry-setup-cue {
+    animation:registry-setup-turn 4s cubic-bezier(.45,0,.25,1) infinite;
+  }
+  @keyframes registry-setup-turn {
+    0%,25% {transform:rotate(0turn)}
+    75%,100% {transform:rotate(1turn)}
+  }
+}

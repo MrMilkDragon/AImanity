@@ -5,6 +5,7 @@ import {Mic,MicOff} from 'lucide-react';
 import {CopilotSession,type CopilotBinding} from '@/lib/copilot-session';
 import {useWorkbenchNotice} from './workbench-notices';
 import {useI18n} from './locale-provider';
+import {mountSpeakingScene} from './copilot-speaking';
 import './copilot.css';
 
 const Context=createContext<CopilotSession|null>(null);
@@ -25,20 +26,28 @@ export function useCopilotBinding(binding:CopilotBinding){
   const state=useSyncExternalStore(controller.subscribe,controller.snapshot,controller.snapshot);
   return state.drafts[binding.deviceId];
 }
-export function CopilotWave({deviceId}:{deviceId:string}) {
+function useCopilotActivity(deviceId:string) {
   const controller = useCopilot();
-  const activity = useSyncExternalStore(controller.subscribe, useCallback(() => {
+  return useSyncExternalStore(controller.subscribe, useCallback(() => {
     const state = controller.snapshot();
     return state.enabled && state.currentDeviceId === deviceId ? state.activity : null;
   }, [controller, deviceId]), () => null);
+}
+export function CopilotBackdrop({deviceId}:{deviceId:string}) {
+  const activity = useCopilotActivity(deviceId);
+  return activity ? <canvas ref={mountSpeakingScene} className="copilot-backdrop" data-activity={activity} aria-hidden="true"/> : null;
+}
+export function CopilotWave({deviceId}:{deviceId:string}) {
+  const activity = useCopilotActivity(deviceId);
   if (!activity) return null;
 
   return (
-    <svg className="copilot-wave" data-activity={activity} aria-hidden="true" focusable="false" viewBox="0 0 1200 240" preserveAspectRatio="none">
+    <svg className="copilot-wave" data-activity={activity} aria-hidden="true" focusable="false" viewBox="0 0 720 480" preserveAspectRatio="none">
       <g>
-        <path d="M-80 120 C80 120 142 94 240 95 S386 162 493 161 S661 58 770 66 S948 167 1055 144 S1170 117 1280 120" />
-        <path d="M-80 120 C48 120 120 151 244 147 S423 70 537 83 S693 174 809 166 S977 103 1070 107 S1190 122 1280 120" />
-        <path d="M-80 120 C104 120 148 124 257 122 S427 170 534 149 S700 89 806 96 S961 140 1068 134 S1190 119 1280 120" />
+        <path d="M-70 240C34 236 99 263 147 235S212 159 250 202 309 401 355 308 398 55 444 149 513 323 565 254 672 220 795 240"/>
+        <path d="M-70 240C18 244 86 216 145 244S198 305 246 274 309 79 350 171 410 408 452 319 511 188 564 223 664 264 795 240"/>
+        <path d="M-70 240C43 238 91 263 148 237S211 194 250 221 307 349 352 289 410 109 452 191 520 286 563 255 656 227 795 240"/>
+        <path d="M-70 240C33 241 90 225 154 243S216 274 251 257 310 150 350 199 412 356 449 294 513 206 563 230 661 247 795 240"/>
       </g>
     </svg>
   );

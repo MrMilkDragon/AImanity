@@ -3,8 +3,9 @@ use crate::{
     process::{Capture, OsRunner, Request, Runner},
     screen::{NativeScreen, Screen},
 };
-use base64::{Engine, engine::general_purpose::STANDARD};
+use ai_phone_api::wire::{DesktopBridgeFrame, DesktopFrameState};
 use image::RgbImage;
+use prost::Message;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha512};
@@ -44,21 +45,26 @@ struct RunRequest {
 }
 
 impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
-    pub fn observe(&self) -> Result<Value> {
+    fn observe(&self) -> Result<DesktopBridgeFrame> {
         self.frame(&self.screen.capture()?)
     }
 
-    fn frame(&self, image: &RgbImage) -> Result<Value> {
+    fn frame(&self, image: &RgbImage) -> Result<DesktopBridgeFrame> {
         let identity = self.screen.window().unwrap_or_default();
-        let title = if identity.title.is_empty() {
-            "Linux desktop"
-        } else {
-            &identity.title
-        };
-        let bytes = imaging::png(image)?;
-        Ok(
-            json!({"width": self.settings.width, "height": self.settings.height, "title": title, "application_class":identity.application_class,"window_id":identity.window_id,"process_id":identity.process_id,"png": STANDARD.encode(bytes)}),
-        )
+        Ok(DesktopBridgeFrame {
+            png: imaging::png(image)?,
+            width: self.settings.width,
+            height: self.settings.height,
+            title: if identity.title.is_empty() {
+                "Linux desktop".into()
+            } else {
+                identity.title
+            },
+            application_class: identity.application_class,
+            window_id: identity.window_id,
+            process_id: identity.process_id,
+            ..Default::default()
+        })
     }
 
     pub async fn dispatch(&self, operation: &str, args: Value) -> Result<Response> {
@@ -66,7 +72,10 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
             "controls" => crate::accessibility::find(&self.screen, &self.settings, args)
                 .await
                 .map(Response::Json),
-            "action" => self.perform_action(args).await.map(Response::Json),
+            "action" => self
+                .perform_action(args)
+                .await
+                .map(|frame| Response::Bytes(frame.encode_to_vec())),
             "run" => self.run(args).await.map(Response::Json),
             "notifications" => self.notifications(args).await.map(Response::Json),
             _ => self.read(operation, args),
@@ -76,7 +85,9 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
     fn read(&self, operation: &str, args: Value) -> Result<Response> {
         match operation {
             "snapshot" => self.snapshot().map(Response::Bytes),
-            "observe" => self.observe().map(Response::Json),
+            "observe" => self
+                .observe()
+                .map(|frame| Response::Bytes(frame.encode_to_vec())),
             "zoom" => imaging::zoom(args).map(Response::Json),
             "files" => self.files(args).map(Response::Json),
             _ => Err("未知操作".into()),
@@ -92,7 +103,7 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
         files::list(&self.settings.home, &request.path)
     }
 
-    async fn perform_action(&self, args: Value) -> Result<Value> {
+    async fn perform_action(&self, args: Value) -> Result<DesktopBridgeFrame> {
         let baseline = if args["wait_for_paint"] == true {
             let image = self.screen.capture()?;
             let focus = self.screen.paint_focus().unwrap_or_default();
@@ -106,21 +117,21 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
             None
         };
         let input = actions::execute(&self.screen, &self.runner, &self.settings, args).await?;
-        let mut observation = if let Some((before, focus, mousepad_text)) = baseline {
+        if let Some((before, focus, mousepad_text)) = baseline {
             let frame = paint::after(&self.screen, before, &focus, mousepad_text).await?;
-            if input == actions::InputEvidence::PasteDispatched && frame.state == "unchanged" {
+            if input == actions::InputEvidence::PasteDispatched
+                && frame.state == DesktopFrameState::Unchanged
+            {
                 return Err(actions::InputUnconfirmed.into());
             }
             let mut value = self.frame(&frame.image)?;
-            value["frame_state"] = json!(frame.state);
-            value["frame_wait_ms"] = json!(frame.wait_ms);
-            value
+            value.frame_state = frame.state as i32;
+            value.frame_wait_ms = frame.wait_ms;
+            Ok(value)
         } else {
             tokio::time::sleep(Duration::from_millis(120)).await;
-            self.observe()?
-        };
-        observation["success"] = json!(true);
-        Ok(observation)
+            self.observe()
+        }
     }
 
     async fn notifications(&self, args: Value) -> Result<Value> {

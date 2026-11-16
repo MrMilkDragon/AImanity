@@ -192,6 +192,7 @@ async fn first_boot_runs_every_native_phase_with_one_owned_socket() {
     );
     assert!(init.root.join("data/deployment/profile.json").is_file());
     assert!(init.root.join("data/assistant/token").is_file());
+    assert!(init.root.join(crate::DEVICE_SETUP_PENDING).is_file());
 }
 
 #[tokio::test]

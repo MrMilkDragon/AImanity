@@ -4,7 +4,7 @@ import {ApiErrorSchema} from '@ai-phone/protocol/ai_phone/v1/system_pb';
 import {historyRequest} from './chat-window';
 type Chat=MessageShape<typeof ChatStateSchema>;
 type Cell<T>={current:T};
-type Owner={conversation:Cell<string>;fetching:Cell<boolean>;latest:Cell<Chat|null>;watchOffset:Cell<number>};
+type Owner={conversation:Cell<string>;fetching:Cell<boolean>;latest:Cell<Chat|null>;watchOffset:Cell<number>;receiptIds:()=>string[]};
 type Projection={begin:()=>number;accept:(chat:Chat,order:number,before:string)=>void;error:(message:string)=>void};
 
 function begin(owner:Owner,before:string){
@@ -14,7 +14,7 @@ function begin(owner:Owner,before:string){
 }
 
 async function request(owner:Owner,conversationId:string,before:string,signal?:AbortSignal){
- const value=historyRequest(conversationId,owner.latest.current,[],before,owner.watchOffset.current);
+ const value=historyRequest(conversationId,owner.latest.current,before?[]:owner.receiptIds(),before,owner.watchOffset.current);
  // Tail and page reads share the workspace's transient watch cursor.
  owner.watchOffset.current+=value.watchMessageIds.length;
  const response=await fetch('/api/assistant/history',{method:'POST',headers:{'content-type':'application/x-protobuf'},body:toBinary(ChatHistoryRequestSchema,create(ChatHistoryRequestSchema,value)),signal,cache:'no-store'});
