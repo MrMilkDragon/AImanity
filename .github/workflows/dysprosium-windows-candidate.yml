@@ -1,0 +1,170 @@
+name: Dysprosium Windows signed candidate
+on:
+  push:
+    branches: [codex/dysprosium-windows-carrier]
+    paths: [.github/workflows/dysprosium-windows-candidate.yml]
+permissions:
+  contents: read
+env:
+  DYSPROSIUM_SOURCE: '76aca508fef7fd535dafe5f35760dc5aacc48d95'
+jobs:
+  linux-guest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      artifact: ${{ steps.handoff.outputs.artifact-id }}
+      identity: ${{ steps.disk.outputs.sha256 }}
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      AI_PHONE_TEST_TESSERACT: /usr/bin/tesseract
+      AI_PHONE_DISPOSABLE_QUALIFICATION: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.DYSPROSIUM_SOURCE }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Set up disposable Linux x64 builder
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = x86_64
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "$ANDROID_HOME/ndk"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libssl-dev libelf-dev bc bison flex kmod \
+            ca-certificates unzip e2fsprogs qemu-utils \
+            tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
+          ./scripts/bootstrap.sh
+          test "$(git rev-parse HEAD)" = "$DYSPROSIUM_SOURCE"
+          ./scripts/bun scripts/source.ts check --repository --manifest
+      - name: Build the pinned WHPX guest kernel
+        run: ./scripts/bun scripts/windows-guest-disk.ts kernel "$RUNNER_TEMP/windows-guest-kernel"
+      - uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
+        with:
+          version: v29.9.2
+          context: aimanity-dysprosium-guest
+          set-host: true
+          daemon-config: |
+            {"features":{"containerd-snapshotter":true}}
+      - name: Seal the native Linux backend and offline images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/tessdata"
+          export AI_PHONE_TEST_TESSDATA="$RUNNER_TEMP/tessdata"
+          ./scripts/bun scripts/wsl-backend.ts --native-ui
+      - name: Assemble the Linux guest disk
+        id: disk
+        run: |
+          work=.tools/wsl-backend-qualification
+          assembled="$work/assembled"
+          capsule="$assembled/wsl-backend.payload"
+          kernel="$RUNNER_TEMP/windows-guest-kernel"
+          guest=dist/windows-guest/windows-guest.payload
+          rm -r "$assembled/context" "$assembled/rootfs.tar" "$assembled/rootfs.tar.gz" "$work/images.payload"
+          docker --host "$DOCKER_HOST" system prune --all --force
+          mkdir -p "$(dirname "$guest")"
+          backend_hash=$(sha256sum "$capsule")
+          sudo ./scripts/bun scripts/windows-guest-disk.ts \
+            "$capsule" "${backend_hash%% *}" "$kernel/bzImage" \
+            "$kernel/modules.tar.gz" "$kernel/kernel-receipt.json" "$guest"
+          guest_hash=$(sha256sum "$guest")
+          printf 'sha256=%s\n' "${guest_hash%% *}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        id: handoff
+        with:
+          name: dysprosium-guest-relay
+          path: dist/windows-guest/windows-guest.payload
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+  windows-exe:
+    needs: linux-guest
+    runs-on: windows-2025
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: write
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_HTTP_MULTIPLEXING: 'false'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ env.DYSPROSIUM_SOURCE }}
+      - name: Locked build tools
+        shell: bash
+        run: |
+          cmake --version
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          test "$(git rev-parse HEAD)" = "$DYSPROSIUM_SOURCE"
+      - name: Prepare temporary Authenticode tools
+        shell: pwsh
+        run: |
+          & C:\msys64\usr\bin\bash.exe -lc 'pacman -Sy --needed --noconfirm mingw-w64-ucrt-x86_64-osslsigncode mingw-w64-ucrt-x86_64-openssl'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          'C:\msys64\ucrt64\bin' >> $env:GITHUB_PATH
+      - name: Recover the exact released Android and QEMU components
+        id: components
+        shell: pwsh
+        run: |
+          ./.tools/bin/bun.exe -e '
+            import { rmSync } from "node:fs";
+            import { join } from "node:path";
+            import { json } from "./scripts/tooling/inventory";
+            import { ROOT, digest, download } from "./scripts/tooling/process";
+            import { prepareWindowsQemu } from "./scripts/tooling/windows-qemu";
+            import { unpackWindowsInstaller } from "./scripts/tooling/windows-installer";
+            const pin = json(join(ROOT, "config/windows-qemu.json")).calcium_installer;
+            const installer = join(process.env.RUNNER_TEMP, pin.file);
+            const qemu = join(ROOT, "dist", "windows-qemu");
+            await download(pin.url, installer);
+            await prepareWindowsQemu(qemu, installer);
+            await unpackWindowsInstaller(ROOT, installer, join(ROOT, "dist", "calcium-components"), ["{app}\\host\\android.payload"]);
+            rmSync(installer);
+            console.log("qemu_sha256=" + await digest(join(qemu, "windows-qemu.json")));
+          ' | Tee-Object -Variable receipt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $receipt | Where-Object { $_ -match '^qemu_sha256=[a-f0-9]{64}$' } | Add-Content $env:GITHUB_OUTPUT
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ needs.linux-guest.outputs.artifact }}
+          path: dist/windows-guest
+      - name: Retire the build-only Linux relay
+        env:
+          GUEST_RELAY_ID: ${{ needs.linux-guest.outputs.artifact }}
+        shell: bash
+        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$GUEST_RELAY_ID"
+      - name: Assemble, read back, and temporarily sign the complete EXE
+        shell: pwsh
+        env:
+          QEMU_SHA256: ${{ steps.components.outputs.qemu_sha256 }}
+          GUEST_SHA256: ${{ needs.linux-guest.outputs.identity }}
+          AIMANITY_ANDROID_PAYLOAD_SHA256: '23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce'
+        run: |
+          $env:AIMANITY_ANDROID_PAYLOAD = Join-Path $env:GITHUB_WORKSPACE 'dist\calcium-components\host\android.payload'
+          ./.tools/bin/bun.exe scripts/windows-client-factory.ts build-qemu --qemu dist/windows-qemu --qemu-identity $env:QEMU_SHA256 --guest dist/windows-guest/windows-guest.payload --guest-identity $env:GUEST_SHA256
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: dysprosium-windows-signed-exe
+          path: |
+            dist/AImanity-0.0.4-windows-x64-setup.exe
+            dist/AImanity-0.0.4-windows-x64-setup.exe.manifest.json
+            dist/windows-full-factory-report.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
