@@ -42,3 +42,38 @@ pub fn quiet(theme: &Theme, status: button::Status) -> button::Style {
     }
     style
 }
+
+pub fn input(
+    theme: &Theme,
+    status: iced::widget::text_input::Status,
+) -> iced::widget::text_input::Style {
+    let mut s = iced::widget::text_input::default(theme, status);
+    s.background = Color::from_rgba(1., 1., 1., 0.35).into();
+    s.border.radius = CONTROL_RADIUS.into();
+    s.border.width = BORDER_WIDTH;
+    s.border.color = if matches!(status, iced::widget::text_input::Status::Focused { .. }) {
+        FOREGROUND
+    } else {
+        Color::from_rgba(0., 0., 0., 0.16)
+    };
+    s
+}
+pub fn select(
+    theme: &Theme,
+    status: iced::widget::pick_list::Status,
+) -> iced::widget::pick_list::Style {
+    let mut s = iced::widget::pick_list::default(theme, status);
+    s.background = Color::from_rgba(1., 1., 1., 0.35).into();
+    s.border.radius = CONTROL_RADIUS.into();
+    s.border.width = BORDER_WIDTH;
+    s.border.color = Color::from_rgba(0., 0., 0., 0.16);
+    s
+}
+pub fn menu(theme: &Theme) -> iced::overlay::menu::Style {
+    let mut s = iced::overlay::menu::default(theme);
+    s.background = Color::from_rgba(0.98, 0.98, 0.98, 0.98).into();
+    s.border.radius = CONTROL_RADIUS.into();
+    s.border.width = BORDER_WIDTH;
+    s.border.color = Color::from_rgba(0., 0., 0., 0.16);
+    s
+}

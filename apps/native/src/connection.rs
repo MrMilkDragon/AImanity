@@ -102,6 +102,8 @@ impl Connection {
         let started = Instant::now();
         let (port, path, token) = if let Some(path) = route.strip_prefix("phone/") {
             (17862, path, &self.phone)
+        } else if let Some(path) = route.strip_prefix("channels/") {
+            (17864, path, &self.assistant)
         } else {
             (
                 17863,
@@ -141,6 +143,58 @@ impl Connection {
             },
         )
         .await
+    }
+    pub async fn upload(&self, path: &std::path::Path) -> Result<wire::ChatAttachment, String> {
+        let name = path
+            .file_name()
+            .ok_or("文件名为空")?
+            .to_string_lossy()
+            .into_owned();
+        let size = tokio::fs::metadata(path)
+            .await
+            .map_err(|e| e.to_string())?
+            .len();
+        if size == 0 || size > 8 * 1024 * 1024 {
+            return Err("单个附件须为 1 字节到 8 MiB".into());
+        }
+        let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
+        let form = reqwest::multipart::Form::new().part(
+            "file",
+            reqwest::multipart::Part::bytes(bytes).file_name(name),
+        );
+        let response = self
+            .http
+            .post("http://127.0.0.1:17863/v1/upload")
+            .header("authorization", &self.assistant)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = response.status();
+        let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+        if !status.is_success() {
+            return Err(wire::ApiError::decode(bytes)
+                .map_err(|_| format!("HTTP {status}"))?
+                .message);
+        }
+        wire::ChatAttachment::decode(bytes).map_err(|e| e.to_string())
+    }
+    pub async fn attachment(&self, id: &str) -> Result<bytes::Bytes, String> {
+        let response = self
+            .http
+            .get(format!("http://127.0.0.1:17863/v1/attachment/{id}"))
+            .header("authorization", &self.assistant)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = response.status();
+        let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+        if !status.is_success() {
+            return Err(wire::ApiError::decode(bytes)
+                .map_err(|_| format!("HTTP {status}"))?
+                .message);
+        }
+        Ok(bytes)
     }
     pub fn chat_events(self) -> impl futures_util::Stream<Item = Result<wire::ChatState, String>> {
         iced::stream::channel::<Result<wire::ChatState, String>>(1, async move |mut output| {
@@ -382,4 +436,16 @@ pub fn epoch_ms() -> f64 {
         .unwrap()
         .as_secs_f64()
         * 1000.
+}
+
+#[cfg(test)]
+impl Connection {
+    pub fn for_state_test() -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            assistant: HeaderValue::from_static(""),
+            phone: HeaderValue::from_static(""),
+            session: HeaderValue::from_static(""),
+        }
+    }
 }

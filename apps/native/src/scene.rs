@@ -32,6 +32,12 @@ impl shader::Program<Message> for Scene {
         _bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> Option<shader::Action<Message>> {
+        if matches!(event, Event::Mouse(_))
+            && cursor.position().is_some_and(|p| self.popup.contains(p))
+        {
+            state.pressed = None;
+            return None;
+        }
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(button)) => {
                 let p = cursor.position()?;

@@ -153,8 +153,8 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 15965,
-      "sha256": "29615446619c193cc44f029cd6910b807a73d86262eef1509e545f62d595f637"
+      "size": 16708,
+      "sha256": "eacf49d0aa3caa0486c9b2d3f5aedc9991ea500fa842a95959e53d61b67824d6"
     },
     {
       "path": "ai-phone",
@@ -523,18 +523,38 @@
     },
     {
       "path": "apps/native/Cargo.lock",
-      "size": 121349,
-      "sha256": "4873f63e65c2dcce26d584418f02a826e6fca8110aefda5db0cea3066f3bea0c"
+      "size": 137641,
+      "sha256": "53dc00f11b9b116cca9d931321ba04e156bb12ca12740d38d1ed6236eed0e641"
     },
     {
       "path": "apps/native/Cargo.toml",
-      "size": 1011,
-      "sha256": "614a49c1fc15d949a240d933dfffee853a5f74afde601140cfc802b1e83c562c"
+      "size": 1440,
+      "sha256": "85ab414c3e0f5b75e5b42d61d135f0b021bac255eebd500e8a0bc6771097ab31"
+    },
+    {
+      "path": "apps/native/src/agent_details.rs",
+      "size": 30936,
+      "sha256": "933989850f13931f7a4ac9d7c1c995f4b59a772b242bfb3893cc5be5a50ccf63"
+    },
+    {
+      "path": "apps/native/src/agents.rs",
+      "size": 26994,
+      "sha256": "2cc88024221e0c42ede9735441998dec892c9478f3205809ad7b7dd896dc9cc2"
+    },
+    {
+      "path": "apps/native/src/chat.rs",
+      "size": 41716,
+      "sha256": "174359eaf322678eff53d5154d6476bdacd8fb887567d0ad790b4c5ec4c27521"
     },
     {
       "path": "apps/native/src/connection.rs",
-      "size": 14608,
-      "sha256": "1688aeb02613211bfdd81a869e462b7fd7f30b92d102f73120da772509d33a44"
+      "size": 17029,
+      "sha256": "89c3c5437c73c0d53d8c5599525e8d0dbebf3c24b49fc506597926353903ec13"
+    },
+    {
+      "path": "apps/native/src/controls.rs",
+      "size": 4637,
+      "sha256": "b6f7abf94450bd27d8c626bc42e4fd55c3b3fb1a790300c5e2a91e8dd56f33ca"
     },
     {
       "path": "apps/native/src/host.rs",
@@ -548,13 +568,23 @@
     },
     {
       "path": "apps/native/src/main.rs",
-      "size": 26951,
-      "sha256": "eaaddc315c3113fa61ccb0a9fc4d06bbcd1449cf65983bb67934d1555cf8fd61"
+      "size": 28092,
+      "sha256": "157d96e757033c2d1a38f158d1e66e304ab94294c494701fabad6372de5292de"
+    },
+    {
+      "path": "apps/native/src/occlude.rs",
+      "size": 4634,
+      "sha256": "0a2e85bebbcecf0a8a9fbdcde21154312b79a34e3d68e4ab377aaf3f03bf7285"
+    },
+    {
+      "path": "apps/native/src/platform.rs",
+      "size": 1361,
+      "sha256": "9213a5ba3111d124595b908998536cb28f308596bb4685a6674d1dd45c18682e"
     },
     {
       "path": "apps/native/src/scene.rs",
-      "size": 22042,
-      "sha256": "67ae33ec738eec8455bcb441d54051f622b82d17aea168fe3fefc2ec1fb62521"
+      "size": 22238,
+      "sha256": "fb29bd0c1cec74c9bfed10b445324fbd77b0a5c0c1c3b15349fc0abfe57f312d"
     },
     {
       "path": "apps/native/src/scene.wgsl",
@@ -563,8 +593,8 @@
     },
     {
       "path": "apps/native/src/style.rs",
-      "size": 1465,
-      "sha256": "36204b8f3e94135b1d9b281fdb2f26bbab195fa9a394332c34ba2fc01e7b132e"
+      "size": 2689,
+      "sha256": "d84489bcfdda09b91c1eb4f118f52e540ef3dde12ee62991e88dd0e762c13d11"
     },
     {
       "path": "apps/native/src/surface.rs",
@@ -3527,6 +3557,26 @@
       "sha256": "fc9086ba4eba4b77e4c603906362742bc3715ffa2c7810c6074fe7780d3a0398"
     },
     {
+      "path": "docs/public/licenses/native-ui/lucide-LICENSE",
+      "size": 3208,
+      "sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57"
+    },
+    {
+      "path": "docs/public/licenses/native-ui/open-LICENSE.md",
+      "size": 1115,
+      "sha256": "e63690624d604aa626c3c62b6ead1a9f4a916d2260ac8132022acbafe2556045"
+    },
+    {
+      "path": "docs/public/licenses/native-ui/pulldown-cmark-LICENSE",
+      "size": 1089,
+      "sha256": "c4f10f55904bdb9f27d3fbf94c354926d6cfe8b982276e556238c258941b243b"
+    },
+    {
+      "path": "docs/public/licenses/native-ui/rfd-LICENSE",
+      "size": 1079,
+      "sha256": "65fc947f4bac882a2cd104ef73c246b1b037059df9f2b3a58b7f77f0b9e56071"
+    },
+    {
       "path": "docs/public/licenses/native-ui/wgpu-LICENSE.APACHE",
       "size": 10173,
       "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
@@ -3633,13 +3683,13 @@
     },
     {
       "path": "docs/public/native-client.en.md",
-      "size": 2043,
-      "sha256": "4facee80b4b7886135aaa14e15d8322e27369541fbd41e91833a8d8a34c4d710"
+      "size": 3038,
+      "sha256": "7c2def7c3d695617534f39cf90f9846477f8c75a04367f13a38a522c97dcef01"
     },
     {
       "path": "docs/public/native-client.zh-CN.md",
-      "size": 1786,
-      "sha256": "ee0e9dbc503497a434a89250ff329f25f5305ef1ff871b33356dd6f7b3fc85fb"
+      "size": 2613,
+      "sha256": "7fd4183cc6d034d5e40d9c9bbd9af0a78b1560abf34fe0dd1ee118ae4fa73463"
     },
     {
       "path": "docs/public/native-services-license-inventory.json",

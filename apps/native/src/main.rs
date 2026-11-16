@@ -1,17 +1,20 @@
+mod agent_details;
+mod agents;
+mod chat;
 mod connection;
+mod controls;
 mod host;
 mod layout;
+mod occlude;
+mod platform;
 mod scene;
 mod style;
 mod surface;
 use ai_phone_api::wire;
 use connection::{Connection, DeviceInput, Frame};
 use iced::{
-    Color, Element, Event, Length, Rectangle, Size, Subscription, Task, keyboard,
-    widget::{
-        button, column, container, mouse_area, pin, row, scrollable, space, stack, text,
-        text_editor,
-    },
+    Element, Event, Length, Rectangle, Size, Subscription, Task, keyboard,
+    widget::{button, container, mouse_area, pin, row, stack, text},
     window,
 };
 use layout::Layout;
@@ -23,21 +26,19 @@ enum Message {
     Connected(Result<Box<connection::Session>, String>),
     Frame(usize, Result<Frame, String>),
     Chat(Result<wire::ChatState, String>),
-    Sent(Result<wire::ChatState, String>, String),
+    Conversation(chat::Message),
+    Agents(agents::Message),
     Focus(usize),
     Input(usize, DeviceInput),
     InputDone(usize, Result<(), String>, Instant),
-    Edit(text_editor::Action),
-    Send,
     Retry,
     Tick(Instant),
     Event(Event),
     Hover(bool),
     Pin,
+    PanelFocus,
     Link,
     Linked(Result<wire::DeviceLinkState, String>),
-    SelectAgent(wire::AgentProfileRequest),
-    SelectedAgent(Result<wire::RegistryState, String>),
     Rotate,
 }
 struct App {
@@ -48,10 +49,8 @@ struct App {
     connection: Option<Connection>,
     devices: [Option<wire::RegisteredDevice>; 2],
     frames: [Option<Arc<Frame>>; 2],
-    chat: wire::ChatState,
-    agents: Vec<wire::RegisteredAgent>,
-    active_agent: String,
-    draft: text_editor::Content,
+    chat: chat::Chat,
+    agents: agents::Agents,
     error: String,
     root: String,
     focus: usize,
@@ -69,6 +68,9 @@ struct App {
     pinned: bool,
     popup_amount: f32,
     from_popup: f32,
+    panel_size: Size,
+    panel_content_height: f32,
+    from_panel: Size,
     popup_transition: Option<Instant>,
     started: Instant,
     input_started: Option<Instant>,
@@ -90,10 +92,8 @@ impl App {
             connection: None,
             devices: [None, None],
             frames: [None, None],
-            chat: Default::default(),
-            agents: Vec::new(),
-            active_agent: String::new(),
-            draft: text_editor::Content::new(),
+            chat: chat::Chat::new(),
+            agents: agents::Agents::new(),
             error: String::new(),
             root: String::new(),
             focus: 0,
@@ -111,6 +111,9 @@ impl App {
             pinned: false,
             popup_amount: 0.,
             from_popup: 0.,
+            panel_size: Size::new(400., 140.),
+            panel_content_height: 140.,
+            from_panel: Size::new(400., 140.),
             popup_transition: None,
             started: Instant::now(),
             input_started: None,
@@ -146,6 +149,7 @@ impl App {
         if self.popup != open {
             self.popup = open;
             self.from_popup = self.popup_amount;
+            self.from_panel = self.panel_size;
             self.popup_transition = Some(Instant::now());
         }
     }
@@ -240,9 +244,9 @@ impl App {
                             .cloned()
                     });
                     self.linked = links.links.iter().any(|l| l.connected);
-                    self.agents = registry.agents;
-                    self.active_agent = registry.active_agent_id;
-                    self.chat = chat;
+                    self.agents.registry = registry;
+                    let chat_task = self.chat.accept(chat, &client).map(Message::Conversation);
+                    let restore = self.chat.restore(&self.root).map(Message::Conversation);
                     self.error.clear();
                     self.connection = Some(client.clone());
                     self.rearrange();
@@ -250,7 +254,11 @@ impl App {
                         "native_metric connected_ms={:0.3}",
                         self.started.elapsed().as_secs_f64() * 1000.
                     );
-                    let mut tasks = vec![Task::run(client.clone().chat_events(), Message::Chat)];
+                    let mut tasks = vec![
+                        chat_task,
+                        restore,
+                        Task::run(client.clone().chat_events(), Message::Chat),
+                    ];
                     for (index, device) in self.devices.iter().enumerate() {
                         if let Some(device) = device {
                             tasks
@@ -283,21 +291,82 @@ impl App {
                 }
                 Err(error) => self.error = error,
             },
-            Message::Chat(result) => match result {
-                Ok(chat) => {
-                    self.chat = chat;
+            Message::Chat(result) => {
+                if let Some(client) = &self.connection {
+                    return self
+                        .chat
+                        .update(chat::Message::History(result), client, "")
+                        .map(Message::Conversation);
                 }
-                Err(error) => self.error = error,
-            },
-            Message::Sent(result, sent) => match result {
-                Ok(chat) => {
-                    self.chat = chat;
-                    if self.draft.text() == sent {
-                        self.draft = text_editor::Content::new();
+            }
+            Message::Conversation(message) => {
+                if matches!(message, chat::Message::Edit(_)) {
+                    self.keyboard_target = None;
+                    self.input_started = Some(Instant::now());
+                }
+                if matches!(message, chat::Message::Attachment(_)) {
+                    self.set_popup(false);
+                    self.pinned = false;
+                }
+                if let Some(client) = &self.connection {
+                    let device_id = self.devices[self.focus]
+                        .as_ref()
+                        .map(|d| d.id.as_str())
+                        .unwrap_or("");
+                    return self
+                        .chat
+                        .update(message, client, device_id)
+                        .map(Message::Conversation);
+                }
+            }
+            Message::Agents(agents::Message::Measured(size)) => {
+                let height = size.height.ceil();
+                if self.panel_content_height != height {
+                    self.panel_content_height = height;
+                    self.from_panel = self.panel_size;
+                    self.from_popup = self.popup_amount;
+                    self.popup_transition = Some(Instant::now());
+                }
+            }
+            Message::Agents(message) => {
+                let interaction = match &message {
+                    agents::Message::Registry(_) | agents::Message::Credential(_) => false,
+                    agents::Message::Detail(_, message) => !matches!(
+                        message,
+                        agent_details::Message::Memories(_)
+                            | agent_details::Message::MemorySaved(..)
+                            | agent_details::Message::MemoryDeleted(..)
+                            | agent_details::Message::Channels(_)
+                            | agent_details::Message::ChannelSaved(_)
+                            | agent_details::Message::Poll
+                            | agent_details::Message::Voice(_)
+                            | agent_details::Message::VoiceSaved(_)
+                    ),
+                    _ => true,
+                };
+                if interaction {
+                    self.keyboard_target = None;
+                    self.pinned = true;
+                }
+                if let Some(client) = &self.connection {
+                    let changed = matches!(&message, agents::Message::Registry(Ok(_)));
+                    let before = self.panel_target();
+                    let task = self.agents.update(message, client).map(Message::Agents);
+                    if self.panel_target() != before {
+                        self.from_panel = self.panel_size;
+                        self.from_popup = self.popup_amount;
+                        self.popup_transition = Some(Instant::now());
                     }
+                    if changed {
+                        let client = client.clone();
+                        return Task::batch([
+                            task,
+                            Task::perform(async move { client.history().await }, Message::Chat),
+                        ]);
+                    }
+                    return task;
                 }
-                Err(error) => self.error = error,
-            },
+            }
             Message::Focus(index) => {
                 self.keyboard_target = Some(index);
                 if self.focus != index {
@@ -320,32 +389,6 @@ impl App {
                     return self.input(index, next);
                 } else {
                     self.error.clear();
-                }
-            }
-            Message::Edit(action) => {
-                self.keyboard_target = None;
-                self.input_started = Some(Instant::now());
-                self.draft.perform(action);
-            }
-            Message::Send => {
-                let text = self.draft.text();
-                if text.trim().is_empty() {
-                    return Task::none();
-                }
-                if let (Some(client), Some(device)) =
-                    (self.connection.clone(), &self.devices[self.focus])
-                {
-                    let input = wire::ChatSendRequest {
-                        conversation_id: self.chat.conversation_id.clone(),
-                        device_id: device.id.clone(),
-                        text: text.clone(),
-                        request_id: uuid::Uuid::now_v7().to_string(),
-                        ..Default::default()
-                    };
-                    return Task::perform(
-                        async move { client.rpc("assistant/send", input).await },
-                        move |result| Message::Sent(result, text),
-                    );
                 }
             }
             Message::Retry => {
@@ -382,10 +425,20 @@ impl App {
                     let t = (now.saturating_duration_since(start).as_secs_f32() / duration).min(1.);
                     self.popup_amount =
                         self.from_popup + (target - self.from_popup) * (1. - (1. - t).powi(3));
+                    let to = self.panel_target();
+                    let blend = 1. - (1. - t).powi(3);
+                    self.panel_size = Size::new(
+                        self.from_panel.width + (to.width - self.from_panel.width) * blend,
+                        self.from_panel.height + (to.height - self.from_panel.height) * blend,
+                    );
                     if t >= 1. {
                         self.popup_transition = None;
                     }
                 }
+            }
+            Message::Event(Event::Window(window::Event::Opened { .. })) => {
+                #[cfg(target_os = "macos")]
+                platform::menu();
             }
             Message::Event(Event::Window(window::Event::Resized(size))) => {
                 self.size = size;
@@ -414,16 +467,18 @@ impl App {
             })) => {
                 self.set_popup(false);
                 self.pinned = false;
+                self.chat.preview = None;
                 self.keyboard_target = None;
             }
             Message::Event(Event::Mouse(iced::mouse::Event::CursorMoved { position }))
                 if self.popup && !self.pinned =>
             {
+                let p = self.popup_rect();
                 let area = Rectangle {
-                    x: self.size.width - 340.,
+                    x: p.x - 8.,
                     y: 16.,
-                    width: 324.,
-                    height: 250.,
+                    width: p.width + 16.,
+                    height: p.height + 56.,
                 };
                 if !area.contains(position) {
                     self.set_popup(false);
@@ -435,9 +490,14 @@ impl App {
                 }
             }
             Message::Pin => {
+                self.chat.preview = None;
                 self.pinned = !self.pinned;
                 self.set_popup(self.pinned);
                 self.keyboard_target = None;
+            }
+            Message::PanelFocus => {
+                self.keyboard_target = None;
+                self.pinned = true;
             }
             Message::Link => {
                 if let (Some(client), Some(phone), Some(pc)) =
@@ -467,32 +527,21 @@ impl App {
                     return self.input(0, DeviceInput::Rotate(rotation));
                 }
             }
-            Message::SelectAgent(request) => {
-                if let Some(client) = self.connection.clone() {
-                    return Task::perform(
-                        async move { client.rpc("registry/agent-select", request).await },
-                        Message::SelectedAgent,
-                    );
-                }
+            Message::Event(Event::Window(window::Event::FileDropped(path))) => {
+                return self.update(Message::Conversation(chat::Message::Files(vec![path])));
             }
-            Message::SelectedAgent(result) => match result {
-                Ok(registry) => {
-                    self.agents = registry.agents;
-                    self.active_agent = registry.active_agent_id;
-                    self.error.clear();
-                    if let Some(client) = self.connection.clone() {
-                        return Task::perform(async move { client.history().await }, Message::Chat);
-                    }
-                }
-                Err(error) => self.error = error,
-            },
             _ => {}
         }
         Task::none()
     }
     fn subscription(&self) -> Subscription<Message> {
         let mut subscriptions = vec![iced::event::listen_with(|event, _, _| match &event {
-            Event::Window(window::Event::Resized(_) | window::Event::CloseRequested)
+            Event::Window(
+                window::Event::Opened { .. }
+                | window::Event::Resized(_)
+                | window::Event::CloseRequested,
+            )
+            | Event::Window(window::Event::FileDropped(_))
             | Event::Mouse(iced::mouse::Event::CursorMoved { .. })
             | Event::Keyboard(keyboard::Event::KeyPressed {
                 key: keyboard::Key::Named(keyboard::key::Named::Escape),
@@ -506,19 +555,37 @@ impl App {
         {
             subscriptions.push(window::frames().map(Message::Tick));
         }
+        subscriptions.push(self.chat.subscription().map(Message::Conversation));
+        subscriptions.push(self.agents.subscription(self.popup).map(Message::Agents));
         Subscription::batch(subscriptions)
     }
     fn popup_rect(&self) -> Rectangle {
-        if self.popup_amount > 0. {
-            Rectangle {
-                x: self.size.width - 332.,
+        if self.chat.preview.is_some() {
+            return Rectangle {
+                x: 32.,
                 y: 64.,
-                width: 300.,
-                height: 190. * self.popup_amount,
+                width: (self.size.width - 64.).min(720.),
+                height: self.size.height - 96.,
+            };
+        }
+        if self.popup_amount > 0. {
+            let width = self.panel_size.width.min(self.size.width - 64.);
+            let height = self.panel_size.height;
+            Rectangle {
+                x: self.size.width - width - 32.,
+                y: 64.,
+                width,
+                height: height.min(self.size.height - 96.) * self.popup_amount,
             }
         } else {
             Rectangle::default()
         }
+    }
+    fn panel_target(&self) -> Size {
+        Size::new(
+            (self.size.width - 64.).min(if self.agents.is_editing() { 480. } else { 400. }),
+            self.panel_content_height.min(self.size.height - 96.),
+        )
     }
     fn view(&self) -> Element<'_, Message> {
         let scene = scene::Scene {
@@ -530,23 +597,33 @@ impl App {
             keyboard_target: self.keyboard_target,
         };
         let mut layers = vec![surface::Surface::new(scene).into()];
-        let error = if self.error.is_empty() {
+        let error_message = if !self.error.is_empty() {
+            &self.error
+        } else {
+            &self.chat.error
+        };
+        let error = if error_message.is_empty() {
             text(&self.phase).size(12)
         } else {
-            text(&self.error).size(12).color(style::ERROR)
+            text(error_message).size(12).color(style::ERROR)
         };
         let nav = row![
             container(error).width(Length::Fill).clip(true),
-            button(text(if self.linked { "断开" } else { "连接" }).size(13))
-                .on_press_maybe(self.connection.as_ref().map(|_| Message::Link))
-                .height(style::CONTROL_HEIGHT)
-                .style(style::quiet),
-            mouse_area(
-                button(text("Agent").size(13))
-                    .on_press(Message::Pin)
-                    .height(style::CONTROL_HEIGHT)
-                    .style(style::quiet)
-            )
+            controls::icon_button(
+                controls::Icon::Refresh,
+                "重新连接",
+                (!self.error.is_empty() && !self.root.is_empty()).then_some(Message::Retry)
+            ),
+            controls::icon_button(
+                controls::Icon::Cable,
+                if self.linked { "断开" } else { "连接" },
+                self.connection.as_ref().map(|_| Message::Link)
+            ),
+            mouse_area(controls::icon_button(
+                controls::Icon::Settings,
+                "Agent",
+                self.connection.as_ref().map(|_| Message::Pin)
+            ))
             .on_enter(Message::Hover(true))
         ]
         .spacing(8)
@@ -581,104 +658,45 @@ impl App {
             );
         }
         let r = self.layout.chat;
-        let mut messages = column![].spacing(16);
-        for message in &self.chat.messages {
-            if message.text.is_empty() {
-                continue;
-            }
-            let label = if message.role == "user" {
-                "你"
-            } else if self.chat.agent_name.is_empty() {
-                "Agent"
-            } else {
-                &self.chat.agent_name
-            };
-            messages = messages.push(
-                column![
-                    text(label).size(11).color(style::MUTED),
-                    text(&message.text).size(14)
-                ]
-                .spacing(5),
-            );
-        }
-        let editor = text_editor(&self.draft)
-            .placeholder("发送消息…")
-            .height(84.)
-            .padding(10)
-            .size(14)
-            .on_action(Message::Edit)
-            .key_binding(|press| {
-                if press.key == keyboard::Key::Named(keyboard::key::Named::Enter)
-                    && press.modifiers.command()
-                {
-                    Some(text_editor::Binding::Custom(Message::Send))
-                } else {
-                    text_editor::Binding::from_key_press(press)
-                }
-            })
-            .style(|theme, status| {
-                let mut s = text_editor::default(theme, status);
-                s.background = Color::TRANSPARENT.into();
-                s.border.width = 0.;
-                s
-            });
-        let chat = column![
-            scrollable(messages).height(Length::Fill),
-            editor,
-            row![
-                space::horizontal(),
-                button(text("发送").size(13))
-                    .on_press_maybe(
-                        (self.connection.is_some() && !self.draft.text().trim().is_empty())
-                            .then_some(Message::Send)
-                    )
-                    .style(style::primary)
-            ]
-            .height(32.)
-        ]
-        .spacing(10);
         layers.push(
-            pin(container(chat).padding(18).width(r.width).height(r.height))
-                .x(r.x)
-                .y(r.y)
-                .into(),
+            pin(container(occlude::behind(
+                self.chat.view().map(Message::Conversation),
+                self.popup_rect(),
+            ))
+            .padding(18)
+            .width(r.width)
+            .height(r.height))
+            .x(r.x)
+            .y(r.y)
+            .into(),
         );
-        if self.popup_amount > 0. {
-            let p = self.popup_rect();
-            let mut popup = column![text("Agent").size(14)].spacing(10);
-            for agent in &self.agents {
-                popup = popup.push(
-                    button(text(&agent.name).size(13))
-                        .on_press(Message::SelectAgent(wire::AgentProfileRequest {
-                            id: agent.id.clone(),
-                            expected_revision: agent.revision,
-                        }))
-                        .style(if agent.id == self.active_agent {
-                            button::secondary
-                        } else {
-                            style::quiet
-                        }),
-                );
-            }
-            if self.agents.is_empty() {
-                popup = popup.push(text("尚未配置模型").size(13));
-            }
-            if !self.error.is_empty() && !self.root.is_empty() {
-                popup = popup.push(
-                    button("重新连接")
-                        .on_press(Message::Retry)
-                        .style(style::quiet),
-                );
-            }
+        let p = self.popup_rect();
+        if self.chat.preview.is_some() {
             layers.push(
-                pin(mouse_area(
-                    container(popup)
-                        .padding(20)
+                pin(
+                    container(self.chat.preview_view().map(Message::Conversation))
                         .width(p.width)
                         .height(p.height)
                         .clip(true),
                 )
-                .on_enter(Message::Hover(true)))
+                .x(p.x)
+                .y(p.y)
+                .into(),
+            );
+        } else if self.popup_amount > 0. {
+            layers.push(
+                pin(mouse_area(
+                    container(
+                        container(self.agents.view().map(Message::Agents))
+                            .width(self.panel_target().width)
+                            .height(p.height),
+                    )
+                    .width(p.width)
+                    .height(p.height)
+                    .clip(true),
+                )
+                .on_enter(Message::Hover(true))
+                .on_press(Message::PanelFocus))
                 .x(p.x)
                 .y(p.y)
                 .into(),
