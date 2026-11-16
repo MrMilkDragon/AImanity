@@ -1,0 +1,145 @@
+use crate::{
+    Message,
+    connection::DeviceInput,
+    scene::{Pointer, Scene},
+};
+use iced::advanced::{
+    Clipboard, InputMethod, Layout, Shell, Widget, clipboard, input_method, layout, renderer,
+    widget::{Tree, tree},
+};
+use iced::{
+    Element, Event, Length, Rectangle, Renderer, Size, Theme, keyboard, mouse,
+    widget::{Shader, shader},
+};
+
+pub struct Surface {
+    shader: Shader<Message, Scene>,
+    keyboard_target: Option<usize>,
+}
+impl Surface {
+    pub fn new(scene: Scene) -> Self {
+        Self {
+            keyboard_target: scene.keyboard_target,
+            shader: shader(scene).width(Length::Fill).height(Length::Fill),
+        }
+    }
+}
+impl Widget<Message, Theme, Renderer> for Surface {
+    fn tag(&self) -> tree::Tag {
+        <Shader<Message, Scene> as Widget<Message, Theme, Renderer>>::tag(&self.shader)
+    }
+    fn state(&self) -> tree::State {
+        <Shader<Message, Scene> as Widget<Message, Theme, Renderer>>::state(&self.shader)
+    }
+    fn size(&self) -> Size<Length> {
+        Size::new(Length::Fill, Length::Fill)
+    }
+    fn layout(
+        &mut self,
+        tree: &mut Tree,
+        renderer: &Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        <Shader<Message, Scene> as Widget<Message, Theme, Renderer>>::layout(
+            &mut self.shader,
+            tree,
+            renderer,
+            limits,
+        )
+    }
+    fn update(
+        &mut self,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        viewport: &Rectangle,
+    ) {
+        if let Some(target) = self.keyboard_target {
+            let state = tree.state.downcast_mut::<Pointer>();
+            match event {
+                Event::InputMethod(input_method::Event::Preedit(content, selection)) => {
+                    state.preedit = (!content.is_empty()).then(|| input_method::Preedit {
+                        content: content.clone(),
+                        selection: selection.clone(),
+                        text_size: Some(14.into()),
+                    });
+                    shell.request_redraw();
+                    shell.capture_event();
+                }
+                Event::InputMethod(input_method::Event::Commit(text)) => {
+                    state.preedit = None;
+                    shell.publish(Message::Input(target, DeviceInput::Text(text.clone())));
+                    shell.capture_event();
+                }
+                Event::InputMethod(input_method::Event::Closed) => state.preedit = None,
+                Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. })
+                    if modifiers.command() && key.as_ref() == keyboard::Key::Character("v") =>
+                {
+                    if let Some(text) = clipboard.read(clipboard::Kind::Standard) {
+                        shell.publish(Message::Input(target, DeviceInput::Text(text)));
+                    }
+                    shell.capture_event();
+                }
+                Event::Keyboard(_) if state.preedit.is_some() => shell.capture_event(),
+                _ => {}
+            }
+            shell.request_input_method(&InputMethod::Enabled {
+                cursor: Rectangle::new(state.anchor, Size::new(1., 20.)),
+                purpose: input_method::Purpose::Normal,
+                preedit: state.preedit.clone(),
+            });
+        }
+        if !shell.is_event_captured() {
+            <Shader<Message, Scene> as Widget<Message, Theme, Renderer>>::update(
+                &mut self.shader,
+                tree,
+                event,
+                layout,
+                cursor,
+                renderer,
+                clipboard,
+                shell,
+                viewport,
+            );
+        }
+    }
+    fn draw(
+        &self,
+        tree: &Tree,
+        renderer: &mut Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        self.shader
+            .draw(tree, renderer, theme, style, layout, cursor, viewport);
+    }
+    fn mouse_interaction(
+        &self,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+        renderer: &Renderer,
+    ) -> mouse::Interaction {
+        <Shader<Message, Scene> as Widget<Message, Theme, Renderer>>::mouse_interaction(
+            &self.shader,
+            tree,
+            layout,
+            cursor,
+            viewport,
+            renderer,
+        )
+    }
+}
+impl From<Surface> for Element<'_, Message> {
+    fn from(surface: Surface) -> Self {
+        Element::new(surface)
+    }
+}

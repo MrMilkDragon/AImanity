@@ -356,7 +356,7 @@ async fn malformed_container_receipts_and_failed_listing_stop_before_import() {
                     Path::new("images.payload"),
                     None,
                     Path::new("/root"),
-                    "127.0.0.1"
+                    Some("127.0.0.1")
                 )
                 .await
                 .unwrap_err()
@@ -386,7 +386,7 @@ async fn malformed_container_receipts_and_failed_listing_stop_before_import() {
                 Path::new("images.payload"),
                 None,
                 Path::new("/root"),
-                "127.0.0.1"
+                Some("127.0.0.1")
             )
             .await
             .unwrap_err()
@@ -431,6 +431,27 @@ fn fixture(root: &Path, execute: Fixture) -> Backend<'_, Fixture> {
 }
 
 #[tokio::test]
+async fn native_frontend_starts_runtime_without_web_service() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path().canonicalize().unwrap();
+    let mut backend = fixture(&root, Fixture::default());
+    backend
+        .start(Path::new("images.payload"), None, Path::new("/root"), None)
+        .await
+        .unwrap();
+    let names: Vec<_> = backend
+        .execute
+        .calls
+        .iter()
+        .filter(|(_, args, _)| {
+            args.first().map(String::as_str) == Some("--service-control") && args[3] == "start"
+        })
+        .map(|(_, args, _)| args[2].as_str())
+        .collect();
+    assert_eq!(names, ["runner", "assistant", "channels", "media"]);
+}
+
+#[tokio::test]
 async fn fresh_backend_uses_native_services_and_never_creates_desktop_or_starts_phone() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path().canonicalize().unwrap();
@@ -440,7 +461,7 @@ async fn fresh_backend_uses_native_services_and_never_creates_desktop_or_starts_
             Path::new("images.payload"),
             None,
             Path::new("/root"),
-            "127.0.0.1",
+            Some("127.0.0.1"),
         )
         .await
         .unwrap();
@@ -528,7 +549,7 @@ async fn resume_keeps_tokens_skips_live_database_and_only_starts_exact_stopped_d
                 Path::new("images.payload"),
                 None,
                 Path::new("/root"),
-                "127.0.0.1",
+                Some("127.0.0.1"),
             )
             .await
             .unwrap();
@@ -646,7 +667,7 @@ async fn foreign_container_rejects_before_import_database_or_service_changes() {
                 Path::new("images.payload"),
                 None,
                 Path::new("/root"),
-                "127.0.0.1"
+                Some("127.0.0.1")
             )
             .await
             .unwrap_err()
@@ -679,7 +700,7 @@ async fn unknown_image_import_does_not_run_database_or_services() {
                 Path::new("images.payload"),
                 None,
                 Path::new("/root"),
-                "127.0.0.1"
+                Some("127.0.0.1")
             )
             .await
             .unwrap_err()

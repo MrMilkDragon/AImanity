@@ -9,6 +9,24 @@ concurrency:
   group: client-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  native-workbench:
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
+          rustup default 1.96.0
+      - name: Native workbench
+        run: |
+          cargo fmt --manifest-path apps/native/Cargo.toml --check
+          cargo clippy --manifest-path apps/native/Cargo.toml --all-targets --locked -- -D warnings
+          cargo build --manifest-path apps/native/Cargo.toml --locked
   macos-arm64:
     runs-on: macos-26
     timeout-minutes: 45

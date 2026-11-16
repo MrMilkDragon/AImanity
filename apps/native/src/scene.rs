@@ -1,0 +1,558 @@
+use crate::{
+    Message,
+    connection::{DeviceInput, Frame},
+    layout::Layout,
+    style,
+};
+use iced::{Event, Point, Rectangle, Size, keyboard, mouse, wgpu, widget::shader};
+use std::{sync::Arc, time::Instant};
+
+#[derive(Clone)]
+pub struct Scene {
+    pub layout: Layout,
+    pub size: Size,
+    pub frames: [Option<Arc<Frame>>; 2],
+    pub focus: usize,
+    pub popup: Rectangle,
+    pub keyboard_target: Option<usize>,
+}
+#[derive(Default)]
+pub struct Pointer {
+    pressed: Option<(usize, Point, Instant, bool)>,
+    pub anchor: Point,
+    pub preedit: Option<iced::advanced::input_method::Preedit>,
+}
+impl shader::Program<Message> for Scene {
+    type State = Pointer;
+    type Primitive = Primitive;
+    fn update(
+        &self,
+        state: &mut Pointer,
+        event: &Event,
+        _bounds: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> Option<shader::Action<Message>> {
+        match event {
+            Event::Mouse(mouse::Event::ButtonPressed(button)) => {
+                let p = cursor.position()?;
+                for index in [self.focus, 1 - self.focus] {
+                    if let Some(local) = self.layout.local(index, p) {
+                        state.anchor = p;
+                        state.pressed = (index == self.focus).then_some((
+                            index,
+                            local,
+                            Instant::now(),
+                            *button == mouse::Button::Right,
+                        ));
+                        return Some(shader::Action::publish(Message::Focus(index)).and_capture());
+                    }
+                }
+            }
+            Event::Mouse(mouse::Event::ButtonReleased(_)) => {
+                let (index, from, started, right) = state.pressed.take()?;
+                let to = self.layout.local(index, cursor.position()?)?;
+                let frame = self.frames[index].as_ref()?;
+                let x = (from.x * frame.width as f32).min((frame.width - 1) as f32) as u32;
+                let y = (from.y * frame.height as f32).min((frame.height - 1) as f32) as u32;
+                let input = if from.distance(to) > 0.015 {
+                    DeviceInput::Drag {
+                        x,
+                        y,
+                        to_x: (to.x * frame.width as f32).min((frame.width - 1) as f32) as u32,
+                        to_y: (to.y * frame.height as f32).min((frame.height - 1) as f32) as u32,
+                        duration: started.elapsed().as_millis().clamp(120, 2000) as u32,
+                    }
+                } else {
+                    DeviceInput::Tap { x, y, right }
+                };
+                return Some(shader::Action::publish(Message::Input(index, input)).and_capture());
+            }
+            Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
+                let p = self.layout.local(self.focus, cursor.position()?)?;
+                let frame = self.frames[self.focus].as_ref()?;
+                let amount = match delta {
+                    mouse::ScrollDelta::Lines { y, .. } => y * 96.,
+                    mouse::ScrollDelta::Pixels { y, .. } => *y,
+                };
+                return Some(
+                    shader::Action::publish(Message::Input(
+                        self.focus,
+                        DeviceInput::Scroll {
+                            x: (p.x * frame.width as f32) as u32,
+                            y: (p.y * frame.height as f32) as u32,
+                            amount: amount as i32,
+                        },
+                    ))
+                    .and_capture(),
+                );
+            }
+            Event::Keyboard(keyboard::Event::KeyPressed {
+                key,
+                text,
+                modifiers,
+                ..
+            }) => {
+                let target = self.keyboard_target?;
+                if target == 1 {
+                    use keyboard::key::Named;
+                    let named = match key.as_ref() {
+                        keyboard::Key::Named(name) => match name {
+                            Named::Enter => Some("Return"),
+                            Named::Backspace => Some("BackSpace"),
+                            Named::Delete => Some("Delete"),
+                            Named::Escape => Some("Escape"),
+                            Named::Tab => Some("Tab"),
+                            Named::ArrowLeft => Some("Left"),
+                            Named::ArrowRight => Some("Right"),
+                            Named::ArrowUp => Some("Up"),
+                            Named::ArrowDown => Some("Down"),
+                            Named::Home => Some("Home"),
+                            Named::End => Some("End"),
+                            Named::PageUp => Some("Prior"),
+                            Named::PageDown => Some("Next"),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let control = modifiers.command() || modifiers.control();
+                    if named.is_some() || control || modifiers.alt() {
+                        let value = match (named, key.as_ref()) {
+                            (Some(name), _) => name,
+                            (_, keyboard::Key::Character(value)) => value,
+                            _ => return None,
+                        };
+                        let mut chord = String::new();
+                        if control {
+                            chord.push_str("ctrl+");
+                        }
+                        if modifiers.alt() {
+                            chord.push_str("alt+");
+                        }
+                        if modifiers.shift() {
+                            chord.push_str("shift+");
+                        }
+                        chord.push_str(value);
+                        return Some(
+                            shader::Action::publish(Message::Input(
+                                target,
+                                DeviceInput::Key(chord),
+                            ))
+                            .and_capture(),
+                        );
+                    }
+                }
+                let input = match key.as_ref() {
+                    keyboard::Key::Named(keyboard::key::Named::Enter) => {
+                        DeviceInput::Key(if target == 0 { "ENTER" } else { "Return" }.into())
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::Backspace) => {
+                        DeviceInput::Key(if target == 0 { "DEL" } else { "BackSpace" }.into())
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::Tab) => {
+                        DeviceInput::Key(if target == 0 { "TAB" } else { "Tab" }.into())
+                    }
+                    keyboard::Key::Named(keyboard::key::Named::Escape) => {
+                        DeviceInput::Key(if target == 0 { "BACK" } else { "Escape" }.into())
+                    }
+                    _ if !modifiers.command() && !modifiers.control() => {
+                        DeviceInput::Text(text.as_ref()?.to_string())
+                    }
+                    _ => return None,
+                };
+                return Some(shader::Action::publish(Message::Input(target, input)).and_capture());
+            }
+            _ => {}
+        }
+        None
+    }
+    fn draw(&self, _: &Pointer, _: mouse::Cursor, _: Rectangle) -> Primitive {
+        let rect = |r: Rectangle| [r.x, r.y, r.width, r.height];
+        Primitive {
+            uniforms: Uniforms {
+                size: [self.size.width, self.size.height, 0., 0.],
+                phone: rect(self.layout.devices[0]),
+                desktop: rect(self.layout.devices[1]),
+                chat: rect(self.layout.chat),
+                popup: rect(self.popup),
+                state: [
+                    self.layout.angles[0],
+                    self.layout.angles[1],
+                    self.focus as f32,
+                    0.,
+                ],
+                material: [
+                    style::PANEL_RADIUS,
+                    style::GLASS_OPACITY,
+                    style::GLASS_BLUR,
+                    style::BORDER_WIDTH,
+                ],
+                background: style::BACKGROUND.into_linear(),
+            },
+            frames: self.frames.clone(),
+        }
+    }
+    fn mouse_interaction(
+        &self,
+        _: &Pointer,
+        _: Rectangle,
+        cursor: mouse::Cursor,
+    ) -> mouse::Interaction {
+        if cursor
+            .position()
+            .is_some_and(|p| (0..2).any(|i| self.layout.local(i, p).is_some()))
+        {
+            mouse::Interaction::Pointer
+        } else {
+            mouse::Interaction::default()
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct Uniforms {
+    size: [f32; 4],
+    phone: [f32; 4],
+    desktop: [f32; 4],
+    chat: [f32; 4],
+    popup: [f32; 4],
+    state: [f32; 4],
+    material: [f32; 4],
+    background: [f32; 4],
+}
+#[derive(Debug)]
+pub struct Primitive {
+    uniforms: Uniforms,
+    frames: [Option<Arc<Frame>>; 2],
+}
+pub struct Pipeline {
+    render: wgpu::RenderPipeline,
+    backdrop: wgpu::RenderPipeline,
+    horizontal: wgpu::RenderPipeline,
+    glass_layout: wgpu::BindGroupLayout,
+    glass_textures: [wgpu::Texture; 2],
+    glass_groups: [wgpu::BindGroup; 2],
+    layout: wgpu::BindGroupLayout,
+    group: wgpu::BindGroup,
+    uniform: wgpu::Buffer,
+    textures: [wgpu::Texture; 2],
+    sequences: [u64; 2],
+    sampler: wgpu::Sampler,
+}
+fn texture(device: &wgpu::Device, w: u32, h: u32, render: bool) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("device-frame"),
+        size: wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | if render {
+                wgpu::TextureUsages::RENDER_ATTACHMENT
+            } else {
+                wgpu::TextureUsages::COPY_DST
+            },
+        view_formats: &[],
+    })
+}
+impl Pipeline {
+    fn glass_buffers(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        width: u32,
+        height: u32,
+    ) -> ([wgpu::Texture; 2], [wgpu::BindGroup; 2]) {
+        let textures = std::array::from_fn(|_| texture(device, width, height, true));
+        let groups = std::array::from_fn(|index| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("glass-source"),
+                layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &textures[index].create_view(&Default::default()),
+                    ),
+                }],
+            })
+        });
+        (textures, groups)
+    }
+    fn group(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        uniform: &wgpu::Buffer,
+        textures: &[wgpu::Texture; 2],
+        sampler: &wgpu::Sampler,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("native-scene"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(
+                        &textures[0].create_view(&Default::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(
+                        &textures[1].create_view(&Default::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        })
+    }
+}
+impl shader::Pipeline for Pipeline {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("AImanity glass"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("scene.wgsl").into()),
+        });
+        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("scene-layout"),
+            size: std::mem::size_of::<Uniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let binding = |binding, ty| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty,
+            count: None,
+        };
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("scene-layout"),
+            entries: &[
+                binding(
+                    0,
+                    wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                ),
+                binding(
+                    1,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
+                binding(
+                    2,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
+                binding(
+                    3,
+                    wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                ),
+            ],
+        });
+        let glass_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("glass-layout"),
+            entries: &[binding(
+                0,
+                wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+            )],
+        });
+        let make_pipeline = |entry: &str, format, layouts: &[&wgpu::BindGroupLayout]| {
+            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: layouts,
+                push_constant_ranges: &[],
+            });
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(entry),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vertex"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some(entry),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: Default::default(),
+                depth_stencil: None,
+                multisample: Default::default(),
+                multiview: None,
+                cache: None,
+            })
+        };
+        let render = make_pipeline("fragment", format, &[&layout, &glass_layout]);
+        let backdrop = make_pipeline("backdrop", wgpu::TextureFormat::Rgba8UnormSrgb, &[&layout]);
+        let horizontal = make_pipeline(
+            "horizontal",
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            &[&layout, &glass_layout],
+        );
+        let (glass_textures, glass_groups) = Self::glass_buffers(device, &glass_layout, 1, 1);
+        let textures = [texture(device, 1, 1, false), texture(device, 1, 1, false)];
+        for t in &textures {
+            queue.write_texture(
+                t.as_image_copy(),
+                &[240, 243, 246, 255],
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4),
+                    rows_per_image: Some(1),
+                },
+                t.size(),
+            );
+        }
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let group = Self::group(device, &layout, &uniform, &textures, &sampler);
+        Self {
+            render,
+            backdrop,
+            horizontal,
+            glass_layout,
+            glass_textures,
+            glass_groups,
+            layout,
+            group,
+            uniform,
+            textures,
+            sequences: [0, 0],
+            sampler,
+        }
+    }
+}
+impl shader::Primitive for Primitive {
+    type Pipeline = Pipeline;
+    fn prepare(
+        &self,
+        pipeline: &mut Pipeline,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        _: &Rectangle,
+        _: &shader::Viewport,
+    ) {
+        queue.write_buffer(&pipeline.uniform, 0, bytemuck::bytes_of(&self.uniforms));
+        let mut resized = false;
+        for (index, frame) in self.frames.iter().enumerate() {
+            if let Some(frame) = frame
+                && pipeline.sequences[index] != frame.sequence
+            {
+                if pipeline.textures[index].width() != frame.width
+                    || pipeline.textures[index].height() != frame.height
+                {
+                    pipeline.textures[index] = texture(device, frame.width, frame.height, false);
+                    resized = true;
+                }
+                let t = &pipeline.textures[index];
+                queue.write_texture(
+                    t.as_image_copy(),
+                    &frame.pixels,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(frame.width * 4),
+                        rows_per_image: Some(frame.height),
+                    },
+                    t.size(),
+                );
+                pipeline.sequences[index] = frame.sequence;
+                if frame.sequence == 1 || frame.sequence % 120 == 0 {
+                    eprintln!(
+                        "native_metric frame device={index} sequence={} receive_to_upload_ms={:0.3} frame_age_ms={:0.3}",
+                        frame.sequence,
+                        frame.received.elapsed().as_secs_f64() * 1000.,
+                        if frame.captured_ms > 0. {
+                            crate::connection::epoch_ms() - frame.captured_ms
+                        } else {
+                            0.
+                        }
+                    );
+                }
+            }
+        }
+        if resized {
+            pipeline.group = Pipeline::group(
+                device,
+                &pipeline.layout,
+                &pipeline.uniform,
+                &pipeline.textures,
+                &pipeline.sampler,
+            );
+        }
+        let width = (self.uniforms.size[0] / 4.).ceil() as u32;
+        let height = (self.uniforms.size[1] / 4.).ceil() as u32;
+        if pipeline.glass_textures[0].width() != width
+            || pipeline.glass_textures[0].height() != height
+        {
+            (pipeline.glass_textures, pipeline.glass_groups) =
+                Pipeline::glass_buffers(device, &pipeline.glass_layout, width, height);
+        }
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("glass-backdrop"),
+        });
+        for (index, render) in [&pipeline.backdrop, &pipeline.horizontal]
+            .into_iter()
+            .enumerate()
+        {
+            let view = pipeline.glass_textures[index].create_view(&Default::default());
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("glass-blur"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            pass.set_pipeline(render);
+            pass.set_bind_group(0, &pipeline.group, &[]);
+            if index == 1 {
+                pass.set_bind_group(1, &pipeline.glass_groups[0], &[]);
+            }
+            pass.draw(0..3, 0..1);
+        }
+        queue.submit([encoder.finish()]);
+    }
+    fn draw(&self, pipeline: &Pipeline, pass: &mut wgpu::RenderPass<'_>) -> bool {
+        pass.set_pipeline(&pipeline.render);
+        pass.set_bind_group(0, &pipeline.group, &[]);
+        pass.set_bind_group(1, &pipeline.glass_groups[1], &[]);
+        pass.draw(0..3, 0..1);
+        true
+    }
+}

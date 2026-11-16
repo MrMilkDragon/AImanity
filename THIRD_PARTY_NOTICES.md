@@ -14,6 +14,8 @@ See [distribution requirements](docs/public/distribution-requirements.md) for th
 
 | Component | Source / licence evidence | Distribution scope and obligations |
 | --- | --- | --- |
+| Iced 0.14.0 | [Upstream](https://github.com/iced-rs/iced/tree/0.14.0), [MIT licence](docs/public/licenses/native-ui/iced-LICENSE) | Native workbench UI; locked dependencies in apps/native/Cargo.lock |
+| wgpu 27.0.1 | [Upstream](https://github.com/gfx-rs/wgpu/tree/v27.0.1), [MIT](docs/public/licenses/native-ui/wgpu-LICENSE.MIT) / [Apache-2.0](docs/public/licenses/native-ui/wgpu-LICENSE.APACHE) | GPU device textures and glass rendering |
 | Static Linux ARM C runtime | [musl 1.2.5 copyright](docs/public/licenses/musl/COPYRIGHT), [Rust 1.96.0 build recipe and patches](https://github.com/rust-lang/rust/blob/1.96.0/src/ci/docker/scripts/musl.sh) | The Mac factory's Linux ARM desktop bridge uses Rust's musl target. The complete upstream copyright and terms are included in the native client and service notices |
 | Runtime dependencies | Exact versions in Cargo.lock / bun.lock | [Inventory](docs/public/dependency-licenses.json): locked server and native-client build graphs, licence metadata and notice-file hashes. Redistribution/source-offer review remains open |
 | EinkBro 16.7.1 Android browser | [Pinned release/source](config/phone-browser.json), [upstream notice](docs/public/licenses/guest-apps/einkbro-LICENSE.md), [GPL-3.0 text](docs/public/licenses/guest-apps/GPL-3.0.txt) | ARM64/x86_64 APKs are selected per guest and use the Android system WebView. Application data is excluded; embedded libraries retain their own notices and source requirements |

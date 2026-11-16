@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "0.0.3",
+  "version": "0.0.4",
   "license": "Apache-2.0",
   "remote_publication_authorized": true,
   "remote_review_authorized": true,
@@ -53,8 +53,8 @@
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 7106,
-      "sha256": "573e5ce5b2220de39604b7e772b790b55a2766bae8d1769df5fad10beaee50f3"
+      "size": 7801,
+      "sha256": "ee9e00198ffcdf6b8cf4701b3a5ec2ff062333d2717d1b11990832364dcbed97"
     },
     {
       "path": ".github/workflows/source.yml",
@@ -153,8 +153,8 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 15523,
-      "sha256": "7a54a12c083b591db886a7ad837bcc9fcabb465c57d43405abff77218dc2d67b"
+      "size": 15965,
+      "sha256": "29615446619c193cc44f029cd6910b807a73d86262eef1509e545f62d595f637"
     },
     {
       "path": "ai-phone",
@@ -520,6 +520,56 @@
       "path": "apps/client/ui/style.css",
       "size": 4165,
       "sha256": "2bb9a6c962221e1adc2566634b63943c52f956242ccee2a5cef10582bc50642f"
+    },
+    {
+      "path": "apps/native/Cargo.lock",
+      "size": 121349,
+      "sha256": "4873f63e65c2dcce26d584418f02a826e6fca8110aefda5db0cea3066f3bea0c"
+    },
+    {
+      "path": "apps/native/Cargo.toml",
+      "size": 1011,
+      "sha256": "614a49c1fc15d949a240d933dfffee853a5f74afde601140cfc802b1e83c562c"
+    },
+    {
+      "path": "apps/native/src/connection.rs",
+      "size": 14608,
+      "sha256": "1688aeb02613211bfdd81a869e462b7fd7f30b92d102f73120da772509d33a44"
+    },
+    {
+      "path": "apps/native/src/host.rs",
+      "size": 3798,
+      "sha256": "eab46a9287b077b18ece3804d5eed748a4e2182315d1242c6b48f0fe98176f9f"
+    },
+    {
+      "path": "apps/native/src/layout.rs",
+      "size": 4911,
+      "sha256": "569bd95982e8bc7485077c14aa5047faf99e6e7faf303be4a21aafb6a04f38fb"
+    },
+    {
+      "path": "apps/native/src/main.rs",
+      "size": 26951,
+      "sha256": "eaaddc315c3113fa61ccb0a9fc4d06bbcd1449cf65983bb67934d1555cf8fd61"
+    },
+    {
+      "path": "apps/native/src/scene.rs",
+      "size": 22042,
+      "sha256": "67ae33ec738eec8455bcb441d54051f622b82d17aea168fe3fefc2ec1fb62521"
+    },
+    {
+      "path": "apps/native/src/scene.wgsl",
+      "size": 3237,
+      "sha256": "7a30b4adff2d0493a020638c2da48f158c8b25377628ea493da3d0d2573973af"
+    },
+    {
+      "path": "apps/native/src/style.rs",
+      "size": 1465,
+      "sha256": "36204b8f3e94135b1d9b281fdb2f26bbab195fa9a394332c34ba2fc01e7b132e"
+    },
+    {
+      "path": "apps/native/src/surface.rs",
+      "size": 4781,
+      "sha256": "a4915c3d6ddca2e8d1cd02299d75d70d4db61da1ccebac7b426a1eddcba55ead"
     },
     {
       "path": "apps/web/components.json",
@@ -1343,8 +1393,8 @@
     },
     {
       "path": "config/release-policy.json",
-      "size": 362,
-      "sha256": "7da8a1c9cde30553e603acb7cc0f99c9501e2202c1fbb3b5d3c267fd0e10d58d"
+      "size": 328,
+      "sha256": "723f22ed446c72953b9d55aa8dd615c0e7c3a1f500f7789fe975fb0b3e310b04"
     },
     {
       "path": "config/rust-runtime-notices.json",
@@ -2573,8 +2623,8 @@
     },
     {
       "path": "crates/host-runtime/src/images/mod.rs",
-      "size": 7922,
-      "sha256": "bfc17fa0f6e79219fa404f09edff589b421dec371975cbdfccd40a848830a33e"
+      "size": 8931,
+      "sha256": "47d8a1c1990ba045e6d6e47fc941082323ec68e27f2ba8d6c19117b0613233fc"
     },
     {
       "path": "crates/host-runtime/src/images/normalize.rs",
@@ -2693,18 +2743,18 @@
     },
     {
       "path": "crates/host-runtime/src/unix_initializer/mod.rs",
-      "size": 14132,
-      "sha256": "267b0a97b2020577dff56a627edb07b51d05dfdafb65df1daafc408ca0ca71bf"
+      "size": 14428,
+      "sha256": "016afde7ccb82b66819942f8e3fcfdd723dc9625a1c81a5b9e5b953425c9373c"
     },
     {
       "path": "crates/host-runtime/src/unix_initializer/phone.rs",
-      "size": 4838,
-      "sha256": "a88e25f9b51d42deb60cd8f9c9b1c450f5d2554f4fb3ec2a81e915ef19dcac55"
+      "size": 4976,
+      "sha256": "feb6358e40b7a778156a6445e729be77c5b7f41c281c4dd0d307988ca1a1524e"
     },
     {
       "path": "crates/host-runtime/src/unix_initializer/readiness.rs",
-      "size": 7606,
-      "sha256": "02f3aa6066d0355290980e4cc279f959741e110c2917b87d33c654040b50025a"
+      "size": 7690,
+      "sha256": "b7685935fcaf4d2ce8c2a9c939f8404cc554d188d50961294d3fc942769539e7"
     },
     {
       "path": "crates/host-runtime/src/vm_control/guest.rs",
@@ -2723,13 +2773,13 @@
     },
     {
       "path": "crates/host-runtime/src/wsl/backend/tests.rs",
-      "size": 26368,
-      "sha256": "c45d4e645949c987558b9acc3859212a9b5d4cfdb1550736ffdf20bad6de8a84"
+      "size": 27122,
+      "sha256": "9d4178b3085b2ac6e86f3480444857c4ecd3fda7fe0176b60b259be3c80109d7"
     },
     {
       "path": "crates/host-runtime/src/wsl/backend.rs",
-      "size": 17614,
-      "sha256": "3f1e4f4f1322e0296a260f3fe1a6c2a3df65f93f0ab28a33bbee95bc0ce4be07"
+      "size": 17690,
+      "sha256": "27b78e9f601bbc0007c93f04f2242ea4205c41c2b0ecf6037dcc0f71ec370de7"
     },
     {
       "path": "crates/host-runtime/src/wsl/bundle.rs",
@@ -2803,8 +2853,8 @@
     },
     {
       "path": "crates/host-runtime/tests/image_activation_cli.rs",
-      "size": 21174,
-      "sha256": "4531b58232d43570b4c0f7e9c3c11bfec026abcf8b0b30946dd4a56dc9d39216"
+      "size": 21272,
+      "sha256": "2f842f676a09f402883fb0575b49b7b402932689c112b879488b089fa5adfdc0"
     },
     {
       "path": "crates/host-runtime/tests/legacy_format1.rs",
@@ -3472,6 +3522,21 @@
       "sha256": "e562a2ddfaf8280537795ac5ecd34e3012b6582a147ef69ba6a6a5c08c84757d"
     },
     {
+      "path": "docs/public/licenses/native-ui/iced-LICENSE",
+      "size": 1073,
+      "sha256": "fc9086ba4eba4b77e4c603906362742bc3715ffa2c7810c6074fe7780d3a0398"
+    },
+    {
+      "path": "docs/public/licenses/native-ui/wgpu-LICENSE.APACHE",
+      "size": 10173,
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9"
+    },
+    {
+      "path": "docs/public/licenses/native-ui/wgpu-LICENSE.MIT",
+      "size": 1078,
+      "sha256": "dc0d97139e8205818c703741c7be7cb3b96888bd5917b8d6fc6133731e403c21"
+    },
+    {
       "path": "docs/public/licenses/rust-runtime/COPYRIGHT-library.html",
       "size": 425651,
       "sha256": "78c163fcec50e64bfd85fedb850c273595602fafa2b41f30f75d4e410b80ee83"
@@ -3568,13 +3633,13 @@
     },
     {
       "path": "docs/public/native-client.en.md",
-      "size": 898,
-      "sha256": "74b0b43aa875b9d8ab8143df1e5a512f44743eaf8bdf12a0e9f04292e86f4be2"
+      "size": 2043,
+      "sha256": "4facee80b4b7886135aaa14e15d8322e27369541fbd41e91833a8d8a34c4d710"
     },
     {
       "path": "docs/public/native-client.zh-CN.md",
-      "size": 811,
-      "sha256": "32f869cdd776dc73483a48a865fe7afac8d0fd5cd5c5817fa19cdeef79aafe9a"
+      "size": 1786,
+      "sha256": "ee0e9dbc503497a434a89250ff329f25f5305ef1ff871b33356dd6f7b3fc85fb"
     },
     {
       "path": "docs/public/native-services-license-inventory.json",

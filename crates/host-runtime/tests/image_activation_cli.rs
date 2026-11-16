@@ -306,7 +306,7 @@ fn wrong_engine_or_existing_tag_is_rejected_and_platform_indexes_are_explicitly_
     }
 }
 #[test]
-fn publication_failure_preserves_old_state_and_a_later_resume_needs_no_reimport() {
+fn unreadable_installation_record_preserves_old_state_and_resume_imports_once() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();
     let (payload, _, _) = fixture(home, false);
@@ -322,15 +322,17 @@ fn publication_failure_preserves_old_state_and_a_later_resume_needs_no_reimport(
         fs::read_dir(destination.parent().unwrap()).unwrap().count(),
         1
     );
+    assert!(!home.join("imported").exists());
     fs::remove_file(destination.join("keep")).unwrap();
     fs::remove_dir(&destination).unwrap();
-    fs::remove_file(home.join("imported")).unwrap();
     let output = invoke(home, &payload);
     assert!(
         output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+    fs::remove_file(home.join("imported")).unwrap();
+    assert!(invoke(home, &payload).status.success());
     assert!(!home.join("imported").exists());
 }
 #[test]

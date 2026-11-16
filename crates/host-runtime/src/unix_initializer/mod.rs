@@ -135,9 +135,16 @@ struct Arguments {
     android: String,
     images: Option<String>,
     resume: bool,
+    native_ui: bool,
 }
 impl Arguments {
     fn parse(values: &[OsString]) -> Result<Self> {
+        let native_ui = values.last().is_some_and(|value| value == "--native-ui");
+        let values = if native_ui {
+            &values[..values.len() - 1]
+        } else {
+            values
+        };
         let [resource, home, request, source, android, images @ ..] = values else {
             return Err(Error::Invalid("unix_host_arguments"));
         };
@@ -173,6 +180,7 @@ impl Arguments {
             android,
             images,
             resume,
+            native_ui,
         })
     }
 }
@@ -309,7 +317,7 @@ async fn initialize(
                     &args.resource.join("images.payload"),
                     args.images.as_deref(),
                     &user,
-                    "127.0.0.1",
+                    (!args.native_ui).then_some("127.0.0.1"),
                 )
                 .await
         };
@@ -359,7 +367,7 @@ async fn initialize(
         };
         first.and(second)?;
     }
-    readiness::wait(&root, stop).await?;
+    readiness::wait(&root, stop, !args.native_ui).await?;
     progress("devices", "running", "")?;
     backend
         .checked(
