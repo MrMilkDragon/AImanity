@@ -2,7 +2,9 @@ name: Calcium Windows data retention on Dysprosium native development
 on:
   push:
     branches: [codex/dysprosium-win-calcium-state-qa]
-    paths: [.github/workflows/dysprosium-win-calcium-state-qa.yml]
+    paths:
+      - .github/workflows/dysprosium-win-calcium-state-qa.yml
+      - qa/windows-native-dev/calcium-state.*
 permissions:
   contents: read
   actions: read

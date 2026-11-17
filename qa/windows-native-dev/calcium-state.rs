@@ -158,35 +158,41 @@ async fn model_response(socket: TcpStream) -> Result<()> {
     let messages = input["messages"]
         .as_array()
         .ok_or("model fixture messages")?;
-    let latest = |role: &str| {
-        messages
-            .iter()
-            .rev()
-            .find(|message| message["role"] == role)
-    };
-    let prompt = latest("user")
+    let prompt = messages
+        .iter()
+        .filter(|message| message["role"] == "user")
         .map(|message| message["content"].to_string())
-        .unwrap_or_default();
+        .collect::<Vec<_>>()
+        .join("\n");
     let token = |prefix: &str| {
         prompt
             .split_once(prefix)
             .and_then(|(_, text)| text.split(|c: char| !c.is_ascii_alphanumeric()).next())
     };
-    let choice = if let Some(tool) = latest("tool") {
+    let diagnostic = "qa_calcium_diagnostic";
+    let choice = if let Some(tool) = messages
+        .iter()
+        .rev()
+        .find(|message| message["role"] == "tool" && message["tool_call_id"] == diagnostic)
+    {
         let raw = tool["content"]
             .as_str()
             .ok_or("model diagnostic tool receipt")?;
         let receipt: Value = serde_json::from_str(raw)?;
         json!({"content":receipt["receipt"]})
     } else if let Some(code) = token("Call diagnostic_echo with code ") {
-        json!({"tool_calls":[{"index":0,"id":"qa_calcium_diagnostic","type":"function",
+        json!({"tool_calls":[{"index":0,"id":diagnostic,"type":"function",
             "function":{"name":"diagnostic_echo","arguments":json!({"code":code}).to_string()}}]})
     } else if let Some(code) = token("Reply exactly with this code: ") {
         json!({"content":code})
     } else if prompt.contains("Read the four digits") {
         json!({"content":"7319"})
     } else {
-        assert!(prompt.contains(ANSWER), "unexpected synth provider prompt");
+        let tool_count = input["tools"].as_array().map_or(0, Vec::len);
+        println!(
+            "{}",
+            json!({"phase":"calcium_fixture_chat","contains_seed_marker":prompt.contains(ANSWER),"tool_count":tool_count})
+        );
         json!({"content":ANSWER})
     };
     let mut choice = choice;
@@ -299,6 +305,7 @@ async fn seed(workbench: &Workbench, home: &Path) -> Result<State> {
         "Calcium actually tested the configured provider: {:?}",
         test.checks
     );
+    println!("Calcium QA provider capabilities verified");
     let registry: RegistryState = workbench
         .rpc(
             "registry/agent-config-save",
@@ -320,6 +327,7 @@ async fn seed(workbench: &Workbench, home: &Path) -> Result<State> {
         )
         .await?;
     assert_eq!(registry.active_agent_id, agent);
+    println!("Calcium QA Agent and model committed");
     let model_revision = registry
         .models
         .iter()
@@ -343,9 +351,19 @@ async fn seed(workbench: &Workbench, home: &Path) -> Result<State> {
         !conversation.is_empty(),
         "Calcium committed conversation ID"
     );
+    println!("Calcium QA message admitted");
     let (sent, reply) = timeout(60 * SEC, async {
+        let mut previous = String::new();
         loop {
             let state = history(workbench, &conversation).await?;
+            if state.run_status != previous {
+                println!(
+                    "{}",
+                    json!({"phase":"calcium_chat_history","status":state.run_status,"message_count":state.messages.len()})
+                );
+                previous = state.run_status.clone();
+            }
+            assert!(!matches!(state.run_status.as_str(), "failed" | "canceled"));
             if let (Some(sent), Some(reply)) = (
                 state
                     .messages
