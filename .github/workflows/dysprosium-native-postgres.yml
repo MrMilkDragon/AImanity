@@ -13,13 +13,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Stage production guest service binaries
         shell: bash
         run: |
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$(uname -m)" = x86_64
-          test "$(git rev-parse HEAD^)" = b667bbc16246b7db44ee15884a6d8d6ed47cc008
+          git diff --quiet b667bbc16246b7db44ee15884a6d8d6ed47cc008 HEAD -- . ':!.github/workflows/dysprosium-native-postgres.yml'
           docker buildx create --name aiphone-native-pg --driver docker-container --use
           ./scripts/bootstrap.sh
           export AIMANITY_QA_SERVICES="$RUNNER_TEMP/aimanity-native-services"
