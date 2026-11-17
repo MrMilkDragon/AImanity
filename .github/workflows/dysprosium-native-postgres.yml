@@ -1,0 +1,95 @@
+name: Native PostgreSQL closure
+on:
+  push:
+    branches: [codex/dysprosium-postgres-native-qa]
+    paths: [.github/workflows/dysprosium-native-postgres.yml]
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Stage production guest service binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = x86_64
+          test "$(git rev-parse HEAD^)" = b667bbc16246b7db44ee15884a6d8d6ed47cc008
+          docker buildx create --name aiphone-native-pg --driver docker-container --use
+          ./scripts/bootstrap.sh
+          export AIMANITY_QA_SERVICES="$RUNNER_TEMP/aimanity-native-services"
+          mkdir "$AIMANITY_QA_SERVICES"
+          ./scripts/bun -e 'import { stageWindowsServices } from "./scripts/tooling/wsl-factory"; stageWindowsServices(process.cwd(), process.env.AIMANITY_QA_SERVICES!);'
+          du -sh "$AIMANITY_QA_SERVICES/postgres"
+      - name: Initialize, open and reopen the exact closure on Ubuntu
+        shell: bash
+        run: |
+          set -euo pipefail
+          ubuntu=$(jq -r .base_image config/wsl-backend.json)
+          docker run --rm -i --network none \
+            --mount "type=bind,src=$RUNNER_TEMP/aimanity-native-services/postgres,dst=/opt/aiphone/postgres,readonly" \
+            "$ubuntu" /bin/bash -se <<'GUEST'
+          set -euo pipefail
+          root=/var/lib/aiphone-postgres
+          data=$root/data
+          bin=/opt/aiphone/postgres/lib/postgresql/17/bin
+          lib=/opt/aiphone/postgres/runtime
+          role=aiphone-postgres
+          database=ai_phone
+          port=55482
+          password=isolated-closure-fixture
+          mkdir -m 0711 "$root"
+          /usr/sbin/useradd --system --user-group --home-dir "$root" --shell /usr/sbin/nologin "$role"
+          owner=(/usr/bin/setpriv "--reuid=$role" "--regid=$role" --clear-groups --no-new-privs /usr/bin/env "LD_LIBRARY_PATH=$lib")
+          postgres_pid=
+          trap 'if [[ -n $postgres_pid ]]; then kill -INT "$postgres_pid"; wait "$postgres_pid"; fi' EXIT
+          staged=$(mktemp -d "$root/.init-XXXXXXXX")
+          /usr/bin/chown "$role:$role" "$staged"
+          start=$(date +%s%3N)
+          printf '%s\n' "$password" | "${owner[@]}" "$bin/initdb" -D "$staged" -U "$database" \
+            --locale-provider=builtin --locale=C.UTF-8 --auth=scram-sha-256 --pwfile=/dev/stdin
+          mv "$staged" "$data"
+          echo "postgres_init_ms=$(( $(date +%s%3N) - start ))"
+          test "$(cat "$data/PG_VERSION")" = 17
+          connection=(-h 127.0.0.1 -p "$port" -U "$database")
+          boot() {
+            local phase=$1 begin deadline
+            begin=$(date +%s%3N)
+            deadline=$((begin + 15000))
+            "${owner[@]}" "$bin/postgres" -D "$data" -h 127.0.0.1 -p "$port" -k '' -c jit=off &
+            postgres_pid=$!
+            until LD_LIBRARY_PATH="$lib" "$bin/pg_isready" -q -t 1 "${connection[@]}" -d postgres; do
+              kill -0 "$postgres_pid"
+              test "$(date +%s%3N)" -lt "$deadline"
+              sleep 0.05
+            done
+            printf 'postgres_%s_ready_ms=%s\n' "$phase" "$(( $(date +%s%3N) - begin ))"
+          }
+          stop() {
+            kill -INT "$postgres_pid"
+            wait "$postgres_pid"
+            postgres_pid=
+          }
+          sql() {
+            LD_LIBRARY_PATH="$lib" PGPASSWORD="$password" "$bin/psql" -qXw -v ON_ERROR_STOP=1 "${connection[@]}" "$@"
+          }
+          boot fresh
+          sql -d postgres -v "database=$database" <<'SQL'
+          SELECT format('CREATE DATABASE %I', :'database') WHERE NOT EXISTS
+              (SELECT FROM pg_database WHERE datname = :'database')
+          \gexec
+          SQL
+          sql -d "$database" -c "CREATE TABLE offline_probe (result text NOT NULL); INSERT INTO offline_probe VALUES ('离线 PostgreSQL');"
+          stop
+          boot reopened
+          result=$(sql -d "$database" -At -c 'SELECT result FROM offline_probe')
+          test "$result" = '离线 PostgreSQL'
+          printf 'postgres_reopen_value=%s\n' "$result"
+          LD_LIBRARY_PATH="$lib" "$bin/postgres" --version
+          stop
+          GUEST
