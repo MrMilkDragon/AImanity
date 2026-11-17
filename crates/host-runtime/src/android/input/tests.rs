@@ -19,6 +19,7 @@ struct Phone {
     registration_output: Option<String>,
     ignore: Option<Vec<String>>,
     pending_at_install: Option<std::path::PathBuf>,
+    attention_registration_misses: usize,
     attention_readback_misses: usize,
 }
 impl Phone {
@@ -46,6 +47,7 @@ impl Phone {
             registration_output: None,
             ignore: None,
             pending_at_install: None,
+            attention_registration_misses: 0,
             attention_readback_misses: 0,
         }
     }
@@ -167,6 +169,9 @@ impl Device for Phone {
                 value
             }
         } else if args.starts_with(&["shell", "settings", "--user", "0", "put", "secure"]) {
+            if args[6] == ACCESSIBILITY_SERVICES {
+                assert_eq!(self.attention_registration_misses, 0);
+            }
             self.settings.insert(args[6].into(), args[7].into());
             String::new()
         } else if args
@@ -187,6 +192,11 @@ impl Device for Phone {
         {
             self.granted = !self.deny;
             String::new()
+        } else if args.last() == Some(&"attention-installed") {
+            let registered = self.attention_registration_misses == 0;
+            self.attention_registration_misses =
+                self.attention_registration_misses.saturating_sub(1);
+            registered.to_string()
         } else if args.get(1) == Some(&"env") {
             self.notification_output
                 .clone()
@@ -229,6 +239,7 @@ async fn installed_package_repairs_missing_capabilities_without_reinstalling_or_
  {
     let f = Fixture::new();
     let mut phone = Phone::new(true);
+    phone.attention_registration_misses = 1;
     phone.attention_readback_misses = 1;
     assert!(f.run(&mut phone, false).await.unwrap());
     assert!(phone.granted);
@@ -236,6 +247,14 @@ async fn installed_package_repairs_missing_capabilities_without_reinstalling_or_
     assert!(phone.settings["enabled_input_methods"].starts_with("other/.Keyboard;7:"));
     let selector = format!("other/.Reader:{ATTENTION}");
     assert_eq!(phone.settings[ACCESSIBILITY_SERVICES], selector);
+    assert_eq!(
+        phone
+            .calls
+            .iter()
+            .filter(|args| args.last().is_some_and(|arg| arg == "attention-installed"))
+            .count(),
+        2
+    );
     assert_eq!(phone.attention_readback_misses, 0);
     assert_eq!(
         phone.count(&[

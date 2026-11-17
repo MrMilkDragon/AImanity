@@ -201,25 +201,21 @@ async fn enabled(adb: &mut impl Device, key: &str, observe: bool) -> Result<bool
         _ => Err(Error::Invalid("phone_input_observation")),
     }
 }
-async fn notification(adb: &mut impl Device) -> Result<bool> {
-    match adb
-        .execute(
-            &[
-                "shell",
-                "env",
-                &format!("CLASSPATH={REMOTE_PROBE}"),
-                "app_process",
-                "/",
-                "dev.aiphone.input.probe.NotificationAccess",
-            ],
-            10,
-        )
-        .await?
-        .as_str()
-    {
+async fn probe_service(adb: &mut impl Device, mode: Option<&str>) -> Result<bool> {
+    let classpath = format!("CLASSPATH={REMOTE_PROBE}");
+    let mut args = vec![
+        "shell",
+        "env",
+        &classpath,
+        "app_process",
+        "/",
+        "dev.aiphone.input.probe.NotificationAccess",
+    ];
+    args.extend(mode);
+    match adb.execute(&args, 10).await?.as_str() {
         "true" => Ok(true),
         "false" => Ok(false),
-        _ => Err(Error::Invalid("phone_input_notification_unknown")),
+        _ => Err(Error::Invalid("phone_input_probe_unknown")),
     }
 }
 async fn attention_bound(adb: &mut impl Device) -> Result<bool> {
@@ -238,22 +234,31 @@ async fn attention_bound(adb: &mut impl Device) -> Result<bool> {
 }
 async fn attention(adb: &mut impl Device, observe: bool) -> Result<bool> {
     let value = setting(adb, ACCESSIBILITY_SERVICES).await?;
-    let mut rows = policy::components(&value, false)?;
-    let changed = !policy::contains(&rows, ATTENTION);
+    let listed = policy::contains(&policy::components(&value, false)?, ATTENTION);
     if observe {
-        return if !changed && attention_bound(adb).await? {
+        return if listed && attention_bound(adb).await? {
             Ok(false)
         } else {
             Err(Error::Invalid("phone_input_not_ready"))
         };
     }
-    if changed {
-        rows.push(ATTENTION);
-        write_setting(adb, ACCESSIBILITY_SERVICES, &rows.join(":")).await?;
-    }
-    // AccessibilityManager observes the setting and binds the component asynchronously.
     tokio::time::timeout(Duration::from_secs(10), async {
-        let mut listed = !changed;
+        let mut listed = listed;
+        let mut changed = false;
+        if !listed {
+            // Android removes enabled components until its own service registry sees them.
+            while !probe_service(adb, Some("attention-installed")).await? {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            let value = setting(adb, ACCESSIBILITY_SERVICES).await?;
+            let mut rows = policy::components(&value, false)?;
+            listed = policy::contains(&rows, ATTENTION);
+            if !listed {
+                rows.push(ATTENTION);
+                write_setting(adb, ACCESSIBILITY_SERVICES, &rows.join(":")).await?;
+                changed = true;
+            }
+        }
         loop {
             if !listed {
                 let value = setting(adb, ACCESSIBILITY_SERVICES).await?;
@@ -270,7 +275,7 @@ async fn attention(adb: &mut impl Device, observe: bool) -> Result<bool> {
 }
 async fn services(adb: &mut impl Device, observe: bool) -> Result<bool> {
     let mut changed = enabled(adb, "show_ime_with_hard_keyboard", observe).await?;
-    if !notification(adb).await? {
+    if !probe_service(adb, None).await? {
         if observe {
             return Err(Error::Invalid("phone_input_not_ready"));
         }
@@ -287,7 +292,7 @@ async fn services(adb: &mut impl Device, observe: bool) -> Result<bool> {
         )
         .await?;
         changed = true;
-        if !notification(adb).await? {
+        if !probe_service(adb, None).await? {
             return Err(Error::Invalid("phone_input_notification_unknown"));
         }
     }

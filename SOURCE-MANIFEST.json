@@ -1638,8 +1638,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/input/mod.rs",
-      "size": 11396,
-      "sha256": "bc194f0129a62b7a5a699cbbef6e0976bcaa0b75537afecc7b726d18487c2cb0"
+      "size": 11834,
+      "sha256": "e0495e790c7072fb2a419811b0f6e649a3dd3901e240941f5d43f5d7986b6c09"
     },
     {
       "path": "crates/host-runtime/src/android/input/policy.rs",
@@ -1658,8 +1658,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/input/tests.rs",
-      "size": 22252,
-      "sha256": "abcc9d143c9503204277248231a01c1fd669e55ae4b3e98a6369f4e6b719c1eb"
+      "size": 23001,
+      "sha256": "6a5a5824ca9fe3cfd4125823f31982d95a85c16158c1daca180b717ac0bbb217"
     },
     {
       "path": "crates/host-runtime/src/android/launch.rs",
@@ -3433,8 +3433,8 @@
     },
     {
       "path": "scripts/android-input-probe/NotificationAccess.java",
-      "size": 1551,
-      "sha256": "b2b60828bf5a56ebe3d301d32d639cef4262d5db4a06434e8c6617465869e887"
+      "size": 2734,
+      "sha256": "b9dfbb66f3237855e3a931f49227497f71e7b48db8d96514b086102220c73b52"
     },
     {
       "path": "scripts/android-install-curl.sh",
