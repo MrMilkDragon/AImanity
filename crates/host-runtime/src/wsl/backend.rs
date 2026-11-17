@@ -78,6 +78,7 @@ pub(crate) struct Backend<'a, E> {
 }
 
 pub(crate) enum Database {
+    MacContainers,
     Container,
     Native,
 }
@@ -272,52 +273,16 @@ impl<E: Execute> Backend<'_, E> {
         if let Some(ocr) = existing.get("ai-phone-ocr") {
             self.docker(&["rm", "--force", &ocr.id]).await?;
         }
-        if let Some(redis) = existing.get("ai-phone-redis-1") {
-            if redis.running {
-                self.docker(&["stop", "--time", "10", &redis.id]).await?;
-            }
-            self.docker(&["rm", &redis.id]).await?;
-        }
         let redis_port = self.env["AI_PHONE_REDIS_PORT"].clone();
-        phase("redis_start");
-        self.unit(
-            "redis",
-            "start",
-            [
-                "/usr/bin/setpriv",
-                "--reuid=65534",
-                "--regid=65534",
-                "--clear-groups",
-                "--",
-                REDIS_LOADER,
-                "--library-path",
-                REDIS_LIB,
-                "/opt/aiphone/redis/bin/redis-server",
-                "--dir",
-                REDIS,
-                "--bind",
-                "127.0.0.1",
-                "--port",
-                &redis_port,
-                "--save",
-                "",
-                "--appendonly",
-                "no",
-                "--maxmemory",
-                "128mb",
-                "--maxmemory-policy",
-                "noeviction",
-            ]
-            .map(str::to_owned)
-            .into(),
-            &[],
-        )
-        .await?;
+        if !matches!(database, Database::MacContainers) {
+            self.start_redis(&redis_port, existing.get("ai-phone-redis-1"))
+                .await?;
+        }
         phase("database_start");
         match database {
             Database::Native => self.start_postgres().await?,
-            Database::Container => {
-                self.docker(&[
+            Database::Container | Database::MacContainers => {
+                let mut command = vec![
                     "compose",
                     "-f",
                     "compose.yaml",
@@ -330,11 +295,16 @@ impl<E: Execute> Backend<'_, E> {
                     "--pull",
                     "never",
                     "postgres",
-                ])
-                .await?;
+                ];
+                if matches!(database, Database::MacContainers) {
+                    command.push("redis");
+                }
+                self.docker(&command).await?;
             }
         }
-        self.wait_redis(&redis_port).await?;
+        if !matches!(database, Database::MacContainers) {
+            self.wait_redis(&redis_port).await?;
+        }
         let assistant = text(&self.root.join("runtime/services/bin/assistant"))?;
         phase("database_prepare");
         if self
@@ -384,6 +354,49 @@ impl<E: Execute> Backend<'_, E> {
                 text(&self.root.join("runtime/services/bin/runner"))?,
                 "--media".into(),
             ],
+            &[],
+        )
+        .await?;
+        Ok(())
+    }
+    async fn start_redis(&mut self, port: &str, legacy: Option<&Container>) -> Result<()> {
+        if let Some(redis) = legacy {
+            if redis.running {
+                self.docker(&["stop", "--time", "10", &redis.id]).await?;
+            }
+            self.docker(&["rm", &redis.id]).await?;
+        }
+        phase("redis_start");
+        self.unit(
+            "redis",
+            "start",
+            [
+                "/usr/bin/setpriv",
+                "--reuid=65534",
+                "--regid=65534",
+                "--clear-groups",
+                "--",
+                REDIS_LOADER,
+                "--library-path",
+                REDIS_LIB,
+                "/opt/aiphone/redis/bin/redis-server",
+                "--dir",
+                REDIS,
+                "--bind",
+                "127.0.0.1",
+                "--port",
+                port,
+                "--save",
+                "",
+                "--appendonly",
+                "no",
+                "--maxmemory",
+                "128mb",
+                "--maxmemory-policy",
+                "noeviction",
+            ]
+            .map(str::to_owned)
+            .into(),
             &[],
         )
         .await?;

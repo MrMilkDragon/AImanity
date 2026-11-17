@@ -317,7 +317,7 @@ async fn initialize(
                     &args.resource.join("images.payload"),
                     args.images.as_deref(),
                     &user,
-                    Database::Container,
+                    Database::MacContainers,
                 )
                 .await
         };

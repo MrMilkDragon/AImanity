@@ -435,6 +435,29 @@ fn fixture(root: &Path, execute: Fixture) -> Backend<'_, Fixture> {
 }
 
 #[tokio::test]
+async fn macos_starts_redis_in_the_same_guest_as_postgres() {
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path().canonicalize().unwrap();
+    let mut backend = fixture(&root, Fixture::default());
+    backend
+        .start(
+            Path::new("images.payload"),
+            None,
+            Path::new("/root"),
+            Database::MacContainers,
+        )
+        .await
+        .unwrap();
+    let calls = &backend.execute.calls;
+    assert!(calls.iter().any(|(_, args, _)| {
+        args[0] == "compose" && args.ends_with(&["postgres".into(), "redis".into()])
+    }));
+    assert!(!calls.iter().any(|(program, args, _)| {
+        program == REDIS_LOADER || (args[0] == "--service-control" && args[2] == "redis")
+    }));
+}
+
+#[tokio::test]
 async fn fresh_backend_uses_native_services_and_never_creates_desktop_or_starts_phone() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path().canonicalize().unwrap();

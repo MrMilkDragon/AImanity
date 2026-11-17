@@ -1973,8 +1973,8 @@
     },
     {
       "path": "crates/host-runtime/src/unix_initializer.rs",
-      "size": 14592,
-      "sha256": "bdf0f1146ee5f92492541bc5c8f4ce559992fa88fa3d73eac6fc6f3b1f20f4a8"
+      "size": 14596,
+      "sha256": "ad3365aaa40dd85b9cf7f7ff83fa75c6e57ee7ee183c97106211385d61fc1ba4"
     },
     {
       "path": "crates/host-runtime/src/vm_control/guest.rs",
@@ -2003,13 +2003,13 @@
     },
     {
       "path": "crates/host-runtime/src/wsl/backend/tests.rs",
-      "size": 27845,
-      "sha256": "78c809de1ffe19ec3000ee8509bd30a099e8dd81b51f354095067b09b76bf723"
+      "size": 28616,
+      "sha256": "2f1e125d1a94ba101f91d6d793a76ddd369acdb67cfd10f4f3823f8eb2fe7132"
     },
     {
       "path": "crates/host-runtime/src/wsl/backend.rs",
-      "size": 19421,
-      "sha256": "4ba613b60c29901ad5994607ead25eb9867225c93fc7686d0de7e43b53d171e5"
+      "size": 19943,
+      "sha256": "6dc2c2a1377a9a6f5fc566af8e42ca743dce4df8b11136f0e184f1df499da1de"
     },
     {
       "path": "crates/host-runtime/src/wsl/devices.rs",
