@@ -1,0 +1,37 @@
+name: Cargo Android controls
+on:
+  push:
+    branches: [codex/dysprosium-no-bun-android-qa]
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      CARGO_BUILD_JOBS: '4'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Build the controls with the preinstalled SDK and no Bun
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(git rev-parse HEAD^)" = f3e40c7fac4819cf785ebc628473afe7c38b000d
+          rustup toolchain install 1.96.0 --profile minimal
+          cargo +1.96.0 build --locked -p ai-phone-release-tools
+          export PATH=/usr/bin:/bin
+          if command -v bun; then exit 1; fi
+          java="$JAVA_HOME_17_X64"
+          mkdir -p "$RUNNER_TEMP/phone-jdk/bin"
+          ln -s "$java/bin/java" "$java/bin/javac" "$RUNNER_TEMP/phone-jdk/bin/"
+          JAVA_HOME="$RUNNER_TEMP/phone-jdk" /usr/bin/time -p target/debug/release-tools phone-apps build . > "$RUNNER_TEMP/phone-apps.json"
+          env -u JAVA_HOME -u ANDROID_HOME target/debug/release-tools phone-apps verify . > "$RUNNER_TEMP/phone-apps-verified.json"
+          cmp "$RUNNER_TEMP/phone-apps.json" "$RUNNER_TEMP/phone-apps-verified.json"
+          jq -e '{apps:(.apps|keys),abi:.browser.abi,files:(.files|length)} | select(.abi=="x86_64" and .files==4)' "$RUNNER_TEMP/phone-apps.json"
+          for role in home input; do
+            test "$(stat -c %a "data/android/$role/debug.jks")" = 600
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose ".tools/phone-apps/$role.apk"
+          done
