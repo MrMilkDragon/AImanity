@@ -14,7 +14,10 @@ import { prepareAndroid } from "./tooling/android-component";
 const [input, destination] = process.argv.slice(2);
 if (!input || !destination) throw Error("Provide the new Android capsule and clean test home");
 const capsule = resolve(input), home = resolve(destination);
-if (process.env.RUNNER_ENVIRONMENT !== "github-hosted" || !/^[A-Z]:\Dysprosium-QA-[0-9]+[\/]/i.test(home)) throw Error("Standalone diagnostic requires a disposable Windows runner");
+const root = process.env.AIMANITY_QA_ROOT;
+if (process.env.RUNNER_ENVIRONMENT !== "github-hosted" || !root ||
+    !/^[A-Z]:\\Dysprosium-QA-[0-9]+$/i.test(root) || home !== resolve(root, "android-only"))
+  throw Error("Standalone diagnostic requires a disposable Windows runner");
 const unpackStarted = performance.now();
 const phone = await prepareAndroid(capsule, home, await digest(capsule));
 console.log("Local Android SDK prepared in", Math.round(performance.now() - unpackStarted), "ms");
@@ -57,10 +60,7 @@ try {
 const packageName = "dev.aiphone.input";
 const attention = packageName + "/.PhoneAttention";
 const enabled = "enabled_accessibility_services";
-const apk = process.env.AIMANITY_QA_INPUT_APK;
-if (!apk || process.env.RUNNER_ENVIRONMENT !== "github-hosted" || !/^[A-Z]:\\Dysprosium-QA-[0-9]+[\\/]/i.test(home)) {
-  throw Error("Expected a fresh owned Windows Android diagnostic with the sealed APK");
-}
+const apk = join(root, "inputs", "input.apk");
 function adbOutput(...args: string[]) {
   const result = spawnSync(adbPath, ["-P", "15037", "-s", serial, ...args], { maxBuffer: 1024 * 1024 });
   if (result.error) throw result.error;

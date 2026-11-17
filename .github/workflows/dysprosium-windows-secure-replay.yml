@@ -14,31 +14,7 @@ env:
   PRODUCT_SOURCE: d6ce29502bb650a07ede40fa044c1261030f4078
   CALCIUM_ANDROID_SHA: 23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce
 jobs:
-  sealed-input-apk:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 6
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          run-id: 43989532535
-          github-token: ${{ github.token }}
-          name: final-sha-native-qa-linux-release-layer
-          path: ${{ runner.temp }}/guest
-      - name: Recover the exact previously staged Android input APK
-        run: |
-          set -euo pipefail
-          debugfs -R "dump /source.payload $RUNNER_TEMP/guest/source.payload" "$RUNNER_TEMP/guest/guest/release.ext4"
-          printf '%s  %s\n' 6dfd38c96226d822e99a7407d7277f3f490ce6b544d7655e194cb883e3218e0d "$RUNNER_TEMP/guest/source.payload" | sha256sum --check
-          tar -xOf "$RUNNER_TEMP/guest/source.payload" runtime/phone-apps/input.apk > "$RUNNER_TEMP/input.apk"
-          test -s "$RUNNER_TEMP/input.apk"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: isolated-input-apk
-          path: ${{ runner.temp }}/input.apk
-          if-no-files-found: error
-          retention-days: 1
   selector-transaction:
-    needs: sealed-input-apk
     runs-on: windows-2025
     timeout-minutes: 14
     env:
@@ -62,6 +38,8 @@ jobs:
           "AIMANITY_QA_ROOT=$root" >> $env:GITHUB_ENV
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
+          run-id: 44007412821
+          github-token: ${{ github.token }}
           name: isolated-input-apk
           path: ${{ env.AIMANITY_QA_ROOT }}/inputs
       - name: Boot the portable WHPX guest and replay the exact selector transition once
@@ -74,5 +52,4 @@ jobs:
           ./scripts/bun scripts/source.ts check --repository --manifest
           ./scripts/bun ../qa/windows-native-dev/prepare-android-replay.ts
           cp ../qa/windows-native-dev/android-secure-replay.ts scripts/android-secure-replay.ts
-          export AIMANITY_QA_INPUT_APK="$AIMANITY_QA_ROOT/inputs/input.apk"
           ./scripts/bun scripts/android-secure-replay.ts "$AIMANITY_QA_ROOT/portable/host/android.payload" "$AIMANITY_QA_ROOT/android-only"
