@@ -33,7 +33,7 @@ const prepare = Bun.spawn([program, "--prepare-windows-host"], {cwd:dev, env, st
 equal(await prepare.exited, 0, "WHPX available on this disposable QA runner without pending restart");
 const launch = (file: string) => Bun.spawn([program], { cwd: dev, env, stdout: "ignore", stderr: Bun.file(file) });
 let app = launch(log);
-function gui(action: "fresh" | "capture" | "close") {
+function gui(action: "fresh" | "capture" | "diagnostic" | "close") {
   return Bun.spawn(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
     "../qa/windows-native-dev/window.ps1", "-AppId", String(app.pid), "-Action", action],
   { env, stdout: "inherit", stderr: "inherit" }).exited;
@@ -53,12 +53,12 @@ async function probe(command: string, argument?: string) {
 }
 const androidRoot = join(home, "user", "data", "android");
 const logPaths = ["user/qemu/owner.log", "user/qemu/boot.log", "user/qemu/qemu.log",
-  "user/data/android/native/sdk.log", "user/data/android/whpx-avd/cuttlefish/kernel.log", "deployment.json"];
+  "user/data/android/native/sdk.log", "user/data/android/whpx-avd/cuttlefish/kernel.log", "request.json", "deployment.json"];
 let androidStarted = 0;
 let reportedAndroid = false;
 let reportedListeners = false;
 const watchAndroid = setInterval(() => {
-  if (!existsSync(checkpoint) || !existsSync(join(androidRoot, "native", "sdk.log"))) return;
+  if (!existsSync(join(androidRoot, "native", "sdk.log"))) return;
   if (!androidStarted) androidStarted = Date.now();
   const reportBoot = !reportedAndroid && Date.now() - androidStarted >= 85000;
   const reportListeners = reportedAndroid && !reportedListeners && Date.now() - androidStarted >= 114000;
@@ -140,9 +140,21 @@ async function vmCredentials() {
 
 try {
   equal(await gui("fresh"), 0, "advancing the unpackaged native language and device setup");
+  const request = join(home, "request.json");
+  const requestDeadline = performance.now() + 7500;
+  while (!existsSync(request) && performance.now() < requestDeadline) await Bun.sleep(250);
+  ok(existsSync(request), "Start installation must persist the native device setup request");
+  console.log(`Native device setup request persisted after the Win32 installation click: ${Math.round(performance.now()-started)} ms`);
   const readyDeadline = performance.now() + 600000;
+  let previousPhase = "";
   while (performance.now() < readyDeadline) {
     ok(app.exitCode == null, "installed client must remain running");
+    const lines = existsSync(log) ? readFileSync(log, "utf8").split("\n") : [];
+    const phase = lines.findLast(line => line.startsWith("native_metric startup_phase="));
+    if (phase && phase !== previousPhase) {
+      previousPhase = phase;
+      console.log(phase);
+    }
     if (existsSync(checkpoint)) {
       const status = JSON.parse(readFileSync(checkpoint, "utf8"));
       if (status.progress?.state === "ready" && status.installed_payload === payload.sha256) break;
@@ -150,6 +162,7 @@ try {
     }
     await Bun.sleep(500);
   }
+  ok(existsSync(checkpoint), "Windows workbench did not finish initialization within the existing first-run deadline");
   const status = JSON.parse(readFileSync(checkpoint, "utf8"));
   equal(status.progress.state, "ready");
   equal(status.installed_payload, payload.sha256);
@@ -360,6 +373,11 @@ try {
     await model.exited;
   }
 } catch (error) {
+  if (!existsSync(checkpoint) && app.exitCode == null) await gui("diagnostic");
+  if (existsSync(log)) console.error("Native client startup log:", readFileSync(log,"utf8").slice(-6000));
+  for (const folder of [home, join(home,"components"), join(home,"components","android"), join(home,"user")]) {
+    if (existsSync(folder)) console.error(`Owned startup directory ${folder}:`, readdirSync(folder));
+  }
   for (const log of logPaths) {
     const file = join(home, log);
     if (existsSync(file)) {

@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)] [int] $AppId,
-  [Parameter(Mandatory = $true)] [ValidateSet("fresh", "setup", "capture", "close")] [string] $Action
+  [Parameter(Mandatory = $true)] [ValidateSet("fresh", "capture", "diagnostic", "close")] [string] $Action
 )
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Drawing
@@ -68,6 +68,10 @@ if ($Action -eq "capture") {
   Write-Host "Native AImanity captured from window $handle with client bounds ${width}x${height}"
   return
 }
+if ($Action -eq "diagnostic") {
+  (Capture "native-installation-terminal.png").Dispose()
+  return
+}
 (Capture "native-language.png").Dispose()
 # English is in the first row of the right column.
 # English is selected in place; Continue advances the setup.
@@ -83,11 +87,9 @@ try {
     if ($color.R -le 65 -and $color.G -le 65 -and $color.B -le 65) { $hits += $y }
   }
   if ($hits.Count -lt 5) { throw "Install button did not render after choosing English." }
-  if ($Action -eq "setup") {
-    Write-Host "Native language selection and device setup rendered from the development executable."
-    return
-  }
   $center = ($hits[0] + $hits[-1]) / 2
   Click .85 ($center/$height)
-  Write-Host "Native GUI selected English and activated the visually verified install button."
+  Start-Sleep -Milliseconds 1300
+  (Capture "native-installation-post-click.png").Dispose()
+  Write-Host ('Native GUI selected English and clicked x={0}, y={1} inside the visible install button.' -f [int]($width*.85), [int]$center)
 } finally { $image.Dispose() }
