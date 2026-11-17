@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$(uname -m)" = x86_64
-          git diff --quiet 9602f92ce9ae0b2683c35da1dc5d73be19b4568a HEAD -- . ':!.github/workflows/dysprosium-native-postgres.yml'
+          git diff --quiet 4d9563ff10f740b76d34df4635c49b7b93933eb3 HEAD -- . ':!.github/workflows/dysprosium-native-postgres.yml'
           docker buildx create --name aiphone-native-pg --driver docker-container --use
           ./scripts/bootstrap.sh
           export AIMANITY_QA_SERVICES="$RUNNER_TEMP/aimanity-native-services"
@@ -50,10 +50,13 @@ jobs:
           postgres_pid=
           trap 'if [[ -n $postgres_pid ]]; then kill -INT "$postgres_pid"; wait "$postgres_pid"; fi' EXIT
           staged=$(mktemp -d "$root/.init-XXXXXXXX")
-          /usr/bin/chown "$role:$role" "$staged"
+          password_file=$(mktemp "$root/.password-XXXXXXXX")
+          printf '%s\n' "$password" > "$password_file"
+          /usr/bin/chown "$role:$role" "$staged" "$password_file"
           start=$(date +%s%3N)
-          printf '%s\n' "$password" | "${owner[@]}" "$bin/initdb" -D "$staged" -U "$database" \
-            --locale-provider=builtin --locale=C.UTF-8 --auth=scram-sha-256 --pwfile=/dev/stdin
+          "${owner[@]}" "$bin/initdb" -D "$staged" -U "$database" \
+            --locale-provider=builtin --locale=C.UTF-8 --auth=scram-sha-256 --pwfile="$password_file"
+          rm "$password_file"
           mv "$staged" "$data"
           echo "postgres_init_ms=$(( $(date +%s%3N) - start ))"
           test "$(cat "$data/PG_VERSION")" = 17
