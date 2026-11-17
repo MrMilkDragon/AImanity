@@ -55,12 +55,9 @@ fn save(base: &Path, body: &str) -> (PathBuf, PathBuf, PathBuf) {
             .unwrap(),
     );
     value(call(&root, base, "claim", &[&state]));
-    let bin = home.join("bin");
-    fs::create_dir(&bin).unwrap();
-    executable(&bin.join("docker"), "#!/bin/sh\nexit 0\n");
     let command = home.join("limactl");
     executable(&command, body);
-    value(call(&root, base, "save", &[&home, &state, &command, &bin]));
+    value(call(&root, base, "save", &[&home, &state, &command]));
     (home, root, state)
 }
 
@@ -102,7 +99,7 @@ fn restart_restores_owned_environment_and_runs_only_selected_program() {
     );
     assert_eq!(
         value(call(&root, base.path(), "environment", &[])),
-        json!({"AI_PHONE_MANAGED_BIN":home.join("bin"), "LIMA_HOME":state})
+        json!({"AI_PHONE_LIMA_COMMAND":home.join("limactl"), "LIMA_HOME":state})
     );
     assert_eq!(value(call(&root, base.path(), "start", &[])), json!(true));
     assert_eq!(
@@ -183,7 +180,7 @@ fn changed_selection_or_executable_is_rejected_without_starting_or_repairing() {
     let original: Value = serde_json::from_slice(&bytes).unwrap();
     for (field, changed) in [
         ("format", json!(true)),
-        ("format", json!(2)),
+        ("format", json!(1)),
         ("home", json!("different")),
         ("data_root", json!("different")),
         ("state", json!("different")),
@@ -191,8 +188,6 @@ fn changed_selection_or_executable_is_rejected_without_starting_or_repairing() {
         ("command", json!(123)),
         ("command_sha256", Value::Null),
         ("command_sha256", json!("invalid")),
-        ("wrapper_sha256", Value::Null),
-        ("wrapper_sha256", json!("0".repeat(64))),
         ("extra", json!("unexpected")),
     ] {
         let mut selected = original.clone();
@@ -213,7 +208,7 @@ fn changed_selection_or_executable_is_rejected_without_starting_or_repairing() {
             .success()
     );
     fs::set_permissions(home.join("limactl"), fs::Permissions::from_mode(0o755)).unwrap();
-    executable(&home.join("bin/docker"), "#!/bin/sh\nexit 9\n");
+    executable(&home.join("limactl"), "#!/bin/sh\nexit 9\n");
     assert!(!call(&root, base.path(), "start", &[]).status.success());
     assert_eq!(fs::read(&record).unwrap(), bytes);
     assert!(!state.join("started").exists());

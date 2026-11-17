@@ -53,17 +53,18 @@ fn regular<W: Write>(
 fn omit(name: &str, dependencies: &Value) -> bool {
     let parts: Vec<_> = name.split('/').collect();
     let basename = parts.last().copied().unwrap_or_default();
-    ["backups", "android/backups", "android/downloads"]
-        .iter()
-        .any(|prefix| {
-            (name == *prefix || name.starts_with(&format!("{prefix}/")))
-                && !dependencies.as_object().is_some_and(|deps| {
-                    deps.keys().any(|key| {
-                        !key.starts_with("sdk:")
-                            && (key == name || key.starts_with(&format!("{name}/")))
+    name == "deployment/container-host.json"
+        || ["backups", "android/backups", "android/downloads"]
+            .iter()
+            .any(|prefix| {
+                (name == *prefix || name.starts_with(&format!("{prefix}/")))
+                    && !dependencies.as_object().is_some_and(|deps| {
+                        deps.keys().any(|key| {
+                            !key.starts_with("sdk:")
+                                && (key == name || key.starts_with(&format!("{name}/")))
+                        })
                     })
-                })
-        })
+            })
         || name.ends_with(".log")
             && ((parts.len() == 2
                 && ["assistant", "channels", "device-stream", "phone-runner"].contains(&parts[0]))

@@ -211,7 +211,7 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "workspace_run",
-            "在独立Linux工作容器执行命令，提供Python/Node/Bun/curl/git和文档处理。路径/workspace，Skill资源/skills。不是Android或macOS。90秒、2CPU/2GiB，上限输出64KiB。",
+            "在独立Linux工作容器执行 shell 命令，提供 curl、git 和文档工具。路径 /workspace，Skill 资源 /skills。不是 Android 或 macOS。90 秒、2 CPU/2 GiB，输出上限 64 KiB。",
             json!({"script":{"type":"string"}}),
             vec!["script"],
         ),

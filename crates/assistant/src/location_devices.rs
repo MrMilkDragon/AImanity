@@ -40,16 +40,8 @@ async fn phone(app: &App, id: &str, fix: wire::LocationFix) -> Result<(), String
 }
 async fn desktop_bytes(fix: wire::LocationFix) -> Result<Vec<u8>, String> {
     use tokio::io::AsyncWriteExt;
-    let mut child = tokio::process::Command::new("docker")
-        .args([
-            "exec",
-            "-i",
-            "-u",
-            "ai",
-            "ai-phone-desktop",
-            "/usr/local/bin/desktop-bridge",
-            "location",
-        ])
+    let mut child = ai_phone_host_runtime::desktop_bridge::operation(&["location"])
+        .map_err(|_| "电脑位置服务未启动")?
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

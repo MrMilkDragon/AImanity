@@ -2,7 +2,7 @@ use super::{Arc, Body, Bytes, Duration, Media, Ordering, Result, now};
 use futures_util::stream;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    process::{Child, Command},
+    process::Child,
     sync::mpsc,
 };
 
@@ -27,17 +27,7 @@ fn next_jpeg(buffer: &mut Vec<u8>, end_from: &mut usize) -> Option<Vec<u8>> {
 
 fn capture_command(kind: &str) -> Result<Child> {
     Ok(
-        Command::new(std::env::var_os("AI_PHONE_DOCKER").unwrap_or("docker".into()))
-            .args([
-                "exec",
-                "-i",
-                "-u",
-                "ai",
-                "ai-phone-desktop",
-                "/usr/local/bin/desktop-bridge",
-                "capture",
-                kind,
-            ])
+        ai_phone_host_runtime::desktop_bridge::operation(&["capture", kind])?
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())

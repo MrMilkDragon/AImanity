@@ -69,10 +69,6 @@ pub async fn run(cancelled: CancellationToken) -> Result<()> {
                 .join("runtime/phone-apps/input.apk")
                 .to_string_lossy()
                 .into(),
-            notification_probe_path: root
-                .join("runtime/phone-apps/notification-access.jar")
-                .to_string_lossy()
-                .into(),
             offline_apps: true,
             observe_only: false,
         },

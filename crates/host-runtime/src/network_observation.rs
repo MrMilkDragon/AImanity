@@ -174,22 +174,15 @@ impl Observer {
             .try_exists()
             .map_err(Into::into)
     }
-    async fn docker(&self, args: &[&str], input: Option<&[u8]>, seconds: u64) -> Result<String> {
-        let mut command =
-            Command::new(std::env::var_os("AI_PHONE_DOCKER").unwrap_or_else(|| "docker".into()));
-        command.args(args).current_dir(&self.root);
+    async fn desktop(&self, args: &[&str], input: Option<&[u8]>, seconds: u64) -> Result<String> {
+        let command = crate::desktop_bridge::administration(&self.root, args)?;
         output(command, input, seconds, self.reap.as_ref()).await
     }
     async fn shell(&self, text: &str) -> Result<String> {
         if self.phone {
             phone_shell(&adb()?, text).await
         } else {
-            self.docker(
-                &["exec", "-i", "ai-phone-desktop", "sh", "-c", text],
-                None,
-                20,
-            )
-            .await
+            self.desktop(&["sh", "-c", text], None, 20).await
         }
     }
     async fn controller(&self, path: &str) -> Result<Value> {
@@ -211,12 +204,8 @@ impl Observer {
             self.shell(&format!("printf '%s' {} | curl --config -", quote(&config)))
                 .await?
         } else {
-            self.docker(
-                &["exec", "-i", "ai-phone-desktop", "curl", "--config", "-"],
-                Some(config.as_bytes()),
-                5,
-            )
-            .await?
+            self.desktop(&["curl", "--config", "-"], Some(config.as_bytes()), 5)
+                .await?
         };
         serde_json::from_str(&response).map_err(|_| invalid("device_network_response"))
     }

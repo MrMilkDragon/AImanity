@@ -156,7 +156,7 @@ pub(crate) fn hash(file: &mut File, control: &Control<'_>) -> Result<String> {
         }
         hash_chunk(&mut hash, &buffer[..length]);
     }
-    Ok(format!("{:x}", hash.finalize()))
+    Ok(hex::encode(hash.finalize()))
 }
 
 fn hash_chunk(hash: &mut Sha256, bytes: &[u8]) {

@@ -30,6 +30,16 @@ async fn same_device_waits_until_the_attempt_result_is_committed() {
         let user = queued(&app, "fixture-phone", "user").await;
         let notification = queued(&app, "fixture-phone", "notification").await;
         assert_eq!(claim_due_run(&app).await.unwrap(), Some(user));
+        assert_eq!(
+            sqlx::query_as::<_, (Uuid, String)>(
+                "SELECT message_id,status FROM harness_events WHERE id=$1 AND kind='task'"
+            )
+            .bind(user.0)
+            .fetch_one(&app.db)
+            .await
+            .unwrap(),
+            (user.1, "running".into())
+        );
         assert!(claim_due_run(&app).await.unwrap().is_none());
         // A checkpoint may already say queued while finalization is still busy.
         sqlx::query(
@@ -40,7 +50,7 @@ async fn same_device_waits_until_the_attempt_result_is_committed() {
         .await
         .unwrap();
         assert!(claim_due_run(&app).await.unwrap().is_none());
-        finish_attempt(&app, user.0, user.1, &Ok(RunDisposition::Queued), false)
+        finish_attempt(&app, user.0, &Ok(RunDisposition::Queued), false)
             .await
             .unwrap();
         assert_eq!(claim_due_run(&app).await.unwrap(), Some(notification));
@@ -77,7 +87,7 @@ async fn incoming_handoff_interrupts_exploration_and_wakes_on_lease_release() {
         assert!(crate::proactive::should_yield(&app, target.0).await.unwrap());
         sqlx::query("UPDATE runs SET status='queued',next_wake_at=now()+interval '5 seconds' WHERE id=$1")
             .bind(target.0).execute(&app.db).await.unwrap();
-        finish_attempt(&app,target.0,target.1,&Ok(RunDisposition::Queued),false).await.unwrap();
+        finish_attempt(&app,target.0,&Ok(RunDisposition::Queued),false).await.unwrap();
         tokio::time::timeout(Duration::from_millis(300), app.run_signals.handoff.notified()).await.unwrap();
     }).await;
 }
@@ -113,15 +123,9 @@ async fn distinct_devices_run_together_and_borrowed_devices_cannot_be_stolen() {
                 .await
                 .is_err()
         );
-        finish_attempt(
-            &app,
-            desktop.0,
-            desktop.1,
-            &Ok(RunDisposition::Completed),
-            false,
-        )
-        .await
-        .unwrap();
+        finish_attempt(&app, desktop.0, &Ok(RunDisposition::Completed), false)
+            .await
+            .unwrap();
         crate::run_queue::reserve(&app.db, phone.0, "fixture-desktop")
             .await
             .unwrap();
@@ -135,15 +139,9 @@ async fn distinct_devices_run_together_and_borrowed_devices_cannot_be_stolen() {
             .execute(&app.db)
             .await
             .unwrap();
-        finish_attempt(
-            &app,
-            phone.0,
-            phone.1,
-            &Ok(RunDisposition::Completed),
-            false,
-        )
-        .await
-        .unwrap();
+        finish_attempt(&app, phone.0, &Ok(RunDisposition::Completed), false)
+            .await
+            .unwrap();
         assert_eq!(claim_due_run(&app).await.unwrap(), Some(next));
     })
     .await;
@@ -171,6 +169,77 @@ async fn recovery_releases_attempt_ownership_without_replaying_or_losing_checkpo
         assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM device_execution_leases")
             .fetch_one(&app.db).await.unwrap(),0);
         assert!(claim_due_run(&app).await.unwrap().is_none(),"wait deadline survives restart");
+    }).await;
+}
+
+#[tokio::test]
+#[ignore = "real disposable PostgreSQL; interruption while an automatic skill read is in flight"]
+async fn recovery_reuses_the_automatic_read_checkpoint() {
+    database_case(|app| async move {
+        let (run, message) = queued(&app, registry::PHONE, "user").await;
+        let context = json!([{"role":"user","content":[{"type":"input_text","text":"在手机上打开浏览器"}]}]);
+        sqlx::query("UPDATE runs SET context=$2 WHERE id=$1")
+            .bind(run).bind(context).execute(&app.db).await.unwrap();
+        sqlx::query("INSERT INTO runtime_skills(id,name,description,source,content,builtin) VALUES('phone-use','phone-use','','builtin','手机操作指引',true)")
+            .execute(&app.db).await.unwrap();
+        assert_eq!(claim_due_run(&app).await.unwrap(), Some((run, message)));
+        let mut locked = app.db.begin().await.unwrap();
+        sqlx::query("LOCK TABLE runtime_skills IN ACCESS EXCLUSIVE MODE").execute(&mut *locked).await.unwrap();
+        let worker = tokio::spawn({
+            let app = app.clone();
+            async move { execute(&app, run, &CancellationToken::new()).await }
+        });
+        let action: Uuid = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(id) = sqlx::query_scalar("SELECT id FROM harness_events WHERE run_id=$1 AND kind='tool' AND status='running'")
+                    .bind(run).fetch_optional(&app.db).await.unwrap() {
+                    break id;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        }).await.unwrap();
+        worker.abort();
+        assert!(worker.await.unwrap_err().is_cancelled());
+        let saved: Option<String> = sqlx::query_scalar("SELECT pending_tools->0->>'local_action_id' FROM runs WHERE id=$1")
+            .bind(run).fetch_one(&app.db).await.unwrap();
+        assert_eq!(saved, Some(action.to_string()), "the admitted read must be recoverable");
+        let read: Value = sqlx::query_scalar("SELECT pending_tools->0 FROM runs WHERE id=$1")
+            .bind(run).fetch_one(&app.db).await.unwrap();
+        // Old checkpoints saved the automatic read only in the model context.
+        let mut legacy_context = crate::exploration_policy::context(true, true, true, "");
+        let observation = json!({"type":"function_call","name":"phone_observe","arguments":"{}",
+            "call_id":"planned-observation","local_action_id":Uuid::now_v7().to_string()});
+        legacy_context.extend([observation.clone(), read]);
+        sqlx::query("UPDATE runs SET origin='exploration',context=$2,pending_tools=$3 WHERE id=$1")
+            .bind(run).bind(json!(legacy_context)).bind(json!([observation])).execute(&app.db).await.unwrap();
+        recover_interrupted_runs(&app.db).await.unwrap();
+        assert_eq!(claim_due_run(&app).await.unwrap(), Some((run, message)));
+        let worker = tokio::spawn({
+            let app = app.clone();
+            async move { execute(&app, run, &CancellationToken::new()).await }
+        });
+        let (Json(mut context), Json(pending)): (Json<Vec<Value>>, Json<Vec<Value>>) =
+            tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    if let Some(row) = sqlx::query_as("SELECT context,pending_tools FROM runs WHERE id=$1 AND pending_tools->0->>'name'='skill_read'")
+                        .bind(run).fetch_optional(&app.db).await.unwrap() {
+                        break row;
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            }).await.unwrap();
+        worker.abort();
+        assert!(worker.await.unwrap_err().is_cancelled());
+        locked.rollback().await.unwrap();
+        let call = &pending[0];
+        assert_eq!(call["local_action_id"], action.to_string());
+        assert_eq!(pending[1]["call_id"], "planned-observation");
+        let result = recorded_tool(&app, run, message, call, &context, &mut 0, &CancellationToken::new()).await.unwrap();
+        context.push(json!({"type":"function_call_output","call_id":call["call_id"],"output":result}));
+        assert!(phone_skill_read(&context));
+        let receipts: i64 = sqlx::query_scalar("SELECT count(*) FROM harness_events WHERE run_id=$1 AND kind='tool' AND status='completed'")
+            .bind(run).fetch_one(&app.db).await.unwrap();
+        assert_eq!(receipts, 1);
     }).await;
 }
 

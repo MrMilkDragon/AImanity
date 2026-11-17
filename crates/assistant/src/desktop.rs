@@ -90,21 +90,8 @@ pub(crate) async fn process(
         .await
         .map_err(|_| "操作超时，结果可能未知，请先观察或核对文件".to_string())?
 }
-pub(crate) fn docker() -> Command {
-    // The installer owns PATH and can select its private container host.
-    Command::new("docker")
-}
 async fn helper_bytes(op: &str, args: Value) -> Result<Vec<u8>> {
-    let mut c = docker();
-    c.args([
-        "exec",
-        "-i",
-        "-u",
-        "ai",
-        CONTAINER,
-        "/usr/local/bin/desktop-bridge",
-        op,
-    ]);
+    let c = ai_phone_host_runtime::desktop_bridge::operation(&[op]).map_err(|e| e.to_string())?;
     process(
         c,
         args.to_string().into_bytes(),
@@ -290,13 +277,13 @@ async fn control(app: &App, device: &str, run: Option<Uuid>, take: bool) -> Resu
     let old: String = row.get("controller");
     let mut epoch: i64 = row.get("epoch");
     if take && old != owner {
-        if run.is_some() && !old.is_empty() && row.get::<i64, _>("idle") < 15 {
-            return Err("电脑正在被用户或其他任务操作，请等待后重新观察".into());
+        if run.is_some() && old == "manual" && row.get::<i64, _>("idle") < 15 {
+            return Err("device_busy:你刚操作过电脑；请等待后再观察。".into());
         }
         epoch += 1;
     }
     if take {
-        sqlx::query("UPDATE desktop_controls SET epoch=$2,controller=$3,touched_at=now() WHERE device_id=$1").bind(device).bind(epoch).bind(owner).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        sqlx::query("UPDATE desktop_controls SET epoch=$2,controller=$3,touched_at=clock_timestamp() WHERE device_id=$1").bind(device).bind(epoch).bind(owner).execute(&mut *tx).await.map_err(|e|e.to_string())?;
     }
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(epoch)
@@ -483,12 +470,15 @@ async fn recorded_action(
         return Err("该操作已有执行记录，结果未知时不能重放，请重新观察".into());
     }
     let value = value.ok_or("结果不完整")?;
-    let mut observation = stored_observation(
-        connection,
-        value["observation_id"].as_str().ok_or("结果不完整")?,
-        true,
-    )
-    .await?;
+    let observation_id = value["observation_id"].as_str().ok_or("结果不完整")?;
+    if observation_id.is_empty() {
+        return Ok(Some(wire::DesktopObservation {
+            device_id: value["device_id"].as_str().ok_or("结果不完整")?.into(),
+            epoch: value["epoch"].as_u64().ok_or("结果不完整")?,
+            ..Default::default()
+        }));
+    }
+    let mut observation = stored_observation(connection, observation_id, true).await?;
     observation.frame_state = value["frame_state"]
         .as_str()
         .and_then(wire::DesktopFrameState::from_str_name)
@@ -513,12 +503,14 @@ pub async fn action(
     let fingerprint = crate::request_digest::encode(&request);
     input["action_id"] = json!(r.action_id);
     let mut tx = app.db.begin().await.map_err(|e| e.to_string())?;
-    let lock =
-        sqlx::query("SELECT epoch,controller FROM desktop_controls WHERE device_id=$1 FOR UPDATE")
-            .bind(&r.device_id)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
+    let lock = sqlx::query(
+        "SELECT epoch,controller,extract(epoch FROM touched_at)::double precision touched_at
+         FROM desktop_controls WHERE device_id=$1 FOR UPDATE",
+    )
+    .bind(&r.device_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
     if let Some(observation) = recorded_action(&mut tx, id, &fingerprint, &request).await? {
         return Ok(observation);
     }
@@ -533,12 +525,14 @@ pub async fn action(
     let observed: Option<(i64, i64)> = sqlx::query_as(
         "SELECT window_id,process_id FROM desktop_observations
          WHERE id=$1 AND device_id=$2 AND epoch=$3 AND captured_at>now()-interval '45 seconds'
+         AND ($4::double precision IS NULL OR captured_at >= to_timestamp($4))
          AND id=(SELECT id FROM desktop_observations WHERE device_id=$2 AND epoch=$3
                  ORDER BY captured_at DESC,id DESC LIMIT 1)",
     )
     .bind(uuid(&r.observation_id)?)
     .bind(&r.device_id)
     .bind(r.epoch as i64)
+    .bind(run.is_none().then(|| lock.get::<f64, _>("touched_at")))
     .fetch_optional(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
@@ -553,13 +547,26 @@ pub async fn action(
     sqlx::query("INSERT INTO desktop_actions(id,device_id,run_id,input_hash,status) VALUES($1,$2,$3,$4,'running')").bind(id).bind(&r.device_id).bind(run).bind(fingerprint).execute(&app.db).await.map_err(|e|e.to_string())?;
     let mut cursor = action_cursor(&r, expected);
     cursor_write(app, &cursor).await?;
-    let result = match helper_frame("action", input).await {
-        Ok(frame) => save_observation(app, &r.device_id, r.epoch as i64, frame).await,
-        Err(e) => Err(e),
+    let receipt_only = run.is_none() && !r.wait_for_paint && r.kind != "text";
+    let result = if receipt_only {
+        input["receipt_only"] = json!(true);
+        helper_bytes("action", input)
+            .await
+            .map(|_| wire::DesktopObservation {
+                device_id: r.device_id.clone(),
+                epoch: r.epoch,
+                ..Default::default()
+            })
+    } else {
+        match helper_frame("action", input).await {
+            Ok(frame) => save_observation(app, &r.device_id, r.epoch as i64, frame).await,
+            Err(e) => Err(e),
+        }
     };
     finish_action(app, id, &mut cursor, &result).await?;
-    sqlx::query("UPDATE desktop_controls SET touched_at=now() WHERE device_id=$1")
+    sqlx::query("UPDATE desktop_controls SET touched_at=GREATEST(touched_at,CASE WHEN $2 THEN clock_timestamp() ELSE now() END) WHERE device_id=$1")
         .bind(&r.device_id)
+        .bind(receipt_only)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
@@ -1415,7 +1422,7 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "computer_run",
-            "在这台Linux桌面容器执行命令，工作目录/home/ai/Files；提供Bun、curl、git和LibreOffice。日常办公优先通过computer-use操作桌面应用。可sudo -n取得客体root配置系统；命令执行必须如实记录，不能假称鼠标操作。不能访问macOS。",
+            "在这台Linux桌面容器执行命令，工作目录/home/ai/Files；提供curl、git和LibreOffice。日常办公优先通过computer-use操作桌面应用。可sudo -n取得客体root配置系统；命令执行必须如实记录，不能假称鼠标操作。不能访问macOS。",
             json!({"device_id":id,"script":id}),
             vec!["device_id", "script"],
         ),
@@ -1482,24 +1489,7 @@ async fn install(app: &App, id: Uuid) -> Result<()> {
     let device: String = r.get("device_id");
     let cpus = r.get::<i32, _>("cpus");
     let memory = r.get::<i32, _>("memory_mb");
-    let mut preflight = docker();
-    preflight.args(["info", "--format", "{{.Architecture}} {{.MemTotal}}"]);
-    let info = String::from_utf8_lossy(&process(preflight, vec![], 1024, 15).await?).to_string();
-    if !matches!(
-        info.split_whitespace().next(),
-        Some("aarch64" | "arm64" | "x86_64" | "amd64")
-    ) {
-        return Err("Unsupported Docker CPU architecture".into());
-    }
-    let mem = info
-        .split_whitespace()
-        .nth(1)
-        .unwrap_or("0")
-        .parse::<u64>()
-        .unwrap_or(0);
-    if mem < (memory as u64 + 768) * 1024 * 1024 {
-        return Err("Docker内存不足，请先提高Docker资源额度".into());
-    }
+    use ai_phone_host_runtime::desktop_bridge;
     let mut disk = Command::new("df");
     disk.args(["-k", app.root.to_str().unwrap()]);
     let space = String::from_utf8_lossy(&process(disk, vec![], 4096, 5).await?).to_string();
@@ -1513,76 +1503,36 @@ async fn install(app: &App, id: Uuid) -> Result<()> {
     {
         return Err("安装至少需要6GiB可用空间".into());
     }
-    let desktop_image = std::env::var("AI_PHONE_DESKTOP_IMAGE")
-        .unwrap_or_else(|_| "ai-phone-desktop:20261028".into());
-    let workspace_image = crate::workbench::workspace_image();
-    let mut inspect = docker();
-    inspect.args(["image", "inspect", &desktop_image, "--format", "{{.Id}}"]);
-    if process(inspect, vec![], 4096, 15).await.is_err() {
-        if std::env::var("AI_PHONE_IMAGE_PULL_POLICY").as_deref() == Ok("never") {
-            return Err("Bundled desktop image is missing; run client initialization again".into());
-        }
-        install_step(app, id, "准备基础镜像").await?;
-        let mut base = docker();
-        base.args(["image", "inspect", &workspace_image, "--format", "{{.Id}}"]);
-        if process(base, vec![], 4096, 15).await.is_err() {
-            let mut build = docker();
-            build.current_dir(&app.root).args([
-                "build",
-                "--build-arg",
-                &format!(
-                    "HTTP_PROXY={}",
-                    std::env::var("AI_PHONE_CONTAINER_PROXY").unwrap_or_default()
-                ),
-                "--build-arg",
-                &format!(
-                    "HTTPS_PROXY={}",
-                    std::env::var("AI_PHONE_CONTAINER_PROXY").unwrap_or_default()
-                ),
-                "-t",
-                &workspace_image,
-                "-f",
-                "infra/workspace/Dockerfile",
-                ".",
-            ]);
-            process(build, vec![], 2 * 1024 * 1024, 1800).await?;
-        }
-        install_step(app, id, "安装Linux桌面和办公软件").await?;
-        let mut build = docker();
-        build.current_dir(&app.root).args([
-            "compose",
-            "-f",
-            "compose.desktop.yaml",
-            "build",
-            "desktop",
-        ]);
-        process(build, vec![], 2 * 1024 * 1024, 1800).await?;
-    }
     install_step(app, id, "启动桌面").await?;
     desktop_directory(&app.root, "observations").await?;
     desktop_directory(&app.root, "home").await?;
-    let mut start = docker();
-    start
-        .current_dir(&app.root)
-        .env("AI_PHONE_DESKTOP_CPUS", cpus.to_string())
-        .env("AI_PHONE_DESKTOP_MEMORY", format!("{memory}m"))
-        .args([
-            "compose",
-            "-f",
-            "compose.desktop.yaml",
-            "up",
-            "-d",
-            "desktop",
-        ]);
-    process(start, vec![], 16384, 90).await?;
-    if let Some(bridge) = ai_phone_host_runtime::desktop_bridge::DesktopBridge::staged(&app.root)
-        .await
+    desktop_bridge::configure(
+        &app.root,
+        u32::try_from(cpus).map_err(|e| e.to_string())?,
+        u32::try_from(memory).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let lima = std::env::var("AI_PHONE_LIMA_COMMAND").ok();
+    let proxy = std::env::var("AI_PHONE_CONTAINER_PROXY").unwrap_or_default();
+    let arguments = desktop_bridge::desktop_arguments(&app.root, lima.as_deref(), &proxy)
         .map_err(|e| e.to_string())?
-    {
-        let mut update = docker();
-        update.args(bridge.install_args(CONTAINER));
-        process(update, bridge.bytes, 4096, 20).await?;
-    }
+        .ok_or("桌面资源尚未配置")?;
+    let environment: std::collections::BTreeMap<_, _> = std::env::vars()
+        .filter(|(key, _)| matches!(key.as_str(), "LIMA_HOME" | "PATH"))
+        .collect();
+    let mut start = Command::new(std::env::current_exe().map_err(|e| e.to_string())?);
+    start
+        .arg("--service-control")
+        .arg(&app.root)
+        .args(["desktop", "start"]);
+    process(
+        start,
+        serde_json::to_vec(&json!({"command":arguments,"environment":environment}))
+            .map_err(|e| e.to_string())?,
+        4096,
+        20,
+    )
+    .await?;
     install_step(app, id, "验证画面与控制").await?;
     let mut ok = false;
     for _ in 0..30 {
@@ -1596,7 +1546,7 @@ async fn install(app: &App, id: Uuid) -> Result<()> {
         return Err("桌面没有返回可验证画面".into());
     }
     let mut tx = app.db.begin().await.map_err(|e| e.to_string())?;
-    sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'docker-desktop',$2) ON CONFLICT(device_id) DO NOTHING").bind(&device).bind(CONTAINER).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+    sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'native-desktop',$2) ON CONFLICT(device_id) DO NOTHING").bind(&device).bind(CONTAINER).execute(&mut *tx).await.map_err(|e|e.to_string())?;
     sqlx::query("INSERT INTO desktop_controls(device_id) VALUES($1) ON CONFLICT DO NOTHING")
         .bind(&device)
         .execute(&mut *tx)
@@ -1889,6 +1839,51 @@ mod tests {
             })
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "real disposable PostgreSQL; desktop control must follow the current execution lease"]
+    async fn released_desktop_control_is_reusable_without_stealing_manual_control() {
+        use crate::worker::steering_regressions::database_case;
+
+        database_case(|app| async move {
+            crate::registry::initialize(&app.db, &app.settings).await.unwrap();
+            let device = "desktop-control-rollover";
+            let agent = Uuid::from_u128(2);
+            sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state) VALUES($1,'Fixture','desktop','fixture','managed')")
+                .bind(device).execute(&app.db).await.unwrap();
+            sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'docker-desktop','ai-phone-desktop')")
+                .bind(device).execute(&app.db).await.unwrap();
+            sqlx::query("INSERT INTO agent_device_bindings(agent_id,device_id) VALUES($1,$2)")
+                .bind(agent).bind(device).execute(&app.db).await.unwrap();
+            sqlx::query("INSERT INTO desktop_controls(device_id,epoch,controller) VALUES($1,7,$2)")
+                .bind(device).bind(Uuid::now_v7().to_string()).execute(&app.db).await.unwrap();
+
+            // The prior attempt's desktop epoch exists but its execution lease has ended.
+            let message = Uuid::now_v7();
+            let run = Uuid::now_v7();
+            sqlx::query("WITH next_message AS (
+                INSERT INTO messages(id,conversation_id,role)
+                SELECT $1,id,'assistant' FROM conversations WHERE owner_id='local-user'
+                RETURNING id,conversation_id
+            )
+            INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status,origin,agent_id,device_id)
+            SELECT $2,conversation_id,id,$2,'desktop-control-regression','running','exploration',$3,$4 FROM next_message")
+                .bind(message).bind(run).bind(agent).bind(device).execute(&app.db).await.unwrap();
+            sqlx::query("INSERT INTO run_device_bindings(run_id,device_id) VALUES($1,$2)")
+                .bind(run).bind(device).execute(&app.db).await.unwrap();
+
+            assert_eq!(control(&app, device, Some(run), true).await.unwrap(), 8);
+            assert_eq!(control(&app, device, Some(run), true).await.unwrap(), 8);
+            sqlx::query("UPDATE desktop_controls SET controller='manual',epoch=9,touched_at=now() WHERE device_id=$1")
+                .bind(device).execute(&app.db).await.unwrap();
+            let busy = control(&app, device, Some(run), true).await.unwrap_err();
+            assert!(busy.starts_with("device_busy:"), "{busy}");
+            assert_eq!(control(&app, device, Some(run), false).await.unwrap(), 9);
+            sqlx::query("UPDATE desktop_controls SET touched_at=now()-interval '16 seconds' WHERE device_id=$1")
+                .bind(device).execute(&app.db).await.unwrap();
+            assert_eq!(control(&app, device, Some(run), true).await.unwrap(), 10);
+        }).await;
     }
 
     #[tokio::test]

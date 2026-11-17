@@ -1,51 +1,113 @@
-//! Apply the source release's desktop helper without rebuilding the guest or touching its home.
-use crate::Result;
-use sha2::{Digest, Sha256};
-use std::{io::ErrorKind, path::Path};
+//! Commands for the installation-owned Linux desktop and workspace.
+use crate::{Error, Result};
+use std::{
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
+use tokio::process::Command;
 
-const INSTALL: &str = r#"
-target=/usr/local/bin/desktop-bridge
-temporary=$(mktemp /usr/local/bin/.desktop-bridge.XXXXXXXX)
-trap 'rm -f "$temporary"' EXIT
-cat > "$temporary"
-checksum=$(sha256sum < "$temporary")
-test "${checksum%% *}" = "$1"
-if cmp -s "$temporary" "$target"; then exit 0; fi
-chmod 0755 "$temporary"
-"$temporary" --version >/dev/null
-mv -f "$temporary" "$target"
-"#;
-
-pub struct DesktopBridge {
-    pub bytes: Vec<u8>,
-    sha256: String,
+pub(crate) fn require_rootfs(root: &Path, expected: Option<&str>) -> Result<()> {
+    let data = std::fs::read(root.join("runtime/services/manifest.json"))?;
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&data).map_err(|_| Error::Invalid("native_services_manifest"))?;
+    let identity = manifest["linux_rootfs"]["sha256"]
+        .as_str()
+        .filter(|value| crate::manifest::identity(value))
+        .ok_or(Error::Invalid("linux_rootfs_missing"))?;
+    if expected.is_some_and(|expected| expected != identity) {
+        return Err(Error::Invalid("linux_rootfs_identity"));
+    }
+    Ok(())
 }
 
-impl DesktopBridge {
-    pub async fn staged(root: &Path) -> Result<Option<Self>> {
-        match tokio::fs::read(root.join("runtime/services/bin/desktop-bridge")).await {
-            Ok(bytes) => Ok(Some(Self {
-                sha256: format!("{:x}", Sha256::digest(&bytes)),
-                bytes,
-            })),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error.into()),
-        }
+pub fn native_arguments(root: &Path, operation: &str, lima: Option<&str>) -> Result<Vec<String>> {
+    let text = |path: &Path| {
+        path.to_str()
+            .map(str::to_owned)
+            .ok_or(Error::Invalid("linux_runtime_path"))
+    };
+    let mut command = Vec::new();
+    if let Some(lima) = lima {
+        command.extend(
+            [
+                lima,
+                "shell",
+                "--tty=false",
+                "--workdir",
+                "/",
+                "ai-phone",
+                "sudo",
+                "-n",
+                "--",
+            ]
+            .map(str::to_owned),
+        );
     }
+    command.extend([
+        text(&root.join("runtime/services/bin/desktop-bridge"))?,
+        "native-linux".into(),
+        text(root)?,
+        operation.into(),
+    ]);
+    Ok(command)
+}
 
-    pub fn install_args<'a>(&'a self, container: &'a str) -> [&'a str; 11] {
-        [
-            "exec",
-            "-i",
-            "-u",
-            "0",
-            container,
-            "/bin/sh",
-            "-eu",
-            "-c",
-            INSTALL,
-            "sh",
-            &self.sha256,
-        ]
-    }
+pub fn native_command(root: &Path, operation: &str) -> Result<Command> {
+    let lima = std::env::var("AI_PHONE_LIMA_COMMAND").ok();
+    let args = native_arguments(root, operation, lima.as_deref())?;
+    let mut command = Command::new(&args[0]);
+    command.args(&args[1..]);
+    Ok(command)
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct Desktop {
+    cpus: u32,
+    memory_mb: u32,
+}
+
+pub fn configure(root: &Path, cpus: u32, memory_mb: u32) -> Result<()> {
+    crate::filesystem::publish_private(
+        &root.join("data/deployment"),
+        "native-desktop.json",
+        &serde_json::to_vec(&Desktop { cpus, memory_mb })
+            .map_err(|_| Error::Invalid("desktop_resources"))?,
+        false,
+    )
+}
+
+pub fn desktop_arguments(
+    root: &Path,
+    lima: Option<&str>,
+    proxy: &str,
+) -> Result<Option<Vec<String>>> {
+    let file = root.join("data/deployment/native-desktop.json");
+    let data = match std::fs::read(file) {
+        Ok(data) => data,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let desktop: Desktop =
+        serde_json::from_slice(&data).map_err(|_| Error::Invalid("desktop_resources"))?;
+    let mut args = native_arguments(root, "desktop", lima)?;
+    args.extend([
+        desktop.cpus.to_string(),
+        desktop.memory_mb.to_string(),
+        proxy.into(),
+    ]);
+    Ok(Some(args))
+}
+
+pub fn operation(arguments: &[&str]) -> Result<Command> {
+    let root =
+        std::env::var_os("AI_PHONE_PROJECT_ROOT").ok_or(Error::Invalid("linux_runtime_path"))?;
+    let mut command = native_command(&PathBuf::from(root), "exec")?;
+    command.args(arguments);
+    Ok(command)
+}
+
+pub fn administration(root: &Path, arguments: &[&str]) -> Result<Command> {
+    let mut command = native_command(root, "admin")?;
+    command.args(arguments).current_dir(root);
+    Ok(command)
 }

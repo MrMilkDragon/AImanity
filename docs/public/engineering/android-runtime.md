@@ -16,7 +16,7 @@ The Rust Android session owns launch, ADB and shutdown. The existing runner serv
 On a build host, stage the selected platform's clean SDK tree. macOS uses `avo/avo-vmm`, `avo/images`, and `platform-tools`. Windows uses `cuttlefish` for the boot kernel, initrd and base disks, QEMU and its dependencies; ADB is in `platform-tools`.
 
 ```sh
-./scripts/bun scripts/android-component.ts --sdk-input /path/to/staged-sdk --work /path/to/new-capsule
+cargo run --locked -p ai-phone-release-tools -- android-component /path/to/staged-sdk /path/to/new-capsule/android.payload 6
 ```
 
 Set `AIMANITY_ANDROID_SDK_INPUT` to this same staging directory when invoking a complete desktop factory. The built client uses only the resulting `android.payload`.

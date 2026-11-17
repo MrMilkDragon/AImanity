@@ -1,54 +1,18 @@
-# Linux desktop and service image component
+# Shared Linux filesystem
 
-The native installer can carry a host-architecture-matched `images.payload` alongside Android and source components. It contains four clean image roles: the Agent work environment, Linux GUI desktop, PostgreSQL and Redis. User homes, database volumes, browser profiles, phone disks, credentials and chats remain separate installation state. A running user's container is never an input.
+The installer ships one architecture-matched `images.payload` archive. The Linux guest expands it once into a shared read-only system. The desktop uses a writable overlay and its own home. Terminal jobs use separate PID, mount and network namespaces with a writable `/workspace` and read-only `/skills`.
 
-The desktop extends the workspace image and shares its Chromium, Chinese fonts, OCR, and native guest runtime. Openbox provides the desktop and a launcher for the browser, files, terminal, text editor, LibreOffice, and desktop settings. The container host supplies the VM, kernel and engine.
+Chromium, Openbox, LibreOffice, fonts and Tesseract come from the signed Debian archive. PostgreSQL and Redis are separate native guest services. The packed Linux filesystem contains the desktop launch assets. The matching Rust desktop bridge is sealed alongside the native service builds and mounted when the desktop starts.
 
-## Validation and activation
-
-New capsules use format 2: the outer tar contains `images.tar.xz` and `IMAGES-MANIFEST.json`. Format 1 capsules containing `images.tar.gz` remain readable. The installer decodes XZ into a bounded raw TAR stream for `docker image load`, so the portable engine needs no external XZ program. Legacy gzip is passed through. Neither path needs another image-sized staging copy.
-
-The maintainer exporter first seals and inspects a fresh Docker export. For OCI layouts, workspace/desktop gzip filesystem layers are represented by their exact uncompressed TAR bytes before outer XZ compression. Configuration bytes and root filesystem DiffIDs stay unchanged; PostgreSQL, Redis and proof-reachable objects retain their original bytes. Changed local manifests and references are rebound together. Docker Schema 2 image descriptors are supported, and valid classic exports pass through without changing their raw TAR. The exporter temporarily needs both compressed representations; the installation path does not.
-
-The manifest binds architecture, archive size/digest, image configuration and exported platform manifest. References use `ai-phone-bundle/<role>:sha-<platform-manifest-sha256>`. The manifest records the selected platform digest. OCI configuration bindings and the entire alias inventory are verified. Unnamed upstream attestations may refer only to exported subjects; foreign named images are rejected.
-
-Admission limits are 8 GiB of archive/file bodies, 20,000 nested headers, 8 MiB of retained JSON metadata in aggregate, and a 4 GiB recovery reserve. Paths must be canonical and relative; symlinks and legacy aliases are rejected. A conflicting existing reference stops initialization instead of being overwritten.
-
-Activation rechecks the capsule digest and uses one open file descriptor through import. An atomic application update cannot redirect that import to a replacement file. A failed or uncertain load publishes no selection; a retry observes all images first. Only verified images become the atomically saved private `data/deployment/image-runtime.json`. Compose and the Agent receive these references with `pull_policy=never`. A missing bundled desktop fails initialization instead of triggering a download or source build.
-
-These JSON records describe local artifacts and installation state. Browser business requests remain protobuf.
-
-## Maintainer workflow
-
-Use a clean source export and a dedicated builder engine. Build the workspace first and pass its image to the desktop Dockerfile as `WORKSPACE_IMAGE`.
-
-Review the built images and digest-pinned PostgreSQL/Redis defaults in `compose.yaml`. Record their references in a local JSON object with keys `workspace`, `desktop`, `postgres`, `redis`, then run:
+Build `arm64` on Linux ARM64 for macOS and `amd64` on Linux x64 for Windows. The builder uses debootstrap, the Debian Trixie keyring, GNU tar, wget and Zstandard.
 
 ```sh
-./scripts/bun scripts/container-images.ts \
-  --sources /path/to/reviewed-images.json \
-  --output /path/to/images.payload
-
-./scripts/bun scripts/build-client.ts --platform macos \
-  --with-web-runtime --with-service-runtime \
-  --android-runtime /path/to/android.payload \
-  --images-runtime /path/to/images.payload
+cargo build --locked -p ai-phone-release-tools
+sudo target/debug/release-tools factory-images rootfs arm64 build/linux-rootfs.tar.zst
 ```
 
-This is a maintainer workflow. Complete product users should receive the components inside the distribution and configure devices and a model in the client. Source-only builds exclude optional capsules.
-
-## Availability
-
-Current platform support, installer availability and distribution requirements are maintained in [release status](../release-status.md).
-
-The component remains subject to complete host/media integration and third-party redistribution requirements. See the [Android component](android-runtime.md) for its separate resource contract.
-
----
+The [macOS factory](macos-full-runtime.md) and [Windows factory](../windows-backend-runtime.md) consume this archive. The installer carries it with the Linux VM resources; the first launch operates offline.
 
 ## 中文
 
-Linux 桌面、Agent 工作环境、PostgreSQL 和 Redis 采用独立镜像组件随客户端部署。仅使用干净源码和固定基础镜像；用户设备盘、主目录、数据库卷、账号与聊天保持分离。此组件提供容器文件系统。
-
-安装前验证架构、SHA-256、OCI 配置绑定和镜像别名，按平台内容摘要命名，冲突即停止。流式导入的未知结果先观察，全部验证后才原子发布私有选择记录。正式选择禁止自动拉取或源码构建；归档、文件数量、累计元数据和恢复空间均有保护。
-
-镜像资源与完整宿主、媒体输入输出及平台初始化分别配置和验收。当前安装包供应、平台范围及第三方再分发要求见[发行状态](../release-status.md)。
+Linux 桌面和 Agent 工作区共用一份随安装包交付的只读文件系统。桌面单独保存可写层与个人文件。工作指令独立运行，可写 `/workspace`，只读 `/skills`。数据库、设备配置和聊天各自持久化。

@@ -45,13 +45,12 @@ pub struct GroundingState {
     blocked: Option<ScrollAttempt>,
 }
 fn bounds(text: &str, width: u32, height: u32) -> Option<wire::PhoneBounds> {
-    let values: Vec<_> = text
-        .split(['[', ']', ','])
-        .filter(|v| !v.is_empty())
-        .map(str::parse::<i32>)
-        .collect::<Result<_, _>>()
-        .ok()?;
-    if values.len() != 4 {
+    let mut parts = text.split(['[', ']', ',']).filter(|part| !part.is_empty());
+    let mut values = [0_i32; 4];
+    for value in &mut values {
+        *value = parts.next()?.parse().ok()?;
+    }
+    if parts.next().is_some() {
         return None;
     }
     let b = wire::PhoneBounds {
@@ -89,18 +88,19 @@ fn has_native_targets(targets: &[Target]) -> bool {
 }
 fn native_content_available(targets: &[Target], height: u32) -> bool {
     // Browser chrome and an empty WebView do not locate the page's content.
-    let body: Vec<_> = targets
-        .iter()
-        .filter(|t| {
-            let b = t.element.bounds.as_ref().unwrap();
-            (b.top + b.bottom) / 2 > height * 15 / 100
-                && (b.top + b.bottom) / 2 < height * 92 / 100
-                && !t.element.text.is_empty()
-        })
-        .collect();
-    body.iter()
-        .any(|t| t.element.clickable || t.element.editable)
-        || body.len() >= 3
+    let mut text_regions = 0;
+    for target in targets {
+        let element = &target.element;
+        let bounds = element.bounds.as_ref().unwrap();
+        let center = (bounds.top + bounds.bottom) / 2;
+        if !element.text.is_empty() && center > height * 15 / 100 && center < height * 92 / 100 {
+            text_regions += 1;
+            if element.clickable || element.editable || text_regions == 3 {
+                return true;
+            }
+        }
+    }
+    false
 }
 fn parse_native(xml: &str, app: &str, width: u32, height: u32) -> Vec<Target> {
     let Ok(doc) = roxmltree::Document::parse(xml) else {
@@ -841,6 +841,7 @@ mod tests {
         let mut runner = Runner {
             phone_id: "phone-local-01".into(),
             media_url: "http://127.0.0.1:17865".into(),
+            adb_media: false,
             adb: ai_phone_adb::Client::new(1, "emulator-5564".into()).unwrap(),
             token: String::new(),
             ledger_path: root.join("ledger"),

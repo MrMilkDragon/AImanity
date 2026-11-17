@@ -55,12 +55,15 @@ pub(crate) async fn receive(app: &App, run: Uuid, context: &mut Vec<Value>) -> R
         return Ok(false);
     }
     let receipts = Value::Array(rows.iter().map(receipt).collect());
-    let mut next = context.clone();
-    next.push(json!({"role":"system","content":[{"type":"input_text","text":RETURN_INSTRUCTION}]}));
-    next.push(json!({"role":"user","content":[{"type":"input_text","text":format!("{RECEIPT_PREFIX}{receipts}")}]}));
+    let appended = [
+        json!({"role":"system","content":[{"type":"input_text","text":RETURN_INSTRUCTION}]}),
+        json!({"role":"user","content":[{"type":"input_text","text":format!("{RECEIPT_PREFIX}{receipts}")}]}),
+    ];
     sqlx::query("UPDATE runs SET context=$2,heartbeat_at=now() WHERE id=$1")
         .bind(run)
-        .bind(json!(next))
+        .bind(sqlx::types::Json(
+            context.iter().chain(&appended).collect::<Vec<_>>(),
+        ))
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
@@ -73,6 +76,6 @@ pub(crate) async fn receive(app: &App, run: Uuid, context: &mut Vec<Value>) -> R
         .await
         .map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    *context = next;
+    context.extend(appended);
     Ok(true)
 }
