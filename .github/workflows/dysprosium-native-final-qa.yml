@@ -12,6 +12,7 @@ concurrency:
   cancel-in-progress: false
 env:
   PRODUCT_SOURCE: 9a3b8dcae1940a1f630d9314e39964ff158f2803
+  QA_LINUX_ARTIFACT: final-sha-native-qa-linux-release-layer
   CALCIUM_BASE_SHA: 1184c13114500f919b6bcc738d9af7e1f872ff192aef624e67aa87a6f9b7446f
   CALCIUM_ANDROID_SHA: 23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce
   CARGO_BUILD_JOBS: '2'
@@ -19,11 +20,10 @@ env:
 jobs:
   linux-final:
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 65
     env:
       GH_TOKEN: ${{ github.token }}
       AI_PHONE_TEST_TESSERACT: /usr/bin/tesseract
-      QA_PRIOR_SOURCE: e030810373832b3c2bb31be77ace1ecc3b319092
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -32,7 +32,6 @@ jobs:
         with:
           ref: ${{ env.PRODUCT_SOURCE }}
           path: exact
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
@@ -40,45 +39,52 @@ jobs:
           github-token: ${{ github.token }}
           name: native-qa-immutable-base
           path: ${{ runner.temp }}/immutable
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          run-id: 43923363901
-          github-token: ${{ github.token }}
-          name: native-qa-linux-release-layer
-          path: ${{ runner.temp }}/prior
-      - name: Rebuild final-SHA Rust guest services using verified identical pinned inputs
+      - name: Prepare the exact Linux workload and native archive tool
         working-directory: exact
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$(uname -m)" = x86_64
           test "$(git rev-parse HEAD)" = "$PRODUCT_SOURCE"
-          git worktree add --detach ../prior "$QA_PRIOR_SOURCE"
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "${ANDROID_HOME:?}/ndk"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-utils e2fsprogs cpio tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
           ./scripts/bootstrap.sh
           ./scripts/bun scripts/source.ts check --repository --manifest
-          export JAVA_HOME="$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
           ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/ocr-models"
-          export AI_PHONE_TEST_TESSDATA="$RUNNER_TEMP/ocr-models"
-          export QA_BASE="$RUNNER_TEMP/immutable"
-          export QA_PRIOR_LAYER="$RUNNER_TEMP/prior"
-          export QA_LAYER="$RUNNER_TEMP/linux-layer"
-          ./scripts/bun ../qa/windows-native-dev/build-linux-layer.ts
+          echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/ocr-models" >> "$GITHUB_ENV"
+          echo "QA_BASE=$RUNNER_TEMP/immutable" >> "$GITHUB_ENV"
+          echo "QA_LAYER=$RUNNER_TEMP/linux-layer" >> "$GITHUB_ENV"
+      - uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
+        with:
+          version: v29.9.2
+          context: aimanity-native-device-qa
+          set-host: true
+          daemon-config: '{"features":{"containerd-snapshotter":true}}'
+      - name: Compile and seal the source-matched Rust guest services
+        working-directory: exact
+        timeout-minutes: 20
+        run: ./scripts/bun ../qa/windows-native-dev/build-linux-layer.ts services
+      - name: Assemble the isolated Linux layer and no-Python OCI images
+        working-directory: exact
+        timeout-minutes: 30
+        run: ./scripts/bun ../qa/windows-native-dev/build-linux-layer.ts layer
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: final-sha-native-qa-linux-release-layer
+          name: ${{ env.QA_LINUX_ARTIFACT }}
           path: ${{ runner.temp }}/linux-layer/
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
   windows-dev:
-    needs: linux-final
     runs-on: windows-2025
-    timeout-minutes: 60
+    timeout-minutes: 85
     env:
       GH_TOKEN: ${{ github.token }}
       CARGO_HTTP_MULTIPLEXING: 'false'
@@ -103,12 +109,9 @@ jobs:
           New-Item -ItemType Directory -Path $root | Out-Null
           "AIMANITY_QA_ROOT=$root" >> $env:GITHUB_ENV
           'Windows {0} build {1}; RAM {2:N1} GiB; QA volume free {3:N1} GiB' -f $os.Caption,$os.BuildNumber,($os.TotalVisibleMemorySize/1MB),($drive.Free/1GB)
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          name: final-sha-native-qa-linux-release-layer
-          path: ${{ env.AIMANITY_QA_ROOT }}/layer
       - name: Compile the exact Rust Windows executable with no installer
         working-directory: exact
+        timeout-minutes: 22
         shell: bash
         run: |
           set -euo pipefail
@@ -118,6 +121,44 @@ jobs:
           ./scripts/bootstrap.sh
           ./scripts/bun scripts/source.ts check --repository --manifest
           cargo build --locked -p ai-phone-release-tools --bin release-tools
+          cargo build --locked --manifest-path apps/native/Cargo.toml
+      - name: Confirm the executable opens the native language and device setup window
+        shell: pwsh
+        working-directory: exact
+        timeout-minutes: 3
+        run: |
+          $env:AIMANITY_DATA_DIR = Join-Path $env:AIMANITY_QA_ROOT 'onboarding-smoke'
+          $app = Start-Process -FilePath 'apps/native/target/debug/aimanity-native.exe' -PassThru
+          try { & ../qa/windows-native-dev/window.ps1 -AppId $app.Id -Action setup }
+          finally {
+            if (-not $app.HasExited) {
+              & ../qa/windows-native-dev/window.ps1 -AppId $app.Id -Action close
+              if (-not $app.WaitForExit(15000)) { throw 'Native onboarding window did not close.' }
+            }
+          }
+      - name: Wait for the exact-source Linux device artifact
+        shell: bash
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 140); do
+            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --jq '.jobs[] | select(.name == "linux-final") | .conclusion // empty')
+            if [ "$status" = success ]; then exit 0; fi
+            if [ -n "$status" ]; then echo "Linux device build: $status"; exit 1; fi
+            sleep 15
+          done
+          echo "Linux device artifact did not complete within the Windows development gate."
+          exit 1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: ${{ env.QA_LINUX_ARTIFACT }}
+          path: ${{ env.AIMANITY_QA_ROOT }}/layer
+      - name: Bind the isolated offline components to the same development executable
+        working-directory: exact
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
           ./scripts/bun ../qa/windows-native-dev/prepare-windows.ts dev
           export AIMANITY_BUNDLE_INTEGRITY="$(cygpath -am "$PWD/apps/native/gen/host/integrity.json")"
           cargo build --locked --manifest-path apps/native/Cargo.toml
