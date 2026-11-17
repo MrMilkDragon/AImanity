@@ -21,7 +21,7 @@ AImanity は Android と Linux を一つの会話と一つの Agent で操作し
 
 ## 技術とデータ
 
-`apps/web`はNext.js App Router、React、Tailwind、shadcn、`apps/client`はTauri 2、`crates`はRust/Axum/Tokio、`packages/protocol`はprotobufです。PostgreSQL/SQLxが状態を保存し、Redisは任意キャッシュ用の予約構成であり、タスクキューではありません。開発はBun/Cargo、サービスはCompose。`infra`、`scripts`、`skills`、`config`に実行環境と組み込み能力を配置します。
+`apps/native`はRust（Iced/wgpu）、`crates`はRust/Axum/Tokio、`packages/protocol`はprotobufです。PostgreSQL/SQLxが状態を保存し、Redisは任意キャッシュ用の予約構成であり、タスクキューではありません。ビルドはCargo、サービスはCompose。`infra`、`scripts`、`skills`、`config`に実行環境と組み込み能力を配置します。
 
 ソースと利用者データは分離します。機器ディスク、アカウント、会話、添付、鍵は公開しません。更新は版管理された配布物、バックアップ、移行、ロールバックを使い、利用者データ上での直接の`git pull`を更新方式にしません。
 

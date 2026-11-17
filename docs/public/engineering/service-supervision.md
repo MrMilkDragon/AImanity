@@ -1,6 +1,6 @@
 # Native service supervision
 
-Linux and the WSL backend run their application services under the Rust supervisor in `ai-phone-host-runtime`. The packaged assistant exposes this lifecycle independently of its model server; supervision does not connect to the database or initialize an Agent. Each supervisor uses a single-thread Tokio runtime and waits for child exit or signals rather than polling a live child.
+Linux guests run their application services under the Rust supervisor in `ai-phone-host-runtime`. The packaged assistant exposes this lifecycle independently of its model server; supervision does not connect to the database or initialize an Agent. Each supervisor uses a single-thread Tokio runtime and waits for child exit or signals rather than polling a live child.
 
 ## Installation contract
 
@@ -20,4 +20,4 @@ Native library and real-process tests cover start/resume, ownership, older recei
 
 Hard termination of the supervisor and host reboot require the installation recovery path and are separate from child-exit recovery. Service receipts do not authorize replaying device actions or establish full device readiness.
 
-Source launchers delegate startup order, database preparation, token creation and service specifications to `--source-services` in the Rust host component. `scripts/phone-lab-start.sh` and `scripts/phone-lab-stop.sh` are thin native command launchers. TypeScript tooling collects contributor input and builds resources; it does not supervise runtime processes.
+Source launchers delegate startup order, database preparation, token creation and service specifications to `--source-services` in the Rust host component. `scripts/phone-lab-start.sh` and `scripts/phone-lab-stop.sh` are thin native command launchers. Source development connects to the configured native PostgreSQL and Redis services.

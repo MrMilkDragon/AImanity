@@ -287,7 +287,7 @@ mod tests {
             active: Mutex::new(Default::default()),
             run_signals: Default::default(),
             login_attempts: Mutex::new(vec![]),
-            workspace_init: Mutex::new(None),
+            workspace_init: Mutex::new(false),
             location_mutation: Mutex::new(()),
             network_mutation: Mutex::new(()),
         });
@@ -297,7 +297,7 @@ mod tests {
    sqlx::query("INSERT INTO agents(id,name,model_connection_id) VALUES($1,'电脑Agent',$2)").bind(a).bind(Uuid::from_u128(1)).execute(&mut *tx).await.unwrap();
    sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state,default_agent_id) VALUES('desktop-test','电脑','desktop','Debian','managed',$1)").bind(a).execute(&mut *tx).await.unwrap();
    sqlx::query("INSERT INTO agent_device_bindings(agent_id,device_id) VALUES($1,'desktop-test')").bind(a).execute(&mut *tx).await.unwrap();
-   sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES('desktop-test','docker-desktop','ai-phone-desktop')").execute(&mut *tx).await.unwrap();
+   sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES('desktop-test','native-desktop','ai-phone-desktop')").execute(&mut *tx).await.unwrap();
    let conversation:Uuid=sqlx::query_scalar("SELECT id FROM conversations WHERE owner_id='local-user'").fetch_one(&mut *tx).await.unwrap();let mid=Uuid::now_v7();let source_run=Uuid::now_v7();
    sqlx::query("INSERT INTO messages(id,conversation_id,role,text) VALUES($1,$2,'assistant','phone work')").bind(mid).bind(conversation).execute(&mut *tx).await.unwrap();
    sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status) VALUES($1,$2,$3,$1,'test','running')").bind(source_run).bind(conversation).bind(mid).execute(&mut *tx).await.unwrap();registry::pin_run(&mut tx,&app.settings,source_run).await.unwrap();tx.commit().await.unwrap();

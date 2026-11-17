@@ -22,9 +22,6 @@ const START_LIMIT: Duration = Duration::from_secs(1950);
 const STOP_LIMIT: Duration = Duration::from_secs(30);
 const PROFILE_FRAME: usize = 8192 + 8;
 const HIDDEN: u32 = 0x08000000;
-const GUEST_WEB_PORT: u16 = 17860;
-const ALUMINUM_BASE: &str = "348baa7207524397b74de603f08357b6d3b73947514eb9f662c6eb4e52a365a5";
-const ALUMINUM_BASE_SIZE: u64 = 1_101_660_160;
 
 struct QemuVmConfig<'a> {
     runtime: &'a Path,
@@ -32,10 +29,9 @@ struct QemuVmConfig<'a> {
     home: &'a Path,
     cpu: u16,
     memory_mib: u32,
-    web_port: u16,
     control_port: u16,
     base_sha256: &'a str,
-    release_sha256: Option<&'a str>,
+    release_sha256: &'a str,
 }
 
 #[derive(serde::Deserialize)]
@@ -43,7 +39,7 @@ struct VmManifest {
     format: u8,
     runtime: String,
     files: Vec<VmFile>,
-    release_sha256: Option<String>,
+    release_sha256: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -59,18 +55,7 @@ pub fn key_path(home: &Path) -> PathBuf {
 
 impl<'a> QemuVmConfig<'a> {
     fn parse(arguments: &'a [OsString]) -> Result<Self> {
-        let [
-            runtime,
-            guest,
-            home,
-            cpu,
-            memory,
-            web,
-            control,
-            base,
-            release,
-        ] = arguments
-        else {
+        let [runtime, guest, home, cpu, memory, control, base, release] = arguments else {
             return Err(Error::Invalid("vm_owner_arguments"));
         };
         let invalid = || Error::Invalid("vm_owner_arguments");
@@ -86,10 +71,9 @@ impl<'a> QemuVmConfig<'a> {
             home: Path::new(home),
             cpu: number(cpu)?.try_into().map_err(|_| invalid())?,
             memory_mib: number(memory)?,
-            web_port: number(web)?.try_into().map_err(|_| invalid())?,
             control_port: number(control)?.try_into().map_err(|_| invalid())?,
             base_sha256: base.to_str().ok_or_else(invalid)?,
-            release_sha256: Some(release.to_str().ok_or_else(invalid)?).filter(|id| !id.is_empty()),
+            release_sha256: release.to_str().ok_or_else(invalid)?,
         })
     }
 
@@ -97,13 +81,11 @@ impl<'a> QemuVmConfig<'a> {
         if ![self.runtime, self.guest, self.home]
             .iter()
             .all(|path| path.is_absolute())
-            || self.web_port == 0
             || self.control_port == 0
-            || self.web_port == self.control_port
             || self.cpu == 0
             || self.memory_mib == 0
             || !digest(self.base_sha256)
-            || self.release_sha256.is_some_and(|id| !digest(id))
+            || !digest(self.release_sha256)
         {
             return Err(Error::Invalid("vm_owner_arguments"));
         }
@@ -120,11 +102,10 @@ impl<'a> QemuVmConfig<'a> {
             .args([
                 self.cpu.to_string(),
                 self.memory_mib.to_string(),
-                self.web_port.to_string(),
                 self.control_port.to_string(),
             ])
             .arg(self.base_sha256)
-            .arg(self.release_sha256.unwrap_or_default())
+            .arg(self.release_sha256)
             .creation_flags(HIDDEN)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -239,7 +220,6 @@ impl<'a> QemuVm<'a> {
         storage_gb: Option<u32>,
         lease: filesystem::Lease,
     ) -> Result<Self> {
-        let web = TcpListener::bind((Ipv4Addr::LOCALHOST, config.web_port)).await?;
         let control = TcpListener::bind((Ipv4Addr::LOCALHOST, config.control_port)).await?;
         let bootstrap = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let bootstrap_port = bootstrap.local_addr()?.port();
@@ -272,9 +252,7 @@ impl<'a> QemuVm<'a> {
             }
         });
         let network = format!(
-            "user,id=network,hostfwd=tcp:127.0.0.1:{}-10.0.2.15:{},hostfwd=tcp:127.0.0.1:{}-10.0.2.15:{},hostfwd=tcp:127.0.0.1:17906-10.0.2.15:17906",
-            config.web_port,
-            GUEST_WEB_PORT,
+            "user,id=network,hostfwd=tcp:127.0.0.1:{}-10.0.2.15:{},hostfwd=tcp:127.0.0.1:17906-10.0.2.15:17906",
             config.control_port,
             vm_control::GUEST_PORT,
         );
@@ -337,24 +315,22 @@ impl<'a> QemuVm<'a> {
             .stdout(Stdio::null())
             .stderr(log(config.home, "qemu.log")?)
             .kill_on_drop(true);
-        if config.release_sha256.is_some() {
-            let initramfs = config.guest.join("release-init.cpio.gz");
-            let release = config.guest.join("release.ext4");
-            for path in [&initramfs, &release] {
-                filesystem::regular(path)?;
-            }
-            let layer = serde_json::json!({
-                "driver": "raw", "node-name": "aiphone-release", "read-only": true,
-                "file": {"driver": "file", "filename": release}
-            });
-            command.arg("-initrd").arg(initramfs).args([
-                "-blockdev",
-                &layer.to_string(),
-                "-device",
-                "virtio-blk-pci,drive=aiphone-release",
-            ]);
+        let initramfs = config.guest.join("release-init.cpio.gz");
+        let release = config.guest.join("release.ext4");
+        for path in [&initramfs, &release] {
+            filesystem::regular(path)?;
         }
-        drop((web, control));
+        let layer = serde_json::json!({
+            "driver": "raw", "node-name": "aiphone-release", "read-only": true,
+            "file": {"driver": "file", "filename": release}
+        });
+        command.arg("-initrd").arg(initramfs).args([
+            "-blockdev",
+            &layer.to_string(),
+            "-device",
+            "virtio-blk-pci,drive=aiphone-release",
+        ]);
+        drop(control);
         let mut child = command.spawn()?;
         tokio::select! {
             result = linux_vm::authenticate(bootstrap, &secret, profile) => result?,
@@ -366,11 +342,7 @@ impl<'a> QemuVm<'a> {
             _lease: lease,
         };
         let active = vm_control::version(vm.config.control_port, &key).await?;
-        if vm
-            .config
-            .release_sha256
-            .is_some_and(|id| active.as_slice() != id.as_bytes())
-        {
+        if active.as_slice() != vm.config.release_sha256.as_bytes() {
             vm.stop().await?;
             return Err(Error::Invalid("vm_release_identity"));
         }
@@ -465,29 +437,16 @@ pub async fn ensure(
         }
         Ok((path, &record.sha256))
     };
-    let base_record = manifest
-        .files
-        .iter()
-        .find(|value| value.path == "guest/guest.qcow2")
-        .ok_or(Error::Invalid("vm_bundle_invalid"))?;
-    let base_size = filesystem::regular(&bundle.join("guest/guest.qcow2"))?
-        .metadata()?
-        .len();
-    let base_sha256 = match base_size {
-        size if size == base_record.size => base_record.sha256.as_str(),
-        ALUMINUM_BASE_SIZE => ALUMINUM_BASE,
-        _ => return Err(Error::Invalid("vm_bundle_changed")),
-    };
+    let (_, base_sha256) = file("guest/guest.qcow2")?;
     let config = QemuVmConfig {
         runtime: &bundle.join("runtime"),
         guest: &bundle.join("guest"),
         home,
         cpu,
         memory_mib,
-        web_port: GUEST_WEB_PORT,
         control_port: vm_control::GUEST_PORT,
         base_sha256,
-        release_sha256: manifest.release_sha256.as_deref(),
+        release_sha256: &manifest.release_sha256,
     };
     config.validate(profile)?;
     let key = key_path(config.home);
@@ -501,10 +460,7 @@ pub async fn ensure(
         }
         if let Ok(active) = vm_control::version(config.control_port, &key).await {
             config.existing_disk()?;
-            if config
-                .release_sha256
-                .is_none_or(|id| active.as_slice() == id.as_bytes())
-            {
+            if active.as_slice() == config.release_sha256.as_bytes() {
                 return Ok(());
             }
             break true;
@@ -514,16 +470,14 @@ pub async fn ensure(
         }
         sleep(Duration::from_millis(500)).await;
     };
-    if config.release_sha256.is_some() {
-        let control = crate::control::Control {
-            available: &|_| 0,
-            cancelled: cancel,
-        };
-        for name in ["guest/release-init.cpio.gz", "guest/release.ext4"] {
-            let (path, expected) = file(name)?;
-            if crate::capsule::hash(&mut File::open(path)?, &control)? != *expected {
-                return Err(Error::Invalid("vm_bundle_changed"));
-            }
+    let control = crate::control::Control {
+        available: &|_| 0,
+        cancelled: cancel,
+    };
+    for name in ["guest/release-init.cpio.gz", "guest/release.ext4"] {
+        let (path, expected) = file(name)?;
+        if crate::capsule::hash(&mut File::open(path)?, &control)? != *expected {
+            return Err(Error::Invalid("vm_bundle_changed"));
         }
     }
     if replace {

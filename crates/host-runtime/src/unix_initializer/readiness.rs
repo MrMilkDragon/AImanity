@@ -6,24 +6,15 @@ use reqwest::{Client, header::CONTENT_TYPE};
 use std::{fs, path::Path, time::Duration};
 use tokio::{sync::watch, time::Instant};
 
-async fn probe(
-    client: &Client,
-    port: u16,
-    path: &str,
-    token: &str,
-    body: Option<&[u8]>,
-    content: &str,
-) -> Result<()> {
+const PROTOBUF: &str = "application/x-protobuf";
+
+async fn probe(client: &Client, port: u16, path: &str, token: &str, body: &[u8]) -> Result<()> {
     let url = format!("http://127.0.0.1:{port}{path}");
-    let request = match body {
-        Some(bytes) => client
-            .post(url)
-            .header(CONTENT_TYPE, "application/x-protobuf")
-            .body(bytes.to_vec()),
-        None => client.get(url),
-    };
     let pending = || Error::Invalid("unix_host_service_not_ready");
-    let response = request
+    let response = client
+        .post(url)
+        .header(CONTENT_TYPE, PROTOBUF)
+        .body(body.to_vec())
         .bearer_auth(token)
         .send()
         .await
@@ -34,7 +25,7 @@ async fn probe(
             .get(CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.split(';').next())
-            != Some(content)
+            != Some(PROTOBUF)
     {
         return Err(pending());
     }
@@ -66,36 +57,17 @@ pub(super) async fn wait(root: &Path, mut stop: watch::Receiver<bool>) -> Result
     }
     .encode_to_vec();
     let deadline = Instant::now() + Duration::from_secs(30);
-    for (port, path, auth, body, content) in [
-        (
-            17863,
-            "/v1/setup/status",
-            token.trim(),
-            Some(&b""[..]),
-            "application/x-protobuf",
-        ),
-        (17860, "/phone", token.trim(), None, "text/html"),
-        (
-            17864,
-            "/v1/list",
-            token.trim(),
-            Some(&b""[..]),
-            "application/x-protobuf",
-        ),
-        (
-            17862,
-            "/v1/observe",
-            runner.trim(),
-            Some(observation.as_slice()),
-            "application/x-protobuf",
-        ),
+    for (port, path, auth, body) in [
+        (17863, "/v1/setup/status", token.trim(), &b""[..]),
+        (17864, "/v1/list", token.trim(), &b""[..]),
+        (17862, "/v1/observe", runner.trim(), observation.as_slice()),
     ] {
         loop {
             if *stop.borrow() {
                 return Err(Error::Cancelled);
             }
             let result = tokio::select! {
-                result=tokio::time::timeout_at(deadline,probe(&client,port,path,auth,body,content))=>result,
+                result=tokio::time::timeout_at(deadline,probe(&client,port,path,auth,body))=>result,
                 _=stop.changed()=>return Err(Error::Cancelled),
             };
             match result {
@@ -149,45 +121,24 @@ mod tests {
         )
         .await;
         assert!(
-            probe(
-                &client,
-                port,
-                "/v1/setup/status",
-                "fixture-token",
-                Some(b""),
-                "application/x-protobuf"
-            )
-            .await
-            .is_err()
+            probe(&client, port, "/v1/setup/status", "fixture-token", b"")
+                .await
+                .is_err()
         );
         let port = response(path, b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n").await;
         assert!(
-            probe(
-                &client,
-                port,
-                "/v1/setup/status",
-                "fixture-token",
-                Some(b""),
-                "application/x-protobuf"
-            )
-            .await
-            .is_err()
+            probe(&client, port, "/v1/setup/status", "fixture-token", b"")
+                .await
+                .is_err()
         );
         let port = response(
             path,
             b"HTTP/1.1 200 OK\r\nContent-Type: application/x-protobuf\r\n\r\n",
         )
         .await;
-        probe(
-            &client,
-            port,
-            "/v1/setup/status",
-            "fixture-token",
-            Some(b""),
-            "application/x-protobuf",
-        )
-        .await
-        .unwrap();
+        probe(&client, port, "/v1/setup/status", "fixture-token", b"")
+            .await
+            .unwrap();
     }
     #[tokio::test]
     async fn phone_observation_must_report_root() {
@@ -201,16 +152,9 @@ mod tests {
         let rooted = response(path, b"HTTP/1.1 200 OK\r\nContent-Type: application/x-protobuf\r\nContent-Length: 3\r\n\r\n\x4a\x010").await;
         for (port, expected) in [(pending, false), (rooted, true)] {
             assert_eq!(
-                probe(
-                    &client,
-                    port,
-                    path,
-                    "fixture-token",
-                    Some(&[]),
-                    "application/x-protobuf"
-                )
-                .await
-                .is_ok(),
+                probe(&client, port, path, "fixture-token", &[])
+                    .await
+                    .is_ok(),
                 expected
             );
         }

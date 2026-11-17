@@ -2,7 +2,7 @@
   "format": 1,
   "kind": "native-service-licenses",
   "scope": "Locked native service build graph, including target and build dependencies",
-  "lock_sha256": "ef4248ccee38b6bf6b6e3c2a4c1376aa8ae24489dfec8a4c251cd7bb94aa3eca",
+  "lock_sha256": "c2fb9560932bb05c4252d0efe8991786942e1e176f44cff0996033713fe95464",
   "packages": [
     "adler2@2.0.1",
     "aes@0.9.4",
@@ -421,11 +421,7 @@
     "windows_x86_64_gnullvm@0.52.6",
     "windows_x86_64_msvc@0.48.5",
     "windows_x86_64_msvc@0.52.6",
-    "windows-link@0.100.0",
     "windows-link@0.2.1",
-    "windows-registry@0.100.0",
-    "windows-result@0.100.0",
-    "windows-strings@0.100.0",
     "windows-sys@0.48.0",
     "windows-sys@0.52.0",
     "windows-sys@0.61.2",
@@ -465,6 +461,6 @@
     "zvariant_utils@4.2.0"
   ],
   "notices_file": "docs/public/native-services-licenses.txt",
-  "notices_sha256": "2c09014a6980a810cc98d4a7ea483f86a806d58d884d2eb0255c607533b45a6d",
+  "notices_sha256": "2775a74c40888069ecc8057af859e22ece1c3b22b561e0aac18988c33eff2a79",
   "missing_notice_files": []
 }

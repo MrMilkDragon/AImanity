@@ -45,8 +45,6 @@ Host sleep/reboot, power-loss recovery and prolonged multi-device operation have
 
 ## 安装中断
 
-安装检查点在私有 `data/deployment/install-state.json`。SDK许可、SDK包、依赖、Clash客户端、工作镜像、桌面镜像和服务分阶段保存状态。进程独占锁避免同一user目录并发安装；完成步骤只有源码/配置指纹和当前产物均匹配才会复用。Docker镜像ID改变、缓存损坏、产物缺失或输入变更会重新执行相应步骤。状态文件原子替换并同步目录；不记录密钥或命令输出。
+安装阶段依次展开离线资源、启动 Android 和 Linux、注册输入与服务，再从两台设备读取状态。重开客户端会复用已完成的资源，继续未完成的阶段。安装和恢复使用同一个本地配置与设备盘。
 
-强制结束安装后可以重跑 `./ai-phone install`；未完成阶段会重做，已验证阶段会复用。SDK许可仍交给官方交互提示，不自动接受。启动器先验证所有已加载服务属于本目录，再只补缺失项；已有助手、手机、对话不会因安装重试而重启。Android输入法/桌面/Clash也仅在缺失时补装。
-
-`./ai-phone start`可恢复缺失服务；`stop`先核对默认服务的工作目录，拒绝停止其他checkout的实例。Linux容器、数据库卷和账号不由该命令删除。升级源码或数据库前执行备份和迁移流程。
+源码部署可再次运行 `./ai-phone install --resources /path/to/host`。`stop` 会停止当前安装管理的进程并保留持久状态。

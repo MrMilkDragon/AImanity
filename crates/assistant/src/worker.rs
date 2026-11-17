@@ -26,7 +26,6 @@ pub(crate) async fn claim_due_run(app: &App) -> Result<Option<(Uuid, Uuid)>, sql
 async fn finish_attempt(
     app: &App,
     id: Uuid,
-    _message: Uuid,
     result: &Result<RunDisposition, String>,
     cancelled: bool,
 ) -> Result<(), sqlx::Error> {
@@ -121,10 +120,10 @@ async fn finish_attempt(
 pub async fn work(app: Shared) {
     let mut attempts = tokio::task::JoinSet::new();
     loop {
-        if let Ok(Some((id, message))) = claim_due_run(&app).await {
+        if let Ok(Some((id, _))) = claim_due_run(&app).await {
             let cancel = CancellationToken::new();
             app.active.lock().await.insert(id, cancel.clone());
-            attempts.spawn(attempt(app.clone(), id, message, cancel));
+            attempts.spawn(attempt(app.clone(), id, cancel));
             continue;
         }
         tokio::select! {
@@ -140,19 +139,15 @@ pub async fn work(app: Shared) {
     }
 }
 
-async fn attempt(app: Shared, id: Uuid, message: Uuid, cancel: CancellationToken) -> Uuid {
-    let result = async {
-        sqlx::query("INSERT INTO harness_events(id,run_id,message_id,kind,title) VALUES($1,$1,$2,'task','任务') ON CONFLICT(id) DO UPDATE SET status='running',finished_at=NULL")
-            .bind(id).bind(message).execute(&app.db).await
-            .map_err(|_| "任务记录暂时无法保存，未开始后续操作".to_string())?;
-        std::panic::AssertUnwindSafe(execute(&app, id, &cancel))
-            .catch_unwind().await
-            .unwrap_or_else(|_| Err("paused:运行器异常，当前结果待核对，未自动重放".into()))
-    }.await;
+async fn attempt(app: Shared, id: Uuid, cancel: CancellationToken) -> Uuid {
+    let result = std::panic::AssertUnwindSafe(execute(&app, id, &cancel))
+        .catch_unwind()
+        .await
+        .unwrap_or_else(|_| Err("paused:运行器异常，当前结果待核对，未自动重放".into()));
     // Retain the device leases across a database outage. Retry only this
     // idempotent finalization, never the model request or guest actions.
     let mut reported = false;
-    while let Err(error) = finish_attempt(&app, id, message, &result, cancel.is_cancelled()).await {
+    while let Err(error) = finish_attempt(&app, id, &result, cancel.is_cancelled()).await {
         if matches!(error, sqlx::Error::RowNotFound) {
             break;
         }
@@ -2551,42 +2546,30 @@ async fn execute(
             }
             continue;
         }
-        if (phone_task(&context)
-            || (gui_execution(&context) && !execution_policy::desktop_target(&context))
-            || (notification_run && !desktop_notification)
-            || wechat_task(&context))
-            && !phone_skill_read(&context)
-        {
-            let call = json!({"type":"function_call","name":"skill_read","arguments":"{\"name\":\"phone-use\"}","call_id":format!("phone-use-{}",Uuid::now_v7()),"local_action_id":Uuid::now_v7().to_string()});
-            context.push(call.clone());
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-            let result =
-                recorded_tool(app, id, message, &call, &context, &mut epoch, cancel).await?;
-            context.push(
-                json!({"type":"function_call_output","call_id":call["call_id"],"output":result}),
-            );
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-        }
-        if (computer_task(&context)
-            || (gui_execution(&context) && execution_policy::desktop_target(&context)))
-            && !builtin_skill_read(&context, "computer-use")
-        {
-            let call = json!({"type":"function_call","name":"skill_read","arguments":"{\"name\":\"computer-use\"}","call_id":Uuid::now_v7().to_string(),"local_action_id":Uuid::now_v7().to_string()});
-            context.push(call.clone());
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-            let result =
-                recorded_tool(app, id, message, &call, &context, &mut epoch, cancel).await?;
-            context.push(
-                json!({"type":"function_call_output","call_id":call["call_id"],"output":result}),
-            );
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-        }
         let notification_tool = if desktop_notification {
             "device_notifications"
         } else {
             "phone_notifications"
         };
-        if notification_run
+        let next_tool = pending
+            .first()
+            .and_then(|call| call["name"].as_str())
+            .unwrap_or("");
+        let prerequisite = if (next_tool.starts_with("phone_")
+            || phone_task(&context)
+            || (gui_execution(&context) && !execution_policy::desktop_target(&context))
+            || (notification_run && !desktop_notification)
+            || wechat_task(&context))
+            && !phone_skill_read(&context)
+        {
+            Some(("skill_read", r#"{"name":"phone-use"}"#))
+        } else if (next_tool.starts_with("computer_")
+            || computer_task(&context)
+            || (gui_execution(&context) && execution_policy::desktop_target(&context)))
+            && !builtin_skill_read(&context, "computer-use")
+        {
+            Some(("skill_read", r#"{"name":"computer-use"}"#))
+        } else if notification_run
             && !screen_attention
             && !context.iter().any(|v| {
                 v["type"] == "function_call"
@@ -2594,25 +2577,36 @@ async fn execute(
                     && tool_output(&context, v).is_some()
             })
         {
-            let call = json!({"type":"function_call","name":notification_tool,"arguments":"{}","call_id":Uuid::now_v7().to_string(),"local_action_id":Uuid::now_v7().to_string()});
-            context.push(call.clone());
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-            let result =
-                recorded_tool(app, id, message, &call, &context, &mut epoch, cancel).await?;
-            context.push(
-                json!({"type":"function_call_output","call_id":call["call_id"],"output":result}),
-            );
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-        }
-        if wechat_task(&context) && !builtin_skill_read(&context, "wechat") {
-            let call = json!({"type":"function_call","name":"skill_read","arguments":"{\"name\":\"wechat\"}","call_id":format!("wechat-{}",Uuid::now_v7()),"local_action_id":Uuid::now_v7().to_string()});
-            context.push(call.clone());
-            checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
-            let result =
-                recorded_tool(app, id, message, &call, &context, &mut epoch, cancel).await?;
-            context.push(
-                json!({"type":"function_call_output","call_id":call["call_id"],"output":result}),
-            );
+            Some((notification_tool, "{}"))
+        } else if wechat_task(&context) && !builtin_skill_read(&context, "wechat") {
+            Some(("skill_read", r#"{"name":"wechat"}"#))
+        } else {
+            None
+        };
+        if let Some((name, arguments)) = prerequisite
+            && pending
+                .first()
+                .is_none_or(|call| call["name"] != name || call["arguments"] != arguments)
+        {
+            let call = context
+                .iter()
+                .rev()
+                .find(|call| {
+                    call["type"] == "function_call"
+                        && call["name"] == name
+                        && call["arguments"] == arguments
+                        && call["provider_native"] != true
+                        && call["local_action_id"].is_string()
+                        && tool_output(&context, call).is_none()
+                })
+                .cloned()
+                .unwrap_or_else(|| {
+                    let call = json!({"type":"function_call","name":name,"arguments":arguments,
+                        "call_id":Uuid::now_v7().to_string(),"local_action_id":Uuid::now_v7().to_string()});
+                    context.push(call.clone());
+                    call
+                });
+            pending.insert(0, call);
             checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
         }
         if pending.is_empty()
@@ -5373,7 +5367,7 @@ mod loop_persistence_tests {
             active: Mutex::new(Default::default()),
             run_signals: Default::default(),
             login_attempts: Mutex::new(Vec::new()),
-            workspace_init: Mutex::new(None),
+            workspace_init: Mutex::new(false),
             location_mutation: Mutex::new(()),
             network_mutation: Mutex::new(()),
         };
@@ -5480,7 +5474,7 @@ mod loop_persistence_tests {
             sqlx::query("INSERT INTO harness_events(id,run_id,message_id,kind,title,status) VALUES($1,$2,$3,'tool','真实工具失败','failed')").bind(Uuid::now_v7()).bind(run).bind(error_only).execute(&app.db).await.unwrap();
             assert!(crate::http::state(&app,conversation).await.unwrap().messages.iter().find(|m|m.id==error_only.to_string()).unwrap().has_activity,"tool failure remains in the execution ledger");
             sqlx::query("UPDATE messages SET text='已有真实回复' WHERE id=$1").bind(message).execute(&app.db).await.unwrap();
-            finish_attempt(&app,run,message,&Err("database transport failed".into()),false).await.unwrap();
+            finish_attempt(&app,run,&Err("database transport failed".into()),false).await.unwrap();
             let completed_error=crate::http::state(&app,conversation).await.unwrap();
             assert_eq!(completed_error.error,"database transport failed");
             assert_eq!(completed_error.notice_kind,wire::RunNoticeKind::SystemFailure as i32);
@@ -5559,14 +5553,18 @@ async fn run_agent(app: &App, run: Uuid) -> Result<String, String> {
         .ok_or_else(|| "任务缺少 Agent 归属".into())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
+#[path = "recovery_process_tests.rs"]
+mod recovery_process_tests;
+
+#[cfg(all(test, unix))]
 mod process_recovery_tests {
     use super::*;
 
     /// Process entry for the isolated worker recovery driver.
     /// It starts no phone, desktop, channel or notification services.
     #[tokio::test]
-    #[ignore = "child process of scripts/ci-integration.ts; disposable DB and loopback model only"]
+    #[ignore = "child process of isolated_worker_recovery; disposable DB and loopback model only"]
     async fn worker_child() {
         assert_eq!(std::env::var("AI_PHONE_RECOVERY_CHILD").as_deref(), Ok("1"));
         let root = PathBuf::from(std::env::var("AI_PHONE_PROJECT_ROOT").unwrap());
@@ -5596,7 +5594,7 @@ mod process_recovery_tests {
             active: Mutex::new(Default::default()),
             run_signals: Default::default(),
             login_attempts: Mutex::new(vec![]),
-            workspace_init: Mutex::new(None),
+            workspace_init: Mutex::new(false),
             location_mutation: Mutex::new(()),
             network_mutation: Mutex::new(()),
         });

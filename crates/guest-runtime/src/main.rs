@@ -95,21 +95,10 @@ fn operation() -> Result<String> {
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    if std::env::args().nth(1).as_deref() == Some("--workspace-job-contract") {
-        println!("{}", ai_phone_api::WORKSPACE_JOB_CONTRACT);
-        return ExitCode::SUCCESS;
-    }
-    if std::env::args().nth(1).as_deref() == Some("--version") {
-        println!("desktop-bridge {}", env!("CARGO_PKG_VERSION"));
-        return ExitCode::SUCCESS;
-    }
-    let operation = operation();
-    if operation
-        .as_ref()
-        .is_ok_and(|value| matches!(value.as_str(), "workspace-run" | "workspace-cancel"))
-    {
-        let args: Vec<_> = std::env::args_os().skip(1).collect();
-        return match ai_phone_guest_runtime::workspace_job::cli(&args).await {
+    #[cfg(target_os = "linux")]
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("native-linux")) {
+        let args: Vec<_> = std::env::args_os().skip(2).collect();
+        return match ai_phone_guest_runtime::linux_runtime::cli(&args).await {
             Ok(code) => ExitCode::from(code),
             Err(error) => {
                 eprintln!("{error}");
@@ -117,6 +106,11 @@ async fn main() -> ExitCode {
             }
         };
     }
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!("desktop-bridge {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+    let operation = operation();
     let stderr_only = operation.as_ref().is_ok_and(|value| {
         matches!(
             value.as_str(),

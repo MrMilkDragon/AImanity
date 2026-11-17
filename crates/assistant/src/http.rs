@@ -1018,7 +1018,7 @@ mod steering_tests {
             active: Mutex::new(Default::default()),
             run_signals: Default::default(),
             login_attempts: Mutex::new(Vec::new()),
-            workspace_init: Mutex::new(None),
+            workspace_init: Mutex::new(false),
             location_mutation: Mutex::new(()),
             network_mutation: Mutex::new(()),
         });

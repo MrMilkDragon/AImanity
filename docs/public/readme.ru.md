@@ -21,7 +21,7 @@ AImanity объединяет телефон Android и рабочий стол 
 
 ## Архитектура и данные
 
-`apps/web`: Next.js App Router, React, Tailwind, shadcn. `apps/client`: Tauri 2. `crates`: Rust, Axum, Tokio. `packages/protocol`: protobuf. PostgreSQL/SQLx хранит состояние; Redis зарезервирован для необязательного кеша, а не очереди задач. Bun и Cargo — инструменты разработки; Compose запускает сервисы. `infra`, `scripts`, `skills`, `config` содержат среду выполнения и встроенные возможности.
+`apps/native`: Rust (Iced/wgpu). `crates`: Rust, Axum, Tokio. `packages/protocol`: protobuf. PostgreSQL/SQLx хранит состояние; Redis зарезервирован для необязательного кеша, а не очереди задач. Cargo собирает проект; Compose запускает сервисы. `infra`, `scripts`, `skills`, `config` содержат среду выполнения и встроенные возможности.
 
 Код отделён от пользовательского состояния. Диски, аккаунты, переписка, вложения и ключи не публикуются. Обновления должны использовать версионированные пакеты, резервное копирование, миграции и откат. Прямой `git pull` поверх пользовательских данных не является механизмом обновления.
 

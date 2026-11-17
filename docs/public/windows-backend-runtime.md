@@ -1,76 +1,42 @@
-# Windows backend runtime
+# Windows Linux guest
 
-The Windows installer carries a Linux guest disk and kernel. QEMU runs the guest through Windows Hypervisor Platform. The factory builds the disk from the same sealed Linux root filesystem used by the WSL development and recovery tools.
+The Windows installer carries the Linux kernel, base disk and release layer. QEMU boots the guest through Windows Hypervisor Platform. The client keeps guest writes in a persistent QCOW2 overlay and connects to the Rust services through an authenticated loopback relay.
 
-## Contents
-
-| Resource | Contract |
+| Resource | Contents |
 |---|---|
-| Ubuntu base | Immutable base digest and retained distribution notices |
-| Rust services | Assistant with channels, phone runner/media, OCR and native initializer |
-| Web | Next.js standalone resources and matched Bun executable |
-| Docker and Compose | Pinned Alpine package closure in an isolated musl prefix |
-| Container images | Sealed workspace, desktop, PostgreSQL and Redis images |
-| Phone bridge | Linux x64 ADB 36.0.1 and bundled scrcpy audio server |
-| User state | Created under `/var/lib/aiphone`; excluded from the distributed rootfs |
+| Guest boot | Linux kernel, immutable Calcium base disk and current read-only release layer |
+| Rust services | Guest control, assistant, phone control and media, OCR and desktop bridge |
+| Databases | Native PostgreSQL and Redis processes in the guest |
+| Linux root filesystem | One amd64 filesystem shared by the native desktop and workspaces |
+| Phone bridge | Bundled Android platform tools, input resources and audio server |
+| User state | Installation under `/var/lib/aiphone` in the writable guest disk |
 
-The TypeScript factory assembles a clean image with the source-bound Rust bootstrap. The phone bridge uses the [bundled AOSP and ADB components](engineering/android-corresponding-source.md). The Windows installer also includes the phone applications and Clash.
-
-The Rust bootstrap lists managed containers together and checks existing containers in one inspection call. Full IDs, names and project ownership are verified before image activation.
-
-The outer capsule contains `rootfs.tar.gz` and `WSL-BACKEND-MANIFEST.json`. Its manifest binds the compressed body, uncompressed inventory, required native entries, source/image identities and base license files. Rootfs inspection streams decompression and hashing together. Prepared native resources contain `rootfs.tar.gz` and `manifest.json`.
-
-## WSL development and recovery
-
-`aiphone-bootstrap --initialize-wsl-backend` reads configuration from stdin: locale, phone CPU/RAM/storage and desktop CPU/RAM. The configuration remains bounded to 8 KiB and uses the shared host-profile policy. Resume preserves profiles, passwords, tokens, devices and chats.
-
-The installation is `/var/lib/aiphone/installation`; the owned engine socket is `unix:///run/aiphone/docker.sock`. Source staging, engine and image activation, database role preparation, migrations and service startup are Rust operations. Initialization imports bundled images without pulling or building them. It does not import a host Docker context or expose Windows drive mounts.
-
-`backend_started: true` confirms the backend only. `phone_ready`, `complete_device_bundle` and `windows_boot_verified` remain false in that acknowledgement. The Windows native client subsequently boots or resumes Android and establishes the paired ADB/media connection. Device provisioning installs input/notification resources, creates or recovers the desktop, observes frames and emits `NativeWslDevicesReady` over protobuf. Only that receipt completes device setup.
-
-Interrupted actions retain their installation/provisioning records. Recovery observes unknown outcomes rather than recreating a device or blindly repeating an action. Registered distributions retain their installed bootstrap; in-place backend upgrades are a separate lifecycle.
-
-## Maintainer factory
-
-```sh
-./scripts/bootstrap.sh
-./scripts/bun scripts/wsl-backend-qualification.ts --with-device-apps
-```
-
-Use an explicitly disposable GitHub-hosted Linux x64 workspace with `AI_PHONE_DISPOSABLE_QUALIFICATION=1`. The optional phone applications require Android 35 build tools and Java 17. The factory builds the same sealed source and images used by the backend, then imports the resulting rootfs into an owned, isolated container.
-
-The existing Rust `release-tools wsl-qualify` worker runs as PID 1. It invokes the actual native initializer and verifies services, database roles, Redis, real desktop frames/media, work-file persistence and a database marker. Two phases reuse the same owned volume and verify restart persistence. The outer TypeScript driver records the worker receipts and removes only its labelled container, image and volume. Private logs, root filesystems and device/account data are not public evidence.
-
-The qualification exercises the Linux backend. [Windows package and installation status](release-status.md)
-
-WSL registration follows [Microsoft's import interface](https://learn.microsoft.com/en-us/windows/wsl/basic-commands#import-a-distribution) and [distribution VHD location](https://learn.microsoft.com/en-us/windows/wsl/disk-space#how-to-locate-the-vhdx-file-and-disk-path-for-your-linux-distribution).
+BusyBox launches the Rust bootstrap. The host authenticates over the named virtio-serial port `org.aiphone.bootstrap`. The client pairs Android through ADB and waits for Linux desktop readiness before completing setup.
 
 ## QEMU build inputs
 
-On Windows x64, use an MSYS2 UCRT64 shell with native symlinks enabled. Install the UCRT64 compiler, Meson, Ninja, GLib, libslirp and zlib, then build the host component:
+Prepare the pinned QEMU executables, firmware and libraries on Windows x64 with the [QEMU factory](../../.github/workflows/windows-qemu.yml).
 
 ```sh
-./scripts/bun scripts/windows-qemu.ts build/windows-qemu
+cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory qemu . build/windows-qemu
 ```
 
-The factory pins QEMU 11.1.3 and builds the WHPX system emulator and `qemu-img`. It records the PE import tree, DLL package versions, firmware, notices and source archive.
-
-On a disposable Linux builder, build the pinned x86_64 kernel and convert a fresh sealed backend. Linux ARM64 builders use the `x86_64-linux-gnu-` cross toolchain.
+The [Windows Linux guest workflow](../../.github/workflows/windows-guest.yml) builds the shared amd64 root filesystem and stages current Rust services, database binaries and sandbox tools on an isolated Linux x64 builder. It seals them over the pinned kernel and backing disk.
 
 ```sh
-./scripts/bun scripts/windows-guest-disk.ts kernel build/guest-kernel
-sudo ./scripts/bun scripts/windows-guest-disk.ts \
-  build/wsl-backend.payload "$BACKEND_SHA256" build/guest-kernel/bzImage \
-  build/guest-kernel/modules.tar.gz build/guest-kernel/kernel-receipt.json \
-  build/windows-guest.payload
+cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-release-context \
+  build/windows-release-context --linux-rootfs build/linux-rootfs.tar.zst \
+  --guest-assets build/windows-guest-assets
+cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-release \
+  build/windows-qemu/baseline build/windows-release-context build/windows-guest.payload
 ```
 
-The backend factory verifies the QEMU bootstrap command before sealing. The guest capsule contains its kernel, compressed QCOW2 disk, kernel config, license text and manifest. BusyBox starts the Rust bootstrap on the named virtio-serial port `org.aiphone.bootstrap`.
+Build the asset directory with `release-tools windows-guest-assets build/windows-guest-assets` on the same Linux x64 factory. It collects PostgreSQL 17, Redis 8, Tesseract and sandbox tools from signed Debian packages.
 
-The Windows client starts QEMU and keeps writes in a persistent QCOW2 overlay. Linux uses the Nehalem CPU profile to expose SSE4.2 to the bundled Bun runtime. The native setup uses the observed Android ADB connection and desktop receipt to complete device setup. The workbench checks its local HTTP endpoint before opening.
+The [Linux backend checks](../../.github/workflows/linux-backend.yml) exercise the QEMU bootstrap command, backend startup and restart, database selection and image ownership. The [Android WHPX workflow](../../.github/workflows/windows-aosp-qualification.yml) boots the bundled AOSP guest. [Windows installer acceptance](../../.github/workflows/windows-installer-acceptance.yml) installs the exact signed EXE in a fresh Windows profile and drives both devices through the native client.
 
 ## 中文
 
-Windows 客户端用 QEMU 和 Windows Hypervisor Platform 启动内置 Linux 客体。客体包含 Rust 服务、网页、Docker/Compose、数据库和桌面镜像。用户数据保存在 QCOW2 写入层内。
+Windows 客户端内置 Linux 内核、基础磁盘和只读发行层，通过 QEMU 和 Windows Hypervisor Platform 启动。PostgreSQL 和 Redis 在客体内直接运行，桌面和工作区共用随包的 amd64 根文件系统。设备、配置和聊天写入持久化磁盘。
 
-原生 Android 通过 ADB 和媒体桥与 Linux 后端配对。双方返回 protobuf 回执后，客户端进入工作台。[发行状态](release-status.md)
+Linux 后端检查覆盖启动、恢复和镜像归属。Windows 首装验收使用最终签名 EXE，验证原生窗口与两台设备。[发行状态](release-status.md)

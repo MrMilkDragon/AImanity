@@ -32,12 +32,12 @@ message NativeAndroidCreation {
 
 // Local native component IPC. The installer supplies its already admitted phone.
 message NativeAndroidStart {
+  reserved 5;
+  reserved "wsl_distribution";
   NativeAndroidPrepared phone = 1;
   uint32 adb_port = 2;
   uint32 console_port = 3;
   uint32 grpc_port = 4;
-  // Only an already registered application-owned WSL backend may be paired.
-  string wsl_distribution = 5;
   NativeAndroidVmEndpoint linux_vm = 6;
 }
 
@@ -63,13 +63,14 @@ message NativeAndroidBooted {
 
 // A running worker holds the separate lifecycle lock for this exact plan.
 message NativeAndroidSessionOwner {
+  reserved 7;
+  reserved "wsl_distribution";
   uint32 version = 1;
   string sdk_root = 2;
   string avd_home = 3;
   uint32 adb_port = 4;
   uint32 console_port = 5;
   uint32 grpc_port = 6;
-  string wsl_distribution = 7;
   NativeAndroidVmEndpoint linux_vm = 8;
 }
 
@@ -86,9 +87,10 @@ message NativeAndroidSessionReply {
   }
 }
 
-// Private pipe control during startup. EOF detaches; it does not stop the phone.
+// Private pipe control during startup. A VM session waits for Linux readiness before pairing.
 message NativeAndroidSessionControl {
   bool cancel_startup = 1;
+  bool linux_ready = 2;
 }
 
 // Local provisioning IPC. Paths refer to verified, bundled installer resources.
@@ -98,9 +100,9 @@ message NativeAndroidInputSetup {
   string adb_program = 3;
   string serial = 4;
   string apk_path = 5;
-  string notification_probe_path = 6;
+  reserved 6;
   bool observe_only = 7;
-  // Complete offline setup also admits the bundled launcher and guest Clash app.
+  // Complete offline setup also installs the bundled launcher and browser.
   bool offline_apps = 8;
 }
 

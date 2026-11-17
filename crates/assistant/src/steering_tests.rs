@@ -45,7 +45,7 @@ where
         active: Mutex::new(Default::default()),
         run_signals: Default::default(),
         login_attempts: Mutex::new(vec![]),
-        workspace_init: Mutex::new(None),
+        workspace_init: Mutex::new(false),
         location_mutation: Mutex::new(()),
         network_mutation: Mutex::new(()),
     });
@@ -619,7 +619,6 @@ async fn failed_attempt_after_steering_does_not_rewrite_the_prior_fragment() {
         finish_attempt(
             &app,
             run.id,
-            claimed_message,
             &Err("fixture model disconnected".into()),
             false,
         )

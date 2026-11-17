@@ -4,15 +4,14 @@ Keep credentials, chats, device disks, attachments and local audit evidence out 
 
 ## Development
 
-Use the project Bun wrapper and the pinned Rust toolchain.
+Use the pinned Rust toolchain. Buf checks the protobuf schema.
 
 ```sh
-./scripts/bootstrap.sh
-./scripts/bun install --frozen-lockfile
-./scripts/bun run check
+buf lint
+buf build
 cargo fmt --all --check
 cargo test --workspace --locked
-./scripts/bun run build
+cargo build --locked --manifest-path apps/native/Cargo.toml
 ```
 
 Run device and provider checks only in a designated test environment. The [workflows](.github/workflows) define platform-specific checks.
@@ -26,8 +25,8 @@ Describe the resulting behavior and how you verified it. For an app Skill, name 
 Refresh the public source manifest before submitting.
 
 ```sh
-./scripts/bun scripts/source.ts manifest
-./scripts/bun scripts/source.ts check --repository --manifest
+cargo run --quiet --locked -p ai-phone-release-tools -- source manifest
+cargo run --quiet --locked -p ai-phone-release-tools -- source check --repository --manifest
 ```
 
 Open a pull request against `master`. Required checks cover source, macOS Apple Silicon, Windows x64, Android guest helpers and the Linux backend. PR builds use read-only repository access and public build inputs. GitHub squash-merges accepted PRs.
