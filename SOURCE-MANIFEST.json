@@ -48,8 +48,8 @@
     },
     {
       "path": ".github/workflows/client-factory.yml",
-      "size": 10258,
-      "sha256": "71eafa1e298d529ad6f7c2d7a6c4a07980dec72c486351c131ecd857fe60bea9"
+      "size": 10181,
+      "sha256": "d5ff7bfe4393734810300956995f460648dde2a821661b056a8980c9d40b3e8b"
     },
     {
       "path": ".github/workflows/client.yml",
@@ -2287,9 +2287,19 @@
       "sha256": "7da0888f07f455223f2763ddc423446696823ffe7beee904c2bb808f8788f384"
     },
     {
+      "path": "crates/release-tools/src/windows_factory/guest.rs",
+      "size": 6807,
+      "sha256": "5447df45a1cf1e13fc364bad19dff9fd7ebb0c213675e6c38475b48e779267bf"
+    },
+    {
+      "path": "crates/release-tools/src/windows_factory/installer.rs",
+      "size": 7153,
+      "sha256": "16a0905758e1cc6acaf641b5a7e214514191639829f49af9872da92bf474f2e3"
+    },
+    {
       "path": "crates/release-tools/src/windows_factory.rs",
-      "size": 11196,
-      "sha256": "05c109ff46db522f568f2abafb7e74553eec1d10670d6601dc5698519cd9c795"
+      "size": 12085,
+      "sha256": "387c4a8d876849853792a9da9cdb052b265af19495e461e727de5701888755b4"
     },
     {
       "path": "crates/release-tools/src/windows_release.rs",
@@ -3133,13 +3143,13 @@
     },
     {
       "path": "docs/public/windows-backend-runtime.md",
-      "size": 6317,
-      "sha256": "815b574e4462097bfb1d044a875f0085ae5e49b3bca5cec2c231ac7040d3dcae"
+      "size": 6117,
+      "sha256": "01d3a5046c5beca511277e80131351fa04c7e8eafbfce747cfeba901acea9f4d"
     },
     {
       "path": "docs/public/windows-client-factory.md",
-      "size": 2520,
-      "sha256": "eb5ce2ed66e923f4235e968dd0f3073059cfee466a59b6ae80aca6a85b1092e4"
+      "size": 2464,
+      "sha256": "c2fc55db6031994f7fb6762cde3e000fd0cfb6943841115b15eafb8b025c7a5e"
     },
     {
       "path": "infra/desktop/Dockerfile",
@@ -3468,8 +3478,8 @@
     },
     {
       "path": "scripts/tooling/client-payload.ts",
-      "size": 3857,
-      "sha256": "4db021caabc2ca95a0e249bf4de113fa5b199d160771a1c36250e5e1081fb5fb"
+      "size": 4062,
+      "sha256": "eee375a8f3793d77dd6f0ae463e43b2985797075bfae2d51cd664f9923c33814"
     },
     {
       "path": "scripts/tooling/container-host.ts",
@@ -3547,29 +3557,14 @@
       "sha256": "36a2ac8e8359e0ffa15163b89c6da7c5dc2ec5f0ebbd9b5afdf27a0ba5bdeeb9"
     },
     {
-      "path": "scripts/tooling/windows-factory.ts",
-      "size": 3967,
-      "sha256": "e2fb5772884f82bb84e9b4de05a9a064ad8f417dbe704b7a43d24ff22f848bf2"
-    },
-    {
-      "path": "scripts/tooling/windows-guest-disk.ts",
-      "size": 12113,
-      "sha256": "d33db1014b224769b3fc4c04e9f9bd76a5e0656bc9cdd8d799633d2df8a50b8b"
-    },
-    {
-      "path": "scripts/tooling/windows-vm-payload.ts",
-      "size": 5389,
-      "sha256": "3fbabf8939432d1328892e8458851653ae8bb2e4d5d5c2d665c85a42fad0ff77"
-    },
-    {
       "path": "scripts/tooling/wsl-capsule.ts",
       "size": 7779,
       "sha256": "ffb904a3fcadd759deef25daa7b18b123c793aeb341d1a80f095eb31501aa6ab"
     },
     {
       "path": "scripts/tooling/wsl-factory.ts",
-      "size": 18540,
-      "sha256": "99c58f637f5d92ad2bacd83a3968f8cc5d5d25d95c1d29d119670d6f51379101"
+      "size": 18458,
+      "sha256": "393c71ad0cd1513985cc3a41436342eddb98c88ce4ddbb7fc02520997f3f65ba"
     },
     {
       "path": "scripts/tooling/wsl-qualification.ts",
@@ -3580,16 +3575,6 @@
       "path": "scripts/tsconfig.json",
       "size": 230,
       "sha256": "634ece0fdacdecbd82a8dc4f22ba12d66ab0083677c9fee5682f3673a070b558"
-    },
-    {
-      "path": "scripts/windows-client-factory.ts",
-      "size": 759,
-      "sha256": "7a83e620b09a37e88deacf6e182ac633e153d8d54018079436324c9a4d0fc8a5"
-    },
-    {
-      "path": "scripts/windows-guest-disk.ts",
-      "size": 716,
-      "sha256": "f902f05ec93f04723e3ac1f9039d774f6d40776c8dbc7c013fd79cc00d45cc94"
     },
     {
       "path": "scripts/windows-release-layer.sh",

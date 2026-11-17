@@ -4,7 +4,12 @@ import { ROOT, output, run } from "./process";
 import { json } from "./inventory";
 import { buildReleaseTools } from "./archive";
 import { hostResources } from "./resources";
-import { stageWindowsVm, type WindowsVmInputs } from "./windows-vm-payload";
+type WindowsVmInputs = {
+  qemu: string;
+  qemuIdentity: string;
+  guest: string;
+  guestIdentity: string;
+};
 
 export type PayloadOptions = {
   nativeServices?: boolean;
@@ -26,7 +31,11 @@ export async function preparePayload(root = ROOT, options: PayloadOptions = {}) 
   if (options.windowsVm) {
     const folder = join(root, hostResources);
     mkdirSync(folder, { recursive: true });
-    const digest = await stageWindowsVm(root, join(folder, "qemu"), options.windowsVm);
+    const {qemu, qemuIdentity, guest, guestIdentity} = options.windowsVm;
+    const digest = JSON.parse(output([
+      args[0]!, "windows-factory", "stage-vm", root, join(folder, "qemu"),
+      qemu, qemuIdentity, guest, guestIdentity,
+    ], { cwd: root }));
     args.push("--qemu-manifest", digest);
   }
   run(args, { cwd: root });

@@ -4,13 +4,12 @@ The Dysprosium Windows 11 x64 EXE contains the Iced/wgpu client, AOSP Android 15
 
 ## Build
 
-Prepare the [QEMU host and Linux guest](windows-backend-runtime.md#qemu-build-inputs) from the same source revision. Assemble on Windows x64 with the pinned Bun and Rust toolchains.
+Prepare the [QEMU host and Linux guest](windows-backend-runtime.md#qemu-build-inputs) from the same source revision. Assemble on Windows x64 with Rust 1.96.0.
 
 ```sh
 AIMANITY_ANDROID_SDK_INPUT=/factory/android-sdk \
-./scripts/bun scripts/windows-client-factory.ts build-qemu \
-  --qemu build/windows-qemu --qemu-identity "$QEMU_MANIFEST_SHA256" \
-  --guest build/windows-guest.payload --guest-identity "$GUEST_SHA256"
+cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory build \
+  build/windows-qemu "$QEMU_MANIFEST_SHA256" build/windows-guest.payload "$GUEST_SHA256"
 ```
 
 To reuse a sealed Android capsule, set `AIMANITY_ANDROID_PAYLOAD` and `AIMANITY_ANDROID_PAYLOAD_SHA256` in place of `AIMANITY_ANDROID_SDK_INPUT`. In the private **Desktop installer factory** workflow, select `platform=windows` and enter the Android capsule’s `android_draft_id` and `android_payload_sha256`. The workflow prepares the qualified QEMU runtime and builds the Linux guest in parallel, then assembles the EXE with Inno Setup.

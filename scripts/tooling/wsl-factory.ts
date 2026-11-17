@@ -34,8 +34,6 @@ import {
   qemuBootstrapContract,
 } from "./wsl-capsule";
 
-export const nativeWindowsBackendComponents = ["native-services", "phone-apps"];
-
 export function wslPlan(root: string) {
   const policy = json(join(root, "config/wsl-backend.json")),
     engine = json(join(root, "config/container-host-runtime.json")).hosts[
