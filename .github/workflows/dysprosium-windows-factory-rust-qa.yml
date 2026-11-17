@@ -1,0 +1,63 @@
+name: Dysprosium Rust Windows factory
+on:
+  push:
+    branches: [codex/dysprosium-windows-stage-rust]
+    paths: [.github/workflows/dysprosium-windows-factory-rust-qa.yml]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Take exact migrated source and compile release-tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(git rev-parse HEAD^)" = 07d3b78fa430996e7a038e186651ccbd7c7fd784
+          git checkout --detach HEAD^
+          rustup toolchain install 1.96.0 --profile minimal
+          cargo +1.96.0 build --locked -p ai-phone-release-tools
+          ./target/debug/release-tools.exe source check --repository --manifest
+      - name: Extract and verify the exact public Calcium host component
+        shell: pwsh
+        run: |
+          $suite = Join-Path $env:RUNNER_TEMP 'dysprosium qemu proof'
+          $timer = [System.Diagnostics.Stopwatch]::StartNew()
+          & ./target/debug/release-tools.exe windows-factory qemu . $suite
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $timer.Stop()
+          $manifest = Get-Content (Join-Path $suite 'windows-qemu.json') -Raw | ConvertFrom-Json
+          if ($manifest.version -ne '11.1.3' -or $manifest.files.Count -lt 10) { throw 'Wrong QEMU catalogue' }
+          $base = Join-Path $suite 'baseline/host/qemu/guest/guest.qcow2'
+          $hash = (Get-FileHash $base -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '1184c13114500f919b6bcc738d9af7e1f872ff192aef624e67aa87a6f9b7446f') { throw 'Windows backing disk changed' }
+          Write-Output "native_qemu_extract_ms=$($timer.ElapsedMilliseconds),runtime_members=$($manifest.files.Count),calcium_backing=$hash"
+          $stage = Join-Path $env:RUNNER_TEMP 'dysprosium qemu staging'
+          & ./target/debug/release-tools.exe windows-factory stage-qemu $suite (Join-Path $suite 'windows-qemu.json') $stage
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $count = (Get-ChildItem $stage -File -Recurse).Count
+          if ($count -ne $manifest.files.Count) { throw 'Rust staged QEMU output does not match the shipping catalogue' }
+          Write-Output "native_qemu_staged_members=$count"
+      - name: Compile and inspect an isolated Inno sample through the shipping installer recipe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "qa installer"
+          printf '%s' 'synthetic offline fixture' > 'qa installer/base.txt'
+          printf '%s' '{"files":[{"path":"guest/guest.qcow2","size":25,"sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}]}' > 'qa installer/manifest.json'
+          run=./target/debug/release-tools.exe
+          start=$(date +%s%3N)
+          printf '%s' '{"qa installer/base.txt":"host/qemu/guest/guest.qcow2","qa installer/manifest.json":"host/qemu/manifest.json","LICENSE":"legal/LICENSE"}' |
+            "$run" windows-factory assemble . "$run" 'qa installer/synthetic.exe'
+          "$run" windows-factory unpack . 'qa installer/synthetic.exe' 'qa installer/extracted'
+          cmp 'qa installer/base.txt' 'qa installer/extracted/host/qemu/guest/guest.qcow2'
+          cmp 'qa installer/manifest.json' 'qa installer/extracted/host/qemu/manifest.json'
+          cmp LICENSE 'qa installer/extracted/legal/LICENSE'
+          cmp "$run" 'qa installer/extracted/ai-phone-client.exe'
+          printf 'inno_compile_and_extract_ms=%s,actual_bytes=%s\n' "$(( $(date +%s%3N) - start ))" "$(wc -c < 'qa installer/synthetic.exe')"
