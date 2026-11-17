@@ -10,6 +10,7 @@ $install = Join-Path $root 'installed'
 $installer = Join-Path $PWD 'dist/qa-calcium-input/AImanity-0.0.3-windows-x64-setup.exe'
 $probe = Join-Path $PWD 'target/debug/calcium-state-qa.exe'
 $native = Join-Path $dev 'aimanity-native.exe'
+$calciumLog = Join-Path $root 'calcium-stderr.log'
 
 function Stop-QAClient($app) {
   if (!$app.HasExited) {
@@ -30,17 +31,33 @@ function Wait-PortsClosed {
   throw "Guest processes still listen after shutdown: $($active.LocalPort -join ',')"
 }
 
+function Write-CalciumBootstrapFailure {
+  $files = @($calciumLog) + @('user/qemu/owner.log','user/qemu/boot.log','user/qemu/qemu.log','user/data/android/native/sdk.log' |
+    ForEach-Object { Join-Path $hostHome $_ })
+  foreach ($file in $files) {
+    if (!(Test-Path $file)) { continue }
+    Write-Host "Calcium diagnostics: $(Split-Path $file -Leaf)"
+    Get-Content $file -Tail 350 | Where-Object {
+      $_ -match 'AI_PHONE_QEMU_CONTROL_ERROR|failed|panic|error|timeout|WHPX' -and
+      $_ -notmatch 'bearer|api[-_]?key|secret|token|credential|password'
+    } | Select-Object -Last 18 | Write-Host
+  }
+}
+
 if ((Test-Path $hostHome) -or (Test-Path $install)) { throw 'Fresh isolated Windows profile required.' }
 $prior = Start-Process $native -WorkingDirectory $dev -ArgumentList '--prepare-windows-host' -PassThru -Wait
 if ($prior.ExitCode -ne 0) { throw "WHPX preparation exit code $($prior.ExitCode)." }
 $installArgs = @('/VERYSILENT','/SUPPRESSMSGBOXES','/SP-','/NORESTART','/RESTARTEXITCODE=3010','/NORESTARTAPPLICATIONS',"/DIR=$install")
 $setup = Start-Process $installer -ArgumentList $installArgs -PassThru -Wait
 if ($setup.ExitCode -ne 0) { throw "Signed Calcium installer exit code $($setup.ExitCode)." }
-$app = Start-Process (Join-Path $install 'ai-phone-client.exe') -WorkingDirectory $install -PassThru
+$app = Start-Process (Join-Path $install 'ai-phone-client.exe') -WorkingDirectory $install -PassThru -RedirectStandardError $calciumLog
 try {
   $env:AIMANITY_QA_PID = [string]$app.Id
   powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PSScriptRoot/calcium-first-run.ps1"
-  if ($LASTEXITCODE -ne 0) { throw 'Signed Calcium did not complete genuine workbench onboarding.' }
+  if ($LASTEXITCODE -ne 0) {
+    Write-CalciumBootstrapFailure
+    throw 'Signed Calcium did not complete genuine workbench onboarding.'
+  }
   & $probe seed
   if ($LASTEXITCODE -ne 0) { throw 'Calcium workbench did not persist the state through authenticated requests.' }
 } finally {
