@@ -22,9 +22,6 @@ const START_LIMIT: Duration = Duration::from_secs(1950);
 const STOP_LIMIT: Duration = Duration::from_secs(30);
 const PROFILE_FRAME: usize = 8192 + 8;
 const HIDDEN: u32 = 0x08000000;
-const GUEST_WEB_PORT: u16 = 17860;
-const ALUMINUM_BASE: &str = "348baa7207524397b74de603f08357b6d3b73947514eb9f662c6eb4e52a365a5";
-const ALUMINUM_BASE_SIZE: u64 = 1_101_660_160;
 
 struct QemuVmConfig<'a> {
     runtime: &'a Path,
@@ -32,7 +29,6 @@ struct QemuVmConfig<'a> {
     home: &'a Path,
     cpu: u16,
     memory_mib: u32,
-    web_port: u16,
     control_port: u16,
     base_sha256: &'a str,
     release_sha256: Option<&'a str>,
@@ -59,18 +55,7 @@ pub fn key_path(home: &Path) -> PathBuf {
 
 impl<'a> QemuVmConfig<'a> {
     fn parse(arguments: &'a [OsString]) -> Result<Self> {
-        let [
-            runtime,
-            guest,
-            home,
-            cpu,
-            memory,
-            web,
-            control,
-            base,
-            release,
-        ] = arguments
-        else {
+        let [runtime, guest, home, cpu, memory, control, base, release] = arguments else {
             return Err(Error::Invalid("vm_owner_arguments"));
         };
         let invalid = || Error::Invalid("vm_owner_arguments");
@@ -86,7 +71,6 @@ impl<'a> QemuVmConfig<'a> {
             home: Path::new(home),
             cpu: number(cpu)?.try_into().map_err(|_| invalid())?,
             memory_mib: number(memory)?,
-            web_port: number(web)?.try_into().map_err(|_| invalid())?,
             control_port: number(control)?.try_into().map_err(|_| invalid())?,
             base_sha256: base.to_str().ok_or_else(invalid)?,
             release_sha256: Some(release.to_str().ok_or_else(invalid)?).filter(|id| !id.is_empty()),
@@ -97,9 +81,7 @@ impl<'a> QemuVmConfig<'a> {
         if ![self.runtime, self.guest, self.home]
             .iter()
             .all(|path| path.is_absolute())
-            || self.web_port == 0
             || self.control_port == 0
-            || self.web_port == self.control_port
             || self.cpu == 0
             || self.memory_mib == 0
             || !digest(self.base_sha256)
@@ -120,7 +102,6 @@ impl<'a> QemuVmConfig<'a> {
             .args([
                 self.cpu.to_string(),
                 self.memory_mib.to_string(),
-                self.web_port.to_string(),
                 self.control_port.to_string(),
             ])
             .arg(self.base_sha256)
@@ -239,7 +220,6 @@ impl<'a> QemuVm<'a> {
         storage_gb: Option<u32>,
         lease: filesystem::Lease,
     ) -> Result<Self> {
-        let web = TcpListener::bind((Ipv4Addr::LOCALHOST, config.web_port)).await?;
         let control = TcpListener::bind((Ipv4Addr::LOCALHOST, config.control_port)).await?;
         let bootstrap = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let bootstrap_port = bootstrap.local_addr()?.port();
@@ -272,9 +252,7 @@ impl<'a> QemuVm<'a> {
             }
         });
         let network = format!(
-            "user,id=network,hostfwd=tcp:127.0.0.1:{}-10.0.2.15:{},hostfwd=tcp:127.0.0.1:{}-10.0.2.15:{},hostfwd=tcp:127.0.0.1:17906-10.0.2.15:17906",
-            config.web_port,
-            GUEST_WEB_PORT,
+            "user,id=network,hostfwd=tcp:127.0.0.1:{}-10.0.2.15:{},hostfwd=tcp:127.0.0.1:17906-10.0.2.15:17906",
             config.control_port,
             vm_control::GUEST_PORT,
         );
@@ -354,7 +332,7 @@ impl<'a> QemuVm<'a> {
                 "virtio-blk-pci,drive=aiphone-release",
             ]);
         }
-        drop((web, control));
+        drop(control);
         let mut child = command.spawn()?;
         tokio::select! {
             result = linux_vm::authenticate(bootstrap, &secret, profile) => result?,
@@ -465,26 +443,13 @@ pub async fn ensure(
         }
         Ok((path, &record.sha256))
     };
-    let base_record = manifest
-        .files
-        .iter()
-        .find(|value| value.path == "guest/guest.qcow2")
-        .ok_or(Error::Invalid("vm_bundle_invalid"))?;
-    let base_size = filesystem::regular(&bundle.join("guest/guest.qcow2"))?
-        .metadata()?
-        .len();
-    let base_sha256 = match base_size {
-        size if size == base_record.size => base_record.sha256.as_str(),
-        ALUMINUM_BASE_SIZE => ALUMINUM_BASE,
-        _ => return Err(Error::Invalid("vm_bundle_changed")),
-    };
+    let (_, base_sha256) = file("guest/guest.qcow2")?;
     let config = QemuVmConfig {
         runtime: &bundle.join("runtime"),
         guest: &bundle.join("guest"),
         home,
         cpu,
         memory_mib,
-        web_port: GUEST_WEB_PORT,
         control_port: vm_control::GUEST_PORT,
         base_sha256,
         release_sha256: manifest.release_sha256.as_deref(),

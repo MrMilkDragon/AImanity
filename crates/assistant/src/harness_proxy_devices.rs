@@ -101,19 +101,16 @@ pub(crate) async fn apply_desktop(app: &App, enabled: bool) -> Result<()> {
     } else {
         Vec::new()
     };
-    let mut command = desktop::docker();
-    command.current_dir(&app.root).args([
-        "exec",
-        "-i",
-        "-u",
-        "0",
-        "ai-phone-desktop",
-        "sh",
-        "-c",
-        DESKTOP_PROXY_COMMAND,
-        "sh",
-        if enabled { "on" } else { "off" },
-    ]);
+    let command = ai_phone_host_runtime::desktop_bridge::administration(
+        &app.root,
+        &[
+            "sh",
+            "-c",
+            DESKTOP_PROXY_COMMAND,
+            "sh",
+            if enabled { "on" } else { "off" },
+        ],
+    )?;
     let actual = desktop::process(command, policy.clone(), 4096, 5)
         .await
         .map_err(|error| anyhow!("harness_desktop_proxy: {error}"))?;

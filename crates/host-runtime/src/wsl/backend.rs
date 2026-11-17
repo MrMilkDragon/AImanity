@@ -1,37 +1,30 @@
-//! Complete sealed WSL backend initialization; native phone readiness belongs to the host.
+//! Sealed Linux backend initialization; native phone readiness belongs to the host.
+mod postgres;
 pub(crate) mod process;
-use crate::{Error, Result, filesystem, profile};
-use process::{Execute, Process};
-use serde::Deserialize;
+#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+use crate::profile;
+use crate::{Error, Result, filesystem};
+#[cfg(target_os = "macos")]
+pub(crate) use postgres::MAC_POSTGRES_SHUTDOWN;
+use process::Execute;
+#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+use process::Process;
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     ffi::{OsStr, OsString},
     fs,
-    io::Read,
     path::Path,
     time::{Duration, Instant},
 };
-use tokio::{process::Command, sync::watch};
+use tokio::process::Command;
+#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+use tokio::sync::watch;
 
-const FOREIGN_ENGINE: [&str; 9] = [
-    "DOCKER_HOST",
-    "DOCKER_CONFIG",
-    "DOCKER_CONTEXT",
-    "DOCKER_TLS",
-    "DOCKER_TLS_VERIFY",
-    "DOCKER_CERT_PATH",
-    "DOCKER_API_VERSION",
-    "LIMA_HOME",
-    "AI_PHONE_MANAGED_BIN",
-];
-const NAMES: [&str; 4] = [
-    "ai-phone-postgres-1",
-    "ai-phone-redis-1",
-    "ai-phone-desktop",
-    "ai-phone-ocr",
-];
-const PATH: &str = "/usr/local/bin:/usr/bin:/bin";
+#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+const PATH: &str = "/opt/aiphone/linux/bin:/usr/local/bin:/usr/bin:/bin";
+const REDIS: &str = "/opt/aiphone/redis";
+const REDIS_CLI: &str = "/opt/aiphone/redis/bin/redis-cli";
 
 fn phase(name: &str) {
     eprintln!("AI_PHONE_INITIALIZE {name}");
@@ -41,31 +34,14 @@ fn text(path: &Path) -> Result<String> {
         .map(str::to_owned)
         .ok_or(Error::Invalid("wsl_initializer_path"))
 }
-fn environment(
-    home: &Path,
-    run: &Path,
-    inherited: impl IntoIterator<Item = (String, String)>,
-) -> Result<BTreeMap<String, String>> {
+#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+fn environment(inherited: impl IntoIterator<Item = (String, String)>) -> BTreeMap<String, String> {
     let mut env: BTreeMap<_, _> = inherited
         .into_iter()
-        .filter(|(key, _)| !FOREIGN_ENGINE.contains(&key.as_str()))
+        .filter(|(key, _)| !matches!(key.as_str(), "LIMA_HOME" | "AI_PHONE_LIMA_COMMAND"))
         .collect();
-    env.insert(
-        "DOCKER_HOST".into(),
-        format!("unix://{}", text(&run.join("docker.sock"))?),
-    );
-    env.insert(
-        "DOCKER_CONFIG".into(),
-        text(
-            &home
-                .parent()
-                .ok_or(Error::Invalid("wsl_initializer_path"))?
-                .join("docker-cli"),
-        )?,
-    );
     env.insert("PATH".into(), PATH.into());
-    env.insert("NEXT_TELEMETRY_DISABLED".into(), "1".into());
-    Ok(env)
+    env
 }
 pub(crate) struct Backend<'a, E> {
     pub(crate) root: &'a Path,
@@ -73,6 +49,27 @@ pub(crate) struct Backend<'a, E> {
     pub(crate) env: BTreeMap<String, String>,
     pub(crate) execute: E,
 }
+
+fn mac_guest(lima: &str, owner: &str, args: &[&str]) -> Vec<String> {
+    [
+        lima,
+        "shell",
+        "--tty=false",
+        "--workdir",
+        "/",
+        "ai-phone",
+        "sudo",
+        "-n",
+        "-u",
+        owner,
+        "--",
+    ]
+    .into_iter()
+    .chain(args.iter().copied())
+    .map(str::to_owned)
+    .collect()
+}
+
 impl<E: Execute> Backend<'_, E> {
     pub(crate) fn command(
         &self,
@@ -93,9 +90,6 @@ impl<E: Execute> Backend<'_, E> {
             return Err(Error::Invalid("wsl_initializer_command"));
         }
         Ok(output.stdout)
-    }
-    async fn docker(&mut self, args: &[&str]) -> Result<Vec<u8>> {
-        self.checked(self.command("docker", args), Vec::new()).await
     }
     pub(crate) async fn native(&mut self, args: &[OsString], input: Vec<u8>) -> Result<Vec<u8>> {
         self.checked(self.command(self.program, args), input).await
@@ -132,126 +126,7 @@ impl<E: Execute> Backend<'_, E> {
             .await?;
         serde_json::from_slice(&bytes).map_err(|_| Error::Invalid("service_receipt"))
     }
-    pub(crate) async fn containers(&mut self) -> Result<BTreeMap<String, Container>> {
-        let filter = format!("name=^/({})$", NAMES.join("|"));
-        let listed = self
-            .docker(&[
-                "container",
-                "ls",
-                "--all",
-                "--filter",
-                &filter,
-                "--no-trunc",
-                "--format",
-                "{{.ID}}",
-            ])
-            .await?;
-        let ids: Vec<_> = std::str::from_utf8(&listed)
-            .map_err(|_| Error::Invalid("container_ownership"))?
-            .lines()
-            .collect();
-        let mut found = BTreeMap::new();
-        if ids.is_empty() {
-            return Ok(found);
-        }
-        if !ids.iter().all(|id| identity(id)) {
-            return Err(Error::Invalid("container_ownership"));
-        }
-        let mut command = vec![
-            "container",
-            "inspect",
-            "--format",
-            r#"{"id":{{json .Id}},"name":{{json .Name}},"image":{{json .Config.Image}},"running":{{json .State.Running}},"labels":{{json .Config.Labels}}}"#,
-        ];
-        command.extend(ids.iter().copied());
-        let inspected = self.docker(&command).await?;
-        let rows = serde_json::Deserializer::from_slice(&inspected)
-            .into_iter::<Container>()
-            .collect::<serde_json::Result<Vec<_>>>()
-            .map_err(|_| Error::Invalid("container_ownership"))?;
-        if rows.len() != ids.len() {
-            return Err(Error::Invalid("container_ownership"));
-        }
-        for (value, id) in rows.into_iter().zip(ids) {
-            value.verify(self.root, id)?;
-            let name = value
-                .name
-                .strip_prefix('/')
-                .filter(|name| NAMES.contains(name))
-                .ok_or(Error::Invalid("container_ownership"))?
-                .to_owned();
-            if found.insert(name, value).is_some() {
-                return Err(Error::Invalid("container_ownership"));
-            }
-        }
-        Ok(found)
-    }
-    async fn start_engine(&mut self, home: &Path, run: &Path) -> Result<()> {
-        phase("engine_supervisor");
-        filesystem::directory(run, true)?;
-        self.unit(
-            "wsl-engine",
-            "start",
-            [
-                "/usr/local/bin/dockerd",
-                "--host",
-                &self.env["DOCKER_HOST"],
-                "--data-root",
-                &text(
-                    &home
-                        .parent()
-                        .ok_or(Error::Invalid("wsl_initializer_path"))?
-                        .join("docker"),
-                )?,
-                "--exec-root",
-                &text(&run.join("engine"))?,
-                "--pidfile",
-                &text(&run.join("dockerd.pid"))?,
-            ]
-            .map(str::to_owned)
-            .into(),
-            &[],
-        )
-        .await?;
-        phase("engine_ready");
-        self.wait_engine(Instant::now() + Duration::from_secs(30))
-            .await
-    }
-    async fn wait_engine(&mut self, until: Instant) -> Result<()> {
-        loop {
-            let output = self
-                .execute
-                .run(self.command("docker", ["info"]), Vec::new())
-                .await?;
-            if output.status.success() {
-                return Ok(());
-            }
-            if Instant::now() >= until {
-                return Err(Error::Invalid("wsl_engine_not_ready"));
-            }
-            tokio::time::sleep(Duration::from_millis(250)).await;
-        }
-    }
-    pub(crate) async fn start(
-        &mut self,
-        images: &Path,
-        digest: Option<&str>,
-        user: &Path,
-        web_bind: &str,
-    ) -> Result<()> {
-        phase("container_ownership");
-        let existing = self.containers().await?;
-        phase("images");
-        let mut args = vec![
-            "--activate-images".into(),
-            self.root.as_os_str().into(),
-            images.as_os_str().into(),
-        ];
-        args.extend(digest.map(OsString::from));
-        let bytes = self.native(&args, Vec::new()).await?;
-        let selected: BTreeMap<String, String> =
-            serde_json::from_slice(&bytes).map_err(|_| Error::Invalid("image_manifest"))?;
-        self.env.extend(selected);
+    pub(crate) async fn start(&mut self, user: &Path) -> Result<()> {
         phase("environment");
         self.env
             .extend(crate::runtime_environment::profile_environment(
@@ -260,24 +135,18 @@ impl<E: Execute> Backend<'_, E> {
         for name in ["assistant", "phone-runner", "channels"] {
             token(self.root, name)?;
         }
+        let lima = self.env.get("AI_PHONE_LIMA_COMMAND").cloned();
+        let lima = lima.as_deref();
+        let redis_port = self.env["AI_PHONE_REDIS_PORT"].clone();
+        if lima.is_none() {
+            self.start_redis(&redis_port, None).await?;
+        }
         phase("database_start");
-        self.docker(&[
-            "compose",
-            "-f",
-            "compose.yaml",
-            "-f",
-            "compose.dev.yaml",
-            "up",
-            "-d",
-            "--wait",
-            "--no-build",
-            "--pull",
-            "never",
-            "postgres",
-            "redis",
-            "ocr",
-        ])
-        .await?;
+        self.start_postgres(lima).await?;
+        if lima.is_some() {
+            self.start_redis(&redis_port, lima).await?;
+        }
+        self.wait_redis(&redis_port, lima).await?;
         let assistant = text(&self.root.join("runtime/services/bin/assistant"))?;
         phase("database_prepare");
         if self
@@ -291,36 +160,12 @@ impl<E: Execute> Backend<'_, E> {
                     .await?;
             }
         }
-        if let Some(desktop) = existing.get("ai-phone-desktop") {
-            let target = if self
-                .env
-                .get("AI_PHONE_DESKTOP_IMAGE")
-                .is_some_and(|image| image != &desktop.image)
-            {
-                self.docker(&[
-                    "compose",
-                    "-f",
-                    "compose.desktop.yaml",
-                    "up",
-                    "-d",
-                    "--wait",
-                    "--no-build",
-                    "--pull",
-                    "never",
-                    "desktop",
-                ])
-                .await?;
-                "ai-phone-desktop"
-            } else {
-                if !desktop.running {
-                    self.docker(&["start", &desktop.id]).await?;
-                }
-                &desktop.id
-            };
-            if let Some(bridge) = crate::desktop_bridge::DesktopBridge::staged(self.root).await? {
-                let command = self.command("docker", bridge.install_args(target));
-                self.checked(command, bridge.bytes).await?;
-            }
+        if let Some(command) = crate::desktop_bridge::desktop_arguments(
+            self.root,
+            lima,
+            &self.env["AI_PHONE_CONTAINER_PROXY"],
+        )? {
+            self.unit("desktop", "start", command, &[]).await?;
         }
         phase("services_start");
         let ocr = text(&self.root.join("runtime/services/bin/vision"))?;
@@ -333,17 +178,6 @@ impl<E: Execute> Backend<'_, E> {
         .await?;
         self.unit("assistant", "start", vec![assistant.clone()], &[])
             .await?;
-        let bun = text(&self.root.join("runtime/bin/bun"))?;
-        self.unit(
-            "web",
-            "start",
-            vec![
-                bun.clone(),
-                text(&self.root.join("runtime/web/apps/web/server.js"))?,
-            ],
-            &[("HOSTNAME", web_bind.into()), ("PORT", "17860".into())],
-        )
-        .await?;
         self.unit(
             "channels",
             "start",
@@ -363,42 +197,64 @@ impl<E: Execute> Backend<'_, E> {
         .await?;
         Ok(())
     }
-}
-fn identity(id: &str) -> bool {
-    id.len() == 64
-        && id
-            .bytes()
-            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
-}
-#[derive(Deserialize)]
-pub(crate) struct Container {
-    id: String,
-    name: String,
-    image: String,
-    running: bool,
-    labels: BTreeMap<String, String>,
-}
-impl Container {
-    fn verify(&self, root: &Path, id: &str) -> Result<()> {
-        if self.id != id
-            || self
-                .labels
-                .get("com.docker.compose.project")
-                .map(String::as_str)
-                != Some("ai-phone")
-        {
-            return Err(Error::Invalid("foreign_installation"));
+    async fn start_redis(&mut self, port: &str, lima: Option<&str>) -> Result<()> {
+        phase("redis_start");
+        let (mut command, directory) = if let Some(lima) = lima {
+            (
+                mac_guest(lima, "redis", &["/usr/bin/redis-server"]),
+                "/var/lib/redis",
+            )
+        } else {
+            let args = [
+                "/usr/bin/setpriv",
+                "--reuid=65534",
+                "--regid=65534",
+                "--clear-groups",
+                "--",
+                "/opt/aiphone/redis/bin/redis-server",
+            ];
+            (args.map(str::to_owned).into(), REDIS)
+        };
+        command.extend(
+            [
+                "--dir",
+                directory,
+                "--bind",
+                "127.0.0.1",
+                "--port",
+                port,
+                "--save",
+                "",
+                "--appendonly",
+                "no",
+                "--maxmemory",
+                "128mb",
+                "--maxmemory-policy",
+                "noeviction",
+            ]
+            .map(str::to_owned),
+        );
+        self.unit("redis", "start", command, &[]).await?;
+        Ok(())
+    }
+    async fn wait_redis(&mut self, port: &str, lima: Option<&str>) -> Result<()> {
+        let args = if let Some(lima) = lima {
+            mac_guest(lima, "redis", &["/usr/bin/redis-cli", "-p", port, "PING"])
+        } else {
+            [REDIS_CLI, "-p", port, "PING"].map(str::to_owned).into()
+        };
+        let ready = Instant::now() + Duration::from_secs(10);
+        loop {
+            let command = self.command(&args[0], &args[1..]);
+            let result = self.execute.run(command, Vec::new()).await?;
+            if result.status.success() && result.stdout == b"PONG\n" {
+                return Ok(());
+            }
+            if Instant::now() >= ready {
+                return Err(Error::Invalid("wsl_redis_not_ready"));
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        let directory = self
-            .labels
-            .get("com.docker.compose.project.working_dir")
-            .and_then(|path| Path::new(path).canonicalize().ok())
-            .ok_or(Error::Invalid("foreign_installation"))?;
-        if directory == root {
-            return Ok(());
-        }
-        crate::staging::owns_release(root, &directory)
-            .map_err(|_| Error::Invalid("foreign_installation"))
     }
 }
 pub(crate) fn token(root: &Path, section: &str) -> Result<()> {
@@ -415,24 +271,14 @@ pub(crate) fn token(root: &Path, section: &str) -> Result<()> {
         .collect::<String>();
     filesystem::publish_private(&folder, "token", value.as_bytes(), true)
 }
-pub(crate) async fn run(arguments: &[OsString]) -> Result<()> {
-    if !arguments.is_empty() {
-        return Err(Error::Invalid("wsl_initializer_arguments"));
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(crate) async fn initialize_request(request: &[u8]) -> Result<()> {
+    let request = profile::parse_request(request)
+        .map_err(|_| Error::Invalid("wsl_initialization_request"))?;
+    postgres::check_guest()?;
+    if request.desktop.storage_gb.is_some() {
+        crate::linux_vm::grow_root()?;
     }
-    if std::env::consts::OS != "linux" || std::env::consts::ARCH != "x86_64" {
-        return Err(Error::Invalid("wsl_initializer_host"));
-    }
-    let mut request = Vec::new();
-    std::io::stdin().take(8193).read_to_end(&mut request)?;
-    initialize_request(&request, false).await?;
-    println!(
-        "{}",
-        json!({"backend_started":true,"phone_ready":false,"complete_device_bundle":false,"windows_boot_verified":false})
-    );
-    Ok(())
-}
-
-pub(crate) async fn initialize_request(request: &[u8], qemu: bool) -> Result<()> {
     let (send, stop) = watch::channel(false);
     let signal = tokio::spawn(async move {
         let result = crate::component::interrupt().await;
@@ -444,9 +290,7 @@ pub(crate) async fn initialize_request(request: &[u8], qemu: bool) -> Result<()>
     let result = initialize(
         Path::new("/opt/aiphone/bundle"),
         Path::new("/var/lib/aiphone/installation"),
-        Path::new("/run/aiphone"),
         request,
-        qemu,
         Process(stop),
         &|path| Ok(fs2::available_space(path)?),
     )
@@ -455,22 +299,14 @@ pub(crate) async fn initialize_request(request: &[u8], qemu: bool) -> Result<()>
     let _ = signal.await;
     result
 }
+#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
 async fn initialize<E: Execute>(
     bundle: &Path,
     home: &Path,
-    run: &Path,
-    request: &[u8],
-    qemu: bool,
+    request: profile::Request,
     execute: E,
     available: &dyn Fn(&Path) -> Result<u64>,
 ) -> Result<()> {
-    let request = profile::parse_request(request)
-        .map_err(|_| Error::Invalid("wsl_initialization_request"))?;
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    if qemu && request.desktop.storage_gb.is_some() {
-        crate::linux_vm::grow_root()?;
-    }
-    let web_bind = if qemu { "0.0.0.0" } else { "127.0.0.1" };
     phase("preflight");
     let parent = home
         .parent()
@@ -482,14 +318,14 @@ async fn initialize<E: Execute>(
     }
     let id = fs::read_to_string(bundle.join("source.sha256"))?;
     let id = id.trim();
-    if !identity(id) {
+    if !crate::manifest::identity(id) {
         return Err(Error::Invalid("source_resource_identity"));
     }
     let program = std::env::current_exe()?;
     let mut backend = Backend {
         root: parent,
         program: program.as_os_str(),
-        env: environment(home, run, std::env::vars())?,
+        env: environment(std::env::vars()),
         execute,
     };
     phase("source");
@@ -515,6 +351,7 @@ async fn initialize<E: Execute>(
     if fs::symlink_metadata(root.join("data/deployment/container-host.json")).is_ok() {
         return Err(Error::Invalid("foreign_installation"));
     }
+    crate::desktop_bridge::require_rootfs(&root, None)?;
     phase("profile");
     if request.android_qemu {
         filesystem::directory(Path::new(crate::device_bridge::guest::RUNTIME), true)?;
@@ -532,17 +369,10 @@ async fn initialize<E: Execute>(
         "android35-x86_64",
         request,
         PATH,
-        "",
     )?;
-    backend.start_engine(home, run).await?;
-    backend
-        .start(
-            &bundle.join("images.payload"),
-            None,
-            Path::new("/root"),
-            web_bind,
-        )
-        .await
+    let load_tun = backend.command("/sbin/modprobe", ["tun"]);
+    backend.checked(load_tun, Vec::new()).await?;
+    backend.start(Path::new("/root")).await
 }
 
 #[cfg(test)]

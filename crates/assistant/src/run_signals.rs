@@ -46,7 +46,11 @@ pub async fn events(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    if let Err(response) = crate::speech::websocket_authorization(&app, &headers).await {
+    if !headers.contains_key("origin") {
+        if let Err(error) = auth(&app, &headers) {
+            return error.into();
+        }
+    } else if let Err(response) = crate::speech::websocket_authorization(&app, &headers).await {
         return response;
     }
     let changes = app.run_signals.chat.subscribe();
@@ -118,6 +122,14 @@ mod tests {
             let (mut socket, _) = tokio_tungstenite::client_async(request, stream)
                 .await
                 .unwrap();
+            let mut native = format!("ws://{address}/events")
+                .into_client_request()
+                .unwrap();
+            native.headers_mut().insert(
+                "authorization",
+                format!("Bearer {}", app.token).parse().unwrap(),
+            );
+            let (mut native, _) = tokio_tungstenite::connect_async(native).await.unwrap();
             let mut headers = HeaderMap::new();
             headers.insert(
                 "authorization",
@@ -151,6 +163,13 @@ mod tests {
                 .unwrap()
                 .into_data();
             let event = wire::ChatChanged::decode(frame).unwrap();
+            let received = tokio::time::timeout(std::time::Duration::from_secs(1), native.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap()
+                .into_data();
+            assert_eq!(wire::ChatChanged::decode(received).unwrap(), event);
             eprintln!(
                 "local send to committed conversation WebSocket: {} ms",
                 started.elapsed().as_millis()

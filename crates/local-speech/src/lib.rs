@@ -50,6 +50,7 @@ impl LocalSpeech {
         let language = whisper_rs::get_lang_id(&primary.to_ascii_lowercase())
             .and_then(whisper_rs::get_lang_str)
             .ok_or(Error::UnsupportedLanguage)?;
+        whisper_rs::install_logging_hooks();
         let mut parameters = WhisperContextParameters::default();
         parameters.use_gpu(false);
         let context = WhisperContext::new_with_params(model_path, parameters)?;

@@ -165,7 +165,7 @@ pub(crate) async fn guest(arguments: &[OsString]) -> Result<()> {
         native_ipc::read_bounded(&mut stream, FRAME_LIMIT).await?;
     verify(&key, b"host", &nonce, &request.profile, &request.proof)?;
     let initialization = async {
-        crate::wsl::backend::initialize_request(&request.profile, true).await?;
+        crate::wsl::backend::initialize_request(&request.profile).await?;
         crate::vm_control::guest::listen().await
     }
     .await;

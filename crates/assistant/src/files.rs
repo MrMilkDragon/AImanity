@@ -3,13 +3,17 @@ use crate::*;
 use axum::extract::State;
 
 use ai_phone_adb::{Client, Limits};
-use std::path::{Component, Path};
+use std::{
+    fs::File,
+    io::{self, Seek},
+    path::{Component, Path},
+    process::Stdio,
+};
 use tokio::{
     fs,
     io::{AsyncReadExt, AsyncWriteExt},
 };
 type Result<T> = std::result::Result<T, String>;
-const DESKTOP: &str = "ai-phone-desktop";
 const IO_TIME: Duration = Duration::from_secs(600);
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -49,6 +53,75 @@ fn modified(m: &std::fs::Metadata) -> u64 {
         .and_then(|v| v.duration_since(std::time::UNIX_EPOCH).ok())
         .map_or(0, |v| v.as_millis() as u64)
 }
+
+fn desktop_admin(arguments: &[&str]) -> Result<tokio::process::Command> {
+    let root = std::env::var_os("AI_PHONE_PROJECT_ROOT").ok_or("电脑运行路径缺失")?;
+    ai_phone_host_runtime::desktop_bridge::administration(Path::new(&root), arguments).map_err(err)
+}
+
+async fn desktop_tar(arguments: &[&str], input: Stdio, output: Stdio) -> Result<()> {
+    let child = desktop_admin(arguments)?
+        .stdin(input)
+        .stdout(output)
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(err)?;
+    let result = tokio::time::timeout(IO_TIME, child.wait_with_output())
+        .await
+        .map_err(|_| "设备文件传输超时")?
+        .map_err(err)?;
+    if !result.status.success() {
+        return Err(String::from_utf8_lossy(&result.stderr).into_owned());
+    }
+    Ok(())
+}
+
+fn file_parts(path: &Path) -> Result<(&str, &str)> {
+    Ok((
+        path.parent().and_then(Path::to_str).ok_or("无效目录")?,
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .ok_or("无效文件名")?,
+    ))
+}
+
+fn archive_files(builder: &mut tar::Builder<File>, path: &Path, name: &Path) -> io::Result<()> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.is_file() {
+        builder.append_path_with_name(path, name)
+    } else if metadata.is_dir() {
+        builder.append_dir(name, path)?;
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            archive_files(builder, &entry.path(), &name.join(entry.file_name()))?;
+        }
+        Ok(())
+    } else {
+        Err(io::Error::other("仅支持复制普通文件和目录"))
+    }
+}
+
+fn unpack_desktop(mut file: File, name: &str, target: &Path) -> Result<()> {
+    file.rewind().map_err(err)?;
+    let stage = tempfile::tempdir_in(target.parent().ok_or("无效目录")?).map_err(err)?;
+    for entry in tar::Archive::new(file).entries().map_err(err)? {
+        let mut entry = entry.map_err(err)?;
+        let path = entry.path().map_err(err)?;
+        let mut components = path.components();
+        let kind = entry.header().entry_type();
+        if (!kind.is_file() && !kind.is_dir())
+            || components.next() != Some(Component::Normal(name.as_ref()))
+            || !components.all(|part| matches!(part, Component::Normal(_)))
+        {
+            return Err("仅支持复制普通文件和目录".into());
+        }
+        entry.set_mask(0o7000);
+        entry.unpack_in(stage.path()).map_err(err)?;
+    }
+    std::fs::rename(stage.path().join(name), target).map_err(err)
+}
+
 #[derive(Clone)]
 enum Store {
     Workspace(PathBuf),
@@ -112,8 +185,7 @@ impl Store {
                 Ok(out.stdout)
             }
             Self::Desktop => {
-                let mut cmd = crate::desktop::docker();
-                cmd.args(["exec", "-u", "0", DESKTOP, "sh", "-c", command]);
+                let cmd = desktop_admin(&["sh", "-c", command])?;
                 crate::desktop::process(cmd, vec![], 8 * 1024 * 1024, 600).await
             }
             Self::Workspace(_) => Err("工作目录不运行系统命令".into()),
@@ -305,10 +377,18 @@ impl Store {
                             .await
                             .map_err(|_| "请选择实际生成的普通文件".to_string())?;
                     }
-                    let mut c = crate::desktop::docker();
-                    c.args(["cp", &format!("{DESKTOP}:{source}")]).arg(target);
-                    crate::desktop::process(c, vec![], 65536, 600).await?;
-                    Ok(())
+                    let archive = tempfile::tempfile().map_err(err)?;
+                    let (folder, name) = file_parts(Path::new(source))?;
+                    desktop_tar(
+                        &["tar", "-cf", "-", "-C", folder, "--", name],
+                        Stdio::null(),
+                        Stdio::from(archive.try_clone().map_err(err)?),
+                    )
+                    .await?;
+                    let (name, target) = (name.to_owned(), target.to_owned());
+                    tokio::task::spawn_blocking(move || unpack_desktop(archive, &name, &target))
+                        .await
+                        .map_err(err)?
                 }
                 Self::Phone(client) => {
                     let parent = Path::new(source)
@@ -352,10 +432,33 @@ impl Store {
                         p = quote(target)
                     ))
                     .await?;
-                    let mut c = crate::desktop::docker();
-                    c.arg("cp").arg(source).arg(format!("{DESKTOP}:{target}"));
-                    crate::desktop::process(c, vec![], 65536, 600).await?;
-                    Ok(())
+                    let (folder, name) = file_parts(Path::new(target))?;
+                    let (source, name) = (source.to_owned(), name.to_owned());
+                    let archive = tokio::task::spawn_blocking(move || -> io::Result<File> {
+                        let mut builder = tar::Builder::new(tempfile::tempfile()?);
+                        builder.follow_symlinks(false);
+                        archive_files(&mut builder, &source, Path::new(&name))?;
+                        let mut archive = builder.into_inner()?;
+                        archive.rewind()?;
+                        Ok(archive)
+                    })
+                    .await
+                    .map_err(err)?
+                    .map_err(err)?;
+                    desktop_tar(
+                        &[
+                            "tar",
+                            "--keep-old-files",
+                            "--no-same-owner",
+                            "-xf",
+                            "-",
+                            "-C",
+                            folder,
+                        ],
+                        Stdio::from(archive),
+                        Stdio::null(),
+                    )
+                    .await
                 }
                 Self::Phone(client) => {
                     let metadata = fs::symlink_metadata(source).await.map_err(err)?;

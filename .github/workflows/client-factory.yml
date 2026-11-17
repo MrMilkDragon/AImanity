@@ -17,6 +17,7 @@ on:
         required: true
 permissions:
   contents: read
+  actions: read
 env:
   AIMANITY_ANDROID_DRAFT_ID: ${{ inputs.android_draft_id }}
   AIMANITY_ANDROID_PAYLOAD_SHA256: ${{ inputs.android_payload_sha256 }}
@@ -43,8 +44,10 @@ jobs:
 
   windows-guest:
     if: inputs.platform == 'windows'
-    needs: admit
+    needs: [admit, windows-qemu]
     uses: ./.github/workflows/windows-guest.yml
+    with:
+      baseline_artifact: ${{ needs.windows-qemu.outputs.baseline }}
 
   windows-exe:
     needs: [windows-qemu, windows-guest]
@@ -67,7 +70,6 @@ jobs:
           cmake --version
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
-          ./scripts/bootstrap.sh
       - name: Prepare Authenticode tools
         shell: pwsh
         run: |
@@ -87,14 +89,14 @@ jobs:
       - name: Fetch the sealed offline Android component
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./.tools/bin/bun.exe scripts/factory-android.ts
+        run: cargo run --quiet --locked -p ai-phone-release-tools -- factory-android
       - name: Assemble and inspect the offline Windows EXE
         env:
           GH_TOKEN: ${{ github.token }}
           QEMU_SHA256: ${{ needs.windows-qemu.outputs.identity }}
           GUEST_SHA256: ${{ needs.windows-guest.outputs.identity }}
         run: |
-          ./.tools/bin/bun.exe scripts/windows-client-factory.ts build-qemu --qemu dist/windows-qemu --qemu-identity $env:QEMU_SHA256 --guest dist/windows-guest/windows-guest.payload --guest-identity $env:GUEST_SHA256
+          cargo run --locked -p ai-phone-release-tools -- windows-factory build dist/windows-qemu $env:QEMU_SHA256 dist/windows-guest/windows-guest.payload $env:GUEST_SHA256
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: complete-windows-installer
@@ -106,82 +108,66 @@ jobs:
           compression-level: 0
           retention-days: 2
 
-  native-arm-images:
+  native-arm-rootfs:
     if: inputs.platform == 'macos'
     needs: admit
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
-    permissions:
-      contents: write
     outputs:
-      candidate_tag: ${{ steps.retain.outputs.candidate_tag }}
-      candidate_release_id: ${{ steps.retain.outputs.candidate_release_id }}
-      metadata_sha256: ${{ steps.assemble.outputs.metadata_sha256 }}
+      artifact: ${{ steps.retain.outputs.artifact-id }}
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+      CC_aarch64_unknown_linux_musl: musl-gcc
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Disposable native image build space
+      - name: Prepare isolated ARM64 builder
         run: |
-          test "$GITHUB_ACTIONS" = true
           test "$RUNNER_ENVIRONMENT" = github-hosted
-          test "$RUNNER_OS" = Linux
           test "$(uname -m)" = aarch64
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/lib/android/sdk
-          df -h .
-      - name: Owned native image store
-        uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
-        with:
-          version: v29.9.2
-          context: ai-phone-arm-image-factory
-          set-host: true
-          daemon-config: |
-            {"features":{"containerd-snapshotter":true}}
-      - name: Fixed image factory tooling
-        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y debootstrap zstd musl-tools
+          rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
-          ./scripts/bootstrap.sh
-      - name: Source and image handoff contracts
+          rustup target add aarch64-unknown-linux-musl
+      - name: Build shared Linux runtime and ARM64 guest helper
         run: |
-          ./scripts/bun scripts/source.ts check --repository --manifest
-      - name: Build and seal native ARM64 images
-        id: assemble
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ./scripts/bun scripts/factory-image-candidate.ts build "$RUNNER_TEMP/arm-images" --result "$RUNNER_TEMP/arm-images-result.json"
-          identity=$(jq -er .metadata_sha256 "$RUNNER_TEMP/arm-images-result.json")
-          printf 'metadata_sha256=%s\n' "$identity" >> "$GITHUB_OUTPUT"
-      - name: Retain the source-bound unpublished handoff
+          cargo build --locked -p ai-phone-release-tools
+          target/debug/release-tools source check --repository --manifest
+          cargo build --release --locked -p ai-phone-guest-runtime --target aarch64-unknown-linux-musl --bin desktop-bridge
+          mkdir "$RUNNER_TEMP/mac-linux"
+          install -m 0755 target/aarch64-unknown-linux-musl/release/desktop-bridge "$RUNNER_TEMP/mac-linux/desktop-bridge"
+          keyring=$(scripts/stage-debian-keyring.sh "$RUNNER_TEMP/trixie-keyring")
+          sudo env AI_PHONE_DEBIAN_KEYRING="$keyring" target/debug/release-tools factory-images rootfs arm64 "$RUNNER_TEMP/mac-linux/linux-rootfs.tar.zst"
+          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/mac-linux/linux-rootfs.tar.zst"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         id: retain
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          report=$(jq -er .report "$RUNNER_TEMP/arm-images-result.json")
-          bash scripts/retain-factory-images.sh "$report"
+        with:
+          name: macos-linux-runtime
+          path: ${{ runner.temp }}/mac-linux/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
 
   full-macos-arm64:
     if: inputs.platform == 'macos'
-    needs: native-arm-images
+    needs: native-arm-rootfs
     runs-on: macos-26
     timeout-minutes: 120
     permissions:
-      contents: write
+      contents: read
+      actions: read
     env:
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
-      NEXT_TELEMETRY_DISABLED: '1'
       HOMEBREW_NO_AUTO_UPDATE: '1'
-      AI_PHONE_IMAGE_HANDOFF_TAG: ${{ needs.native-arm-images.outputs.candidate_tag }}
-      AI_PHONE_IMAGE_HANDOFF_RELEASE_ID: ${{ needs.native-arm-images.outputs.candidate_release_id }}
-      AI_PHONE_IMAGE_HANDOFF_IDENTITY: ${{ needs.native-arm-images.outputs.metadata_sha256 }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
       - name: Disposable Mac factory toolchain
         run: |
           set -euo pipefail
@@ -191,31 +177,27 @@ jobs:
           rm -rf "$ANDROID_HOME/ndk"
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
-          rustup target add --toolchain 1.96.0 aarch64-unknown-linux-musl
-          ./scripts/bootstrap.sh
+          rustup target add --toolchain 1.96.0 aarch64-linux-android x86_64-linux-android
           brew update
-          brew install tesseract
-          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/aiphone-ocr-models"
+          brew install --force-bottle tesseract
+          cargo run --quiet --locked -p ai-phone-release-tools -- prepare-ocr-models --destination "$RUNNER_TEMP/aiphone-ocr-models"
           echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
           echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aiphone-ocr-models" >> "$GITHUB_ENV"
-          export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
-          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
           test -f "$ANDROID_HOME/platforms/android-35/android.jar"
-          test -x "$ANDROID_HOME/build-tools/35.0.0/apksigner"
           df -h .
-      - name: Acquire the exact unpublished native image component
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ./scripts/bun scripts/factory-image-candidate.ts fetch "$AI_PHONE_IMAGE_HANDOFF_TAG" --release-id "$AI_PHONE_IMAGE_HANDOFF_RELEASE_ID" --identity "$AI_PHONE_IMAGE_HANDOFF_IDENTITY" --work "$RUNNER_TEMP/mac-native-images"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ needs.native-arm-rootfs.outputs.artifact }}
+          path: ${{ runner.temp }}/mac-linux
       - name: Fetch the sealed offline Android component
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./scripts/bun scripts/factory-android.ts
+        run: cargo run --quiet --locked -p ai-phone-release-tools -- factory-android
       - name: Build the complete Mac client
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./scripts/bun scripts/macos-client-factory.ts --compiler-sdk "$ANDROID_HOME" --image-candidate "$RUNNER_TEMP/mac-native-images" --image-metadata-sha256 "$AI_PHONE_IMAGE_HANDOFF_IDENTITY"
+          AI_PHONE_RELEASE_DESKTOP_BRIDGE: ${{ runner.temp }}/mac-linux/desktop-bridge
+        run: cargo run --quiet --locked -p ai-phone-release-tools -- macos-factory --compiler-sdk "$ANDROID_HOME" --linux-rootfs "$RUNNER_TEMP/mac-linux/linux-rootfs.tar.zst"
       - name: Retain text qualification receipts
         if: always() && hashFiles('dist/macos-full-factory-report.json') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -236,8 +218,3 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 2
-      - name: Retire only this source-bound temporary image handoff
-        if: success() && env.AI_PHONE_IMAGE_HANDOFF_TAG != '' && env.AI_PHONE_IMAGE_HANDOFF_RELEASE_ID != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/bun scripts/factory-image-candidate.ts discard "$AI_PHONE_IMAGE_HANDOFF_TAG" --release-id "$AI_PHONE_IMAGE_HANDOFF_RELEASE_ID" --identity "$AI_PHONE_IMAGE_HANDOFF_IDENTITY"

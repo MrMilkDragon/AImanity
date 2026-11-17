@@ -28,7 +28,6 @@ mod action_store;
 mod cursor;
 mod gestures;
 mod grounding;
-mod lan;
 mod location;
 mod media;
 mod native_tree;
@@ -77,6 +76,7 @@ impl Default for Ledger {
 struct Runner {
     phone_id: String,
     media_url: String,
+    adb_media: bool,
     adb: ai_phone_adb::Client,
     token: String,
     ledger_path: PathBuf,
@@ -399,9 +399,11 @@ async fn notifications(
 }
 
 async fn capture_frame(runner: &Runner) -> Result<(Vec<u8>, u32, u32), String> {
-    let mut png = Vec::new();
-    let (width, height);
-    if let Ok(response) = runner
+    let png = if runner.adb_media {
+        media::adb_png(&runner.adb)
+            .await
+            .map_err(|e| e.to_string())?
+    } else if let Ok(response) = runner
         .local
         .get(format!("{}/snapshot", runner.media_url))
         .timeout(Duration::from_secs(2))
@@ -410,20 +412,24 @@ async fn capture_frame(runner: &Runner) -> Result<(Vec<u8>, u32, u32), String> {
         .await
         && response.status().is_success()
     {
-        png = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
-    }
-    if png.is_empty() {
+        response.bytes().await.map_err(|e| e.to_string())?.to_vec()
+    } else {
+        Vec::new()
+    };
+    let png = if png.is_empty() && !runner.adb_media {
         let (ok, data, errors) = adb(runner, args(&["exec-out", "screencap", "-p"])).await?;
         if !ok {
             return Err(errors);
         }
-        png = data;
-    }
+        data
+    } else {
+        png
+    };
     if png.len() < 24 || !png.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Err("Cannot capture device".into());
     }
-    width = u32::from_be_bytes(png[16..20].try_into().unwrap());
-    height = u32::from_be_bytes(png[20..24].try_into().unwrap());
+    let width = u32::from_be_bytes(png[16..20].try_into().unwrap());
+    let height = u32::from_be_bytes(png[20..24].try_into().unwrap());
     runner.width.store(width, Ordering::Release);
     runner.height.store(height, Ordering::Release);
     Ok((png, width, height))
@@ -923,11 +929,22 @@ async fn action(
     .await;
     let (success, output, unknown) = match execution {
         Ok((success, output, errors)) => {
-            let output = format!("{}{}", String::from_utf8_lossy(&output), errors);
+            let stdout = String::from_utf8_lossy(&output);
+            let receipt = is_input
+                .then(|| {
+                    stdout.lines().find_map(|line| {
+                        line.trim()
+                            .strip_prefix("Broadcast completed: result=1, data=\"committed:")?
+                            .strip_suffix('"')
+                    })
+                })
+                .flatten();
+            let acknowledged = !is_input || receipt == Some(request.action_id.as_str());
+            let output = format!("{stdout}{errors}");
             (
-                success && (!is_input || output.contains("result=1")),
+                success && acknowledged,
                 output.chars().take(65536).collect::<String>(),
-                false,
+                success && !acknowledged && receipt.is_some(),
             )
         }
         Err(message) => (false, message, true),
@@ -1003,14 +1020,10 @@ async fn refresh_root_readiness(runner: &Runner) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let adb_media = std::env::var("AI_PHONE_ANDROID_QEMU").as_deref() == Ok("1");
     match std::env::args().nth(1).as_deref() {
-        Some("--lan") => {
-            return lan::run()
-                .await
-                .map_err(|e| -> Box<dyn std::error::Error> { e });
-        }
         Some("--media") => {
-            return media::run()
+            return media::run(adb_media)
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error> { e });
         }
@@ -1053,6 +1066,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         phone_id: std::env::var("AI_PHONE_DEVICE_ID").unwrap_or_else(|_| "phone-local-01".into()),
         media_url: std::env::var("AI_PHONE_MEDIA_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:17865".into()),
+        adb_media,
         adb: ai_phone_adb::Client::new(
             adb_server_port()?,
             std::env::var("AI_PHONE_SERIAL").unwrap_or_else(|_| "emulator-5564".into()),
@@ -1131,6 +1145,7 @@ mod observation_tests {
             Runner {
                 phone_id: "phone-local-01".into(),
                 media_url: "http://127.0.0.1:0".into(),
+                adb_media: false,
                 adb: self.adb_server(source),
                 token: "test-only".into(),
                 vision: self.0.join("unavailable-ocr"),
@@ -1315,6 +1330,42 @@ mod observation_tests {
         assert_eq!(runner.cursor.lock().await.status, "completed");
         // Only the first action executes ADB; replay returns the durable receipt.
         assert_eq!(std::fs::read_to_string(calls).unwrap().lines().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn input_requires_android_to_acknowledge_the_same_action() {
+        for (received, expected) in [("unicode-action", true), ("different-action", false)] {
+            let fixture = Fixture::new();
+            let script = format!(
+                r#"#!/bin/sh
+case "$*" in
+  *default_input_method) printf 'dev.aiphone.input/.UnicodeIme\n' ;;
+  *dev.aiphone.input.INPUT*) printf 'Broadcast completed: result=1, data="committed:{received}"\n' ;;
+  *) exit 1 ;;
+esac
+"#
+            );
+            let mut device = fixture.runner(&script);
+            device.media_url = "http://127.0.0.1:0".into();
+            let runner = Arc::new(device);
+            let request = wire::DeviceActionRequest {
+                phone_id: runner.phone_id.clone(),
+                owner_id: OWNER.into(),
+                run_id: "unicode-receipt-test".into(),
+                action_id: "unicode-action".into(),
+                control_epoch: 1,
+                controller: "manual".into(),
+                action: Some(wire::device_action_request::Action::Input(
+                    wire::InputAction {
+                        text: "中文".into(),
+                    },
+                )),
+                ..Default::default()
+            };
+            let result = persistence_result(persistence_request(&runner, &request).await).await;
+            assert_eq!(result.success, expected);
+            assert_eq!(result.result_unknown, !expected);
+        }
     }
 
     #[tokio::test]

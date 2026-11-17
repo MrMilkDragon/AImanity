@@ -4,9 +4,10 @@ use sqlx::{Connection, PgConnection, postgres::PgConnectOptions};
 use std::{
     collections::HashMap,
     fs::{self, OpenOptions},
-    io::Write,
+    io::{ErrorKind, Write},
     os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
     path::Path,
+    time::{Duration, Instant},
 };
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -110,7 +111,8 @@ async fn apply(connection: &mut PgConnection, value: &Credentials) -> Result<()>
 
 pub async fn prepare(root: &Path) -> Result<()> {
     let environment = configuration(root)?;
-    let value = credentials(root, &environment["POSTGRES_DB"])?;
+    let database = &environment["POSTGRES_DB"];
+    let value = credentials(root, database)?;
     let options = PgConnectOptions::new()
         .host("127.0.0.1")
         .port(
@@ -118,10 +120,36 @@ pub async fn prepare(root: &Path) -> Result<()> {
                 .unwrap_or_else(|_| "55482".into())
                 .parse()?,
         )
-        .database(&environment["POSTGRES_DB"])
+        .database(database)
         .username(&environment["POSTGRES_USER"])
         .password(&environment["POSTGRES_PASSWORD"]);
-    let mut connection = PgConnection::connect_with(&options).await?;
+    let until = Instant::now() + Duration::from_secs(15);
+    let mut connection = loop {
+        let error = match PgConnection::connect_with(&options).await {
+            Ok(connection) => break connection,
+            Err(error) => error,
+        };
+        let code = error.as_database_error().and_then(|error| error.code());
+        if code.as_deref() == Some("3D000") {
+            let mut server =
+                PgConnection::connect_with(&options.clone().database("postgres")).await?;
+            let statement =
+                sqlx::query_scalar::<_, String>("SELECT format('CREATE DATABASE %I', $1::text)")
+                    .bind(database)
+                    .fetch_one(&mut server)
+                    .await?;
+            sqlx::raw_sql(&statement).execute(&mut server).await?;
+            server.close().await?;
+            break PgConnection::connect_with(&options).await?;
+        }
+        if Instant::now() >= until
+            || (code.as_deref() != Some("57P03")
+                && !matches!(&error, sqlx::Error::Io(error) if error.kind() == ErrorKind::ConnectionRefused))
+        {
+            return Err(error.into());
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
     if let Err(error) = apply(&mut connection, &value).await {
         let mut message = error.to_string();
         for secret in [

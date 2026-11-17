@@ -223,8 +223,8 @@ mod linux {
         fs::create_dir_all(&folder).unwrap();
         let bytes = serde_json::to_vec_pretty(&request).unwrap();
         fs::write(folder.join("fixture.spec.json"), &bytes).unwrap();
-        let identity = format!("{:x}", Sha256::digest(&bytes));
-        let logical = format!("{:x}", Sha256::digest(b"earlier-recorded-encoding"));
+        let identity = hex::encode(Sha256::digest(&bytes));
+        let logical = hex::encode(Sha256::digest(b"earlier-recorded-encoding"));
         let lock = OpenOptions::new()
             .read(true)
             .write(true)

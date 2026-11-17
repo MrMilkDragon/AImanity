@@ -21,7 +21,7 @@ Aktionen sind an Beobachtung, Gerät, Aufgabe, Kontroll-Epoche und eindeutige Ak
 
 ## Technik und Daten
 
-`apps/web`: Next.js App Router, React, Tailwind und shadcn. `apps/client`: Tauri 2. `crates`: Rust/Axum/Tokio. `packages/protocol`: protobuf. PostgreSQL/SQLx speichert Zustand; Redis ist für optionales Caching vorgesehen, nicht als Aufgabenwarteschlange. Bun und Cargo bauen das Projekt, Compose betreibt Dienste. `infra`, `scripts`, `skills` und `config` enthalten Laufzeit und integrierte Fähigkeiten.
+`apps/native`: Rust (Iced/wgpu). `crates`: Rust/Axum/Tokio. `packages/protocol`: protobuf. PostgreSQL/SQLx speichert Zustand; Redis ist für optionales Caching vorgesehen, nicht als Aufgabenwarteschlange. Cargo baut das Projekt, Compose betreibt Dienste. `infra`, `scripts`, `skills` und `config` enthalten Laufzeit und integrierte Fähigkeiten.
 
 Code und Nutzerdaten sind getrennt. Geräteplatten, Konten, Chats, Anhänge und Schlüssel werden nicht veröffentlicht. Updates benötigen versionierte Pakete, Sicherung, Migration und Rücknahme statt eines direkten `git pull` in Nutzerdaten.
 

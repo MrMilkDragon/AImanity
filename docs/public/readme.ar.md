@@ -21,7 +21,7 @@
 
 ## التقنية والبيانات
 
-`apps/web`: ‏Next.js App Router وReact وTailwind وshadcn. ‏`apps/client`: ‏Tauri 2. ‏`crates`: ‏Rust وAxum وTokio. ‏`packages/protocol`: ‏protobuf. يخزّن PostgreSQL/SQLx الحالة، وRedis مخصص للتخزين المؤقت الاختياري وليس طابور المهام. أدوات التطوير Bun وCargo، والخدمات عبر Compose. تحتوي `infra` و`scripts` و`skills` و`config` بيئات التشغيل والقدرات المدمجة.
+`apps/native`: ‏Rust (Iced/wgpu). ‏`crates`: ‏Rust وAxum وTokio. ‏`packages/protocol`: ‏protobuf. يخزّن PostgreSQL/SQLx الحالة، وRedis مخصص للتخزين المؤقت الاختياري وليس طابور المهام. Cargo يبني المشروع، والخدمات عبر Compose. تحتوي `infra` و`scripts` و`skills` و`config` بيئات التشغيل والقدرات المدمجة.
 
 المصدر منفصل عن بيانات المستخدم. لا تُنشر أقراص الأجهزة أو الحسابات أو المحادثات أو المرفقات أو المفاتيح. تحتاج التحديثات حزمًا ذات إصدارات ونسخًا احتياطية وترحيلًا وتراجعًا؛ ليس `git pull` فوق بيانات المستخدم آلية تحديث مناسبة.
 

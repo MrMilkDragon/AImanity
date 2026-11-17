@@ -22,14 +22,13 @@ See [model and channel setup](docs/public/model-and-channel-setup.md), [notifica
 
 | Layer | Technology | Directory |
 | --- | --- | --- |
-| Workbench | Next.js App Router, TypeScript, Tailwind, shadcn/ui | `apps/web` |
-| Native client | Tauri 2 | `apps/client` |
+| Desktop client and workbench | Rust (Iced/wgpu) | `apps/native` |
 | Backend, devices and media | Rust, Axum, Tokio | `crates` |
 | Business API and state | protobuf, PostgreSQL, SQLx | `packages/protocol` |
 | Device runtimes | AOSP, Avo, WHPX, Linux containers, Docker Compose | `infra`, `scripts` |
 | Built-in capabilities | Skills and device profiles | `skills`, `config` |
 
-Agents plan from current device observations and record their actions and results. Bun and Cargo build the project. Device disks, accounts and attachments stay in the local installation.
+Agents plan from current device observations and record their actions and results. Cargo builds the project. Device disks, accounts and attachments stay in the local installation.
 
 [Architecture](docs/public/architecture.en.md) · [Documentation](docs/public/index.md) · [Contributing](CONTRIBUTING.md) · [Report an issue](https://github.com/MrMilkDragon/AImanity/issues/new/choose)
 
@@ -65,7 +64,7 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 ## 技术架构
 
-工作台采用 Next.js、TypeScript、Tailwind 和 shadcn/ui，客户端采用 Tauri 2。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，数据由 PostgreSQL 和 SQLx 管理。使用 Bun 和 Cargo 构建，Avo 或 WHPX 运行 Android；Linux 和 Docker Compose 运行桌面与服务。
+客户端与工作台采用 Rust、Iced 和 wgpu。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，数据由 PostgreSQL 和 SQLx 管理。使用 Cargo 构建，Avo 或 WHPX 运行 Android；Linux 和 Docker Compose 运行桌面与服务。
 
 Agent 根据当前设备画面操作，动作账本保留执行过程和结果。设备盘、账号、聊天和附件保存在本地安装目录或数据库中。
 

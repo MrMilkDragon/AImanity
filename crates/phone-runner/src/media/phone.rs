@@ -34,7 +34,7 @@ pub async fn snapshot(media: &Media) -> Result<(Vec<u8>, u64)> {
         return avo.snapshot(media).await;
     }
     if media.adb_media {
-        let bytes = adb_png(media).await?;
+        let bytes = adb_png(&media.adb).await?;
         return Ok((bytes, super::now()));
     }
     media.orientation().await?;
@@ -223,11 +223,9 @@ async fn grpc_capture(media: Arc<Media>) {
     }
 }
 
-async fn adb_png(media: &Media) -> Result<Vec<u8>> {
-    Ok(media
-        .adb
-        .raw("exec:screencap -p", 8 * 1024 * 1024, Duration::from_secs(2))
-        .await?)
+pub(crate) async fn adb_png(adb: &ai_phone_adb::Client) -> ai_phone_adb::Result<Vec<u8>> {
+    adb.raw("exec:screencap -p", 8 * 1024 * 1024, Duration::from_secs(2))
+        .await
 }
 
 async fn adb_capture(media: &Media) {
@@ -239,7 +237,7 @@ async fn adb_capture(media: &Media) {
         while media.screen.viewers.load(Ordering::Relaxed) != 0 {
             frame.tick().await;
             let result: Result<()> = async {
-                let png = adb_png(media).await?;
+                let png = adb_png(&media.adb).await?;
                 let captured = super::now();
                 let jpeg = match &last {
                     Some((previous, jpeg)) if previous == &png => jpeg,

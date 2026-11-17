@@ -6,6 +6,8 @@ pub mod cursor;
 pub mod files;
 pub mod home_identity;
 pub mod imaging;
+#[cfg(target_os = "linux")]
+pub mod linux_runtime;
 pub mod location;
 pub mod media;
 pub mod notifications;
@@ -14,7 +16,6 @@ pub mod process;
 pub mod runtime;
 pub mod screen;
 pub mod settings;
-pub mod workspace_job;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;
