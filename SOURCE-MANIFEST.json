@@ -2208,8 +2208,8 @@
     },
     {
       "path": "crates/release-tools/src/android_package.rs",
-      "size": 7008,
-      "sha256": "b3c8029364508071efa76ebc95e4907c84a7775a60bddf935cfc490e0087759a"
+      "size": 7327,
+      "sha256": "a67984d7d2cb031b2e72d5efbf965237091f653a2f1481ac412c637e32fc6846"
     },
     {
       "path": "crates/release-tools/src/assets.rs",
@@ -2238,8 +2238,8 @@
     },
     {
       "path": "crates/release-tools/src/phone_apps.rs",
-      "size": 5033,
-      "sha256": "69d6daab397da6ee84ed0aa75113a38ca919957872897f128a543c0f382f1ada"
+      "size": 4966,
+      "sha256": "ee55adc5863ca7cd7b011c72ab73b5e378fd2a5ef60c87c469bb42b9796b3c33"
     },
     {
       "path": "crates/release-tools/src/source.rs",
@@ -2468,8 +2468,8 @@
     },
     {
       "path": "docs/public/engineering/phone-apps.md",
-      "size": 5988,
-      "sha256": "238df2ad5c8492b853c3110ec722f64f1a3598c15294f35328f56b2b5c0fde47"
+      "size": 5466,
+      "sha256": "920fd637984ed7331d1abccf63819954314eae3f14c1853817976ade537891e5"
     },
     {
       "path": "docs/public/engineering/private-install-state.md",

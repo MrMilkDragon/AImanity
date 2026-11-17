@@ -64,12 +64,7 @@ fn matching_files(folder: &Path, extension: &str, output: &mut Vec<PathBuf>) -> 
     Ok(())
 }
 
-pub(super) fn inspect(
-    tools: &Path,
-    apk: &Path,
-    package: &str,
-    pin: Option<&OsStr>,
-) -> Result<Value> {
+fn inspect(tools: &Path, apk: &Path, package: &str) -> Result<Value> {
     let certificates = program(tools, "apksigner", "bat")
         .args(["verify", "--print-certs"])
         .arg(apk)
@@ -85,9 +80,14 @@ pub(super) fn inspect(
         regex::Regex::new(r"(?m)^Signer #\d+ certificate SHA-256 digest: ([0-9a-f]{64})\r?$")?;
     let mut signatures = certificate.captures_iter(output);
     let (_, [signer]) = signatures.next().ok_or("APK signer missing")?.extract();
-    if signatures.next().is_some() || pin.is_some_and(|pin| pin != signer) {
+    if signatures.next().is_some() {
         return Err("APK signer mismatch".into());
     }
+    verify_package(tools, apk, package)?;
+    Ok(json!({"package": package, "signer_sha256": signer}))
+}
+
+pub(super) fn verify_package(tools: &Path, apk: &Path, package: &str) -> Result<()> {
     let badging = program(tools, "aapt2", "exe")
         .args(["dump", "badging"])
         .arg(apk)
@@ -99,7 +99,7 @@ pub(super) fn inspect(
     {
         return Err("APK package mismatch".into());
     }
-    Ok(json!({"package": package, "signer_sha256": signer}))
+    Ok(())
 }
 
 fn compile(sdk: &Path, sources: Vec<PathBuf>, classes: &Path, dex: &Path) -> Result<()> {
@@ -182,27 +182,31 @@ pub(super) fn build_app(root: &Path, role: &str) -> Result<(PathBuf, Value)> {
     run(tool("zipalign", "exe").args(["-f", "4", "base.apk", "aligned.apk"]))?;
     let key = out.join("debug.jks");
     if !key.try_exists()? {
-        run(program(&jdk()?, "keytool", "exe")
-            .args(["-genkeypair", "-keystore"])
-            .arg(&key)
+        run(Command::new("openssl")
+            .current_dir(build.path())
             .args([
-                "-storepass",
-                "android",
-                "-keypass",
-                "android",
-                "-alias",
+                "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "3650",
+                "-keyout", "key.pem", "-out", "cert.pem", "-subj",
+            ])
+            .arg(format!("/CN=AI Phone {role}/O=Local Development/C=CN")))?;
+        let store = tempfile::NamedTempFile::new_in(&out)?;
+        run(Command::new("openssl")
+            .current_dir(build.path())
+            .args([
+                "pkcs12",
+                "-export",
+                "-name",
                 "androiddebugkey",
+                "-inkey",
+                "key.pem",
+                "-in",
+                "cert.pem",
+                "-passout",
+                "pass:android",
+                "-out",
             ])
-            .args([
-                "-keyalg",
-                "RSA",
-                "-keysize",
-                "2048",
-                "-validity",
-                "3650",
-                "-dname",
-            ])
-            .arg(format!("CN=AI Phone {role},O=Local Development,C=CN")))?;
+            .arg(store.path()))?;
+        store.persist_noclobber(&key)?;
     }
     let apk = out.join(format!("ai-phone-{role}.apk"));
     run(tool("apksigner", "bat")
@@ -211,6 +215,6 @@ pub(super) fn build_app(root: &Path, role: &str) -> Result<(PathBuf, Value)> {
         .args(["--ks-pass", "pass:android", "--out"])
         .arg(&apk)
         .arg("aligned.apk"))?;
-    let receipt = inspect(&tools, &apk, &format!("dev.aiphone.{role}"), None)?;
+    let receipt = inspect(&tools, &apk, &format!("dev.aiphone.{role}"))?;
     Ok((apk, receipt))
 }

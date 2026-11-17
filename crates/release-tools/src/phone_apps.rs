@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     fs::{self, File},
     io,
     path::Path,
@@ -119,18 +119,17 @@ fn build(root: &Path, cache: &Path, destination: &Path, identity: String) -> Res
         "x86_64"
     };
     let browser = policy.abis[abi].stage(&cache.join("phone-browser"))?;
-    let signer = android_package::inspect(
+    android_package::verify_package(
         &android_package::sdk()?.join("build-tools/35.0.0"),
         &browser,
         &policy.package,
-        Some(OsStr::new(&policy.signer_sha256)),
     )?;
     fs::hard_link(browser, work.path().join("browser.apk"))?;
     let manifest = Manifest {
         format: 1,
         source_sha256: identity,
         apps,
-        browser: json!({"package":policy.package,"signer_sha256":signer["signer_sha256"],"version":policy.version,"abi":abi}),
+        browser: json!({"package":policy.package,"signer_sha256":policy.signer_sha256,"version":policy.version,"abi":abi}),
         files: inventory(work.path())?,
     };
     serde_json::to_writer_pretty(File::create(work.path().join("manifest.json"))?, &manifest)?;

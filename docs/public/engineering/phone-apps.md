@@ -12,11 +12,11 @@ cargo run --quiet --locked -p ai-phone-release-tools -- phone-apps build .
   --android-runtime /path/to/android.payload
 ```
 
-Factory builds run in an owned temporary tree. Dedicated development signing identities remain in ignored `.tools/phone-app-signing`, separate from installed device applications. Repeated builds reuse those identities; private keys never enter the component. These development signatures do not complete production signing/update review.
+The factory uses OpenSSL to create development signing keys in private PKCS#12 files under `data/android/<role>/debug.jks`. Repeated builds reuse these keys. The phone component contains the signed APKs.
 
-The build verifies each APK's signature and package ID, scans decompressed ZIP members for private material, then publishes a source-fingerprinted component to `.tools/phone-apps`. Changed sources or cache bytes fail explicitly; no existing component is overwritten. Changed inputs require a newly reviewed build cache. Factory failure cleans its temporary tree and does not touch devices.
+The build verifies the signatures and package IDs of the launcher and input APKs. The browser is checked against the pinned archive and package ID. Cargo publishes the four files and their source fingerprint to `.tools/phone-apps`.
 
-Packaging binds APK sizes, SHA-256 hashes and signer metadata in `runtime/phone-apps/manifest.json`, inside the source payload's authenticated inventory. Staging rejects undeclared components. Runtime selection verifies both APKs, the probe and their matching source fingerprint. A present damaged component cannot fall back to compilation. Source-only contributor installs retain their compiler path.
+Packaging verifies the source fingerprint and file inventory before staging. `runtime/phone-apps/manifest.json` records the APKs, notification probe and signer identities.
 
 The Android runtime and phone APKs are separate requirements: Java can be omitted only when both are supplied. An emulator-only capsule without the control applications stops before device creation. Startup installs only missing packages; existing input, launcher and application data retain their current device ownership.
 
