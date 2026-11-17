@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$(uname -m)" = x86_64
-          git diff --quiet b667bbc16246b7db44ee15884a6d8d6ed47cc008 HEAD -- . ':!.github/workflows/dysprosium-native-postgres.yml'
+          git diff --quiet 9602f92ce9ae0b2683c35da1dc5d73be19b4568a HEAD -- . ':!.github/workflows/dysprosium-native-postgres.yml'
           docker buildx create --name aiphone-native-pg --driver docker-container --use
           ./scripts/bootstrap.sh
           export AIMANITY_QA_SERVICES="$RUNNER_TEMP/aimanity-native-services"
