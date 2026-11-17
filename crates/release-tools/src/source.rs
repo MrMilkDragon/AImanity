@@ -447,7 +447,7 @@ fn append_file<W: Write>(
     append_entry(archive, path, data.len() as u64, mode, data)
 }
 
-fn append_entry(
+pub(super) fn append_entry(
     archive: &mut tar::Builder<impl Write>,
     path: impl AsRef<Path>,
     size: u64,

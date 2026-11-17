@@ -63,8 +63,8 @@
     },
     {
       "path": ".github/workflows/windows-aosp-qualification.yml",
-      "size": 3266,
-      "sha256": "8820336725e056610fbd561d39fbf567099f0279f97d6a01680d1855332f6e0d"
+      "size": 3296,
+      "sha256": "652c2dc8836c9da8ef62273a4022b74f3aa9db442f761482424d838a4b739876"
     },
     {
       "path": ".github/workflows/windows-guest.yml",
@@ -2204,7 +2204,12 @@
     {
       "path": "crates/release-tools/Cargo.toml",
       "size": 1166,
-      "sha256": "48c1a106c94fc244c63d54200d57d0057194e408d4ea610b01318eb69567bf26"
+      "sha256": "a8d9e5be6c5f8e806a088717d16ed40b9b431800334426cee19083d3f5c86194"
+    },
+    {
+      "path": "crates/release-tools/src/android_component.rs",
+      "size": 7818,
+      "sha256": "26f8c3eaf02f4758feb478c7215e405e696837fec85b6987ec6eafbec3eb07f4"
     },
     {
       "path": "crates/release-tools/src/android_package.rs",
@@ -2222,6 +2227,26 @@
       "sha256": "1b83ed8b584c99f0168a36ecd07ff27249c063901d1e6cdc19a9be520d770f07"
     },
     {
+      "path": "crates/release-tools/src/cuttlefish/boot.rs",
+      "size": 5993,
+      "sha256": "9f892ec4ab710faced163d356e062ef5dd256a180cf29a8d66c046df89cbde5a"
+    },
+    {
+      "path": "crates/release-tools/src/cuttlefish/bootconfig.txt",
+      "size": 1935,
+      "sha256": "1377b9dd23a3a7e9706846cf409245ba68f9b998449b074532073a1681330f4d"
+    },
+    {
+      "path": "crates/release-tools/src/cuttlefish/disk.rs",
+      "size": 7557,
+      "sha256": "d48a29392f54a0fa43c2ef097a47ee4509e1bd7d33b49ea1ee80b9ff4a9215f0"
+    },
+    {
+      "path": "crates/release-tools/src/cuttlefish.rs",
+      "size": 2316,
+      "sha256": "e63c93899b7e5207c7625b342e53542293f721c3cf2eaaabefb806488a6dcee8"
+    },
+    {
       "path": "crates/release-tools/src/dependency_audit.rs",
       "size": 6176,
       "sha256": "72bde4edf86ab84580601e395a49eb792c81b660abb9752c6f6c2b267f853dc4"
@@ -2233,8 +2258,8 @@
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 4267,
-      "sha256": "30e9bcbaeef3ad28c2c7198b3a90a596310d09a11d0c9dce4648aaee39d0e43c"
+      "size": 4448,
+      "sha256": "1a3dbf29df68b08230474121845f2e14352b4ea31caa6850ab70d29b98b3ee06"
     },
     {
       "path": "crates/release-tools/src/native_services.rs",
@@ -2248,8 +2273,8 @@
     },
     {
       "path": "crates/release-tools/src/source.rs",
-      "size": 23376,
-      "sha256": "166311090073810bbe9a4bd96211295b1b831177bd8dcaaadbdfae9a3c4a8794"
+      "size": 23387,
+      "sha256": "ec113602ab52e5d3ff897317c2ae28a412c266c43d36f912221e22c2ab6a02ef"
     },
     {
       "path": "crates/release-tools/src/update_feed.rs",
@@ -2413,13 +2438,13 @@
     },
     {
       "path": "docs/public/engineering/android-corresponding-source.md",
-      "size": 6761,
-      "sha256": "038c84266eec36f6fc6835edd0d4b726bfd67d058ea04865bf09c8a89d1bccd5"
+      "size": 6775,
+      "sha256": "ee10e6a3b1847d6363432ab8f283d6cdef0f9d06d0cab952ada01eae5aa5775c"
     },
     {
       "path": "docs/public/engineering/android-runtime.md",
-      "size": 1908,
-      "sha256": "82c1b1935dfc0812906b08d8d98fd93bc5e491b323eee4bc0fd7d99b34995636"
+      "size": 1930,
+      "sha256": "0431a54e6c7c0a090aef64060e80984ed4f8e56d80ecc8d91bb8adc8b7f059d3"
     },
     {
       "path": "docs/public/engineering/app-guides.md",
@@ -3267,11 +3292,6 @@
       "sha256": "db405228ad3846e93287d9491dc305649592309fe314c19af71b2544fb27475f"
     },
     {
-      "path": "scripts/android-component.ts",
-      "size": 1229,
-      "sha256": "0baddbef5505b11e4ed32b1cf890f6e4a282c000dc63f3072a7169af93c4fcf8"
-    },
-    {
       "path": "scripts/android-create.sh",
       "size": 345,
       "sha256": "e1466dff4e945c678aec105ccb2f9a3ada059da0281bace1fbd8683bc3862d2c"
@@ -3433,8 +3453,8 @@
     },
     {
       "path": "scripts/tooling/android-component.ts",
-      "size": 7088,
-      "sha256": "0ce5c828e9d605abd616440be4af3619f37a7fd2f534687fb02b326fcd7e6aaf"
+      "size": 2595,
+      "sha256": "beab62fb3369b5e3870918a59e997c5baf4b83dfc50e3ccc745fbdc2e658a44c"
     },
     {
       "path": "scripts/tooling/archive.ts",
@@ -3570,11 +3590,6 @@
       "path": "scripts/windows-client-factory.ts",
       "size": 759,
       "sha256": "7a83e620b09a37e88deacf6e182ac633e153d8d54018079436324c9a4d0fc8a5"
-    },
-    {
-      "path": "scripts/windows-cuttlefish.ts",
-      "size": 12865,
-      "sha256": "d0dd00e5dbdfb8428b6e83d2210e28dc98fee752bfd56a302e35f912d415a5fc"
     },
     {
       "path": "scripts/windows-guest-disk.ts",
