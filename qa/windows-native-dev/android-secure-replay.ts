@@ -66,10 +66,31 @@ function adbOutput(...args: string[]) {
   if (result.error) throw result.error;
   return {status:result.status, stdout:result.stdout.toString().trim(), stderr:result.stderr.toString().trim()};
 }
+const manager = () => adbOutput("shell",
+  "dumpsys -t 3 accessibility | grep -Ei 'attributes:.*installedServiceCount|enabled services|binding services|PhoneAttention'");
+const installedCount = (snapshot: ReturnType<typeof manager>) => {
+  const found = /attributes:\{id=0,.*installedServiceCount=(\d+)/.exec(snapshot.stdout);
+  if (!found) throw Error("Missing accessibility manager service count for the Android owner: " + JSON.stringify(snapshot));
+  return Number(found[1]);
+};
+const baseline = manager();
+const originalCount = installedCount(baseline);
+console.log(JSON.stringify({ baseline, originalCount, currentUser:adbOutput("shell", "am get-current-user") }));
 const packageResult = adbOutput("install", "--no-incremental", "-r", "--user", "0", apk);
 console.log(JSON.stringify({inputApk:packageResult}));
 if (packageResult.status !== 0 || packageResult.stdout.split(/\r?\n/).at(-1) !== "Success")
   throw Error("The sealed input package was not installed");
+const registeredAt = performance.now();
+let current = manager();
+const immediateManagerCount = installedCount(current);
+while (installedCount(current) === originalCount && performance.now() - registeredAt < 30_000) {
+  await Bun.sleep(400);
+  current = manager();
+}
+const confirmation = adbOutput("shell", "cmd appops get --user 0 " + packageName + " ACCESS_RESTRICTED_SETTINGS");
+const distinctCount = installedCount(current);
+console.log(JSON.stringify({ immediateManagerCount, distinctCount, registrationMs:Math.round(performance.now() - registeredAt), current, confirmation }));
+if (distinctCount !== originalCount + 1) throw Error("PhoneAttention did not appear in the accessibility manager after the only APK install");
 function states() {
   return {
     user:adbOutput("shell", "am get-started-user-state 0"),
@@ -89,10 +110,14 @@ if (rows.some(item => item === attention || item === packageName + "/" + package
 } else {
   const write = adbOutput("shell", "settings --user 0 put secure " + enabled + " '" + [...rows,attention].join(":") + "'");
   const immediate = adbOutput("shell", "settings --user 0 get secure " + enabled);
-  await Bun.sleep(1000);
-  const after = states();
-  const log = adbOutput("shell", "logcat -d -t 160 -s SettingsProvider AccessibilityManagerService ActivityManager PackageManager");
-  console.log(JSON.stringify({diagnosticOnly:true, before,write,immediate,after,log}));
+  const writtenAt = performance.now();
+  console.log(JSON.stringify({diagnosticOnly:true, before,write,immediate}));
+  for (const ms of [1000,5000,10000]) {
+    await Bun.sleep(Math.max(0, writtenAt + ms - performance.now()));
+    console.log(JSON.stringify({afterMs:Math.round(performance.now() - writtenAt), state:states()}));
+  }
+  const log = adbOutput("shell", "logcat -d -t 240 -s SettingsProvider AccessibilityManagerService EnhancedConfirmationService AppOps ActivityManager PackageManager");
+  console.log(JSON.stringify({log}));
 }
 verified = true;
 } catch (error) {

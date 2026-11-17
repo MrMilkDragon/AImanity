@@ -42,7 +42,7 @@ jobs:
           github-token: ${{ github.token }}
           name: isolated-input-apk
           path: ${{ env.AIMANITY_QA_ROOT }}/inputs
-      - name: Observe one exact selector and service binding transition on WHPX
+      - name: Measure selector binding after Android reports the installed accessibility service
         working-directory: exact
         shell: bash
         run: |
