@@ -1,9 +1,9 @@
 import { copyFileSync, mkdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, digest, output, run } from "../../exact/scripts/tooling/process";
+import { ROOT, digest, hash, output, run } from "../../exact/scripts/tooling/process";
 import { json, save } from "../../exact/scripts/tooling/inventory";
 import { buildPhone } from "../../exact/scripts/tooling/phone-apps";
-import { verifyDependency } from "../../exact/scripts/tooling/linux-dependencies";
+import { dependencyFingerprint, profiles, verifyDependency } from "../../exact/scripts/tooling/linux-dependencies";
 import { preparePayload } from "../../exact/scripts/tooling/client-payload";
 import { buildNative } from "../../exact/scripts/tooling/native-build";
 import { stageWindowsServices } from "../../exact/scripts/tooling/wsl-factory";
@@ -34,6 +34,19 @@ if (process.argv[2] === "services") {
   if (await digest(priorPayload) !== manifest.release_sha256) throw Error("Prior Linux source bytes differ");
   run(["tar", "-x", "-f", priorPayload, "--strip-components=3", "-C", ocr, "--wildcards", "runtime/services/ocr/*"]);
   rmSync(priorPayload);
+  const profile = profiles["linux-ocr"]!;
+  const ocrManifestPath = join(ocr, "manifest.json");
+  const ocrManifest = json(ocrManifestPath);
+  const recipeChanges = output(["git", "diff", "--name-only", previousSource, source!, "--", ...profile.source], { cwd: ROOT });
+  const originalFingerprint = hash(JSON.stringify(profile.source.map(path => [
+    path,
+    hash(run(["git", "show", previousSource + ":" + path], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] }).stdout),
+  ])));
+  if (recipeChanges !== "scripts/tooling/linux-dependencies.ts" ||
+      ocrManifest.source_sha256 !== originalFingerprint)
+    throw Error("Cannot carry the original sealed OCR through the reviewed import-only change");
+  rmSync(ocrManifestPath);
+  save(ocrManifestPath, { ...ocrManifest, source_sha256: dependencyFingerprint(ROOT, profile) });
   await buildPhone(ROOT);
   await verifyDependency(ROOT, ocr, "linux-ocr");
   await buildNative(ROOT);
