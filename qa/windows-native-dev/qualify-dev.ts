@@ -51,6 +51,18 @@ async function probe(command: string, argument?: string) {
   const process_ = Bun.spawn(args, { env, stdout: "inherit", stderr: "inherit" });
   equal(await process_.exited, 0, command);
 }
+const failures: string[] = [];
+async function verify(name: string, test: () => Promise<void>) {
+  try {
+    await test();
+    return true;
+  } catch (error) {
+    const detail = `${name}: ${error instanceof Error ? error.message : String(error)}`;
+    failures.push(detail);
+    console.error(detail);
+    return false;
+  }
+}
 const logPaths = ["user/qemu/owner.log", "user/qemu/boot.log", "user/qemu/qemu.log",
   "user/data/android/native/sdk.log", "user/data/android/whpx-avd/cuttlefish/kernel.log", "request.json", "deployment.json"];
 let observe = true;
@@ -205,24 +217,47 @@ try {
   const status = JSON.parse(readFileSync(checkpoint, "utf8"));
   equal(status.progress.state, "ready");
   equal(status.installed_payload, payload.sha256);
-  const frameDeadline = performance.now() + 30000;
-  let androidFrame: RegExpMatchArray | null = null;
-  let desktopFrame: RegExpMatchArray | null = null;
-  let androidUpload: RegExpMatchArray | null = null;
-  let desktopUpload: RegExpMatchArray | null = null;
-  do {
+  const components = join(home, "components", "android");
+  const [identity] = readdirSync(components);
+  ok(identity, "installed Android capsule");
+  const adb = join(components, identity, "sdk", "platform-tools", "adb.exe");
+  function android(...args: string[]) {
+    const result = Bun.spawnSync([adb, "-P", "15037", "-s", "127.0.0.1:5565", ...args], { env });
+    equal(result.exitCode, 0, "installed Android ADB command");
+    return result.stdout;
+  }
+  await verify("WHPX Android root and deployed accessibility registry JAR", async () => {
+    equal(android("shell", "id", "-u").toString().trim(), "0");
+    const registered = android("shell", "CLASSPATH=/data/local/tmp/ai-phone-input-notification-probe.jar app_process / dev.aiphone.input.probe.NotificationAccess attention-installed").toString().trim();
+    equal(registered, "true", "the exact deployed JAR sees PhoneAttention in AccessibilityManager");
+    const binding = android("shell", "dumpsys -t 2 activity services dev.aiphone.input/.PhoneAttention").toString();
+    match(binding, /^\s*requested=true received=true hasBound=true /m, "PhoneAttention registered and bound inside WHPX");
+    console.log(JSON.stringify({ accessibilityProbeRegistered: registered, accessibilityServiceBound: true, source }));
+  });
+  await verify("Foreground frames from both devices", async () => {
+    const frameDeadline = performance.now() + 30000;
+    let androidFrame: RegExpMatchArray | null = null;
+    let desktopFrame: RegExpMatchArray | null = null;
+    do {
+      const rendered = readFileSync(log, "utf8");
+      androidFrame = rendered.match(/native_metric first_frame device=0 ms=([\d.]+)/);
+      desktopFrame = rendered.match(/native_metric first_frame device=1 ms=([\d.]+)/);
+      if (androidFrame && desktopFrame) break;
+      await Bun.sleep(250);
+    } while (performance.now() < frameDeadline);
+    ok(androidFrame && desktopFrame, "the native app decoded complete frames from both actual devices");
+    equal(await gui("capture"), 0, "installed native workbench window visible");
     const rendered = readFileSync(log, "utf8");
-    androidFrame = rendered.match(/native_metric first_frame device=0 ms=([\d.]+)/);
-    desktopFrame = rendered.match(/native_metric first_frame device=1 ms=([\d.]+)/);
-    androidUpload = rendered.match(/native_metric frame device=0 sequence=\d+ receive_to_upload_ms=([\d.]+)/);
-    desktopUpload = rendered.match(/native_metric frame device=1 sequence=\d+ receive_to_upload_ms=([\d.]+)/);
-    if (androidFrame && desktopFrame && androidUpload && desktopUpload) break;
-    await Bun.sleep(250);
-  } while (performance.now() < frameDeadline);
-  ok(androidFrame && desktopFrame && androidUpload && desktopUpload, "the native app displayed texture uploads for both actual devices");
-  equal(await gui("capture"), 0, "installed native workbench window visible");
-  console.log(JSON.stringify({ androidFirstFrameMs: Number(androidFrame[1]), desktopFirstFrameMs: Number(desktopFrame[1]),
-    androidReceiveToUploadMs: Number(androidUpload[1]), desktopReceiveToUploadMs: Number(desktopUpload[1]), source }));
+    const upload = (index: number) => {
+      const match = rendered.match(new RegExp(`native_metric frame device=${index} sequence=\\d+ receive_to_upload_ms=([\\d.]+)`));
+      return match ? Number(match[1]) : null;
+    };
+    const frame = android("exec-out", "screencap", "-p");
+    equal(frame.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+    deepEqual([frame.readUInt32BE(16), frame.readUInt32BE(20)], [720, 1440]);
+    console.log(JSON.stringify({ androidFirstFrameMs: Number(androidFrame[1]), desktopFirstFrameMs: Number(desktopFrame[1]),
+      androidReceiveToUploadMs: upload(0), desktopReceiveToUploadMs: upload(1), independentAndroidPng:[720,1440], source }));
+  });
 
   const credentials = await vmCredentials();
   const assistantToken = "Bearer " + credentials.assistantToken.trim();
@@ -255,71 +290,55 @@ try {
     return result;
   }
 
-  const components = join(home, "components", "android");
-  const [identity] = readdirSync(components);
-  ok(identity, "installed Android capsule");
-  const adb = join(components, identity, "sdk", "platform-tools", "adb.exe");
-  function android(...args: string[]) {
-    const result = Bun.spawnSync([adb, "-P", "15037", "-s", "127.0.0.1:5565", ...args], { env });
-    equal(result.exitCode, 0, "installed Android ADB command");
-    return result.stdout;
-  }
-  equal(android("shell", "id", "-u").toString().trim(), "0");
-  const registered = android("shell", "CLASSPATH=/data/local/tmp/ai-phone-input-notification-probe.jar app_process / dev.aiphone.input.probe.NotificationAccess attention-installed").toString().trim();
-  equal(registered, "true", "the exact deployed JAR sees PhoneAttention in AccessibilityManager");
-  const binding = android("shell", "dumpsys -t 2 activity services dev.aiphone.input/.PhoneAttention").toString();
-  match(binding, /^\s*requested=true received=true hasBound=true /m, "PhoneAttention registered and bound inside WHPX");
-  console.log(JSON.stringify({ accessibilityProbeRegistered: true, accessibilityServiceBound: true, source }));
-  const frame = android("exec-out", "screencap", "-p");
-  equal(frame.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
-  deepEqual([frame.readUInt32BE(16), frame.readUInt32BE(20)], [720, 1440]);
-  const policy = android("shell", "dumpsys", "window", "policy").toString().split("\n")
-    .filter(line => /keyguard|showing|interactive/i.test(line)).slice(0, 14).join("\n");
-  const beforeFocus = android("shell", "dumpsys", "window", "displays").toString().split("\n")
-    .filter(line => /mCurrentFocus|mFocusedApp/.test(line)).join("\n");
-  console.log(`Android pristine window state:\n${beforeFocus}\n${policy}`);
-  match(android("shell", "locksettings", "set-disabled", "--user", "0", "true").toString(), /Lock screen disabled set to true/);
-  equal(android("shell", "locksettings", "get-disabled", "--user", "0").toString().trim(), "true");
-  android("shell", "input", "keyevent", "KEYCODE_SLEEP");
-  await Bun.sleep(350);
-  android("shell", "input keyevent KEYCODE_WAKEUP; svc power stayon true; cmd statusbar collapse; wm dismiss-keyguard; input keyevent KEYCODE_HOME");
-  const search = "com.android.settings.intelligence";
-  const opened = android("shell", "am", "start", "-W", "-a", "android.settings.APP_SEARCH_SETTINGS", "-p", search).toString();
-  match(opened, /Status: ok\b/);
-  equal(android("shell", "settings", "get", "secure", "default_input_method").toString().trim(), "dev.aiphone.input/.UnicodeIme");
-  const uiFile = "/sdcard/dysprosium-install.xml";
-  async function androidEditor(predicate: (xml: string) => boolean) {
-    const deadline = Date.now() + 15000;
-    let last = "";
-    do {
-      last = android("shell", `rm -f ${uiFile}; timeout 7 uiautomator dump ${uiFile} 2>&1; [ ! -s ${uiFile} ] || cat ${uiFile}`).toString();
-      if (predicate(last)) return last;
-      await Bun.sleep(250);
-    } while (Date.now() < deadline);
-    const focus = android("shell", "dumpsys", "window", "displays").toString().split("\n")
+  await verify("Android touch and Chinese input", async () => {
+    const policy = android("shell", "dumpsys", "window", "policy").toString().split("\n")
+      .filter(line => /keyguard|showing|interactive/i.test(line)).slice(0, 14).join("\n");
+    const beforeFocus = android("shell", "dumpsys", "window", "displays").toString().split("\n")
       .filter(line => /mCurrentFocus|mFocusedApp/.test(line)).join("\n");
-    throw Error(`Android Settings editor not found: ${focus}\n${last.slice(0, 450)}`);
-  }
-  const editable = /<node[^>]*resource-id="android:id\/search_src_text"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/;
-  const clear = /<node[^>]*resource-id="android:id\/search_close_btn"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/;
-  async function tap(field: RegExpMatchArray | null) {
-    ok(field, "visible Android control coordinates");
-    await phoneAction({case: "tap", value: { x: (Number(field[1]) + Number(field[3])) >> 1,
-      y: (Number(field[2]) + Number(field[4])) >> 1 }});
-  }
-  const hierarchy = await androidEditor(xml => editable.test(xml));
-  await tap(hierarchy.match(editable));
-  await androidEditor(xml => editable.test(xml) && editable.exec(xml)?.[0].includes('focused="true"') === true);
-  const sample = "Dysprosium 中文";
-  const input = await phoneAction({case: "input", value: {text: sample}});
-  ok(input.output.includes(`committed:${input.actionId}`), "installed Unicode IME returned the action receipt");
-  const entered = await androidEditor(xml => editable.exec(xml)?.[0].includes(`text="${sample}"`) === true && clear.test(xml));
-  equal(await gui("capture-updated"), 0, "live native phone display after entry of Chinese text");
-  await tap(entered.match(clear));
-  await androidEditor(xml => editable.test(xml) && !editable.exec(xml)?.[0].includes(sample) && !clear.test(xml));
-  console.log(JSON.stringify({ androidRoot: true, independentAndroidPng: [720, 1440], androidWorkbenchTouch: true, androidWorkbenchChinese: true }));
+    console.log(`Android pristine window state:\n${beforeFocus}\n${policy}`);
+    match(android("shell", "locksettings", "set-disabled", "--user", "0", "true").toString(), /Lock screen disabled set to true/);
+    equal(android("shell", "locksettings", "get-disabled", "--user", "0").toString().trim(), "true");
+    android("shell", "input", "keyevent", "KEYCODE_SLEEP");
+    await Bun.sleep(350);
+    android("shell", "input keyevent KEYCODE_WAKEUP; svc power stayon true; cmd statusbar collapse; wm dismiss-keyguard; input keyevent KEYCODE_HOME");
+    const search = "com.android.settings.intelligence";
+    const opened = android("shell", "am", "start", "-W", "-a", "android.settings.APP_SEARCH_SETTINGS", "-p", search).toString();
+    match(opened, /Status: ok\b/);
+    equal(android("shell", "settings", "get", "secure", "default_input_method").toString().trim(), "dev.aiphone.input/.UnicodeIme");
+    const uiFile = "/sdcard/dysprosium-install.xml";
+    async function androidEditor(predicate: (xml: string) => boolean) {
+      const deadline = Date.now() + 15000;
+      let last = "";
+      do {
+        last = android("shell", `rm -f ${uiFile}; timeout 7 uiautomator dump ${uiFile} 2>&1; [ ! -s ${uiFile} ] || cat ${uiFile}`).toString();
+        if (predicate(last)) return last;
+        await Bun.sleep(250);
+      } while (Date.now() < deadline);
+      const focus = android("shell", "dumpsys", "window", "displays").toString().split("\n")
+        .filter(line => /mCurrentFocus|mFocusedApp/.test(line)).join("\n");
+      throw Error(`Android Settings editor not found: ${focus}\n${last.slice(0, 450)}`);
+    }
+    const editable = /<node[^>]*resource-id="android:id\/search_src_text"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/;
+    const clear = /<node[^>]*resource-id="android:id\/search_close_btn"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/;
+    async function tap(field: RegExpMatchArray | null) {
+      ok(field, "visible Android control coordinates");
+      await phoneAction({case: "tap", value: { x: (Number(field[1]) + Number(field[3])) >> 1,
+        y: (Number(field[2]) + Number(field[4])) >> 1 }});
+    }
+    const hierarchy = await androidEditor(xml => editable.test(xml));
+    await tap(hierarchy.match(editable));
+    await androidEditor(xml => editable.test(xml) && editable.exec(xml)?.[0].includes('focused="true"') === true);
+    const sample = "Dysprosium 中文";
+    const input = await phoneAction({case: "input", value: {text: sample}});
+    ok(input.output.includes(`committed:${input.actionId}`), "installed Unicode IME returned the action receipt");
+    const entered = await androidEditor(xml => editable.exec(xml)?.[0].includes(`text="${sample}"`) === true && clear.test(xml));
+    equal(await gui("capture-updated"), 0, "live native phone display after entry of Chinese text");
+    await tap(entered.match(clear));
+    await androidEditor(xml => editable.test(xml) && !editable.exec(xml)?.[0].includes(sample) && !clear.test(xml));
+    console.log(JSON.stringify({ androidWorkbenchTouch: true, androidWorkbenchChinese: true }));
+  });
 
-  if (process.env.AIMANITY_QA_ANDROID_AUDIO === "1") {
+  if (process.env.AIMANITY_QA_ANDROID_AUDIO === "1") await verify("Android PCM at the Windows relay", async () => {
     const music = android("shell", "pm", "list", "packages", "--user", "0", "com.android.music").toString().trim();
     if (music !== "package:com.android.music") {
       match(android("shell", "cmd", "package", "install-existing", "--user", "0", "com.android.music").toString(), /installed for user: 0/);
@@ -356,10 +375,10 @@ try {
     }
     ok(min < 0 && max > 0, "installed Android audio emitted nonzero stereo PCM");
     console.log(JSON.stringify({ androidAudio: true, rate: 48000, channels: 2, samples, min, max }));
-  }
+  });
   console.log(JSON.stringify({ nativeBootAndTransportMs: Math.round(performance.now() - started), source }));
-  await probe("devices");
-  await probe("desktop-cjk-audio");
+  await verify("ACL, manual device receipts and Linux observation", () => probe("devices"));
+  await verify("Linux XTerm CJK and PCM at the Windows relay", () => probe("desktop-cjk-audio"));
   const manualControlReleasedAt = performance.now() + 15_500;
   const model = Bun.spawn([process.execPath, "../qa/windows-native-dev/qualified-model.ts"],
     { env, stdout:"inherit", stderr:"inherit" });
@@ -374,11 +393,11 @@ try {
       await Bun.sleep(200);
     }
     await probe("model-configure");
-    await probe("model-action", "phone");
+    await verify("First real phone Agent action", () => probe("model-action", "phone"));
     await Bun.sleep(Math.max(0, manualControlReleasedAt - performance.now()));
-    await probe("model-action", "desktop");
-    await probe("liberty");
-    await probe("goal-begin");
+    await verify("First real desktop Agent action", () => probe("model-action", "desktop"));
+    await verify("Liberty real device receipts", () => probe("liberty"));
+    const waiting = await verify("Task & Goal checkpoint on a real phone", () => probe("goal-begin"));
     await stopApp();
     const restartLog = join(root, "native-restart.log");
     app = launch(restartLog);
@@ -391,12 +410,13 @@ try {
       if (twoFrames) break;
       await Bun.sleep(500);
     }
-    ok(twoFrames, "same independent device disks both gave frames again");
-    await probe("goal-resumed");
+    if (!twoFrames) failures.push("both independent device frames must recover after native relaunch");
+    if (waiting) await verify("Same Task & Goal resumes without repeating the action", () => probe("goal-resumed"));
   } finally {
     model.kill();
     await model.exited;
   }
+  ok(!failures.length, failures.join("\n"));
 } catch (error) {
   if (!existsSync(checkpoint) && app.exitCode == null) await gui("diagnostic");
   if (existsSync(log)) console.error("Native client startup log:", readFileSync(log,"utf8").slice(-6000));
