@@ -2213,8 +2213,8 @@
     },
     {
       "path": "crates/release-tools/src/android_package.rs",
-      "size": 463,
-      "sha256": "232d19d177caefdc60fd594b3d05bade144a5adba690c1ac948cf6f6f12e2de5"
+      "size": 7004,
+      "sha256": "27ac738c650af3aeee3acf50f00f3c1fd7d38703b3bd94355868e9da7b53cd6d"
     },
     {
       "path": "crates/release-tools/src/assets.rs",
@@ -2233,8 +2233,8 @@
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 4285,
-      "sha256": "19d8c5bff24b6e5397f56c191a2b53a02d4293c6da14cb818aa4284014d8cc00"
+      "size": 4513,
+      "sha256": "df273b4c1099699a7f619c0efbb7a72f812c649f0cf572dff49019858eef4501"
     },
     {
       "path": "crates/release-tools/src/source.rs",
@@ -3437,11 +3437,6 @@
       "sha256": "a3ae317f40598aa6ae1543d2283debe1eae3b2a1bc656faa73af04025ffa1f8c"
     },
     {
-      "path": "scripts/tooling/android-apk.ts",
-      "size": 2605,
-      "sha256": "2a94b221237553cac41a867bbff0761e0ac6b176c30b715e87d38c7c349db518"
-    },
-    {
       "path": "scripts/tooling/android-component.ts",
       "size": 7895,
       "sha256": "8ac03cab9eef7e94938cecffc125569c625ebd8139beb82e64e1858cad9d6d9c"
@@ -3533,8 +3528,8 @@
     },
     {
       "path": "scripts/tooling/phone-apps.ts",
-      "size": 5050,
-      "sha256": "fc9ea1cea9f2e5cf86f9c7104227482e9e9e2c4b59063ba1ecb8c2d7d990da59"
+      "size": 4624,
+      "sha256": "1acb5d1265bc39344abd730678bda51182c0dc10fb0476d1bcfa5a0a6bd8ebda"
     },
     {
       "path": "scripts/tooling/process.ts",

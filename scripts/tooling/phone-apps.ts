@@ -15,7 +15,7 @@ import {
   records,
   collect,
 } from "./inventory";
-import { buildApk } from "./android-apk";
+import { buildReleaseTools } from "./archive";
 
 const packages = {
   input: "dev.aiphone.input",
@@ -33,7 +33,7 @@ export function phoneFingerprint(root = ROOT) {
             f.path.startsWith("apps/android-home/") ||
             [
               "scripts/tooling/phone-apps.ts",
-              "scripts/tooling/android-apk.ts",
+              "crates/release-tools/src/android_package.rs",
               "config/phone-browser.json",
               probeSource,
             ].includes(f.path),
@@ -42,25 +42,9 @@ export function phoneFingerprint(root = ROOT) {
     ),
   );
 }
-export function checkApk(file: string, packageName: string, signer?: string) {
-  const tools = join(process.env.ANDROID_HOME!, "build-tools/35.0.0");
-  const certs = [
-    ...output([
-      join(tools, "apksigner"),
-      "verify",
-      "--print-certs",
-      file,
-    ]).matchAll(/Signer #\d+ certificate SHA-256 digest: ([0-9a-f]{64})/g),
-  ].map((m) => m[1]);
-  if (certs.length !== 1 || (signer && certs[0] !== signer))
-    throw Error("APK signer mismatch");
-  if (
-    !output([join(tools, "aapt2"), "dump", "badging", file]).startsWith(
-      `package: name='${packageName}'`,
-    )
-  )
-    throw Error("APK package mismatch");
-  return { package: packageName, signer_sha256: certs[0] };
+type VerifiedApk = { package: string; signer_sha256: string };
+function buildApk(root: string, role: keyof typeof packages): VerifiedApk & { file: string } {
+  return JSON.parse(output([buildReleaseTools(root), "build-android-apk", root, role]));
 }
 function compileProbe(root: string) {
   const folder = join(root, "data/android/notification-probe"),
@@ -112,10 +96,10 @@ export async function buildPhone(root = ROOT) {
   if (existsSync(destination)) return verifyPhone(root, destination);
   mkdirSync(destination, { recursive: true });
   const apps: Record<string, unknown> = {};
-  for (const [role, packageName] of Object.entries(packages)) {
-    const apk = buildApk(join(root, "apps", "android-" + role), role);
-    apps[role] = checkApk(apk, packageName);
-    copyFileSync(apk, join(destination, role + ".apk"));
+  for (const role of ["input", "home"] as const) {
+    const { file, ...receipt } = buildApk(root, role);
+    apps[role] = receipt;
+    copyFileSync(file, join(destination, role + ".apk"));
   }
   const browser = json(join(root, "config/phone-browser.json")),
     abi = process.arch === "arm64" ? "arm64-v8a" : "x86_64",
@@ -127,7 +111,9 @@ export async function buildPhone(root = ROOT) {
   const bytes = readFileSync(apk);
   if (bytes.length !== pin.size_bytes || hash(bytes) !== pin.sha256)
     throw Error("Browser APK pin mismatch");
-  const browserReceipt = checkApk(apk, browser.package, browser.signer_sha256);
+  const browserReceipt: VerifiedApk = JSON.parse(output([
+    buildReleaseTools(root), "verify-android-apk", apk, browser.package, browser.signer_sha256,
+  ]));
   linkSync(apk, join(destination, "browser.apk"));
   copyFileSync(
     compileProbe(root),
@@ -153,5 +139,5 @@ export function installerApk(root: string, role: keyof typeof packages) {
   const bundled = join(root, "runtime/phone-apps", role + ".apk");
   return existsSync(bundled)
     ? bundled
-    : buildApk(join(root, "apps", "android-" + role), role);
+    : buildApk(root, role).file;
 }

@@ -48,6 +48,12 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
             dependency_audit::run(rest)?;
             return Ok(None);
         }
+        if command == "build-android-apk" {
+            return android_package::build(rest).map(Some);
+        }
+        if command == "verify-android-apk" {
+            return android_package::verify(rest).map(Some);
+        }
     }
     if arguments
         .first()
