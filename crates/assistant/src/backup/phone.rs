@@ -1,4 +1,4 @@
-use super::{BackupDigest, Result, command, environment, text};
+use super::{Result, command, environment, file_digest, text};
 use serde_json::{Map, Value, json};
 use std::{
     collections::BTreeSet,
@@ -70,7 +70,7 @@ pub(super) fn dependencies(root: &Path) -> Result<(Value, Value)> {
                     } else if backing.starts_with(&sdk) {
                         let name = format!("sdk:{}", text(backing.strip_prefix(&sdk)?)?);
                         if !dependencies.contains_key(&name) {
-                            dependencies.insert(name,json!({"size":fs::metadata(&backing)?.len(),"sha512":BackupDigest::Current.file(&backing)?}));
+                            dependencies.insert(name,json!({"size":fs::metadata(&backing)?.len(),"sha512":file_digest(&backing)?}));
                         }
                     } else {
                         return Err("Phone backing leaves this installation".into());
@@ -151,7 +151,6 @@ pub(super) fn relocate(
     final_root: &Path,
     sdk: &Path,
 ) -> Result<Vec<String>> {
-    let digest = BackupDigest::from_manifest(manifest)?;
     let old_root = manifest["source_root"]
         .as_str()
         .ok_or("Backup source root missing")?;
@@ -191,7 +190,7 @@ pub(super) fn relocate(
             let file = sdk.join(name);
             if fs::metadata(&file)?.len()
                 != row["size"].as_u64().ok_or("SDK dependency size missing")?
-                || digest.file(&file)? != row[digest.key()]
+                || file_digest(&file)? != row["sha512"]
             {
                 return Err("Matching Android SDK image required for restore".into());
             }

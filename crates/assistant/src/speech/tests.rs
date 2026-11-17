@@ -74,7 +74,7 @@ async fn transport_rejections_preserve_authentication_status() {
         active: Mutex::new(Default::default()),
         run_signals: Default::default(),
         login_attempts: Mutex::new(vec![]),
-        workspace_init: Mutex::new(None),
+        workspace_init: Mutex::new(false),
         location_mutation: Mutex::new(()),
         network_mutation: Mutex::new(()),
     });

@@ -18,8 +18,7 @@ fn invoke(root: &Path, value: &Value, path: &str, template: &str) -> Output {
         .arg(root.join("SDK with spaces"))
         .arg(template)
         .env_clear()
-        .env("PATH", path)
-        .env("JAVA_HOME", root.join("java 工具"));
+        .env("PATH", path);
     send(&mut command, value)
 }
 

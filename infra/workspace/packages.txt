@@ -1,0 +1,2 @@
+ca-certificates curl git ripgrep unzip zip poppler-utils chromium fonts-noto-cjk
+tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim

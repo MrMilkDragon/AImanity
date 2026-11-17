@@ -1,5 +1,5 @@
 //! One read-only environment policy for source hosts, installed hosts and WSL.
-use crate::{Error, Result, images, managed_engine};
+use crate::{Error, Result, managed_engine};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -142,16 +142,6 @@ impl Profile {
         } else {
             sdk
         };
-        let java = selected_path(
-            string(&self.value, "java_home", "")?,
-            ["AI_PHONE_JAVA_HOME", "JAVA_HOME"],
-        );
-        let homebrew_java = "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home";
-        let java = if java.is_empty() && Path::new(homebrew_java).exists() {
-            homebrew_java.into()
-        } else {
-            java
-        };
         let host = string(&self.value, "host_proxy", self.legacy("HOST_HTTP_PROXY"))?;
         let mut env = Environment::from([
             ("AI_PHONE_PROJECT_ROOT".into(), text(root)?),
@@ -186,8 +176,6 @@ impl Profile {
             ),
             ("AI_PHONE_SDK_ROOT".into(), sdk),
             ("AI_PHONE_ANDROID_ABI".into(), abi.into()),
-            ("JAVA_HOME".into(), java.clone()),
-            ("AI_PHONE_JAVA_HOME".into(), java),
             ("AI_PHONE_HOST_PROXY".into(), host.clone()),
             (
                 "AI_PHONE_CONTAINER_PROXY".into(),
@@ -250,22 +238,9 @@ pub(crate) fn resolve_with_engine(
     managed: Environment,
 ) -> Result<Environment> {
     let profile = Profile::load(root)?;
-    let base = profile.base_path(root)?;
-    let mut env = Environment::new();
-    let prefix = managed
-        .get("AI_PHONE_MANAGED_BIN")
-        .cloned()
-        .or_else(|| std::env::var("AI_PHONE_MANAGED_BIN").ok())
-        .unwrap_or_default();
-    let path = if prefix.is_empty() {
-        base
-    } else {
-        format!("{prefix}:{base}")
-    };
-    env.extend(managed);
-    env.extend(images::environment(root)?);
+    let mut env = managed;
     env.extend(profile.environment(root, user)?);
-    env.insert("PATH".into(), path);
+    env.insert("PATH".into(), profile.base_path(root)?);
     env.insert(
         "AI_PHONE_NATIVE_HOST_PROGRAM".into(),
         text(&std::env::current_exe()?)?,

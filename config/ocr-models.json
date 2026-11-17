@@ -2,7 +2,7 @@
   "format": 1,
   "source_repository": "https://github.com/tesseract-ocr/tessdata_fast",
   "source_commit": "65727574dfcd264acbb0c3e07860e4e9e9b22185",
-  "scope": "Pinned native OCR qualification data. Managed devices use their bundled OCR image.",
+  "scope": "Pinned native OCR data for qualification and the Windows Linux guest.",
   "models": [
     {
       "file": "eng.traineddata",

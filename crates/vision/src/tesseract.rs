@@ -56,13 +56,36 @@ fn command() -> Command {
         Command::new(program)
     } else if let Some(command) = bundled_command() {
         command
+    } else if let Some(lima) = std::env::var_os("AI_PHONE_LIMA_COMMAND") {
+        let mut command = Command::new(lima);
+        command.args([
+            "shell",
+            "--tty=false",
+            "--workdir",
+            "/",
+            "ai-phone",
+            "sudo",
+            "-n",
+            "--",
+            "/usr/bin/unshare",
+            "-n",
+            "--",
+            "sudo",
+            "-n",
+            "-u",
+            "nobody",
+            "--",
+            "env",
+            "OMP_THREAD_LIMIT=1",
+            "timeout",
+            "-k",
+            "1",
+            "4",
+            "/usr/bin/tesseract",
+        ]);
+        command
     } else {
-        let mut command = Command::new("docker");
-        command.args(["exec", "-i", "-e", "OMP_THREAD_LIMIT=1"]);
-        command
-            .arg(std::env::var("AI_PHONE_OCR_CONTAINER").unwrap_or_else(|_| "ai-phone-ocr".into()));
-        command.args(["timeout", "-k", "0.2", "4", "tesseract"]);
-        command
+        Command::new("tesseract")
     };
     command.args([
         "stdin",

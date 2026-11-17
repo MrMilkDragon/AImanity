@@ -14,18 +14,13 @@ When an update is available, the workbench shows an update icon at the top right
 
 ## Source alternative: prerequisites
 
-This source path uses macOS Apple Silicon, native Android Emulator (Android 15 ARM64) and a Docker Debian 13/Openbox desktop. Install Node.js 22+, Bun (project bootstrap), Rust 1.95+ (release builds pin 1.96.0), Java 17, Xcode Command Line Tools, Docker Desktop and Android command-line tools with sdkmanager. Recommend 16GB+ RAM and 35GiB free disk for fresh images/builds.
+Use an Apple Silicon Mac with Rust 1.96.0, Xcode Command Line Tools, and the Android 35 platform and native build tools. Prepare the offline Android and Debian/Openbox bundles using the [macOS factory](engineering/macos-full-runtime.md). Reserve 35 GiB for a fresh source build and 16 GiB of RAM for building and running both guests.
 
 ## First run
 
-1. Run `./ai-phone doctor` and resolve failed prerequisites; it does not modify devices.
-2. Run `./ai-phone install`. Configure SDK/JDK paths, optional host/container HTTP proxies, new-device resources and language. Empty means direct networking; `-` clears a saved value.
-3. Review the SDK's interactive licence prompt. The installer never automatically accepts it. It then downloads SDK packages/images, installs dependencies, builds workspace/desktop images and starts local services.
-4. Open the client or local URL directly into the workbench; there is no welcome screen. Existing owner credentials and sessions are preserved; no administrator account or password is shown. Configure the first Agent model in Configuration.
-5. In Configuration → Agent, enter a model ID, API URL and key. Changed settings require text, vision and tool round-trip probes. Choose the profile that both devices will use. Stored keys are visible/editable to the administrator.
-6. Startup scripts create the primary phone. Create the computer in Configuration. Install extra Android apps in the phone.
-
-This is guided source setup with prerequisites. After resolving a reported download or build error, run `./ai-phone install` again. Existing AVDs and database passwords are preserved. Full installation rollback is not implemented.
+1. Run `./ai-phone doctor`.
+2. Run `./ai-phone install --resources /path/to/host` and choose a language and device resources. Use the factory's generated `host` directory.
+3. Open the workbench and select a saved profile in Configuration → Agent. The phone and computer use the same selected profile.
 
 ## Resources and networking
 
@@ -37,14 +32,11 @@ Use `start`, `open` and `stop` for normal operation. Repeated start preserves ex
 
 ## Review bundles
 
-Use the archive path printed by `package` in the `stage` command.
-
 ```sh
-./ai-phone package
-./ai-phone stage --archive /path/to/generated-source-bundle.tar.gz --destination /path/to/AIPhone
+cargo run --quiet --locked -p ai-phone-release-tools -- source package dist
 ```
 
-The source archive includes a file manifest and SHA-256 checksum. Staging verifies the files and keeps user data in a separate directory. The first installation creates the current link. Later versions are staged for activation. See [distribution and updates](distribution.en.md).
+The command writes a source archive with an embedded file manifest under `dist`. See [distribution and updates](distribution.en.md).
 
 ## Personal entry and guest apps
 

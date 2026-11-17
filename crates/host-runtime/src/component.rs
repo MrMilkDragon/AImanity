@@ -9,18 +9,12 @@ enum Service {
     AndroidMaintenance,
     PhonePeer,
     Source,
-    GuestAddress,
-    PeerStatus,
     Input,
     Control,
     #[cfg(windows)]
     VmOwner,
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     VmGuest,
-    #[cfg(unix)]
-    Images,
-    #[cfg(unix)]
-    WslBackend,
     #[cfg(unix)]
     UnixHost,
     #[cfg(unix)]
@@ -43,18 +37,12 @@ fn start(service: Service, arguments: &[OsString]) -> Result<()> {
         }
         Service::PhonePeer => runtime.block_on(crate::device_bridge::run_peer(arguments)),
         Service::Source => runtime.block_on(crate::source_cli::run(arguments)),
-        Service::GuestAddress => runtime.block_on(crate::device_bridge::guest::address(arguments)),
-        Service::PeerStatus => runtime.block_on(crate::device_bridge::guest::status(arguments)),
         Service::Input => runtime.block_on(crate::android::input::run(arguments)),
         Service::Control => runtime.block_on(crate::supervision::control(arguments)),
         #[cfg(windows)]
         Service::VmOwner => runtime.block_on(crate::qemu_host::worker(arguments)),
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         Service::VmGuest => runtime.block_on(crate::linux_vm::guest(arguments)),
-        #[cfg(unix)]
-        Service::Images => runtime.block_on(crate::images::run(arguments)),
-        #[cfg(unix)]
-        Service::WslBackend => runtime.block_on(crate::wsl::backend::run(arguments)),
         #[cfg(unix)]
         Service::UnixHost => runtime.block_on(crate::unix_initializer::run(arguments)),
         #[cfg(unix)]
@@ -76,11 +64,11 @@ fn contract(arguments: &[OsString], value: &str) -> Result<()> {
 pub fn run(arguments: &[OsString]) -> Option<Result<()>> {
     match arguments.first()?.to_str()? {
         "--stage-source" => Some(start(Service::Source, &arguments[1..])),
+        #[cfg(unix)]
+        "--project-command" => Some(crate::project_command::run(&arguments[1..])),
         "--source-staging-contract" => Some(contract(arguments, crate::source_cli::CONTRACT)),
         "--device-bridge" => Some(start(Service::Bridge, &arguments[1..])),
         "--phone-peer" => Some(start(Service::PhonePeer, &arguments[1..])),
-        "--phone-guest-address" => Some(start(Service::GuestAddress, &arguments[1..])),
-        "--phone-peer-status" => Some(start(Service::PeerStatus, &arguments[1..])),
         "--setup-phone-input" => Some(start(Service::Input, &arguments[1..])),
         "--phone-input-setup-contract" => {
             Some(contract(arguments, crate::android::input::CONTRACT))
@@ -126,16 +114,6 @@ pub fn run(arguments: &[OsString]) -> Option<Result<()>> {
         }
         #[cfg(unix)]
         "--initialize-unix-host" => Some(start(Service::UnixHost, &arguments[1..])),
-        "--wsl-backend-initializer-contract" => Some(contract(
-            arguments,
-            crate::wsl::BACKEND_INITIALIZER_CONTRACT,
-        )),
-        #[cfg(unix)]
-        "--initialize-wsl-backend" => Some(start(Service::WslBackend, &arguments[1..])),
-        #[cfg(unix)]
-        "--activate-images" => Some(start(Service::Images, &arguments[1..])),
-        #[cfg(unix)]
-        "--image-activation-contract" => Some(contract(arguments, crate::images::CONTRACT)),
         #[cfg(unix)]
         "--managed-engine" => Some(crate::managed_engine::run(&arguments[1..])),
         #[cfg(unix)]

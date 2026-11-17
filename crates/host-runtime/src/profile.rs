@@ -21,28 +21,28 @@ pub(crate) fn checked_launch_path(value: Option<&str>) -> Result<&str> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Phone {
-    cpus: u32,
-    memory_mb: u32,
-    storage_gb: u32,
+pub(crate) struct Phone {
+    pub(crate) cpus: u32,
+    pub(crate) memory_mb: u32,
+    pub(crate) storage_gb: u32,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Desktop {
-    cpus: u32,
-    memory_mb: u32,
+    pub(crate) cpus: u32,
+    pub(crate) memory_mb: u32,
     pub(crate) storage_gb: Option<u32>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Request {
     locale: String,
-    phone: Phone,
+    pub(crate) phone: Phone,
     pub(crate) desktop: Desktop,
-    #[cfg(unix)]
+    #[cfg(any(all(test, unix), all(target_os = "linux", target_arch = "x86_64")))]
     #[serde(default)]
     pub(crate) android_qemu: bool,
-    #[cfg(windows)]
+    #[cfg(not(any(all(test, unix), all(target_os = "linux", target_arch = "x86_64"))))]
     #[serde(default, rename = "android_qemu")]
     _android_qemu: bool,
 }
@@ -106,7 +106,6 @@ fn validate(value: &Value, template: &str) -> Result<()> {
         schema_version: u32,
         locale: String,
         sdk_root: String,
-        java_home: String,
         host_proxy: String,
         container_proxy: String,
     }
@@ -142,7 +141,6 @@ fn validate(value: &Value, template: &str) -> Result<()> {
             },
         )
         || !absolute(&header.sdk_root)
-        || (!header.java_home.is_empty() && !absolute(&header.java_home))
         || !proxy(&header.host_proxy)
         || !proxy(&header.container_proxy)
         || value
@@ -192,16 +190,8 @@ pub(crate) fn prepare(
     template: &str,
     bytes: &[u8],
     launch_path: &str,
-    java: &str,
 ) -> Result<()> {
-    prepare_request(
-        root,
-        sdk,
-        template,
-        parse_request(bytes)?,
-        launch_path,
-        java,
-    )
+    prepare_request(root, sdk, template, parse_request(bytes)?, launch_path)
 }
 
 pub(crate) fn parse_request(bytes: &[u8]) -> Result<Request> {
@@ -222,7 +212,6 @@ pub(crate) fn prepare_request(
     template: &str,
     request: Request,
     launch_path: &str,
-    java: &str,
 ) -> Result<()> {
     if !matches!(template, "android35-arm64" | "android35-x86_64") {
         return Err(Error::Invalid("host_profile_request"));
@@ -241,14 +230,13 @@ pub(crate) fn prepare_request(
             .to_string_lossy()
             .chars()
             .any(|value| value < ' ')
-        || (!java.is_empty() && !absolute(java))
     {
         return Err(Error::Invalid("host_profile"));
     }
     checked_launch_path(Some(launch_path))?;
     let mut value = json!({"schema_version":1,"local_entry":true,"locale":request.locale,
         "launch_path":launch_path,
-        "sdk_root":sdk,"java_home":java,
+        "sdk_root":sdk,
         "host_proxy":"","container_proxy":"",
         "phone":{"template":template,"cpus":request.phone.cpus,"memory_mb":request.phone.memory_mb,"storage_gb":request.phone.storage_gb},
         "desktop":{"template":"debian13-openbox","cpus":request.desktop.cpus,"memory_mb":request.desktop.memory_mb}});
@@ -274,12 +262,22 @@ fn persist(root: &Path, value: &Value) -> Result<()> {
 fn document() -> Result<Value> {
     let value: Value =
         serde_json::from_reader(std::io::stdin()).map_err(|_| Error::Invalid("host_profile"))?;
+    validate_document(&value)?;
+    Ok(value)
+}
+
+fn validate_document(value: &Value) -> Result<()> {
     let template = value
         .pointer("/phone/template")
         .and_then(Value::as_str)
         .ok_or(Error::Invalid("host_profile"))?;
-    validate(&value, template)?;
-    Ok(value)
+    validate(value, template)
+}
+
+#[cfg(unix)]
+pub(crate) fn save_user_profile(root: &Path, value: &Value) -> Result<()> {
+    validate_document(value)?;
+    persist(root, value)
 }
 
 pub(crate) fn check(arguments: &[OsString]) -> Result<()> {
@@ -318,7 +316,6 @@ pub(crate) fn run(arguments: &[OsString]) -> Result<()> {
         template,
         &bytes,
         &std::env::var("PATH").unwrap_or_else(|_| "/bin:/usr/bin".into()),
-        &std::env::var("JAVA_HOME").unwrap_or_default(),
     )?;
     println!("{{\"prepared\":true}}");
     Ok(())
@@ -346,7 +343,6 @@ mod resume_resources_tests {
             "android35-arm64",
             request(4, 4096),
             "/usr/bin:/bin",
-            "",
         )
         .unwrap();
         let before = fs::read(root.join("data/deployment/profile.json")).unwrap();
@@ -372,7 +368,6 @@ mod resume_resources_tests {
             "android35-arm64",
             request(4, 4096),
             "/usr/bin:/bin",
-            "",
         )
         .unwrap();
         let path = root.join("data/deployment/profile.json");

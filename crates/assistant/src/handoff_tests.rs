@@ -54,7 +54,7 @@ impl Fixture {
             .execute(&mut *tx)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'docker-desktop','ai-phone-desktop')")
+        sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'native-desktop','ai-phone-desktop')")
             .bind(COMPUTER).execute(&mut *tx).await.unwrap();
         let phone_conversation: Uuid =
             sqlx::query_scalar("SELECT id FROM conversations WHERE owner_id='local-user'")

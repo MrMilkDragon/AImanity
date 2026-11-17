@@ -7,8 +7,7 @@ routine recovery. Network observation is separate from agent GUI interaction.
 The Rust host runtime owns network state, explicit credential reads, core-health
 reads and device-originated probes. The authenticated assistant routes retain
 their existing protobuf requests and responses. Phone reads use the serial-scoped
-native ADB client. Desktop reads use the selected Docker command and guest tools.
-They do not require Python in the guest or a Bun process for each API read.
+native ADB client. Desktop reads use the Rust desktop bridge and guest tools.
 
 Existing `source.json`, `job.json`, `checks.json` and application-handoff markers
 remain in their device-owned directory. Observation does not rewrite subscription

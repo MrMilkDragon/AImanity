@@ -4,6 +4,8 @@
 
 - Wake notification delivery as soon as its report is committed.
 - Fetch Liberty status in one database request.
+- Batch incoming notifications and combine heartbeat updates with deduplication reads.
+- Persist notification and device-handoff receipts without copying the entire conversation.
 - Avoid copying screenshots twice when compacting model history and accelerate streamed response parsing.
 - Encode desktop screenshots faster with lossless PNG filtering.
 

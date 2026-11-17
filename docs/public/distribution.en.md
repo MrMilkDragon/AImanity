@@ -1,12 +1,12 @@
 # Clients, runtimes, user data and updates
 
-[简体中文](distribution.zh-CN.md) · Updated 2026-10-30
+[简体中文](distribution.zh-CN.md)
 
 The installer supplies the devices and services. Configure resources and models in the client. See [downloads and host requirements](release-status.md).
 
 ## Implemented storage boundaries
 
-Native setup uses Tauri's application data directory, with an owned `host` subdirectory:
+Native setup uses its application data directory, with an owned `host` subdirectory:
 
 ```text
 host/
@@ -20,11 +20,11 @@ host/
     data/                     guests, account/model/channel state, files
 ```
 
-`crates/host-runtime/src/source_cli.rs` validates and stages this hash-addressed layout. Existing bytes, aliases and persistent links are checked on retry; occupied or changed code is rejected. It does not replace existing user state. The prebuilt [web component](runtime-bundles.md) contains Next standalone and pinned Bun.
+`crates/host-runtime/src/source_cli.rs` stages the versioned [runtime components](runtime-bundles.md) and validates the links to persistent user data.
 
 The contributor staging command uses the same native, content-addressed source stager.
 
-PostgreSQL uses a Docker named volume. Backup/recovery covers the database, Android state, desktop rootfs/home and private files. Recovery goes to an empty target and stays quarantined until explicit validation/activation. Built-in Skills belong to the code version; user Skills, learned experience, memory, knowledge, attachments and disabled-Skill preferences must survive updates. Device resizing and system replacement are separate operations from application updates.
+PostgreSQL uses private storage in the Linux guest. Backups capture the database, Android state, Linux changes and home directory, and private files. Restore writes to an empty target and leaves it quarantined for validation. User Skills, learned experience, memory, knowledge, attachments and disabled-Skill preferences persist across updates.
 
 ## Native client updates
 
@@ -33,9 +33,10 @@ The client downloads the stable release for its platform and verifies its Ed2551
 After verifying both installers, sign the update manifest on the release maintainer's machine:
 
 ```sh
-./scripts/bun scripts/sign-client-update.ts /path/to/offline-key AImanity-0.0.1-macos-arm64.dmg AImanity-0.0.1-windows-x64-setup.exe stable.json
+cargo run --quiet --locked -p ai-phone-release-tools -- sign-update /path/to/offline-key \
+  AImanity-0.0.4-macos-arm64.dmg AImanity-0.0.4-windows-x64-setup.exe native-stable.json
 ```
 
-Attach the DMG and EXE to the GitHub release and verify both public downloads. Publish the signed `stable.json` on the `update-feed` branch. The client offers releases newer than the installed version. Install 0.0.1 manually once when moving from the earlier version sequence.
+Attach the DMG and EXE to the GitHub release. Publish the signed `native-stable.json` on the `update-feed` branch. To move from Calcium to Dysprosium, first uninstall 0.0.3, then download and install 0.0.4 from Releases. The updater handles later releases from the Dysprosium installation.
 
 Full packages must contain clean Android/Linux baselines, emulator, prebuilt services and matched runtime components, with provenance, notices and applicable corresponding source. See [distribution requirements](distribution-requirements.md), [release status](release-status.md), and [backup/recovery](backup-restore.en.md).
