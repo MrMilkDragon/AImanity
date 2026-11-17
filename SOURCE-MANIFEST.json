@@ -542,14 +542,9 @@
       "sha256": "edf485617a68dbbb62890fd9349f07aa55a3ad911c140fb28d5d6176c8814f53"
     },
     {
-      "path": "config/linux-factory.json",
-      "size": 340,
-      "sha256": "c0f74260a62e34bb351a6acf5e9d8121d2e44743407e62729bb954dfac46be11"
-    },
-    {
       "path": "config/linux-ocr.json",
-      "size": 229,
-      "sha256": "8544f8c00a7a9dc98d32d4d144a285730a9a762e34472450bcaffefb21628d2f"
+      "size": 454,
+      "sha256": "a52dd6ab758c62ce1f0c6106bbb7a569669b0b3987802572871bbb9a7a3180b0"
     },
     {
       "path": "config/macos-factory.json",
@@ -2218,8 +2213,8 @@
     },
     {
       "path": "crates/release-tools/src/assets.rs",
-      "size": 9040,
-      "sha256": "68814c8c6bcba4308b4e57f5f8c0e57ca8eb70cde9e7e98e5f95a01897832aa4"
+      "size": 9160,
+      "sha256": "9864e8053a28bf183e1d9dac01e847e5194a25c85574658d262836652dd9601e"
     },
     {
       "path": "crates/release-tools/src/capsule.rs",
@@ -2232,14 +2227,19 @@
       "sha256": "72bde4edf86ab84580601e395a49eb792c81b660abb9752c6f6c2b267f853dc4"
     },
     {
+      "path": "crates/release-tools/src/linux_ocr.rs",
+      "size": 9061,
+      "sha256": "5b543c0cb45de432f6777ef4c06e973b6e57966fd1edf946ae0d8a346b7b07fa"
+    },
+    {
       "path": "crates/release-tools/src/main.rs",
-      "size": 3858,
-      "sha256": "da18f31fc4d7f74607defeb9a1d286d14543d27b3773e958045322d5434eec5d"
+      "size": 3962,
+      "sha256": "8024a1479c5a71ece1cf04a02d214191d6000574126b965e47c6f79537ee3d43"
     },
     {
       "path": "crates/release-tools/src/phone_apps.rs",
-      "size": 5246,
-      "sha256": "b7cc08c160792b9e6fbaf7d9de08a3e0ed5960729f6170d14933267a505c606f"
+      "size": 5033,
+      "sha256": "69d6daab397da6ee84ed0aa75113a38ca919957872897f128a543c0f382f1ada"
     },
     {
       "path": "crates/release-tools/src/source.rs",
@@ -2448,8 +2448,8 @@
     },
     {
       "path": "docs/public/engineering/linux-offline-ocr.md",
-      "size": 2529,
-      "sha256": "bde0a8c72050e772c1d22c753e91181c25b70292186051c14c622f21ab635a17"
+      "size": 2374,
+      "sha256": "f338871e6eec7120dd5d4af6dce4f7c52111b715a692470279f8cc4cb48c125e"
     },
     {
       "path": "docs/public/engineering/macos-full-runtime.md",
@@ -3387,19 +3387,9 @@
       "sha256": "ea36eda5e376e7cd9e76696caf8368f4be2c832fe57cfee333453f1f604db672"
     },
     {
-      "path": "scripts/linux-dependency.ts",
-      "size": 376,
-      "sha256": "4cf49fbc8790116299486df3eb9cd94b5f0a3db31d0e8dd264f3deb9db542315"
-    },
-    {
       "path": "scripts/linux-ocr/Dockerfile",
-      "size": 948,
-      "sha256": "7c110972043bafb3ec201c1e89c831f5cc01e476c7e1f1ff0e0970e018d9480f"
-    },
-    {
-      "path": "scripts/linux-ocr/collect.ts",
-      "size": 671,
-      "sha256": "311110e47d01c831e25651f397136b3d7012709345aee6db6961c413a8925486"
+      "size": 695,
+      "sha256": "d65a474b472e2b2681da7ba0eebb807c65184ea4b5c0d685b551b00c80023e7a"
     },
     {
       "path": "scripts/macos-client-factory.ts",
@@ -3472,11 +3462,6 @@
       "sha256": "49023ee15e9676ae55668e9014a001ce30074f30678d4743a1b0b41e932d825a"
     },
     {
-      "path": "scripts/tooling/factory-inputs.ts",
-      "size": 2146,
-      "sha256": "f3cd4f6e7b0ef9ae9346b5e6bfbaebe380b0b7f110acaeb6f5675a9c81d87482"
-    },
-    {
       "path": "scripts/tooling/factory.ts",
       "size": 5479,
       "sha256": "38a1d4ee6783e623d343b195a379703a9e292d852aa0752dd4da991889aa2df8"
@@ -3512,19 +3497,14 @@
       "sha256": "f7c3772b579672dda1a805e5acacf95397521d76ee6d11d547d9f1abff9dc3fe"
     },
     {
-      "path": "scripts/tooling/linux-dependencies.ts",
-      "size": 4386,
-      "sha256": "b8559dc725c07d37f863a0473b0a0c3f7dc12a1f7bd4ff5c410bda8306e2e2d6"
-    },
-    {
       "path": "scripts/tooling/macos-factory.ts",
       "size": 6812,
       "sha256": "1ad8a482d1171677a01179d62b92190bc4c943419d5fc36f09d250b5e9f59b61"
     },
     {
       "path": "scripts/tooling/native-build.ts",
-      "size": 8329,
-      "sha256": "4f4672fe4fc86afa35af502850a824b422a3272e1ce937d21426c77e2674f603"
+      "size": 8413,
+      "sha256": "3aff850c04a60784d5b8dad4a7266d2f536cd5eec075a27311c6ad161d1840e4"
     },
     {
       "path": "scripts/tooling/native-check.ts",
@@ -3593,8 +3573,8 @@
     },
     {
       "path": "scripts/tooling/wsl-qualification.ts",
-      "size": 12918,
-      "sha256": "915d9db9fde066126e5c3fdfac6e1473238a68f782d340e9bec9eb0adef93a72"
+      "size": 12744,
+      "sha256": "357f1075355d5202e617f987a193301268846651a6da2a36e6cb3802c7c960d9"
     },
     {
       "path": "scripts/tsconfig.json",

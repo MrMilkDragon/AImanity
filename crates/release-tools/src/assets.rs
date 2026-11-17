@@ -14,15 +14,23 @@ use std::{
 #[derive(Deserialize)]
 struct OcrModels {
     source_commit: String,
-    models: Vec<Model>,
+    models: Vec<Pin>,
 }
 
 #[derive(Deserialize)]
-struct Model {
+pub(super) struct Pin {
     file: String,
     url: String,
     size_bytes: u64,
     sha256: String,
+}
+
+impl Pin {
+    pub(super) fn stage(&self, directory: &Path) -> Result<std::path::PathBuf> {
+        let file = directory.join(&self.file);
+        stage_pin::<Sha256>(&self.url, &file, self.size_bytes, &self.sha256)?;
+        Ok(file)
+    }
 }
 
 const CURL_FETCH: [&str; 5] = ["-fsSL", "--proto", "=https", "--proto-redir", "=https"];
@@ -105,12 +113,7 @@ pub(super) fn ocr(arguments: &[OsString]) -> Result<Value> {
     let destination = Path::new(destination);
     let policy: OcrModels = serde_json::from_str(include_str!("../../../config/ocr-models.json"))?;
     for model in &policy.models {
-        stage_pin::<Sha256>(
-            &model.url,
-            &destination.join(&model.file),
-            model.size_bytes,
-            &model.sha256,
-        )?;
+        model.stage(destination)?;
     }
     Ok(json!({"models":policy.models.len(),"source_commit":policy.source_commit}))
 }

@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { ROOT, run, output, hash, hostKey } from "./process";
 import { sourceEntries, type SourceFile } from "./source";
-import { json, save, records, verifyFiles, publicBytes } from "./inventory";
-import { prepareDependency } from "./linux-dependencies";
+import { collect, json, save, records, verifyFiles, publicBytes } from "./inventory";
+import { buildReleaseTools } from "./archive";
 import { fetchPin } from "./factory";
 import { gunzipSync } from "node:zlib";
 
@@ -226,8 +226,10 @@ export async function prepareServices(root = ROOT, linuxOcr?: string) {
     data: readFileSync(join(root, fixture)),
     mode: 0o644,
   });
-  if (linuxOcr)
-    files.push(...(await prepareDependency(root, linuxOcr, "linux-ocr")));
+  if (linuxOcr) {
+    output([buildReleaseTools(root), "linux-ocr", "verify", linuxOcr], { cwd: root });
+    files.push(...collect(linuxOcr, "runtime/services/ocr").files);
+  }
   files.push({
     path: "runtime/services/manifest.json",
     data: Buffer.from(

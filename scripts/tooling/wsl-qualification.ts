@@ -14,8 +14,6 @@ import { ROOT, hostKey, run, output, digest } from "./process";
 import { json, save } from "./inventory";
 import { releaseTools, buildReleaseTools } from "./archive";
 import { checkDocker, prepareApps, prepareImages, fetchPin } from "./factory";
-import { buildFactoryDependency } from "./factory-inputs";
-import { verifyDependency } from "./linux-dependencies";
 import { buildNative } from "./native-build";
 import { preparePayload } from "./client-payload";
 import { checkSource } from "./source";
@@ -319,11 +317,10 @@ async function prepareBackendSource(
     linuxOcr === undefined
       ? join(root, ".tools/linux-ocr-runtime")
       : resolve(linuxOcr);
-  if (linuxOcr !== undefined) await verifyDependency(root, ocr, "linux-ocr");
   if (deviceApps) prepareApps(root, { ...process.env });
+  const release = buildReleaseTools(root);
   if (linuxOcr === undefined)
-    await buildFactoryDependency(root, join(work, "ocr-context"), ocr, "linux-ocr");
-  buildReleaseTools(root);
+    run([release, "linux-ocr", "build", join(work, "ocr-context"), ocr], { cwd: root });
   await buildNative(root);
   await preparePayload(root, {
     nativeServices: true,

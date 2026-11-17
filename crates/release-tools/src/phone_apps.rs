@@ -25,15 +25,7 @@ struct Browser {
     package: String,
     version: String,
     signer_sha256: String,
-    abis: BTreeMap<String, Pin>,
-}
-
-#[derive(Deserialize)]
-struct Pin {
-    file: String,
-    url: String,
-    size_bytes: u64,
-    sha256: String,
+    abis: BTreeMap<String, assets::Pin>,
 }
 
 #[derive(Deserialize, Serialize, PartialEq)]
@@ -126,9 +118,7 @@ fn build(root: &Path, cache: &Path, destination: &Path, identity: String) -> Res
     } else {
         "x86_64"
     };
-    let pin = &policy.abis[abi];
-    let browser = cache.join("phone-browser").join(&pin.file);
-    assets::stage_pin::<Sha256>(&pin.url, &browser, pin.size_bytes, &pin.sha256)?;
+    let browser = policy.abis[abi].stage(&cache.join("phone-browser"))?;
     let signer = android_package::inspect(
         &android_package::sdk()?.join("build-tools/35.0.0"),
         &browser,
