@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { join, basename } from "node:path";
 import { ROOT, output, run, hash, download } from "./process";
-import { sourceEntries, type SourceFile } from "./source";
+import { sourceEntries } from "./source";
 import {
   json,
   save,
@@ -116,7 +116,7 @@ export async function buildPhone(root = ROOT) {
   mkdirSync(destination, { recursive: true });
   const apps: Record<string, unknown> = {};
   for (const [role, packageName] of Object.entries(packages)) {
-    const apk = buildApk(join(root, "apps", "android-" + role), role, role);
+    const apk = buildApk(join(root, "apps", "android-" + role), role);
     apps[role] = checkApk(apk, packageName);
     copyFileSync(apk, join(destination, role + ".apk"));
   }
@@ -156,7 +156,7 @@ export function installerApk(root: string, role: keyof typeof packages) {
   const bundled = join(root, "runtime/phone-apps", role + ".apk");
   return existsSync(bundled)
     ? bundled
-    : buildApk(join(root, "apps", "android-" + role), role, role);
+    : buildApk(join(root, "apps", "android-" + role), role);
 }
 export function notificationHelper(root = ROOT) {
   const bundled = join(root, "runtime/phone-apps/notification-access.jar");

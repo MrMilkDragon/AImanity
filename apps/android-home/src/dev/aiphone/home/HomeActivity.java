@@ -17,7 +17,7 @@ public final class HomeActivity extends Activity {
     private static final String FILES = "com.android.documentsui";
     private static final String INPUT = "dev.aiphone.input";
     private final ArrayList<App> apps=new ArrayList<>();
-    private LinearLayout root,pages;
+    private LinearLayout root;
     private HorizontalScrollView scroller;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private int page=0;
@@ -68,7 +68,7 @@ public final class HomeActivity extends Activity {
         final int columns=Math.max(4,Math.min(8,screen/dp(82))),rows=Math.max(1,Math.min(5,availableHeight/dp(106))),pageSize=columns*rows;
         scroller=new HorizontalScrollView(this){@Override public boolean onTouchEvent(android.view.MotionEvent event){boolean result=super.onTouchEvent(event);if(event.getActionMasked()==MotionEvent.ACTION_UP||event.getActionMasked()==MotionEvent.ACTION_CANCEL){post(()->{page=Math.max(0,Math.min((apps.size()-1)/pageSize,Math.round(getScrollX()/(float)getWidth())));smoothScrollTo(page*getWidth(),0);});}return result;}};
         scroller.setHorizontalScrollBarEnabled(false);scroller.setOverScrollMode(View.OVER_SCROLL_NEVER);scroller.setFillViewport(true);
-        pages=new LinearLayout(this);pages.setOrientation(LinearLayout.HORIZONTAL);scroller.addView(pages,new HorizontalScrollView.LayoutParams(-2,-1));
+        LinearLayout pages=new LinearLayout(this);pages.setOrientation(LinearLayout.HORIZONTAL);scroller.addView(pages,new HorizontalScrollView.LayoutParams(-2,-1));
         int count=Math.max(1,(apps.size()+pageSize-1)/pageSize);page=Math.min(page,count-1);
         for(int p=0;p<count;p++){
             final int pageIndex=p;

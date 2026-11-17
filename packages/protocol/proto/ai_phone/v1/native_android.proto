@@ -32,12 +32,12 @@ message NativeAndroidCreation {
 
 // Local native component IPC. The installer supplies its already admitted phone.
 message NativeAndroidStart {
+  reserved 5;
+  reserved "wsl_distribution";
   NativeAndroidPrepared phone = 1;
   uint32 adb_port = 2;
   uint32 console_port = 3;
   uint32 grpc_port = 4;
-  // Only an already registered application-owned WSL backend may be paired.
-  string wsl_distribution = 5;
   NativeAndroidVmEndpoint linux_vm = 6;
 }
 
@@ -63,13 +63,14 @@ message NativeAndroidBooted {
 
 // A running worker holds the separate lifecycle lock for this exact plan.
 message NativeAndroidSessionOwner {
+  reserved 7;
+  reserved "wsl_distribution";
   uint32 version = 1;
   string sdk_root = 2;
   string avd_home = 3;
   uint32 adb_port = 4;
   uint32 console_port = 5;
   uint32 grpc_port = 6;
-  string wsl_distribution = 7;
   NativeAndroidVmEndpoint linux_vm = 8;
 }
 

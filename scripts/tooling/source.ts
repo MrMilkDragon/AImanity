@@ -9,7 +9,6 @@ type SourceEntry = { path: string; sha256: string; mode: number };
 function source(root: string, ...args: string[]) {
   return output([buildReleaseTools(root), "source", ...args], { cwd: root });
 }
-
 export function sourceEntries(root = ROOT): SourceEntry[] {
   return JSON.parse(source(root, "list"));
 }
@@ -37,8 +36,4 @@ export function checkSource(
 ) {
   source(root, "check", ...(repository ? ["--repository"] : []),
     ...(manifest ? ["--manifest"] : []));
-}
-
-export function createSourcePackage(root: string, destination: string) {
-  return source(root, "package", destination);
 }

@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { ROOT, run } from "./process";
 
 function files(folder: string, extension: string): string[] {
@@ -8,16 +8,16 @@ function files(folder: string, extension: string): string[] {
     .map((entry) => join(entry.parentPath, entry.name));
 }
 
-export function buildApk(source: string, name: string, folder: string) {
+export function buildApk(source: string, name: string) {
   const sdk = process.env.ANDROID_HOME,
     java = process.env.JAVA_HOME;
   if (!sdk || !java) throw Error("ANDROID_HOME and JAVA_HOME are required");
-  const out = join(ROOT, "data/android", folder),
+  const out = join(ROOT, "data/android", name),
     tools = join(sdk, "build-tools/35.0.0");
   const jdk = join(java, "bin"),
     platform = join(sdk, "platforms/android-35/android.jar");
-  for (const name of ["gen", "classes", "dex"])
-    mkdirSync(join(out, name), { recursive: true });
+  for (const folder of ["classes", "dex"])
+    mkdirSync(join(out, folder), { recursive: true });
   run([
     join(tools, "aapt2"),
     "compile",
@@ -35,8 +35,6 @@ export function buildApk(source: string, name: string, folder: string) {
     platform,
     "--manifest",
     join(source, "AndroidManifest.xml"),
-    "--java",
-    join(out, "gen"),
     "--min-sdk-version",
     "26",
     "--target-sdk-version",
@@ -52,7 +50,6 @@ export function buildApk(source: string, name: string, folder: string) {
     "-d",
     join(out, "classes"),
     ...files(join(source, "src"), ".java"),
-    ...files(join(out, "gen"), ".java"),
   ]);
   run([
     join(tools, "d8"),

@@ -90,18 +90,14 @@ pub(super) fn seal(args: &[OsString]) -> Result<Value> {
     metadata["source_components"] = json!(["native-services", "phone-apps"]);
     metadata["runtime"] = json!("qemu-linux-backend");
     metadata["windows_boot_verified"] = json!(false);
-    metadata["release_sha256"] = json!(identity(&compiled.join("source.payload"))?);
-    if !compiled.join("redis/bin/redis-server").is_file()
-        || !compiled.join("redis/bin/redis-cli").is_file()
-    {
-        return Err("The Windows release layer requires the offline Redis runtime".into());
-    }
+    let release = identity(&compiled.join("source.payload"))?;
+    metadata["release_sha256"] = json!(release);
     let status = Command::new("bash")
         .arg("scripts/windows-release-layer.sh")
         .arg(&compiled)
         .arg(&baseline)
         .arg(workspace.path())
-        .arg(compiled.join("images.payload"))
+        .arg(release)
         .status()?;
     if !status.success() {
         return Err("Windows Linux release layer build failed".into());

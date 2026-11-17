@@ -1,47 +1,11 @@
-use crate::{Error, Result, filesystem, native_ipc};
-use ai_phone_api::wire::{DeviceBridgeGuestAddress, DeviceBridgePeerOwner};
+use crate::{Error, Result, filesystem};
+use ai_phone_api::wire::DeviceBridgePeerOwner;
 use prost::Message;
-use std::{
-    ffi::OsString,
-    net::{Ipv4Addr, UdpSocket},
-    path::Path,
-};
+use std::path::Path;
 
 pub const RUNTIME: &str = "/var/lib/aiphone/installation/user/data/android/user";
 
-pub async fn address(arguments: &[OsString]) -> Result<()> {
-    if !arguments.is_empty() {
-        return Err(Error::Invalid("phone_guest_arguments"));
-    }
-    // UDP connect selects the default route without sending a packet or DNS query.
-    let route = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
-    route.connect((Ipv4Addr::new(1, 1, 1, 1), 9))?;
-    let std::net::IpAddr::V4(ip) = route.local_addr()?.ip() else {
-        return Err(Error::Invalid("phone_guest_address"));
-    };
-    if !ip.is_private() {
-        return Err(Error::Invalid("phone_guest_address"));
-    }
-    native_ipc::write_bounded(
-        &mut tokio::io::stdout(),
-        &DeviceBridgeGuestAddress {
-            ipv4: ip.to_string(),
-        },
-        512,
-    )
-    .await?;
-    Ok(())
-}
-pub async fn status(arguments: &[OsString]) -> Result<()> {
-    if !arguments.is_empty() {
-        return Err(Error::Invalid("phone_guest_arguments"));
-    }
-    let expected: DeviceBridgePeerOwner =
-        native_ipc::read_bounded(&mut tokio::io::stdin(), 512).await?;
-    let value = observe(&expected).await?;
-    native_ipc::write_bounded(&mut tokio::io::stdout(), &value, 512).await?;
-    Ok(())
-}
+#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
 pub(crate) async fn observe(
     expected: &DeviceBridgePeerOwner,
 ) -> Result<ai_phone_api::wire::NativeAndroidBooted> {

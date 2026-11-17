@@ -1,4 +1,4 @@
-use crate::{client_update::macos, deployment};
+use crate::{APP_ID, client_update::macos, deployment};
 use std::{
     ffi::OsString,
     fs, io,
@@ -8,7 +8,6 @@ use std::{
 };
 
 const HELPER: &str = "--uninstall-macos";
-const BUNDLE_ID: &str = "dev.aiphone.client";
 const ERROR_TITLE: &str = "AImanity uninstall failed";
 
 #[derive(Clone, Debug)]
@@ -42,13 +41,13 @@ fn user_home() -> Result<PathBuf, String> {
 }
 
 fn profile(user: &Path) -> PathBuf {
-    user.join("Library/Application Support").join(BUNDLE_ID)
+    user.join("Library/Application Support").join(APP_ID)
 }
 
 pub async fn prepare() -> Result<Option<Plan>, String> {
     let program = tokio::task::spawn_blocking(|| {
         user_home()?;
-        let bundle = macos::application(BUNDLE_ID)?;
+        let bundle = macos::application(APP_ID)?;
         let parent = bundle.parent().ok_or("AImanity is not installed.")?;
         tempfile::tempdir_in(parent).map_err(|_| "AImanity cannot be removed from this folder.")?;
         std::env::current_exe().map_err(|error| error.to_string())
@@ -118,16 +117,14 @@ fn uninstall(user: &Path, bundle: &Path) -> Result<(), String> {
     preserve_backups(&data).map_err(|error| error.to_string())?;
     for path in [
         data,
-        library.join("Caches").join(BUNDLE_ID),
-        library.join("WebKit").join(BUNDLE_ID),
-        library.join("HTTPStorages").join(BUNDLE_ID),
-        library.join("Logs").join(BUNDLE_ID),
-        library
-            .join("Preferences")
-            .join(format!("{BUNDLE_ID}.plist")),
+        library.join("Caches").join(APP_ID),
+        library.join("WebKit").join(APP_ID),
+        library.join("HTTPStorages").join(APP_ID),
+        library.join("Logs").join(APP_ID),
+        library.join("Preferences").join(format!("{APP_ID}.plist")),
         library
             .join("Saved Application State")
-            .join(format!("{BUNDLE_ID}.savedState")),
+            .join(format!("{APP_ID}.savedState")),
     ] {
         remove(&path).map_err(|error| format!("{}: {error}", path.display()))?;
     }
@@ -146,7 +143,7 @@ pub fn run(args: &[OsString]) -> Option<i32> {
             .to_str()
             .and_then(|pid| pid.parse().ok())
             .ok_or("Invalid AImanity process.")?;
-        let bundle = macos::application(BUNDLE_ID)?;
+        let bundle = macos::application(APP_ID)?;
         macos::wait_for_parent(pid)?;
         uninstall(&user_home()?, &bundle)
     })();
@@ -167,7 +164,7 @@ mod tests {
     #[test]
     fn deleting_the_profile_preserves_its_backups_and_other_data() {
         let directory = tempfile::tempdir().unwrap();
-        let data = directory.path().join(BUNDLE_ID);
+        let data = directory.path().join(APP_ID);
         let backups = data.join("host/user/data/backups");
         fs::create_dir_all(&backups).unwrap();
         fs::write(backups.join("snapshot.tar"), "backup").unwrap();

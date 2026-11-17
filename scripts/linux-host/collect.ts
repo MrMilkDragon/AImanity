@@ -1,7 +1,6 @@
 import {
   cpSync,
   copyFileSync,
-  existsSync,
   mkdirSync,
   readdirSync,
 } from "node:fs";

@@ -16,7 +16,7 @@ The global toolbar opens the language selector, Skill manager, simulated locatio
 
 Liberty and Task & Goal use the shared assistant's persisted mode state. Copilot captures the default microphone, uses the bundled offline recognizer, and reads replies with the system voice. Partial recognition appears in the composer; final text enters the shared message outbox. Building the native client requires CMake for the bundled recognizer.
 
-The native delivery path uses the existing application identity and data locations on macOS and Windows. The Windows host starts the bundled Android and WHPX desktop and relays the local protobuf services over authenticated loopback. The macOS 0.0.3 installer helper has applied a local native candidate and reopened the application. Full offline setup, the Windows upgrade, physical microphone and loudspeaker echo, and keyboard and accessibility parity remain in development.
+Install Dysprosium from Releases on macOS or Windows. It opens its own data directory and receives later native releases through its updater. The Windows host starts the bundled Android and WHPX desktop and relays local protobuf services over authenticated loopback.
 
 ```sh
 cargo build --release --manifest-path apps/native/Cargo.toml

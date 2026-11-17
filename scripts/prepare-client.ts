@@ -1,7 +1,6 @@
 import { ROOT } from "./tooling/process";
-import { preparePayload } from "./tooling/client-payload";
+import { preparePayload, stageSource } from "./tooling/client-payload";
 import { verifyNative, nativeDatabaseReceipt } from "./tooling/native-check";
-import { stageSource } from "./tooling/client-payload";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -17,7 +16,6 @@ console.log(
       androidRuntime: option("--android-runtime"),
       imageRuntime: option("--images-runtime"),
       linuxOcr: option("--linux-ocr"),
-      wslRuntime: option("--wsl-runtime"),
     }),
   ),
 );

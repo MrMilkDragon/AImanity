@@ -252,9 +252,9 @@ pub(crate) fn run(args: &[OsString]) -> Option<i32> {
             .map_err(|error| error.to_string())?;
         let downloaded = Path::new(downloaded);
         if downloaded.file_name() != Some(std::ffi::OsStr::new(&Platform::Mac.installer(&version)))
-            || !downloaded
-                .parent()
-                .is_some_and(|folder| folder.ends_with("dev.aiphone.client/client-updates"))
+            || !downloaded.parent().is_some_and(|folder| {
+                folder.ends_with(Path::new(crate::APP_ID).join("client-updates"))
+            })
             || !fs::symlink_metadata(downloaded).is_ok_and(|metadata| metadata.is_file())
         {
             return Err("Unexpected macOS installer path.".into());
@@ -293,10 +293,11 @@ mod tests {
                 format!(
                     r#"<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>dev.aiphone.client</string>
+<key>CFBundleIdentifier</key><string>{}</string>
 <key>CFBundleShortVersionString</key><string>{version}</string>
 <key>CFBundleExecutable</key><string>ai-phone-client</string>
-</dict></plist>"#
+</dict></plist>"#,
+                    crate::APP_ID
                 ),
             )
             .unwrap();

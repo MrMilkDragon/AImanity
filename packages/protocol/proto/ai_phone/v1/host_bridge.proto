@@ -59,11 +59,6 @@ message DeviceBridgePhone {
   bool owner_pipe = 5;
 }
 
-// Private native installer observation, not a network or model-facing API.
-message DeviceBridgeGuestAddress {
-  string ipv4 = 1;
-}
-
 // Stable pairing identity; endpoint and emulator token may change on restart.
 message DeviceBridgePeerOwner {
   uint32 version = 1;

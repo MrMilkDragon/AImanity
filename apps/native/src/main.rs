@@ -44,6 +44,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+const APP_ID: &str = "dev.aimanity.native";
 const SETUP_SIZE: Size = Size::new(680., 600.);
 const WORKBENCH_ASPECT: Size = Size::new(8., 5.);
 const WORKBENCH: Size = Size::new(1440., 900.);

@@ -105,30 +105,23 @@ pub(super) async fn start(
     linux_ready: impl AsyncFnOnce(&NativeAndroidBooted, &mut watch::Receiver<bool>) -> Result<()>,
 ) -> Result<Started> {
     readiness::cancelled(stop)?;
-    if let Some(super::plan::Backend::Wsl(distribution)) = &plan.backend {
-        super::link::ensure_wsl(distribution, stop).await?;
-    }
     let lease = filesystem::lease(&plan.home.join("session.lock"))?;
     let owner = read_owner(&plan)?;
     let Some(lease) = lease else {
         owner.ok_or(Error::Invalid("android_session_starting"))?;
-        let receipt = match &plan.backend {
-            None => readiness::existing(&client(&plan), stop, Duration::from_secs(120)).await?,
-            Some(backend) => {
-                if matches!(backend, super::plan::Backend::Vm { .. }) {
-                    let boot =
-                        readiness::existing(&client(&plan), stop, Duration::from_secs(120)).await?;
-                    linux_ready(&boot, stop).await?;
-                }
-                super::link::observe(&plan, stop).await?
-            }
+        let boot = readiness::existing(&client(&plan), stop, Duration::from_secs(120)).await?;
+        let receipt = if plan.backend.is_some() {
+            linux_ready(&boot, stop).await?;
+            super::link::observe(&plan, stop).await?
+        } else {
+            boot
         };
         return Ok(Started::Existing(receipt));
     };
     let mut phone = Phone::new(plan, lease)?;
     let result = async {
         let mut receipt = phone.boot(stop).await?;
-        if matches!(phone.plan.backend, Some(super::plan::Backend::Vm { .. })) {
+        if phone.plan.backend.is_some() {
             let mut lifetime = stop.clone();
             tokio::select! { biased;
                 result = linux_ready(&receipt, stop) => result?,
@@ -138,8 +131,6 @@ pub(super) async fn start(
                     return Err(Error::Invalid("android_emulator_exited"));
                 }
             }
-        }
-        if phone.plan.backend.is_some() {
             let (link, paired) = super::link::start(&phone.plan, stop).await?;
             phone.link = Some(link);
             receipt = paired;

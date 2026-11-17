@@ -31,10 +31,8 @@ use windows_sys::{
     core::GUID,
 };
 
-const ID: &str = "dev.aiphone.client";
-
 pub(super) fn open_guard() -> io::Result<OwnedHandle> {
-    let name: Vec<u16> = "Local\\dev.aiphone.client.running\0"
+    let name: Vec<u16> = format!("Local\\{}.running\0", crate::APP_ID)
         .encode_utf16()
         .collect();
     let mutex = unsafe { CreateMutexW(null(), 0, name.as_ptr()) };
@@ -91,7 +89,7 @@ fn app_directory(folder: &GUID, token: HANDLE) -> Result<PathBuf, String> {
         CoTaskMemFree(raw.cast());
         PathBuf::from(path)
     };
-    Ok(folder.join(ID))
+    Ok(folder.join(crate::APP_ID))
 }
 
 pub(super) fn remove() -> Result<(), String> {

@@ -920,7 +920,7 @@ async fn main() -> Result<()> {
     let root = PathBuf::from(root);
     let install = root.join("installed");
     let profile = root.join("profile");
-    let home = profile.join("dev.aiphone.client/host");
+    let home = profile.join("dev.aimanity.native/host");
     check(
         !home.exists() && !install.exists(),
         "fresh isolated Windows runtime",

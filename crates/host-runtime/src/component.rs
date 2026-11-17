@@ -9,8 +9,6 @@ enum Service {
     AndroidMaintenance,
     PhonePeer,
     Source,
-    GuestAddress,
-    PeerStatus,
     Input,
     Control,
     #[cfg(windows)]
@@ -43,8 +41,6 @@ fn start(service: Service, arguments: &[OsString]) -> Result<()> {
         }
         Service::PhonePeer => runtime.block_on(crate::device_bridge::run_peer(arguments)),
         Service::Source => runtime.block_on(crate::source_cli::run(arguments)),
-        Service::GuestAddress => runtime.block_on(crate::device_bridge::guest::address(arguments)),
-        Service::PeerStatus => runtime.block_on(crate::device_bridge::guest::status(arguments)),
         Service::Input => runtime.block_on(crate::android::input::run(arguments)),
         Service::Control => runtime.block_on(crate::supervision::control(arguments)),
         #[cfg(windows)]
@@ -79,8 +75,6 @@ pub fn run(arguments: &[OsString]) -> Option<Result<()>> {
         "--source-staging-contract" => Some(contract(arguments, crate::source_cli::CONTRACT)),
         "--device-bridge" => Some(start(Service::Bridge, &arguments[1..])),
         "--phone-peer" => Some(start(Service::PhonePeer, &arguments[1..])),
-        "--phone-guest-address" => Some(start(Service::GuestAddress, &arguments[1..])),
-        "--phone-peer-status" => Some(start(Service::PeerStatus, &arguments[1..])),
         "--setup-phone-input" => Some(start(Service::Input, &arguments[1..])),
         "--phone-input-setup-contract" => {
             Some(contract(arguments, crate::android::input::CONTRACT))

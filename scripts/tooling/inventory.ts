@@ -16,7 +16,6 @@ import {
   relative,
   resolve,
   isAbsolute,
-  extname,
   sep,
 } from "node:path";
 import { homedir } from "node:os";
@@ -121,7 +120,7 @@ export function links(
 export function collect(
   folder: string,
   prefix: string,
-  { omit = (name: string): boolean => false } = {},
+  { omit = (): boolean => false }: { omit?: (name: string) => boolean } = {},
 ): { files: SourceFile[]; links: LinkRecord[] } {
   const files: SourceFile[] = [],
     links: LinkRecord[] = [];

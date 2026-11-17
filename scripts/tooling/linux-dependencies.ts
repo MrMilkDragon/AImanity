@@ -4,20 +4,18 @@ import {
   mkdirSync,
   copyFileSync,
   chmodSync,
-  readdirSync,
   mkdtempSync,
   renameSync,
   rmSync,
 } from "node:fs";
 import { join, basename, dirname } from "node:path";
-import { ROOT, hash, digest, output, hostKey } from "./process";
+import { hash, digest, output } from "./process";
 import {
   json,
   save,
   collect,
   records,
   verifyFiles,
-  type FileRecord,
 } from "./inventory";
 import { extractTar, writeTar } from "./archive";
 

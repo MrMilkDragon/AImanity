@@ -16,7 +16,7 @@
 
 Liberty 与 Task & Goal 读取共享助手已保存的模式状态。Copilot 采集默认麦克风，使用随包离线模型转写，再以系统声音播报。转写草稿在对话区实时显示，完成后的文本进入共享发送队列。构建原生客户端需要 CMake，以编译本机识别器。
 
-macOS 和 Windows 原生安装包沿用原有应用标识与数据目录。Windows 宿主启动随包的 Android 和 WHPX 桌面，并通过经过认证的回环连接转发本地 protobuf 服务。macOS 0.0.3 的更新助手已在隔离目录安装原生候选包并重新打开应用。完整离线首装、Windows 更新、物理麦克风及外放回声、键盘和无障碍交互仍待验收。
+在 macOS 或 Windows 上从 Releases 手动安装 Dysprosium。原生版使用独立的数据目录，并在客户端内接收后续原生版本。Windows 宿主启动随包的 Android 和 WHPX 桌面，通过经过认证的回环连接转发本地 protobuf 服务。
 
 ```sh
 cargo build --release --manifest-path apps/native/Cargo.toml

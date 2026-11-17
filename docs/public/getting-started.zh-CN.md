@@ -41,16 +41,13 @@
 
 LAN地址见私有 `data/deployment.json`，只选私有网络接口。后端、ADB、数据库和媒体控制保持loopback/私网。通过受信 TLS 或自有 VPN 接入不可信网络。
 
-## 打包与分离目录
-
-将 `package` 输出的归档路径填入 `stage` 命令。
+## 源码归档
 
 ```sh
-./ai-phone package
-./ai-phone stage --archive /path/to/generated-source-bundle.tar.gz --destination /path/to/AIPhone
+cargo run --quiet --locked -p ai-phone-release-tools -- source package dist
 ```
 
-源码包附带文件清单和 SHA-256 校验值。暂存时校验文件，用户数据放在独立目录。首装创建 current 链接，后续版本暂存后等待启用。见[发行与更新](distribution.zh-CN.md)。
+命令将带有内置文件清单的源码归档写入 `dist`。见[发行与更新](distribution.zh-CN.md)。
 
 默认 `local_entry: true` 是同一可信局域网内的个人部署模式：能够访问网页的人可作为本机所有者进入。不要把这个入口作为多用户权限隔离；需要密码认证的既有部署可在私有配置中关闭本地入口，旧认证端点保留。
 

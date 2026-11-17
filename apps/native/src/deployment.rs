@@ -16,8 +16,6 @@ use std::{
 #[path = "host_memory.rs"]
 mod host_memory;
 
-#[cfg(not(windows))]
-const ID: &str = "dev.aiphone.client";
 const GIB: u64 = 1024_u64.pow(3);
 const SETUP_CONTROL: f32 = 44.;
 const SETUP_LINE: iced::Color = iced::Color::from_rgb8(222, 222, 222);
@@ -151,7 +149,7 @@ pub fn data_home() -> Result<PathBuf, String> {
     #[cfg(not(any(target_os = "macos", windows)))]
     let base: Option<PathBuf> = None;
     #[cfg(not(windows))]
-    base.map(|p| p.join(ID).join("host"))
+    base.map(|p| p.join(crate::APP_ID).join("host"))
         .ok_or_else(|| "Application data directory unavailable".into())
 }
 
@@ -183,7 +181,7 @@ pub fn verify_bundle(resource: &Path) -> Result<(), String> {
         // The installer verifies its large payloads while extracting them.
         if matches!(
             name.as_str(),
-            "source.payload" | "android.payload" | "images.payload" | "windows/wsl.msi"
+            "source.payload" | "android.payload" | "images.payload"
         ) {
             continue;
         }

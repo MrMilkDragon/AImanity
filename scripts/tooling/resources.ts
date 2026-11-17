@@ -2,8 +2,6 @@ import {
   createReadStream,
   readFileSync,
   existsSync,
-  readdirSync,
-  statSync,
 } from "node:fs";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";

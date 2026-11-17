@@ -13,7 +13,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
-import { homedir } from "node:os";
 import { ROOT, hash, hostKey, output, run, digest } from "./process";
 import { json, save, collect, records, verifyFiles } from "./inventory";
 import { extractTar } from "./archive";

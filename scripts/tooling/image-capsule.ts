@@ -24,7 +24,6 @@ import {
   releaseTools,
   entryBytes,
   type ArchiveFile,
-  type TarEntry,
 } from "./archive";
 
 export const imageRoles = ["workspace", "desktop", "postgres", "redis"];
@@ -319,7 +318,7 @@ export async function buildImages(
         yield { path, data, mode: 0o644 };
     }
     const fd = openSync(payload, "wx");
-    let result: Record<string, unknown>;
+    let result;
     try {
       writeSync(fd, Buffer.alloc(512));
       const encoder = spawn(

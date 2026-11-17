@@ -52,7 +52,7 @@ fn cache() -> Result<PathBuf, String> {
     } else {
         directory
     };
-    Ok(directory.join("dev.aiphone.client"))
+    Ok(directory.join(crate::APP_ID))
 }
 
 impl State {
@@ -81,7 +81,7 @@ impl State {
                             &downloaded,
                             &offer.version,
                             platform,
-                            "dev.aiphone.client",
+                            crate::APP_ID,
                         )
                         .map_err(|e| e.to_string())
                     })

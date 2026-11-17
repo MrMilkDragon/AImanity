@@ -137,7 +137,7 @@ fn prepare(pid: &OsStr, version: &OsStr) -> io::Result<(OwnedHandle, PathBuf, Pa
     let helper = std::env::current_exe()?;
     let folder = helper.parent().ok_or_else(invalid_path)?;
     if helper.file_name() != Some(OsStr::new(HELPER))
-        || !folder.ends_with(Path::new("dev.aiphone.client/client-updates"))
+        || !folder.ends_with(Path::new(crate::APP_ID).join("client-updates"))
     {
         return Err(invalid_path());
     }
@@ -241,7 +241,7 @@ fn reopen_after_restart(installed: &Path) -> io::Result<()> {
             "add",
             r"HKCU\Software\Microsoft\Windows\CurrentVersion\RunOnce",
             "/v",
-            "AIPhoneUpdate",
+            "AImanityNativeUpdate",
             "/t",
             "REG_SZ",
             "/d",

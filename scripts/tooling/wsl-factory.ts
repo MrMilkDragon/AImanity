@@ -23,9 +23,8 @@ import { Readable } from "node:stream";
 import { digest, run, output } from "./process";
 import { json, save, collect, records } from "./inventory";
 import { tarEntries, entryBytes } from "./archive";
-import { databaseImage, fetchPin } from "./factory";
+import { databaseImage, fetchPin, type prepareImages } from "./factory";
 import { packageInputs } from "./container-host";
-import { imageManifest } from "./image-capsule";
 import {
   publishWsl,
   phoneSchema,
@@ -333,18 +332,17 @@ export async function buildWsl(
   root: string,
   work: string,
   source: string,
-  images: string,
+  input: Awaited<ReturnType<typeof sourceInput>>,
+  images: Awaited<ReturnType<typeof prepareImages>>,
   packages: string,
   phoneTools: string,
 ) {
   if (existsSync(work)) throw Error("Use a fresh WSL factory workspace");
-  const plan = wslPlan(root),
-    input = await sourceInput(source, root),
-    image = await imageManifest(images, root);
-  if (image.architecture !== "amd64") throw Error("WSL requires amd64 images");
+  const plan = wslPlan(root);
+  if (images.receipt.architecture !== "amd64") throw Error("WSL requires amd64 images");
   await packageInputs(packages, plan.engine_packages);
   let contextBytes =
-    lstatSync(source).size + lstatSync(images).size + input.bootstrap.size + 65;
+    lstatSync(source).size + lstatSync(images.file).size + input.bootstrap.size + 65;
   for (const folder of [packages, phoneTools])
     for (const file of collect(folder, "").files)
       contextBytes += file.data.length;
@@ -358,7 +356,7 @@ export async function buildWsl(
   const context = join(work, "context");
   mkdirSync(context, { recursive: true });
   await stageBackendSource(root, context, source, input.sha256);
-  copyFileSync(images, join(context, "images.payload"));
+  copyFileSync(images.file, join(context, "images.payload"));
   cpSync(packages, join(context, "packages"), { recursive: true });
   cpSync(phoneTools, join(context, "phone-tools"), { recursive: true });
   for (const program of ["docker", "dockerd"])
@@ -378,7 +376,7 @@ export async function buildWsl(
     source_commit: output(["git", "rev-parse", "HEAD"], { cwd: root }),
     source_manifest_sha256: await digest(join(root, "SOURCE-MANIFEST.json")),
     source_components: input.components,
-    images_sha256: await digest(images),
+    images_sha256: images.receipt.archive_sha256,
     phone_tools_manifest_sha256: await digest(join(phoneTools, phoneManifest)),
     qemu_bootstrap: qemuBootstrapContract,
   };

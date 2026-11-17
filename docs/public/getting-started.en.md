@@ -37,14 +37,11 @@ Use `start`, `open` and `stop` for normal operation. Repeated start preserves ex
 
 ## Review bundles
 
-Use the archive path printed by `package` in the `stage` command.
-
 ```sh
-./ai-phone package
-./ai-phone stage --archive /path/to/generated-source-bundle.tar.gz --destination /path/to/AIPhone
+cargo run --quiet --locked -p ai-phone-release-tools -- source package dist
 ```
 
-The source archive includes a file manifest and SHA-256 checksum. Staging verifies the files and keeps user data in a separate directory. The first installation creates the current link. Later versions are staged for activation. See [distribution and updates](distribution.en.md).
+The command writes a source archive with an embedded file manifest under `dist`. See [distribution and updates](distribution.en.md).
 
 ## Personal entry and guest apps
 

@@ -16,7 +16,6 @@ import {
   startExecutionServices,
   stopServices,
 } from "./tooling/native";
-import { createSourcePackage } from "./tooling/source";
 import { stageSource } from "./tooling/client-payload";
 
 const [operation, ...args] = process.argv.slice(2),
@@ -123,7 +122,7 @@ switch (operation) {
         process.platform === "darwin"
           ? join(homedir(), "Library/Application Support")
           : process.env.XDG_DATA_HOME || join(homedir(), ".local/share"),
-        "dev.aiphone.client/host",
+        "dev.aimanity.native/host",
       );
     mkdirSync(dirname(profileFile), { recursive: true, mode: 0o700 });
     const temporary = mkdtempSync(join(dirname(profileFile), ".request-")),
@@ -175,11 +174,6 @@ switch (operation) {
         "export " + key + "='" + value.replaceAll("'", "'\\''") + "'",
       );
     break;
-  case "package":
-    console.log(
-      createSourcePackage(ROOT, option("--output") || join(ROOT, "dist")),
-    );
-    break;
   case "stage":
     console.log(
       await stageSource(option("--archive")!, option("--destination")!),
@@ -217,6 +211,6 @@ switch (operation) {
     break;
   default:
     throw Error(
-      "Expected doctor|configure|install|start|stop|open|env|package|stage|backup|restore|recover-desktop",
+      "Expected doctor|configure|install|start|stop|open|env|stage|backup|restore|recover-desktop",
     );
 }

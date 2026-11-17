@@ -443,30 +443,7 @@ pub async fn ensure(
         }
         Ok((path, &record.sha256))
     };
-    let base_record = manifest
-        .files
-        .iter()
-        .find(|value| value.path == "guest/guest.qcow2")
-        .ok_or(Error::Invalid("vm_bundle_invalid"))?;
-    let base_size = filesystem::regular(&bundle.join("guest/guest.qcow2"))?
-        .metadata()?
-        .len();
-    let disk = home.join("disk");
-    let recorded = if disk.try_exists()? {
-        filesystem::existing_directory(&disk)?;
-        Some(filesystem::bounded_file_with_limit(
-            &disk.join("base.sha256"),
-            64,
-        )?)
-    } else {
-        None
-    };
-    let base_sha256 = linux_vm::disk_base::select(
-        (&base_record.sha256, base_record.size),
-        base_size,
-        recorded.as_deref(),
-        manifest.release_sha256.is_some(),
-    )?;
+    let (_, base_sha256) = file("guest/guest.qcow2")?;
     let config = QemuVmConfig {
         runtime: &bundle.join("runtime"),
         guest: &bundle.join("guest"),

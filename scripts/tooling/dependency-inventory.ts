@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname, resolve, relative, isAbsolute } from "node:path";
-import { ROOT, digest, output } from "./process";
+import { digest, output } from "./process";
 import { json } from "./inventory";
 
 function metadata(root: string, manifest: string, noDependencies = false, target?: string) {
@@ -21,20 +21,11 @@ function metadata(root: string, manifest: string, noDependencies = false, target
     ),
   );
 }
-async function notices(folder: string) {
-  const result = [];
-  for (const entry of readdirSync(folder, { withFileTypes: true }).sort(
-    (a, b) => a.name.localeCompare(b.name),
-  ))
-    if (
-      entry.isFile() &&
-      /^(LICENSE|LICENCE|COPYING|NOTICE|COPYRIGHT)/i.test(entry.name)
-    )
-      result.push({
-        file: entry.name,
-        sha256: await digest(join(folder, entry.name)),
-      });
-  return result;
+function notices(folder: string) {
+  return readdirSync(folder, { withFileTypes: true })
+    .filter(entry => entry.isFile() && /^(LICENSE|LICENCE|COPYING|NOTICE|COPYRIGHT)/i.test(entry.name))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(entry => join(folder, entry.name));
 }
 function within(root: string, file: string) {
   const name = relative(root, file);
@@ -78,106 +69,6 @@ async function supplements(root: string, manifest: string, pkg: any, folder: str
   }
   return result;
 }
-export async function dependencyInventory(root = ROOT) {
-  const owned = new Set(metadata(root, "Cargo.toml", true).workspace_members),
-    rust = new Map<string, any>(),
-    locks: Record<string, string> = {
-      "Cargo.lock": await digest(join(root, "Cargo.lock")),
-      "bun.lock": await digest(join(root, "bun.lock")),
-    };
-  const builds = [
-    ["Cargo.toml", [undefined]],
-    ["apps/native/Cargo.toml", ["aarch64-apple-darwin", "x86_64-pc-windows-msvc"]],
-  ] as const;
-  for (const [manifest, targets] of builds) {
-    const graphs = targets.map((target) => metadata(root, manifest, false, target));
-    const workspace = new Set([...owned, ...graphs.flatMap((graph) => graph.workspace_members)]);
-    const packages = new Map<string, {
-      id: string;
-      name: string;
-      version: string;
-      license: string | null;
-      repository: string | null;
-      manifest_path: string;
-    }>();
-    for (const graph of graphs)
-      for (const pkg of graph.packages) packages.set(pkg.id, pkg);
-    locks[join(dirname(manifest), "Cargo.lock")] = await digest(
-      join(root, dirname(manifest), "Cargo.lock"),
-    );
-    for (const pkg of packages.values()) {
-      if (workspace.has(pkg.id)) continue;
-      const key = pkg.name + "@" + pkg.version;
-      if (!rust.has(key))
-        rust.set(key, {
-          name: pkg.name,
-          version: pkg.version,
-          license: pkg.license,
-          repository: pkg.repository,
-          notices: await notices(dirname(pkg.manifest_path)),
-          workspaces: [],
-        });
-      rust.get(key).workspaces.push(manifest);
-    }
-  }
-  const lock = Bun.JSONC.parse(
-      readFileSync(join(root, "bun.lock"), "utf8"),
-    ) as { packages: Record<string, [string, ...unknown[]]> },
-    locked = lock.packages,
-    versions = new Set(Object.values(locked).map((row: any) => row[0])),
-    javascript = new Map<string, any>();
-  async function visit(folder: string) {
-    const file = join(folder, "package.json");
-    if (existsSync(file)) {
-      const pkg = json(file),
-        key = pkg.name + "@" + pkg.version;
-      if (!pkg.private && pkg.name && pkg.version && versions.has(key)) {
-        let license = pkg.license;
-        if (
-          license === undefined &&
-          Array.isArray(pkg.licenses) &&
-          pkg.licenses.length === 1
-        )
-          license = pkg.licenses[0].type;
-        if (typeof license === "object") license = license.type;
-        javascript.set(key, {
-          name: pkg.name,
-          version: pkg.version,
-          license,
-          repository:
-            typeof pkg.repository === "object"
-              ? pkg.repository.url
-              : pkg.repository,
-          notices: await notices(folder),
-        });
-      }
-    }
-    for (const entry of readdirSync(folder, { withFileTypes: true }))
-      if (entry.isDirectory()) await visit(join(folder, entry.name));
-  }
-  await visit(join(root, "node_modules"));
-  const order = (a: any, b: any) =>
-      a.name.localeCompare(b.name) || a.version.localeCompare(b.version),
-    rustRows = [...rust.values()].sort(order),
-    jsRows = [...javascript.values()].sort(order);
-  return {
-    format: 1,
-    kind: "dependency-license-metadata",
-    scope:
-      "locked-source-build-dependencies; server and native client installed metadata, not a redistribution clearance",
-    locks,
-    rust: rustRows,
-    javascript: jsRows,
-    missing_license_metadata: {
-      rust: rustRows
-        .filter((row) => !row.license)
-        .map((row) => row.name + "@" + row.version),
-      javascript: jsRows
-        .filter((row) => !row.license)
-        .map((row) => row.name + "@" + row.version),
-    },
-  };
-}
 export async function rustNotices(
   root: string,
   manifest: string,
@@ -201,7 +92,7 @@ export async function rustNotices(
   )) {
     if (owned.has(pkg.id)) continue;
     const folder = dirname(pkg.manifest_path),
-      paths = (await notices(folder)).map((item) => join(folder, item.file));
+      paths = notices(folder);
     if (pkg.license_file) {
       const path = resolve(folder, pkg.license_file);
       if (existsSync(path) && !paths.includes(path)) paths.push(path);
@@ -268,8 +159,5 @@ export async function rustNotices(
   return {
     text: blocks.join("\n").replace(/\r\n/g, "\n").replace(/[\t ]+$/gm, ""),
     missing,
-    packages: graph.packages
-      .filter((pkg: any) => !owned.has(pkg.id))
-      .map((pkg: any) => pkg.name + "@" + pkg.version),
   };
 }

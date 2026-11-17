@@ -5,7 +5,7 @@ import {
   chmodSync,
   lstatSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { run, output, digest, bunProgram, hostKey } from "./process";
 import { json, save } from "./inventory";
 import { extractTar, buildReleaseTools } from "./archive";

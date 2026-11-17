@@ -27,8 +27,6 @@ import {
   stageBackendSource,
   stageRedis,
 } from "./wsl-factory";
-import { verifyWsl } from "./wsl-capsule";
-import { imageManifest } from "./image-capsule";
 import { hostResources } from "./resources";
 
 const label = "dev.aiphone.qualification",
@@ -76,19 +74,14 @@ function owned(kind: string, id: string, nonce: string) {
 }
 async function runtime(
   root: string,
-  work: string,
-  source: string,
-  images: string,
+  { assembled: work, input, images, report: { component } }: Awaited<ReturnType<typeof buildWslBackend>>,
 ) {
-  disposable(root);
-  const component = await verifyWsl(join(work, "wsl-backend.payload"), root),
-    input = await sourceInput(source, root),
-    image = await imageManifest(images, root),
-    imageDigest = await digest(images);
+  const rootfs = join(work, "rootfs.tar.gz");
+  const embedded = component.inventory.required_files;
   if (
-    input.sha256 !== component.provenance.source_sha256 ||
-    imageDigest !== component.provenance.images_sha256 ||
-    (await digest(join(work, "rootfs.tar.gz"))) !== component.rootfs.sha256
+    input.sha256 !== embedded["opt/aiphone/bundle/source.payload"] ||
+    images.archive_sha256 !== embedded["opt/aiphone/bundle/images.payload"] ||
+    (await digest(rootfs)) !== component.rootfs.sha256
   )
     throw Error("Qualification inputs changed");
   const required =
@@ -96,7 +89,7 @@ async function runtime(
     2 * component.inventory.uncompressed_bytes +
     input.total +
     2 *
-      Object.values(image.images).reduce(
+      Object.values(images.images).reduce(
         (total: number, row: any) => total + row.size,
         0,
       ) +
@@ -111,7 +104,7 @@ async function runtime(
       inputs: {
         rootfs_sha256: component.rootfs.sha256,
         source_sha256: input.sha256,
-        images_sha256: imageDigest,
+        images_sha256: images.archive_sha256,
         required_free_bytes: required,
       },
       phases: [],
@@ -128,7 +121,7 @@ async function runtime(
         "import",
         "--change",
         "LABEL " + label + "=" + nonce,
-        join(work, "rootfs.tar.gz"),
+        rootfs,
         name + ":fixture",
       ],
       600000,
@@ -243,10 +236,8 @@ async function runtime(
       throw Error("Owned qualification cleanup incomplete");
   }
 }
-async function retireCompilerCache(root: string, source: string) {
-  disposable(root);
-  const input = await sourceInput(source, root),
-    receipt = json(join(root, "target/release/native-service-build.json"));
+function retireCompilerCache(root: string, input: Awaited<ReturnType<typeof sourceInput>>) {
+  const receipt = json(join(root, "target/release/native-service-build.json"));
   for (const [role, row] of Object.entries(receipt.artifacts) as [
     string,
     any,
@@ -370,22 +361,21 @@ export async function buildWslBackend(
     await fetchPin(packages, pin.file, pin);
   const phone = await preparePhoneTools(root, join(work, "phone-tools"));
   const source = await prepareBackendSource(root, work, deviceApps, linuxOcr);
-  const retired: any = await retireCompilerCache(root, source);
-  const images = (
-    await prepareImages(
-      root,
-      work,
-      await digest(join(root, "SOURCE-MANIFEST.json")),
-      "amd64",
-    )
-  ).file;
-  retired.image_build_cache = retireImageCache(root);
-  save(join(work, "cache-retirement.json"), retired);
+  const input = await sourceInput(source, root);
+  const retired = retireCompilerCache(root, input);
+  const images = await prepareImages(
+    root,
+    work,
+    await digest(join(root, "SOURCE-MANIFEST.json")),
+    "amd64",
+  );
+  const imageBuildCache = retireImageCache(root);
   const assembled = join(work, "assembled");
   const component = await buildWsl(
     root,
     assembled,
     source,
+    input,
     images,
     packages,
     phone,
@@ -395,14 +385,14 @@ export async function buildWslBackend(
     stage: "assembled",
     source_commit: process.env.GITHUB_SHA || "",
     component,
-    cache_retirement: retired,
+    cache_retirement: { ...retired, image_build_cache: imageBuildCache },
     runtime_acceptance: "not-executed",
     windows_boot_verified: false,
     phone_ready: false,
     complete_device_bundle: false,
   };
   save(join(root, "dist/wsl-backend-build.json"), report);
-  return { work, assembled, source, images, report };
+  return { work, assembled, input, images: images.receipt, report };
 }
 export async function qualifyWsl(
   root = ROOT,
@@ -410,16 +400,15 @@ export async function qualifyWsl(
   linuxOcr?: string,
 ) {
   const built = await buildWslBackend(root, deviceApps, linuxOcr);
-  const { work, assembled, source, images } = built;
   const report: any = { ...built.report, stage: "runtime", passed: false };
   try {
-    report.runtime = await runtime(root, assembled, source, images);
+    report.runtime = await runtime(root, built);
     report.passed = true;
     report.runtime_acceptance = "passed";
     report.stage = "complete";
     return report;
   } finally {
-    const runtimeReceipt = join(work, "assembled/runtime-receipt.json");
+    const runtimeReceipt = join(built.assembled, "runtime-receipt.json");
     if (existsSync(runtimeReceipt)) report.runtime = json(runtimeReceipt);
     save(join(root, "dist/wsl-backend-qualification.json"), report);
   }

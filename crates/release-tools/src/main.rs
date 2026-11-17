@@ -1,6 +1,7 @@
 mod android_package;
 mod capsule;
 mod source;
+mod update_feed;
 #[cfg(unix)]
 mod windows_release;
 #[cfg(unix)]
@@ -19,6 +20,12 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         && command == "source"
     {
         return source::run(rest);
+    }
+    if let [command, rest @ ..] = arguments.as_slice()
+        && command == "sign-update"
+    {
+        update_feed::sign(rest)?;
+        return Ok(None);
     }
     if arguments
         .first()

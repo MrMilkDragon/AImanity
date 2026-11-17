@@ -20,8 +20,6 @@ pub(crate) mod macos;
 mod windows;
 
 const REPOSITORY: &str = "MrMilkDragon/AImanity";
-const UPDATE_FEED: &str =
-    "https://api.github.com/repos/MrMilkDragon/AImanity/contents/stable.json?ref=update-feed";
 const MAX_MANIFEST: usize = 16 * 1024;
 const MAX_INSTALLER: u64 = 2 * 1024 * 1024 * 1024;
 pub(crate) type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
@@ -147,9 +145,17 @@ fn client() -> Result<Client> {
 }
 
 pub(crate) async fn check(current: &Version, platform: Platform) -> Result<Option<Offer>> {
-    let client = client()?;
-    let mut response = client
-        .get(UPDATE_FEED)
+    #[derive(Deserialize)]
+    struct Policy {
+        public_key: String,
+        feed_file: String,
+    }
+    let policy: Policy = serde_json::from_str(include_str!("../../../config/client-update.json"))?;
+    let mut response = client()?
+        .get(format!(
+            "https://api.github.com/repos/{REPOSITORY}/contents/{}?ref=update-feed",
+            policy.feed_file
+        ))
         .header(reqwest::header::ACCEPT, "application/vnd.github.raw+json")
         .timeout(Duration::from_secs(15))
         .send()
@@ -165,11 +171,6 @@ pub(crate) async fn check(current: &Version, platform: Platform) -> Result<Optio
         }
         bytes.extend_from_slice(&chunk);
     }
-    #[derive(Deserialize)]
-    struct Policy {
-        public_key: String,
-    }
-    let policy: Policy = serde_json::from_str(include_str!("../../../config/client-update.json"))?;
     verify_manifest(
         &bytes,
         &STANDARD.decode(policy.public_key)?,

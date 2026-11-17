@@ -72,6 +72,7 @@ pub(crate) async fn wait_serial(
     }
 }
 
+#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
 pub(crate) async fn backend_observation(
     serial: &str,
 ) -> crate::Result<ai_phone_api::wire::NativeAndroidBooted> {

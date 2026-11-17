@@ -1,13 +1,11 @@
-#define AluminumBaseSHA256 "348baa7207524397b74de603f08357b6d3b73947514eb9f662c6eb4e52a365a5"
-
 [Setup]
-AppId=dev.aiphone.client
+AppId=dev.aimanity.native
 AppName=AImanity
-AppMutex=Local\dev.aiphone.client.running
+AppMutex=Local\dev.aimanity.native.running
 AppVersion={#AppVersion}
 VersionInfoVersion={#NumericVersion}
-DefaultDirName={autopf}\AImanity
-DefaultGroupName=AImanity
+DefaultDirName={autopf}\AImanity Native
+DefaultGroupName=AImanity Native
 ArchitecturesAllowed=x64os
 ArchitecturesInstallIn64BitMode=x64os
 SetupArchitecture=x64
@@ -40,11 +38,8 @@ Source: "{#AppSource}\ai-phone-client.exe"; DestDir: "{tmp}"; Flags: dontcopy no
 Source: "{#AppSource}\host\qemu\guest\guest.qcow2"; DestDir: "{app}\host\qemu\guest"; Flags: onlyifdoesntexist
 Source: "{#AppSource}\*"; DestDir: "{app}"; Excludes: "\host\qemu\guest\guest.qcow2"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-[InstallDelete]
-Type: files; Name: "{autoprograms}\AI Phone.lnk"
-
 [Icons]
-Name: "{autoprograms}\AImanity"; Filename: "{app}\ai-phone-client.exe"; AppUserModelID: "dev.aiphone.client"
+Name: "{group}\AImanity"; Filename: "{app}\ai-phone-client.exe"; AppUserModelID: "dev.aimanity.native"
 
 [Run]
 Filename: "{app}\ai-phone-client.exe"; Description: "{cm:LaunchProgram,AImanity}"; Flags: nowait postinstall skipifsilent; Check: not NeedRestart
@@ -96,8 +91,7 @@ begin
       Exit;
     end;
     BaseDigest := GetSHA256OfFile(Base);
-    if (CompareText(BaseDigest, '{#BaseDiskSHA256}') <> 0) and
-       (CompareText(BaseDigest, '{#AluminumBaseSHA256}') <> 0) then
+    if CompareText(BaseDigest, '{#BaseDiskSHA256}') <> 0 then
       Result := ExpandConstant('{cm:HostSetupFailed}');
   end;
 end;

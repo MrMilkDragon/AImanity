@@ -2,8 +2,6 @@
 mod cli;
 mod config;
 mod connection;
-#[cfg(test)]
-mod connection_owner_tests;
 pub(crate) mod discovery;
 pub(crate) mod guest;
 pub use guest::paired_phone_serial;
@@ -25,7 +23,6 @@ use tokio::{net::TcpListener, sync::watch, task::JoinSet};
 pub const CONTRACT: &str = "ai-phone-device-bridge-v1";
 pub use cli::run;
 pub use connection::Connection;
-pub(crate) use connection::Guest;
 pub use peer::{CONTRACT as PEER_CONTRACT, run as run_peer};
 
 pub struct Bridge {

@@ -316,7 +316,6 @@ fn ports_and_png_evidence_reject_ambiguous_or_invalid_inputs() {
                 console_port: console,
                 grpc_port: grpc,
                 phone: None,
-                wsl_distribution: String::new(),
                 linux_vm: None,
             })
             .is_err()

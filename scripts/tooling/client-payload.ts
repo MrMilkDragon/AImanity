@@ -1,25 +1,21 @@
 import {
   existsSync,
-  readFileSync,
   lstatSync,
   mkdirSync,
   constants,
   copyFileSync,
   renameSync,
   rmSync,
-  createWriteStream,
 } from "node:fs";
-import { join, dirname, basename } from "node:path";
-import { once } from "node:events";
-import { ROOT, hash, digest, output, nativeProgram } from "./process";
+import { join, basename } from "node:path";
+import { ROOT, digest, output, nativeProgram } from "./process";
 import { sourceFiles, type SourceFile } from "./source";
-import { json, save, records, canonical } from "./inventory";
-import { writeTar, tarEntries, entryBytes, type ArchiveFile } from "./archive";
+import { json, save, records } from "./inventory";
+import { writeTar, tarEntries, entryBytes } from "./archive";
 import { prepareServices } from "./native-build";
 import { preparePhone } from "./phone-apps";
 import { prepareContainerHost } from "./container-host";
 import { hostResources } from "./resources";
-import { fetchPin } from "./factory";
 import { stageWindowsVm, type WindowsVmInputs } from "./windows-vm-payload";
 import { prepareSpeechModel } from "./speech-model";
 
@@ -35,15 +31,12 @@ export type PayloadOptions = {
   androidRuntime?: string;
   imageRuntime?: string;
   linuxOcr?: string;
-  wslRuntime?: string;
   windowsVm?: WindowsVmInputs;
 };
 export async function preparePayload(
   root = ROOT,
   options: PayloadOptions = {},
 ) {
-  if (options.windowsVm && options.wslRuntime)
-    throw Error("Select one Windows backend");
   const folder = join(root, hostResources);
   mkdirSync(folder, { recursive: true });
   const speech = await prepareSpeechModel(root);
@@ -104,41 +97,6 @@ export async function preparePayload(
     if (source !== target) copyFileSync(source, target, constants.COPYFILE_FICLONE);
     integrity[name] = await digest(target);
   }
-  if (options.wslRuntime) {
-    const target = join(folder, "wsl");
-    mkdirSync(target, { recursive: true });
-    let manifest: any;
-    for await (const entry of tarEntries(options.wslRuntime, "raw", root)) {
-      if (entry.name === "WSL-BACKEND-MANIFEST.json")
-        manifest = JSON.parse((await entryBytes(entry)).toString());
-      else if (entry.name === "rootfs.tar.gz") {
-        const file = join(target, "rootfs.tar.gz.tmp"),
-          out = createWriteStream(file, { flags: "wx" }),
-          done = once(out, "close");
-        for await (const chunk of entry.body)
-          if (!out.write(chunk)) await once(out, "drain");
-        out.end();
-        await done;
-        renameSync(file, join(target, "rootfs.tar.gz"));
-      } else throw Error("Unexpected WSL capsule member");
-    }
-    if (
-      !manifest ||
-      lstatSync(join(target, "rootfs.tar.gz")).size !== manifest.rootfs.size ||
-      (await digest(join(target, "rootfs.tar.gz"))) !== manifest.rootfs.sha256
-    )
-      throw Error("WSL capsule rootfs changed");
-    save(join(target, "manifest.json"), manifest);
-    integrity["wsl/manifest.json"] = await digest(
-      join(target, "manifest.json"),
-    );
-    const host = json(join(root, "config/windows-host.json"));
-    await fetchPin(join(folder, "windows"), "wsl.msi", host.wsl);
-    integrity["windows/wsl.msi"] = host.wsl.sha256;
-  } else {
-    rmSync(join(folder, "wsl"), { recursive: true, force: true });
-    rmSync(join(folder, "windows"), { recursive: true, force: true });
-  }
   const windowsVm = join(folder, "qemu");
   if (options.windowsVm)
     integrity["qemu/manifest.json"] = await stageWindowsVm(root, windowsVm, options.windowsVm);
@@ -160,8 +118,6 @@ export async function payloadComponents(root = ROOT) {
     ...components,
     ...("android.payload" in integrity ? ["android-runtime"] : []),
     ...("images.payload" in integrity ? ["container-images"] : []),
-    ...("wsl/manifest.json" in integrity ? ["wsl-backend"] : []),
-    ...("windows/wsl.msi" in integrity ? ["windows-host"] : []),
     ...("qemu/manifest.json" in integrity ? ["windows-qemu"] : []),
   ];
 }
@@ -203,8 +159,6 @@ export function deliveryMetadata(components: string[], host: string) {
       ...Object.keys(componentManifests),
       "android-runtime",
       "container-images",
-      "wsl-backend",
-      "windows-host",
       "windows-qemu",
     ]),
     selected = new Set(components);
