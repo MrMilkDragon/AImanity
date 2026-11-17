@@ -1,12 +1,12 @@
 # 客户端、运行环境、用户数据与升级
 
-[English](distribution.en.md) · 更新：2026-10-30
+[English](distribution.en.md)
 
 安装包内置设备与服务。用户在客户端配置设备资源和模型。详见[下载与宿主要求](release-status.md)。
 
 ## 已实现的目录边界
 
-原生首配使用Tauri应用数据目录下的独立 `host`：
+原生首配使用应用数据目录下的独立 `host`：
 
 ```text
 host/
@@ -20,11 +20,11 @@ host/
     data/                     客体、账号、模型、渠道与工作文件
 ```
 
-`crates/host-runtime/src/source_cli.rs`负责按资源摘要暂存。重试核对已有文件、依赖链接与持久目录；代码被改或目标被占用时拒绝替换，不覆盖用户状态。[预编译网页组件](runtime-bundles.md)已包含Next standalone和固定Bun。
+`crates/host-runtime/src/source_cli.rs` 按资源摘要暂存[运行组件](runtime-bundles.md)，并核对指向持久用户数据的链接。
 
 源码暂存命令复用原生的内容寻址暂存器。
 
-PostgreSQL使用Docker命名卷。备份恢复覆盖数据库、Android状态、桌面根文件系统/主目录及私有文件。恢复到空目标，保持隔离直到明确验证/激活。内置Skill属于代码版本；用户Skill、使用经验、记忆、知识、附件与停用偏好必须跨升级保留。设备扩容和系统替换独立于应用更新。
+PostgreSQL 使用 Linux 客体内的私有存储。备份包含数据库、Android 状态、Linux 的可写变更与主目录，以及私有文件。恢复到空目标并保留隔离，供验证后启用。用户 Skill、使用经验、记忆、知识、附件与停用偏好跨升级保留。
 
 ## 客户端更新
 
@@ -33,9 +33,10 @@ PostgreSQL使用Docker命名卷。备份恢复覆盖数据库、Android状态、
 两端安装包验收后，在发行维护者本机签署更新清单。
 
 ```sh
-./scripts/bun scripts/sign-client-update.ts /path/to/offline-key AImanity-0.0.1-macos-arm64.dmg AImanity-0.0.1-windows-x64-setup.exe stable.json
+cargo run --quiet --locked -p ai-phone-release-tools -- sign-update /path/to/offline-key \
+  AImanity-0.0.4-macos-arm64.dmg AImanity-0.0.4-windows-x64-setup.exe native-stable.json
 ```
 
-在 GitHub 发行页附上 DMG 和 EXE，并核对两份公开下载。然后将签名的 `stable.json` 提交到 `update-feed` 分支。客户端只提示高于已安装版本的发行。从旧版本编号迁移时，手动安装一次 0.0.1。
+在 GitHub 发行页附上 DMG 和 EXE，将签名清单 `native-stable.json` 提交到 `update-feed` 分支。Calcium 用户先卸载 0.0.3，再从 Releases 下载 0.0.4 全新安装。此后的版本通过 Dysprosium 客户端内更新。
 
 完整包必须包含干净Android/Linux基础、模拟器、预编译服务与匹配运行环境，并附来源、声明和适用对应源码。详见[发行要求](distribution-requirements.md)、[当前状态](release-status.md)和[备份恢复](backup-restore.zh-CN.md)。

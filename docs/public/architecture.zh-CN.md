@@ -4,12 +4,12 @@
 
 | 组件 | 实现 | 职责 |
 | --- | --- | --- |
-| 工作台 | Next.js App Router/Turbopack、React、Tailwind、shadcn/ui、GSAP | 真实画面、设备透视切换、共享对话、配置与共享资源 |
+| 工作台 | Rust、Iced、wgpu | 真实画面、设备透视切换、共享对话、配置与共享资源 |
 | 助手 | Rust/Axum/Tokio | 持久任务循环、模型适配、调度、记忆、知识、权限与完成审计 |
 | 手机执行器 | Rust + ADB + Android桥接 | 当前观察、控件/OCR定位、输入/手势、epoch、动作去重 |
 | 电脑客体 | Rust + X11 + FFmpeg | 画面与输入、光标回执、音频监督、连接采集租约、持久通知及 Chromium 定位会话 |
 | 媒体 | Rust runner、Android gRPC、FFmpeg/X11 | JPEG帧流、PCM音频；原生触点/指针进入同一画面 |
-| Linux电脑 | Docker、Debian/Openbox、Xvfb、桌面桥 | computer use、办公软件、客体sudo与文件处理 |
+| Linux 电脑 | Debian/Openbox、Xvfb、Rust 桌面桥、共享根文件系统 | computer use、办公软件、客体 sudo 与文件处理 |
 | 渠道 | Rust、官方Bot API及原生WhatsApp关联设备适配 | Agent级凭据、私聊配对、入站排队、送达状态 |
 | 存储 | PostgreSQL/SQLx；私有数据文件 | 注册表、连续对话、WhatsApp 配对会话、模型版本和任务队列 |
 | 事件 | Redis Pub/Sub、可选 Kafka | Redis 唤醒渠道回复；Kafka 供外部工作流重放[设备交接回执](event-relay.md) |
@@ -20,7 +20,7 @@
 
 设备音频使用48kHz、双声道、有符号16位PCM；各设备的播放流独立于当前聚焦设备。电脑的PulseAudio监听使用50ms、无回绕的时钟窗口；Rust采集租约持有编码器，连接关闭时释放。
 
-浏览器业务请求使用 `application/x-protobuf`，契约在 `packages/protocol/proto`；媒体字节和健康检查例外。流式业务事件使用protobuf WebSocket帧，不要与模型SSE混淆。
+客户端业务请求使用 `application/x-protobuf`，契约在 `packages/protocol/proto`；媒体字节和健康检查例外。流式业务事件使用protobuf WebSocket帧，不要与模型SSE混淆。
 
 Android无桌面入口的辅助服务提供按需、只读的原生控件层级请求，由系统`DUMP`权限保护。Rust优先接收绑定当前请求ID的完整回执，再使用UIAutomator及OCR后备；层级正文不包含密码文字。观察与动作校验分别负责数据读取和控制权，快速快照不替代动作后的结果核对。
 

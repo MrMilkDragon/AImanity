@@ -104,22 +104,31 @@ mod tests {
         let folder =
             std::env::temp_dir().join(format!("aiphone-gps-recovery-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&folder).unwrap();
-        let bun = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/bun");
         for name in ["cmd", "appops"] {
             let path = folder.join(name);
-            let script = folder.join(format!("{name}.ts"));
-            fs::write(
-                &script,
-                include_str!("../../../scripts/fixtures/mock-location.ts"),
-            )
-            .unwrap();
             fs::write(
                 &path,
-                format!(
-                    "#!/bin/sh\nexec '{}' '{}' \"$@\"\n",
-                    bun.display().to_string().replace('\'', "'\\''"),
-                    script.display().to_string().replace('\'', "'\\''")
-                ),
+                r#"#!/bin/sh
+set -eu
+cd "$LOCATION_FIXTURE"
+case "${0##*/}:$1:$2" in
+  appops:get:*) printf 'Uid mode: MOCK_LOCATION: '; cat appop; printf '\n' ;;
+  appops:*) for value do :; done; printf '%s' "$value" > appop ;;
+  cmd:location:is-location-enabled) cat enabled; printf '\n' ;;
+  cmd:location:set-location-enabled) printf '%s' "$3" > enabled ;;
+  *)
+    file="provider-$4"
+    case "$3" in
+      add-test-provider)
+        if [ "$4" = network ] && [ -f fail-network ]; then rm fail-network; exit 42; fi
+        : > "$file" ;;
+      remove-test-provider) rm -f "$file" ;;
+      *)
+        test -f "$file" || exit 43
+        if [ "$3" = set-test-provider-location ]; then printf '%s' "$6" > fix; fi ;;
+    esac ;;
+esac
+"#,
             )
             .unwrap();
             fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();

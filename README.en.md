@@ -21,14 +21,13 @@ See [model and channel setup](docs/public/model-and-channel-setup.md), [notifica
 
 | Layer | Technology | Directory |
 | --- | --- | --- |
-| Workbench | Next.js App Router, TypeScript, Tailwind, shadcn/ui | `apps/web` |
-| Native client | Tauri 2 | `apps/client` |
+| Desktop client and workbench | Rust (Iced/wgpu) | `apps/native` |
 | Backend, devices and media | Rust, Axum, Tokio | `crates` |
 | Business API and state | protobuf, PostgreSQL, SQLx | `packages/protocol` |
-| Device runtimes | AOSP, Avo, QEMU with WHPX, Linux containers, Docker Compose | `infra`, `scripts` |
+| Device runtimes | AOSP on Avo or QEMU WHPX, native Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
 | Built-in capabilities | Skills and device profiles | `skills`, `config` |
 
-Agents plan from current device observations and record their actions and results. Bun and Cargo build the project. Device disks, accounts and attachments stay in the local installation.
+Agents plan from current device observations and record their actions and results. Cargo builds the project. Device disks, accounts and attachments stay in the local installation.
 
 [Architecture](docs/public/architecture.en.md) · [Documentation](docs/public/index.md) · [Contributing](CONTRIBUTING.md) · [Report an issue](https://github.com/MrMilkDragon/AImanity/issues/new/choose)
 

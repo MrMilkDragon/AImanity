@@ -265,7 +265,7 @@ mod database_tests {
             active: Mutex::new(Default::default()),
             run_signals: Default::default(),
             login_attempts: Mutex::new(vec![]),
-            workspace_init: Mutex::new(None),
+            workspace_init: Mutex::new(false),
             location_mutation: Mutex::new(()),
             network_mutation: Mutex::new(()),
         });
@@ -346,9 +346,9 @@ mod database_tests {
 
 pub async fn backfill(app: &App) -> Result<(), String> {
     let rows = sqlx::query(
-        "SELECT id,run_id,title,jsonb_path_query_array(result,'$[*] ? (@.type == \"input_text\")') AS output
+        "SELECT id,title,jsonb_path_query_array(result,'$[*] ? (@.type == \"input_text\")') AS output
          FROM (
-             SELECT id,run_id,title,result,created_at FROM harness_events
+             SELECT id,title,result,created_at FROM harness_events
              WHERE kind='tool' AND status='completed' AND title IN ('观察手机','查看操作结果')
                AND result IS NOT NULL ORDER BY created_at DESC LIMIT 300
          ) AS recent
@@ -358,16 +358,40 @@ pub async fn backfill(app: &App) -> Result<(), String> {
     .fetch_all(&app.db)
     .await
     .map_err(|e| e.to_string())?;
-    for row in rows {
-        observe(
-            app,
-            row.get("run_id"),
-            row.get("id"),
-            row.get::<String, _>("title") == "查看操作结果",
-            &row.get::<Value, _>("output"),
-        )
-        .await?;
+    let observations: Vec<_> = rows
+        .into_iter()
+        .filter_map(|row| {
+            let value = metadata(&row.get("output"))?;
+            let event: Uuid = row.get("id");
+            let after_action = row.get::<&str, _>("title") == "查看操作结果";
+            Some((value, event, after_action))
+        })
+        .collect();
+    if observations.is_empty() {
+        return Ok(());
     }
+    let mut insert = sqlx::QueryBuilder::new(
+        "WITH observations(observation_id,device_id,app_id,event_id,after_action) AS (",
+    );
+    insert.push_values(observations, |mut row, (value, event, after_action)| {
+        row.push_bind(value.observation_id)
+            .push_bind(value.device_id)
+            .push_bind(value.app_id)
+            .push_bind(event)
+            .push_bind(after_action);
+    });
+    insert.push(
+        ") INSERT INTO app_learning_observations(observation_id,run_id,device_id,app_id,event_id,after_action,observed_at)
+         SELECT o.observation_id,e.run_id,o.device_id,o.app_id,e.id,o.after_action,e.created_at
+         FROM observations o JOIN harness_events e ON e.id=o.event_id
+         ORDER BY e.created_at DESC ON CONFLICT DO NOTHING",
+    );
+    insert
+        .build()
+        .persistent(false)
+        .execute(&app.db)
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(())
 }
 

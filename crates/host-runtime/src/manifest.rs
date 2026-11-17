@@ -8,8 +8,7 @@ pub(crate) const MAX_FILES: usize = 20_000;
 pub(crate) const MAX_FILE: u64 = 384 * 1024 * 1024;
 pub(crate) const MAX_TOTAL: u64 = 1024 * 1024 * 1024;
 pub(crate) const MAX_MANIFEST: u64 = 4 * 1024 * 1024;
-pub(crate) const COMPONENTS: [(&str, &str); 4] = [
-    ("web", "runtime/manifest.json"),
+pub(crate) const COMPONENTS: [(&str, &str); 3] = [
     ("native-services", "runtime/services/manifest.json"),
     ("phone-apps", "runtime/phone-apps/manifest.json"),
     ("container-host", "runtime/container-host/manifest.json"),
@@ -80,22 +79,19 @@ pub(crate) fn canonical(value: &str) -> Result<()> {
     Ok(())
 }
 
-fn runtime_name(value: &str, enabled: bool) -> bool {
-    let mut parts = value.split('/');
-    enabled
-        && parts.next() == Some("runtime")
-        && matches!(
-            parts.next(),
-            Some("web" | "bin" | "manifest.json" | "services" | "phone-apps" | "container-host")
-        )
+fn runtime_owner(value: &str) -> Option<&'static str> {
+    COMPONENTS.into_iter().find_map(|(role, manifest)| {
+        value
+            .starts_with(manifest.trim_end_matches("manifest.json"))
+            .then_some(role)
+    })
 }
 
 pub(crate) fn source_name(value: &str, enabled: bool) -> Result<()> {
     canonical(value)?;
-    let runtime = runtime_name(value, enabled);
-    let vendor = value.split('/').any(|part| part == "node_modules");
+    let runtime = enabled && runtime_owner(value).is_some();
     for part in value.split('/') {
-        forbidden_part(part, runtime, vendor)?;
+        forbidden_part(part, runtime)?;
         if value != ".env.example" && part.starts_with(".env") {
             return Err(Error::Invalid("source_resource_private_path"));
         }
@@ -103,15 +99,10 @@ pub(crate) fn source_name(value: &str, enabled: bool) -> Result<()> {
     Ok(())
 }
 
-fn forbidden_part(part: &str, runtime: bool, vendor: bool) -> Result<()> {
-    let always = matches!(part, ".git" | ".tools");
-    let source = !runtime
-        && matches!(
-            part,
-            "data" | "user" | "target" | "node_modules" | "runtime"
-        );
-    let private = runtime && !vendor && matches!(part, "data" | "user");
-    if always || source || private {
+fn forbidden_part(part: &str, runtime: bool) -> Result<()> {
+    if matches!(part, ".git" | ".tools" | "data" | "user" | "node_modules")
+        || (!runtime && matches!(part, "target" | "runtime"))
+    {
         Err(Error::Invalid("source_resource_private_path"))
     } else {
         Ok(())
@@ -152,15 +143,7 @@ fn validate_components(value: &Manifest, names: &BTreeSet<&str>) -> Result<()> {
         }
     }
     for name in names.iter().filter(|name| name.starts_with("runtime/")) {
-        let owner = COMPONENTS
-            .iter()
-            .rev()
-            .find(|(_, path)| {
-                let prefix = path.rsplit_once('/').map_or("", |(prefix, _)| prefix);
-                name.starts_with(&format!("{prefix}/"))
-            })
-            .map(|(role, _)| *role)
-            .ok_or(Error::Invalid("source_resource_components"))?;
+        let owner = runtime_owner(name).ok_or(Error::Invalid("source_resource_components"))?;
         if !value.components.iter().any(|name| name == owner) {
             return Err(Error::Invalid("source_resource_components"));
         }

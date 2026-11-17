@@ -33,13 +33,15 @@ async fn publication_lock(root: &Path, id: &str) -> Result<std::fs::File, String
 
 fn resource_folder(root: &Path, id: &str) -> Result<PathBuf, String> {
     let base = root.join("data/runtime-skills");
-    std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
-    sync_directory(&root.join("data"))?;
+    if create_directory(&base)? {
+        sync_directory(&root.join("data"))?;
+    }
     let folder = base.join(id);
     let staging = root.join("data/skill-staging").join(id);
     restore_staging(&staging, &folder, &base)?;
-    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-    sync_directory(&base)?;
+    if create_directory(&folder)? {
+        sync_directory(&base)?;
+    }
     if std::fs::symlink_metadata(&folder)
         .map_err(|e| e.to_string())?
         .file_type()
@@ -48,6 +50,16 @@ fn resource_folder(root: &Path, id: &str) -> Result<PathBuf, String> {
         return Err("Skill资源目录不能是符号链接".into());
     }
     Ok(folder)
+}
+
+fn create_directory(path: &Path) -> Result<bool, String> {
+    match std::fs::create_dir(path) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && path.is_dir() => {
+            Ok(false)
+        }
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 fn restore_staging(staging: &Path, folder: &Path, base: &Path) -> Result<(), String> {

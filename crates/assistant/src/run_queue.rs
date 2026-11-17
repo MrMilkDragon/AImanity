@@ -42,9 +42,15 @@ pub(crate) async fn claim(
         ), claimed AS (
             INSERT INTO device_execution_leases(device_id,run_id)
             SELECT device_id,id FROM due ON CONFLICT DO NOTHING RETURNING run_id
+        ), started AS (
+            UPDATE runs r SET status='running',heartbeat_at=now(),next_wake_at=NULL,error=''
+            FROM claimed WHERE r.id=claimed.run_id RETURNING r.id,r.assistant_message_id
+        ), recorded AS (
+            INSERT INTO harness_events(id,run_id,message_id,kind,title)
+            SELECT id,id,assistant_message_id,'task','任务' FROM started
+            ON CONFLICT(id) DO UPDATE SET status='running',finished_at=NULL RETURNING id
         )
-        UPDATE runs r SET status='running',heartbeat_at=now(),next_wake_at=NULL,error=''
-        FROM claimed WHERE r.id=claimed.run_id RETURNING r.id,r.assistant_message_id",
+        SELECT s.id,s.assistant_message_id FROM started s JOIN recorded e USING(id)",
     )
     .bind(active)
     .fetch_optional(db)

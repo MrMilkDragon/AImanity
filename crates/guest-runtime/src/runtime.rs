@@ -104,6 +104,7 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
     }
 
     async fn perform_action(&self, args: Value) -> Result<DesktopBridgeFrame> {
+        let receipt_only = args["receipt_only"] == true;
         let baseline = if args["wait_for_paint"] == true {
             let image = self.screen.capture()?;
             let focus = self.screen.paint_focus().unwrap_or_default();
@@ -128,6 +129,8 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
             value.frame_state = frame.state as i32;
             value.frame_wait_ms = frame.wait_ms;
             Ok(value)
+        } else if receipt_only && input == actions::InputEvidence::NoText {
+            Ok(DesktopBridgeFrame::default())
         } else {
             tokio::time::sleep(Duration::from_millis(120)).await;
             self.observe()

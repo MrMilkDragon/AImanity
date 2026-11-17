@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "calcium_installer": {
+    "file": "AImanity-0.0.3-windows-x64-setup.exe",
+    "url": "https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.3/AImanity-0.0.3-windows-x64-setup.exe",
+    "size_bytes": 1882758744,
+    "sha256": "b02f84f59898933dc6e66a492158fe2913a419b3903524ccceca61e9916513e9"
+  },
+  "bundled_manifest_sha256": "820af1a249de3e203af31c70af5ae5d4c0427c8093e49cd34e028ea7edf270af"
+}

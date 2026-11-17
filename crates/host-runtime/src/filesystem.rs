@@ -232,7 +232,7 @@ pub(crate) fn stage_record(
         return Err(Error::Invalid("source_resource_changed"));
     }
     output.sync_all()?;
-    Ok(format!("{:x}", digest.finalize()))
+    Ok(hex::encode(digest.finalize()))
 }
 
 fn check_written(path: &Path, control: &Control<'_>, written: &mut u64, size: u64) -> Result<()> {

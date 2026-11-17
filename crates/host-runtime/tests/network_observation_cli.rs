@@ -17,7 +17,7 @@ fn call(root: &Path, op: &str) -> Output {
             DEVICE,
             op,
         ])
-        .env("AI_PHONE_DOCKER", root.join("docker"))
+        .env("AI_PHONE_LIMA_COMMAND", root.join("guest-transport"))
         .env("NETWORK_FIXTURE_LOG", root.join("commands"))
         .output()
         .unwrap()
@@ -28,12 +28,12 @@ fn fixture() -> tempfile::TempDir {
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("source.json"),r#"{"revision":7,"enabled":true,"subscriptionUrl":"https://fixture.invalid/private","nodeCount":4}"#).unwrap();
     fs::write(
-        root.path().join("docker"),
+        root.path().join("guest-transport"),
         "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$NETWORK_FIXTURE_LOG\"\nprintf 'app\\ntun\\n'\n",
     )
     .unwrap();
     fs::set_permissions(
-        root.path().join("docker"),
+        root.path().join("guest-transport"),
         fs::Permissions::from_mode(0o755),
     )
     .unwrap();
@@ -57,7 +57,7 @@ fn control(root: &Path, operation: &str) -> Output {
             DEVICE,
             operation,
         ])
-        .env("AI_PHONE_DOCKER", root.join("docker"))
+        .env("AI_PHONE_LIMA_COMMAND", root.join("guest-transport"))
         .env("NETWORK_FIXTURE_LOG", root.join("commands"))
         .output()
         .unwrap()
@@ -70,7 +70,7 @@ fn lifecycle_engine(root: &Path) {
         r#"{"secret":"fixture-private-core-secret"}"#,
     )
     .unwrap();
-    fs::write(root.join("docker"), r##"#!/bin/sh
+    fs::write(root.join("guest-transport"), r##"#!/bin/sh
 printf '%s\n' "$*" >> "$NETWORK_FIXTURE_LOG"
 base=${NETWORK_FIXTURE_LOG%/*}
 case "$*" in
@@ -223,7 +223,7 @@ fn network_lifecycle_parent_eof_cancels_and_reaps_its_native_guest_command() {
 fn qualify_parent_eof(socket: bool) {
     let root = fixture();
     fs::write(
-        root.path().join("docker"),
+        root.path().join("guest-transport"),
         r##"#!/bin/sh
 printf '%s' "$$" > "${NETWORK_FIXTURE_LOG%/*}/command.pid"
 exec sleep 60
@@ -245,7 +245,7 @@ exec sleep 60
             "start",
             "--stdin-lease",
         ])
-        .env("AI_PHONE_DOCKER", root.path().join("docker"))
+        .env("AI_PHONE_LIMA_COMMAND", root.path().join("guest-transport"))
         .env("NETWORK_FIXTURE_LOG", root.path().join("commands"))
         .stdin(input)
         .stdout(Stdio::piped())
@@ -339,7 +339,7 @@ fn unknown_application_status_is_not_reported_as_stopped_and_corrupt_state_is_no
     let root = fixture();
     let dir = root.path().join("data/device-network").join(DEVICE);
     fs::write(dir.join("app-managed.json"), "{}").unwrap();
-    fs::write(root.path().join("docker"), "#!/bin/sh\nexit 8\n").unwrap();
+    fs::write(root.path().join("guest-transport"), "#!/bin/sh\nexit 8\n").unwrap();
     let output = parsed(call(root.path(), "state"));
     assert_eq!(output["status"], "unknown");
     assert_eq!(output["error"], "设备状态暂未确认");
@@ -353,7 +353,7 @@ fn unknown_application_status_is_not_reported_as_stopped_and_corrupt_state_is_no
     );
 }
 fn legacy_engine(root: &Path) {
-    fs::write(root.join("docker"),r##"#!/bin/sh
+    fs::write(root.join("guest-transport"),r##"#!/bin/sh
 printf '%s\n' "$*" >> "$NETWORK_FIXTURE_LOG"
 case "$*" in
  *"curl --config -"*)
@@ -421,7 +421,7 @@ fn probe_records_each_result_atomically_and_retains_configuration() {
         json!({"verification_download":{"sha256":"a".repeat(64),"size_bytes":38}}).to_string(),
     )
     .unwrap();
-    fs::write(root.path().join("docker"),format!("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$NETWORK_FIXTURE_LOG\"\ncase \"$*\" in *example.com*) exit 9;; *sha256sum*) printf '38\\n{}  fixture\\n';; *) printf 'app\\ntun\\n';; esac\n","a".repeat(64))).unwrap();
+    fs::write(root.path().join("guest-transport"),format!("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$NETWORK_FIXTURE_LOG\"\ncase \"$*\" in *example.com*) exit 9;; *sha256sum*) printf '38\\n{}  fixture\\n';; *) printf 'app\\ntun\\n';; esac\n","a".repeat(64))).unwrap();
     let before = fs::read(dir.join("source.json")).unwrap();
     let output = parsed(call(root.path(), "probe"));
     assert_eq!(output["checks"].as_array().unwrap().len(), 3);
@@ -539,7 +539,7 @@ fn controller_uses_real_http_and_passes_quoted_auth_only_over_stdin() {
         requests
     });
     fs::write(
-        root.path().join("docker"),
+        root.path().join("guest-transport"),
         format!(
             r##"#!/bin/sh
 printf '%s\n' "$*" >> "$NETWORK_FIXTURE_LOG"

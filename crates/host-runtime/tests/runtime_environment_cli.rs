@@ -42,7 +42,7 @@ fn native_environment_keeps_profile_path_owner_resources_and_user_files() {
     let literal = "$HOME/literal:$(not-a-command):~/工具/bin:/usr/bin:/usr/bin";
     profile(
         &root,
-        json!({"launch_path":literal,"locale":"ru","sdk_root":"/chosen SDK","java_home":"/chosen Java","host_proxy":"http://proxy:7890","phone":{"template":"android35-arm64","cpus":2,"memory_mb":2048,"storage_gb":24},"desktop":{"cpus":4,"memory_mb":4096}}),
+        json!({"launch_path":literal,"locale":"ru","sdk_root":"/chosen SDK","host_proxy":"http://proxy:7890","phone":{"template":"android35-arm64","cpus":2,"memory_mb":2048,"storage_gb":24},"desktop":{"cpus":4,"memory_mb":4096}}),
     );
     fs::write(root.join("data/user.img"), "device disk").unwrap();
     let before = fs::read(root.join("data/deployment/profile.json")).unwrap();
@@ -67,7 +67,6 @@ fn native_environment_keeps_profile_path_owner_resources_and_user_files() {
         ("AI_PHONE_DESKTOP_MEMORY", "4096m"),
         ("AI_PHONE_ANDROID_ABI", "arm64-v8a"),
         ("AI_PHONE_EMULATOR_PROXY", ""),
-        ("JAVA_HOME", "/chosen Java"),
     ] {
         assert_eq!(a[key], expected, "{key}");
     }
@@ -165,7 +164,7 @@ fn data_alias_is_resolved_without_creating_guest_directories() {
 }
 
 #[test]
-fn managed_engine_path_precedes_the_saved_launch_path() {
+fn saved_launch_path_does_not_adopt_an_external_engine_bin() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().canonicalize().unwrap();
     profile(&root, json!({"launch_path":"/saved/tools"}));
@@ -185,7 +184,7 @@ fn managed_engine_path_precedes_the_saved_launch_path() {
     assert_eq!(
         env["PATH"],
         format!(
-            "/owned/engine:{}/.tools/bin:/opt/homebrew/bin:/usr/local/bin:/saved/tools",
+            "{}/.tools/bin:/opt/homebrew/bin:/usr/local/bin:/saved/tools",
             root.display()
         )
     );
@@ -193,7 +192,7 @@ fn managed_engine_path_precedes_the_saved_launch_path() {
 }
 
 #[test]
-fn installed_image_environment_reads_native_metadata_without_starting_an_engine() {
+fn discarded_image_environment_is_irrelevant_for_the_native_desktop() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path();
     profile(root, json!({}));
@@ -206,13 +205,7 @@ fn installed_image_environment_reads_native_metadata_without_starting_an_engine(
     let path = root.join("data/deployment/image-runtime.json");
     fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
     let env = value(invoke(root, "/no-host-tools"));
-    for role in ["workspace", "desktop", "postgres", "redis"] {
-        assert_eq!(
-            env[format!("AI_PHONE_{}_IMAGE", role.to_uppercase())],
-            manifest["images"][role]["ref"]
-        );
-    }
-    assert_eq!(env["AI_PHONE_IMAGE_PULL_POLICY"], "never");
+    assert!(env.get("AI_PHONE_WORKSPACE_IMAGE").is_none());
     fs::write(path, b"{}").unwrap();
-    assert!(!invoke(root, "/no-host-tools").status.success());
+    assert!(invoke(root, "/no-host-tools").status.success());
 }

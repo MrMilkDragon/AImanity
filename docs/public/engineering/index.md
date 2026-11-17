@@ -6,14 +6,14 @@ Component formats, ownership and maintainer build interfaces are listed below. A
 
 - [Apple Silicon distribution](macos-full-runtime.md)
 - [Self-contained host lifecycle](../integrated-hosts.md)
-- [Offline container host](../container-host-runtime.md)
+- [Apple Silicon Linux guest](../container-host-runtime.md)
 - [Android runtime](android-runtime.md)
 - [Windows Linux guest](../windows-backend-runtime.md)
 - [Device resource changes](device-resources.md)
 
 ## Services and applications
 
-- [Linux desktop and service images](linux-image-runtime.md)
+- [Shared Linux filesystem](linux-image-runtime.md)
 - [Native service supervision](service-supervision.md)
 - [Workspace execution](workspace-runtime.md)
 - [Evidence-backed application experience](app-learning.md)

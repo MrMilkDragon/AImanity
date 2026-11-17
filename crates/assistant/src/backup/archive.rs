@@ -1,4 +1,4 @@
-use super::{BackupDigest, Result, new_file};
+use super::{BACKUP_FORMAT, DESKTOP_ARCHIVE, Result, file_digest, new_file};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha512};
@@ -53,17 +53,18 @@ fn regular<W: Write>(
 fn omit(name: &str, dependencies: &Value) -> bool {
     let parts: Vec<_> = name.split('/').collect();
     let basename = parts.last().copied().unwrap_or_default();
-    ["backups", "android/backups", "android/downloads"]
-        .iter()
-        .any(|prefix| {
-            (name == *prefix || name.starts_with(&format!("{prefix}/")))
-                && !dependencies.as_object().is_some_and(|deps| {
-                    deps.keys().any(|key| {
-                        !key.starts_with("sdk:")
-                            && (key == name || key.starts_with(&format!("{name}/")))
+    name == "deployment/container-host.json"
+        || ["backups", "android/backups", "android/downloads"]
+            .iter()
+            .any(|prefix| {
+                (name == *prefix || name.starts_with(&format!("{prefix}/")))
+                    && !dependencies.as_object().is_some_and(|deps| {
+                        deps.keys().any(|key| {
+                            !key.starts_with("sdk:")
+                                && (key == name || key.starts_with(&format!("{name}/")))
+                        })
                     })
-                })
-        })
+            })
         || name.ends_with(".log")
             && ((parts.len() == 2
                 && ["assistant", "channels", "device-stream", "phone-runner"].contains(&parts[0]))
@@ -141,76 +142,91 @@ pub(super) fn write_state(
 }
 pub(super) fn write_envelope(folder: &Path, destination: &Path) -> Result<()> {
     let mut archive = tar::Builder::new(new_file(destination)?);
-    let mut files = fs::read_dir(folder)?
-        .map(|entry| entry.map(|entry| entry.path()))
-        .collect::<io::Result<Vec<_>>>()?;
-    files.sort();
-    for file in files {
-        archive.append_path_with_name(&file, file.file_name().ok_or("Payload name missing")?)?;
+    for name in ["manifest.json", "database.dump", "state.tar.gz"] {
+        archive.append_path_with_name(folder.join(name), name)?;
+    }
+    let desktop = folder.join(DESKTOP_ARCHIVE);
+    if desktop.try_exists()? {
+        archive.append_path_with_name(desktop, DESKTOP_ARCHIVE)?;
     }
     archive.into_inner()?.sync_all()?;
     Ok(())
 }
+
+fn read_manifest(reader: impl Read) -> Result<Value> {
+    let manifest: Value = serde_json::from_reader(reader)?;
+    if manifest["format"] != BACKUP_FORMAT {
+        return Err("Unsupported backup format".into());
+    }
+    let id = manifest["id"].as_str().ok_or("Backup identity missing")?;
+    if id.len() != 32 || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("Backup identity invalid".into());
+    }
+    Ok(manifest)
+}
+
+const PAYLOADS: [&str; 3] = ["database.dump", "state.tar.gz", DESKTOP_ARCHIVE];
+
 pub(super) fn read_backup(archive: &Path, work: &Path) -> Result<(std::path::PathBuf, Value)> {
-    let folder = if archive.is_dir() {
-        archive.to_path_buf()
+    let (folder, manifest) = if archive.is_dir() {
+        (
+            archive.to_path_buf(),
+            read_manifest(File::open(archive.join("manifest.json"))?)?,
+        )
     } else {
+        let mut tar = tar::Archive::new(File::open(archive)?);
+        let mut entries = tar.entries()?;
+        let first = entries
+            .next()
+            .transpose()?
+            .ok_or("Backup manifest missing")?;
+        if first.path()?.as_ref() != Path::new("manifest.json")
+            || !first.header().entry_type().is_file()
+        {
+            return Err("Backup envelope must begin with its manifest".into());
+        }
+        let manifest = read_manifest(first)?;
         let folder = work.join("payload");
         fs::create_dir(&folder)?;
-        let mut tar = tar::Archive::new(File::open(archive)?);
-        for entry in tar.entries()? {
+        for entry in entries {
             let mut entry = entry?;
             let path = name(&entry.path()?)?;
-            if ![
-                "manifest.json",
-                "database.dump",
-                "state.tar.gz",
-                "desktop-rootfs.tar.gz",
-            ]
-            .contains(&path.as_str())
-                || !entry.header().entry_type().is_file()
-            {
+            if !PAYLOADS.contains(&path.as_str()) || !entry.header().entry_type().is_file() {
                 return Err("Unsafe backup envelope".into());
             }
             io::copy(&mut entry, &mut new_file(&folder.join(path))?)?;
         }
-        folder
+        (folder, manifest)
     };
-    let mut manifest = super::read_json(&folder.join("manifest.json"))?;
-    let digest = BackupDigest::from_manifest(&manifest)?;
-    let id = manifest["id"].as_str().ok_or("Backup identity missing")?;
-    if id.len() != 32 || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err("Unsupported backup format".into());
-    }
     let files = manifest["files"]
-        .as_array_mut()
+        .as_array()
         .ok_or("Backup inventory missing")?;
-    let mut expected = BTreeSet::from(["manifest.json".to_owned()]);
+    let mut expected = BTreeSet::new();
     for row in files {
-        let stored_path = row["path"]
-            .as_str()
-            .map(std::borrow::Cow::Borrowed)
-            .or_else(|| {
-                let bytes: Vec<u8> = serde_json::from_value(row["path"]["Unix"].clone()).ok()?;
-                String::from_utf8(bytes).ok().map(std::borrow::Cow::Owned)
-            })
-            .ok_or("Payload path missing")?;
-        let path = name(Path::new(stored_path.as_ref()))?;
-        row["path"] = json!(&path);
-        if !expected.insert(path.clone()) {
-            return Err("Backup inventory duplicated".into());
+        let path = row["path"].as_str().ok_or("Payload path missing")?;
+        if !PAYLOADS.contains(&path) || !expected.insert(path) {
+            return Err("Invalid backup inventory".into());
         }
         let file = folder.join(path);
         let info = fs::symlink_metadata(&file)?;
         if !info.is_file()
             || info.len() != row["size"].as_u64().ok_or("Payload size missing")?
-            || digest.file(&file)? != row[digest.key()]
+            || file_digest(&file)? != row["sha512"]
         {
             return Err("Backup payload changed".into());
         }
     }
+    let has_desktop = !manifest["desktop"].is_null();
+    if !expected.contains("state.tar.gz")
+        || !expected.contains("database.dump")
+        || expected.contains(DESKTOP_ARCHIVE) != has_desktop
+    {
+        return Err("Backup inventory incomplete".into());
+    }
     for entry in fs::read_dir(&folder)? {
-        if !expected.remove(entry?.file_name().to_str().ok_or("Payload name invalid")?) {
+        let file = entry?.file_name();
+        let name = file.to_str().ok_or("Payload name invalid")?;
+        if name != "manifest.json" && !expected.remove(name) {
             return Err("Backup envelope inventory differs".into());
         }
     }
@@ -220,7 +236,6 @@ pub(super) fn read_backup(archive: &Path, work: &Path) -> Result<(std::path::Pat
     Ok((folder, manifest))
 }
 pub(super) fn restore_state(payload: &Path, destination: &Path, manifest: &Value) -> Result<()> {
-    let digest = BackupDigest::from_manifest(manifest)?;
     let records = manifest["records"]
         .as_object()
         .ok_or("Backup records missing")?;
@@ -264,7 +279,7 @@ pub(super) fn restore_state(payload: &Path, destination: &Path, manifest: &Value
             &file,
             fs::Permissions::from_mode(entry.header().mode()? & 0o777),
         )?;
-        let mut hash = digest.hasher();
+        let mut hash = Sha512::new();
         let mut total = 0;
         loop {
             let count = entry.read(&mut bytes)?;
@@ -280,7 +295,7 @@ pub(super) fn restore_state(payload: &Path, destination: &Path, manifest: &Value
             total += count as u64;
         }
         output.set_len(total)?;
-        if hash.finish() != record[digest.key()] {
+        if format!("{:x}", hash.finalize()) != record["sha512"] {
             return Err("Restored file checksum differs".into());
         }
     }
@@ -299,7 +314,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn restores_both_manifest_versions_and_rejects_changed_payload() {
+    fn current_backup_round_trip_and_rejected_input() {
         let fixture = tempfile::tempdir().unwrap();
         let source = fixture.path().join("source");
         let folder = fixture.path().join("backup");
@@ -308,36 +323,51 @@ mod tests {
         fs::create_dir(&folder).unwrap();
         fs::create_dir(&output).unwrap();
         fs::write(source.join(".env"), "fixture").unwrap();
+        let database = folder.join("database.dump");
+        fs::write(&database, b"database payload").unwrap();
+        let desktop = folder.join(DESKTOP_ARCHIVE);
+        fs::write(&desktop, b"overlay payload").unwrap();
         let payload = folder.join("state.tar.gz");
         let (records, _) = write_state(&source, &payload, &json!({})).unwrap();
         let current = json!({
-            "format": super::super::BACKUP_FORMAT,
+            "format": BACKUP_FORMAT,
             "id": uuid::Uuid::nil().simple().to_string(),
-            "files": [super::super::receipt(&payload).unwrap()],
+            "files": [super::super::receipt(&database).unwrap(), super::super::receipt(&payload).unwrap(), super::super::receipt(&desktop).unwrap()],
             "records": records,
+            "desktop": {"rootfs_sha256": "1".repeat(64)},
         });
         assert_eq!(
             current["records"][".env"]["sha512"].as_str().unwrap().len(),
             128
         );
-        let mut legacy = current.clone();
-        legacy["format"] = json!(1);
-        legacy["files"][0] = json!({"path":{"Unix":b"state.tar.gz"},"size":fs::metadata(&payload).unwrap().len(),
-            "sha256":BackupDigest::Legacy.file(&payload).unwrap()});
-        let entry = legacy["records"][".env"].as_object_mut().unwrap();
-        entry.remove("sha512");
-        entry.insert(
-            "sha256".into(),
-            json!(BackupDigest::Legacy.file(&source.join(".env")).unwrap()),
-        );
-        for manifest in [&current, &legacy] {
-            fs::write(folder.join("manifest.json"), manifest.to_string()).unwrap();
-            let (_, verified) = read_backup(&folder, fixture.path()).unwrap();
-            restore_state(&payload, &output, &verified).unwrap();
+        let manifest_path = folder.join("manifest.json");
+        fs::write(&manifest_path, current.to_string()).unwrap();
+        let envelope = fixture.path().join("backup.tar");
+        write_envelope(&folder, &envelope).unwrap();
+        for backup in [&folder, &envelope] {
+            let (verified_folder, verified) = read_backup(backup, fixture.path()).unwrap();
+            restore_state(&verified_folder.join("state.tar.gz"), &output, &verified).unwrap();
             assert_eq!(fs::read_to_string(output.join(".env")).unwrap(), "fixture");
+            assert_eq!(
+                fs::read(verified_folder.join(DESKTOP_ARCHIVE)).unwrap(),
+                b"overlay payload"
+            );
             fs::remove_file(output.join(".env")).unwrap();
         }
-        fs::write(folder.join("manifest.json"), current.to_string()).unwrap();
+        let mut retired = current.clone();
+        retired["format"] = json!(2);
+        fs::write(&manifest_path, retired.to_string()).unwrap();
+        assert_eq!(
+            read_backup(&folder, fixture.path())
+                .unwrap_err()
+                .to_string(),
+            "Unsupported backup format"
+        );
+        let retired_envelope = fixture.path().join("retired.tar");
+        write_envelope(&folder, &retired_envelope).unwrap();
+        assert!(read_backup(&retired_envelope, &output).is_err());
+        assert!(!output.join("payload").exists());
+        fs::write(&manifest_path, current.to_string()).unwrap();
         let mut changed = fs::read(&payload).unwrap();
         changed[0] ^= 1;
         fs::write(&payload, changed).unwrap();

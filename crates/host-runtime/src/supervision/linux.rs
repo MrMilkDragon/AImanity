@@ -83,9 +83,7 @@ impl Invocation {
         Read::by_ref(&mut file)
             .take(1024 * 1024 + 1)
             .read_to_end(&mut bytes)?;
-        if bytes.len() > 1024 * 1024
-            || format!("{:x}", Sha256::digest(&bytes)) != self.content_sha256
-        {
+        if bytes.len() > 1024 * 1024 || hex::encode(Sha256::digest(&bytes)) != self.content_sha256 {
             return Err(Error::Invalid("service_spec_changed"));
         }
         let spec: Spec =
