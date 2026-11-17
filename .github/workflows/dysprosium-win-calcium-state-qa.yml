@@ -1,0 +1,100 @@
+name: Calcium Windows data retention on Dysprosium native development
+on:
+  push:
+    branches: [codex/dysprosium-win-calcium-state-qa]
+    paths: [.github/workflows/dysprosium-win-calcium-state-qa.yml]
+permissions:
+  contents: read
+  actions: read
+env:
+  PRODUCT_SOURCE: cf4bbf371d4d3272627f802698a6d4aff22ffa23
+  CALCIUM_BASE_SHA: 1184c13114500f919b6bcc738d9af7e1f872ff192aef624e67aa87a6f9b7446f
+  CALCIUM_ANDROID_SHA: 23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+jobs:
+  same-profile:
+    runs-on: windows-2025
+    timeout-minutes: 52
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CARGO_HTTP_MULTIPLEXING: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.PRODUCT_SOURCE }}
+          path: exact
+          persist-credentials: false
+      - name: Isolate the Windows account data and verify WebView2
+        shell: pwsh
+        run: |
+          $drive = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match '^[A-Z]:\\$' } | Sort-Object Free -Descending | Select-Object -First 1
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $drive.Free -lt 40GB) { throw 'Disposable WHPX runner with 40 GiB required.' }
+          $root = Join-Path $drive.Root "Dysprosium-QA-$env:GITHUB_RUN_ID"
+          $profile = Join-Path $root 'profile'
+          New-Item -ItemType Directory -Path $profile | Out-Null
+          Add-Type -Name ShellFolders -Namespace Acceptance -MemberDefinition @'
+          [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, ExactSpelling = true)]
+          public static extern int SHSetKnownFolderPath(ref System.Guid folder, uint flags, System.IntPtr token, string path);
+          '@
+          $roaming = [Guid]'3eb685db-65f9-4cf6-a03a-e3ef65729f3d'
+          $redirect = [Acceptance.ShellFolders]::SHSetKnownFolderPath([ref] $roaming, 0, [IntPtr]::Zero, $profile)
+          if ($redirect -ne 0 -or [Environment]::GetFolderPath('ApplicationData') -ne $profile) {
+            throw 'Cannot isolate the runner RoamingAppData known folder.'
+          }
+          "AIMANITY_QA_ROOT=$root" >> $env:GITHUB_ENV
+          $webview = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          function WebViewReady {
+            foreach ($parent in @('HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients', 'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients')) {
+              $version = Get-ItemPropertyValue (Join-Path $parent $webview) pv -ErrorAction SilentlyContinue
+              if ($version -and $version -ne '0.0.0.0') { return $true }
+            }
+            return $false
+          }
+          if (!(WebViewReady)) {
+            $bootstrap = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebView2Setup.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrap
+            $setup = Start-Process $bootstrap -ArgumentList '/silent','/install' -Wait -PassThru
+            if ($setup.ExitCode -ne 0 -or !(WebViewReady)) { throw 'Calcium WebView2 unavailable.' }
+          }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: 44027285557
+          github-token: ${{ github.token }}
+          artifact-ids: 14304292451
+          path: ${{ env.AIMANITY_QA_ROOT }}/layer
+      - name: Build only the current Windows development client and QA probe
+        working-directory: exact
+        timeout-minutes: 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SOURCE"
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+          ./target/debug/release-tools.exe source check --repository --manifest
+          ./scripts/bun ../qa/windows-native-dev/prepare-windows.ts dev
+          export AIMANITY_BUNDLE_INTEGRITY="$(cygpath -am "$PWD/apps/native/gen/host/integrity.json")"
+          cargo build --locked --manifest-path apps/native/Cargo.toml
+          ./scripts/bun ../qa/windows-native-dev/prepare-windows.ts launch-layout
+          cp ../qa/windows-native-dev/calcium-state.rs crates/host-runtime/src/bin/calcium-state-qa.rs
+          cargo build --locked -p ai-phone-host-runtime --bin calcium-state-qa
+      - name: Save real state under the signed Calcium workbench and read it through Dysprosium native
+        shell: pwsh
+        working-directory: exact
+        timeout-minutes: 24
+        run: ../qa/windows-native-dev/calcium-state.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: calcium-to-native-workbench
+          path: |
+            ${{ env.AIMANITY_QA_ROOT }}/native-workbench.png
+            ${{ env.AIMANITY_QA_ROOT }}/native.log
+          if-no-files-found: ignore
+          retention-days: 1

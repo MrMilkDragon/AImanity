@@ -49,7 +49,6 @@ if (phase === "base") {
   mkdirSync(temp);
   await prepareWindowsQemu(qemu, installer);
   await unpackWindowsInstaller(ROOT, installer, copies, ["{app}\\host\\android.payload"]);
-  rmSync(installer);
   const android = join(copies, "host", "android.payload");
   const integrity = await preparePayload(ROOT, { androidRuntime: android });
   if (integrity["android.payload"] !== androidHash) throw Error("Calcium Android image changed");
