@@ -45,7 +45,9 @@ use std::{
 };
 
 const SETUP_SIZE: Size = Size::new(680., 600.);
-const WORKBENCH_MIN: Size = Size::new(700., 600.);
+const WORKBENCH_ASPECT: Size = Size::new(8., 5.);
+const WORKBENCH: Size = Size::new(1440., 900.);
+const WORKBENCH_MIN: Size = Size::new(960., 600.);
 const DESKTOP_DOUBLE_CLICK: Duration = Duration::from_millis(320);
 
 #[derive(Clone, Debug)]
@@ -79,7 +81,8 @@ enum Message {
     InputDone(usize, Result<(), String>, Instant),
     Retry,
     Tick(Instant),
-    StageScrolled(f32),
+    FitViewport(window::Id),
+    Viewport(Size),
     Event(Event),
     OpenPanel(Panel, bool),
     PanelHovered(Panel),
@@ -166,9 +169,9 @@ struct App {
     input_queue: [std::collections::VecDeque<DeviceInput>; 2],
     desktop_click: Option<(Instant, DeviceInput)>,
     streams: Option<iced::task::Handle>,
-    size: Size,
+    ui_scale: f32,
+    canvas_origin: iced::Vector,
     layout: Layout,
-    stage_offset: f32,
     from: Layout,
     target: Layout,
     transition: Option<Instant>,
@@ -187,8 +190,7 @@ struct App {
 }
 impl App {
     fn boot() -> (Self, Task<Message>) {
-        let size = SETUP_SIZE;
-        let layout = Layout::target(size, 0, false, [0.5, 1.6]);
+        let layout = Layout::target(WORKBENCH, 0, false, [0.5, 1.6]);
         let mut app = Self {
             setup: None,
             stop: None,
@@ -230,9 +232,9 @@ impl App {
             input_queue: Default::default(),
             desktop_click: None,
             streams: None,
-            size,
+            ui_scale: 1.,
+            canvas_origin: iced::Vector::ZERO,
             layout,
-            stage_offset: 0.,
             from: layout,
             target: layout,
             transition: None,
@@ -318,7 +320,7 @@ impl App {
     }
     fn rearrange(&mut self) {
         self.from = self.layout;
-        self.target = Layout::target(self.size, self.focus, self.linked, self.aspects());
+        self.target = Layout::target(WORKBENCH, self.focus, self.linked, self.aspects());
         self.transition = if self.reduced_motion {
             self.layout = self.target;
             None
@@ -574,40 +576,47 @@ impl App {
                     self.files.set_devices(&self.devices);
                     let restore = self.chat.restore(&self.root).map(Message::Conversation);
                     self.phase.clear();
-                    self.connection = Some(client.clone());
+                    let first_connection = self.connection.replace(client.clone()).is_none();
                     self.rearrange();
                     eprintln!(
                         "native_metric connected_ms={:0.3}",
                         self.started.elapsed().as_secs_f64() * 1000.
                     );
                     let mut tasks = vec![
-                        window::latest().and_then(|id| {
+                        restore,
+                        Task::run(client.clone().chat_events(), Message::Chat),
+                    ];
+                    if first_connection {
+                        tasks.push(window::latest().and_then(|id| {
                             window::monitor_size(id).then(move |monitor| {
-                                let size = monitor.map_or(Size::new(1200., 800.), |monitor| {
-                                    Size::new(
-                                        (monitor.width - 48.).clamp(WORKBENCH_MIN.width, 1440.),
-                                        (monitor.height - 96.).clamp(WORKBENCH_MIN.height, 980.),
-                                    )
-                                });
+                                let monitor = monitor.unwrap_or(WORKBENCH);
+                                let scale = ((monitor.width - 48.) / WORKBENCH.width)
+                                    .min((monitor.height - 96.) / WORKBENCH.height)
+                                    .clamp(WORKBENCH_MIN.width / WORKBENCH.width, 1.);
+                                let size =
+                                    Size::new(WORKBENCH.width * scale, WORKBENCH.height * scale);
                                 window::position(id).then(move |position| {
-                                    let expand = window::set_resizable(id, true)
-                                        .chain(window::resize(id, size))
-                                        .chain(window::set_min_size(id, Some(WORKBENCH_MIN)));
-                                    if let Some(position) = position {
+                                    let resize = window::set_resizable(id, true)
+                                        .chain(window::set_min_size(id, Some(WORKBENCH_MIN)))
+                                        .chain(window::resize(id, size));
+                                    let resize = if let Some(position) = position {
                                         let growth = iced::Vector::new(
                                             (size.width - SETUP_SIZE.width) / 2.,
                                             (size.height - SETUP_SIZE.height) / 2.,
                                         );
-                                        expand.chain(window::move_to(id, position - growth))
+                                        resize.chain(window::move_to(id, position - growth))
                                     } else {
-                                        expand
-                                    }
+                                        resize
+                                    };
+                                    resize
+                                        .chain(
+                                            platform::lock_aspect(id, WORKBENCH_ASPECT).discard(),
+                                        )
+                                        .chain(platform::content_size(id).map(Message::Viewport))
                                 })
                             })
-                        }),
-                        restore,
-                        Task::run(client.clone().chat_events(), Message::Chat),
-                    ];
+                        }));
+                    }
                     if packaged {
                         tasks.push(updates::check().map(Message::Update));
                     }
@@ -879,7 +888,7 @@ impl App {
             }
             Message::PanelSize(size) | Message::Agents(agents::Message::Measured(size)) => {
                 let header = if matches!(message, Message::PanelSize(_)) {
-                    style::window_insets(self.size.width).2
+                    style::window_insets(WORKBENCH.width).2
                 } else {
                     0.
                 };
@@ -1031,22 +1040,34 @@ impl App {
                         1. - 4. * (1. - t).powi(3)
                     };
                     self.layout = self.from.blend(self.target, smooth);
+                    if self.target.cable > self.from.cable {
+                        let draw = style::bezier(t, [0.22, 0.8, 0.2, 1.]);
+                        self.layout.cable = self.from.cable + (1. - self.from.cable) * draw;
+                        self.layout.cable_end =
+                            self.from.cable_end + (1. - self.from.cable_end) * draw;
+                    } else if self.target.cable < self.from.cable {
+                        let fade = style::bezier(
+                            (t * style::MOTION_DEVICE / 0.22).min(1.),
+                            [0., 0., 0.58, 1.],
+                        );
+                        self.layout.cable = self.from.cable * (1. - fade);
+                        self.layout.cable_end = self.from.cable_end;
+                    }
                     if t >= 1. {
                         self.layout = self.target;
                         self.transition = None;
                     }
                 }
                 if let Some(start) = self.popup_transition {
-                    let (target, duration) = if self.popup {
-                        (1., style::WINDOW_ENTER)
+                    let (target, duration, curve) = if self.popup {
+                        (1., style::WINDOW_ENTER, [0.2, 1.15, 0.3, 1.])
                     } else {
-                        (0., style::WINDOW_EXIT)
+                        (0., style::WINDOW_EXIT, [0.32, 0., 0.65, 1.])
                     };
                     let t = (now.saturating_duration_since(start).as_secs_f32() / duration).min(1.);
-                    self.popup_amount =
-                        self.from_popup + (target - self.from_popup) * (1. - (1. - t).powi(3));
+                    let blend = style::bezier(t, curve);
+                    self.popup_amount = self.from_popup + (target - self.from_popup) * blend;
                     let to = self.panel_target();
-                    let blend = 1. - (1. - t).powi(3);
                     self.panel_size = Size::new(
                         self.from_panel.width + (to.width - self.from_panel.width) * blend,
                         self.from_panel.height + (to.height - self.from_panel.height) * blend,
@@ -1060,15 +1081,19 @@ impl App {
                 #[cfg(target_os = "macos")]
                 return platform::menu();
             }
-            Message::Event(Event::Window(window::Event::Resized(size))) => {
-                self.size = size;
-                self.layout = Layout::target(size, self.focus, self.linked, self.aspects());
-                self.transition = None;
+            Message::FitViewport(id) if self.connection.is_some() => {
+                return platform::content_size(id).map(Message::Viewport);
+            }
+            Message::Viewport(size) if size.width > 0. && size.height > 0. => {
+                self.ui_scale = (size.width / WORKBENCH.width).min(size.height / WORKBENCH.height);
+                self.canvas_origin = iced::Vector::new(
+                    ((size.width / self.ui_scale - WORKBENCH.width) * 0.5).max(0.),
+                    ((size.height / self.ui_scale - WORKBENCH.height) * 0.5).max(0.),
+                );
             }
             Message::Event(Event::Window(window::Event::Focused)) => {
                 self.reduced_motion = platform::reduced_motion();
             }
-            Message::StageScrolled(offset) => self.stage_offset = offset,
             Message::Event(Event::Window(window::Event::CloseRequested)) => {
                 if self.after_stop == Some(AfterStop::Exit) {
                     return Task::none();
@@ -1124,6 +1149,7 @@ impl App {
                 self.keyboard_target = None;
             }
             Message::Event(Event::Mouse(iced::mouse::Event::CursorMoved { position })) => {
+                let position = position - self.canvas_origin;
                 self.cursor = position;
                 if self.popup
                     && !self.pinned
@@ -1184,7 +1210,11 @@ impl App {
                 if self.panel == Panel::Agent && panel != Panel::Agent && self.agents.adding() {
                     let _ = self.update(Message::Agents(agents::Message::Back));
                 }
-                self.panel = panel;
+                if self.panel != panel {
+                    self.panel = panel;
+                    self.popup_amount = 0.;
+                    self.panel_size = self.panel_target();
+                }
                 if let Panel::Capture(index) = panel {
                     self.capture_offset = self.cursor.x - self.layout.toolbars[index].x;
                 }
@@ -1258,10 +1288,10 @@ impl App {
                 && chat.next_wake_at_ms <= connection::epoch_ms() as i64)
     }
     fn subscription(&self) -> Subscription<Message> {
-        let mut subscriptions = vec![iced::event::listen_with(|event, status, _| match &event {
+        let mut subscriptions = vec![iced::event::listen_with(|event, status, id| match &event {
+            Event::Window(window::Event::Resized(_)) => Some(Message::FitViewport(id)),
             Event::Window(
                 window::Event::Opened { .. }
-                | window::Event::Resized(_)
                 | window::Event::Focused
                 | window::Event::CloseRequested,
             )
@@ -1282,7 +1312,12 @@ impl App {
         if self.transition.is_some()
             || self.popup_transition.is_some()
             || self.input_started.is_some()
-            || (!self.reduced_motion && self.modes.animating())
+            || (!self.reduced_motion
+                && (self.modes.animating()
+                    || self
+                        .setup
+                        .as_ref()
+                        .is_some_and(deployment::Setup::animating_language)))
         {
             subscriptions.push(window::frames().map(Message::Tick));
         }
@@ -1326,12 +1361,12 @@ impl App {
         Subscription::batch(subscriptions)
     }
     fn popup_rect(&self) -> Rectangle {
-        if let Some(preview) = self.chat.preview_bounds(self.size) {
+        if let Some(preview) = self.chat.preview_bounds(WORKBENCH) {
             return preview;
         }
         if self.popup_amount > 0. {
             let anchor = self.panel_anchor(self.panel);
-            let panel = surface::tool_rect(self.size, anchor, self.panel_size, false);
+            let panel = surface::tool_rect(WORKBENCH, anchor, self.panel_size, false);
             surface::tool_motion(anchor, panel, self.popup_amount)
         } else {
             Rectangle::default()
@@ -1344,9 +1379,13 @@ impl App {
             Panel::Skills => (650., 560., true),
             Panel::Knowledge => (850., 590., false),
             Panel::Files => (1120., 760., false),
-            Panel::Location => (720., 750., true),
+            Panel::Location => (
+                720.,
+                if self.location.enabled() { 750. } else { 248. },
+                true,
+            ),
             Panel::Proxy => (420., 480., true),
-            Panel::Goal => (650., 450., true),
+            Panel::Goal => (650., 364., true),
             Panel::Update => (360., 400., true),
             Panel::Capture(0) => (360., 580., true),
             Panel::Capture(_) => (700., 580., true),
@@ -1357,7 +1396,7 @@ impl App {
             max_height
         };
         surface::tool_rect(
-            self.size,
+            WORKBENCH,
             self.panel_anchor(self.panel),
             Size::new(width, height),
             false,
@@ -1376,18 +1415,16 @@ impl App {
     ];
     fn panel_anchor(&self, panel: Panel) -> Rectangle {
         if let Panel::Capture(index) = panel {
-            let toolbar = self.layout.scrolled(self.stage_offset).toolbars[index];
-            let row_offset = if toolbar.height > 56. { 10. } else { 0. };
+            let toolbar = self.layout.toolbars[index];
             return Rectangle::new(
                 iced::Point::new(
                     toolbar.x + self.capture_offset - 16.,
-                    toolbar.center_y() - 17. + row_offset,
+                    toolbar.center_y() - 17.,
                 ),
                 Size::new(32., 34.),
             );
         }
-        let (inset, top, gap, height) = style::navigation(self.size);
-        let (inner_gap, separator) = style::navigation_group(self.size);
+        let [inset, top, gap, height] = style::NAVIGATION;
         let trailing = Self::NAV_PANELS
             .iter()
             .position(|&entry| entry == panel)
@@ -1397,12 +1434,12 @@ impl App {
         let width = style::NAV_ICON_WIDTH;
         Rectangle::new(
             iced::Point::new(
-                self.size.width
+                WORKBENCH.width
                     - inset
                     - 2. * width
                     - gap
-                    - separator
-                    - trailing as f32 * (width + inner_gap),
+                    - style::NAV_SEPARATOR
+                    - trailing as f32 * (width + style::NAV_TOOL_GAP),
                 top,
             ),
             Size::new(width, height),
@@ -1481,7 +1518,7 @@ impl App {
             return Rectangle::default();
         }
         let parent = self.popup_rect();
-        let (_, trailing, header) = style::window_insets(self.size.width);
+        let (_, trailing, header) = style::window_insets(WORKBENCH.width);
         match self.panel {
             Panel::Knowledge if self.knowledge.document_open() => {
                 let anchor = self.knowledge.document_anchor().map_or_else(
@@ -1496,17 +1533,17 @@ impl App {
                     },
                     |point| Rectangle::new(point, Size::ZERO),
                 );
-                surface::tool_rect(self.size, anchor, Size::new(620., 600.), true)
+                surface::tool_rect(WORKBENCH, anchor, Size::new(620., 600.), true)
             }
             Panel::Agent if self.agents.adding() && !self.show_devices => {
-                let (top, inset, _, _) = style::registry_insets(self.size.width, false);
+                let (top, inset, _, _) = style::registry_insets(WORKBENCH.width, false);
                 let control = style::REGISTRY_CONTROL;
                 let anchor = Rectangle::new(
                     iced::Point::new(parent.x + parent.width - inset - control, parent.y + top),
                     Size::new(control, control),
                 );
                 surface::tool_rect(
-                    self.size,
+                    WORKBENCH,
                     anchor,
                     Size::new(480., self.panel_content_height.min(505.)),
                     false,
@@ -1517,7 +1554,7 @@ impl App {
     }
     fn panel_body(&self) -> Element<'_, Message> {
         let locale = self.locale;
-        let width = self.size.width;
+        let width = WORKBENCH.width;
         let padding = surface::tool_padding(width);
         if self.panel == Panel::Agent {
             if !self.show_devices {
@@ -1573,7 +1610,9 @@ impl App {
             Panel::Knowledge => {
                 actions.push(self.knowledge.new_action(locale).map(Message::Knowledge))
             }
-            Panel::Location => actions.push(self.location.enable_action().map(Message::Location)),
+            Panel::Location if self.location.enabled() => {
+                actions.push(self.location.enable_action().map(Message::Location))
+            }
             _ => actions,
         };
         let header = surface::tool_header(
@@ -1645,7 +1684,7 @@ impl App {
                     let side = self.panel_target().width - 2. * inset;
                     let height = (side * capture.height / capture.width)
                         .min(420.)
-                        .min((self.size.height - 230.).max(1.));
+                        .min((WORKBENCH.height - 230.).max(1.));
                     body = body
                         .push(
                             image(capture.image.clone())
@@ -1744,10 +1783,9 @@ impl App {
         let popup = self.popup_rect();
         let child_popup = self.child_rect();
         let (mode_effects, mode_motion) = self.modes.effects(self.reduced_motion);
-        let visible_layout = self.layout.scrolled(self.stage_offset);
         let scene = scene::Scene {
-            layout: visible_layout,
-            size: self.size,
+            layout: self.layout,
+            size: WORKBENCH,
             frames: self.frames.clone(),
             focus: self.focus,
             linked: self.linked,
@@ -1755,7 +1793,7 @@ impl App {
             popup_opacity: if self.chat.preview.is_some() {
                 0.
             } else {
-                self.popup_amount
+                self.popup_amount.clamp(0., 1.)
             },
             child_popup,
             mode_effects,
@@ -1789,12 +1827,7 @@ impl App {
                 .color(style::ERROR)
                 .wrapping(iced::widget::text::Wrapping::None)
         };
-        let (inset, nav_top, nav_gap, nav_height) = style::navigation(self.size);
-        let (tools_gap, separator_left, separator_right) = if self.size.width <= 760. {
-            (0., 4., 3.)
-        } else {
-            (3., 12., 6.)
-        };
+        let [inset, nav_top, nav_gap, nav_height] = style::NAVIGATION;
         let mut shared = row![sized_icon_button(
             Icon::Cable,
             tr(if self.linked {
@@ -1822,30 +1855,36 @@ impl App {
                 .connection
                 .as_ref()
                 .map(|_| Message::OpenPanel(panel, true));
-            let chosen = self.popup && self.panel == panel || active;
+            let open = self.popup && self.panel == panel;
+            let chosen = open || active;
             let trigger: Element<'_, Message> = if panel == Panel::Language || chosen {
                 let content: Element<'_, Message> = if panel == Panel::Language {
                     text(self.locale.glyph()).size(13).into()
                 } else {
                     icon.view().into()
                 };
-                iced::widget::tooltip(
-                    button(container(content).center(Length::Fill))
-                        .width(style::NAV_ICON_WIDTH)
-                        .height(nav_height)
-                        .style(move |theme, status| {
-                            let mut s = style::quiet(theme, status);
-                            if chosen {
-                                s.background =
-                                    Some(iced::Color::from_rgba(0., 0., 0., 0.10).into());
-                            }
-                            s
-                        })
-                        .on_press_maybe(click),
-                    text(label).size(12),
-                    iced::widget::tooltip::Position::Bottom,
-                )
-                .into()
+                let trigger = button(container(content).center(Length::Fill))
+                    .width(style::NAV_ICON_WIDTH)
+                    .height(nav_height)
+                    .padding(0)
+                    .style(move |theme, status| {
+                        let mut s = style::quiet(theme, status);
+                        if chosen {
+                            s.background = Some(iced::Color::from_rgba(0., 0., 0., 0.10).into());
+                        }
+                        s
+                    })
+                    .on_press_maybe(click);
+                if open {
+                    trigger.into()
+                } else {
+                    iced::widget::tooltip(
+                        trigger,
+                        text(label).size(12),
+                        iced::widget::tooltip::Position::Bottom,
+                    )
+                    .into()
+                }
             } else {
                 sized_icon_button(icon, label, click, style::NAV_ICON_WIDTH, nav_height)
             };
@@ -1872,10 +1911,10 @@ impl App {
         let nav = row![
             container(error).width(Length::Fill).clip(true),
             row![
-                shared.spacing(tools_gap).align_y(iced::Center),
-                space::horizontal().width(separator_left),
+                shared.spacing(style::NAV_TOOL_GAP).align_y(iced::Center),
+                space::horizontal().width(12.),
                 iced::widget::rule::vertical(1),
-                space::horizontal().width(separator_right)
+                space::horizontal().width(6.)
             ]
             .height(nav_height),
             sized_icon_button(
@@ -1896,18 +1935,16 @@ impl App {
         .align_y(iced::Center);
         layers.push(
             pin(container(nav)
-                .width(self.size.width - 2. * inset)
+                .width(WORKBENCH.width - 2. * inset)
                 .height(nav_height))
             .x(inset)
             .y(nav_top)
             .into(),
         );
-        let stage_top = self.layout.stage_top;
-        let viewport_height = self.size.height - stage_top;
         let mut stage = vec![
             space::Space::new()
-                .width(self.size.width)
-                .height(viewport_height + self.layout.overflow)
+                .width(WORKBENCH.width)
+                .height(WORKBENCH.height)
                 .into(),
         ];
         for index in 0..2 {
@@ -1958,11 +1995,7 @@ impl App {
                 32.,
                 34.,
             ));
-            let toolbar: Element<'_, Message> = if rect.height > 56. {
-                column![name, tools].spacing(4).into()
-            } else {
-                row![name, tools].spacing(8).align_y(iced::Center).into()
-            };
+            let toolbar = row![name, tools].spacing(8).align_y(iced::Center);
             stage.push(
                 pin(container(toolbar)
                     .width(rect.width)
@@ -1970,7 +2003,7 @@ impl App {
                     .align_y(iced::Center)
                     .clip(true))
                 .x(rect.x)
-                .y(rect.y - stage_top)
+                .y(rect.y)
                 .into(),
             );
         }
@@ -1986,31 +2019,23 @@ impl App {
                         &self.modes,
                         self.locale,
                         device_name,
-                        r.width - 2. * self.layout.chat_padding[1],
-                        self.size.width <= 760.,
+                        r.width - 2. * layout::CHAT_PADDING[1],
                         self.reduced_motion,
                     )
                     .map(Message::Conversation),
             )
-            .padding(self.layout.chat_padding)
+            .padding(layout::CHAT_PADDING)
             .width(r.width)
             .height(r.height))
             .x(r.x)
-            .y(r.y - stage_top)
+            .y(r.y)
             .into(),
         );
-        let stage = scrollable(stack(stage))
-            .width(self.size.width)
-            .height(viewport_height)
-            .direction(surface::tool_scroll())
-            .on_scroll(|viewport| Message::StageScrolled(viewport.absolute_offset().y));
-        let stage =
-            occlude::scroll_around_devices(stage.into(), visible_layout, self.focus, self.linked);
-        layers.push(
-            pin(occlude::behind(occlude::behind(stage, popup), child_popup))
-                .y(stage_top)
-                .into(),
-        );
+        let place = |rect: Rectangle| rect + self.canvas_origin;
+        layers.push(occlude::behind(
+            occlude::behind(stack(stage).into(), place(popup)),
+            place(child_popup),
+        ));
         let p = self.popup_rect();
         if self.chat.preview.is_some() {
             layers.push(
@@ -2044,23 +2069,35 @@ impl App {
                 .into(),
             );
         } else if self.popup_amount > 0. {
+            let settled = surface::tool_rect(
+                WORKBENCH,
+                self.panel_anchor(self.panel),
+                self.panel_size,
+                false,
+            );
+            let scale = (p.width / settled.width).min(p.height / settled.height);
+            let offset = p.center() - settled.center();
             layers.push(
-                pin(mouse_area(
-                    container(
-                        container(iced::widget::themer(
-                            Some(style::theme()),
-                            occlude::behind(self.panel_body(), child_popup),
-                        ))
-                        .width(self.panel_target().width)
-                        .height(p.height),
+                pin(iced::widget::float(
+                    mouse_area(
+                        container(
+                            container(iced::widget::themer(
+                                Some(style::theme()),
+                                occlude::behind(self.panel_body(), place(child_popup)),
+                            ))
+                            .width(self.panel_target().width)
+                            .height(settled.height),
+                        )
+                        .width(settled.width)
+                        .height(settled.height)
+                        .clip(true),
                     )
-                    .width(p.width)
-                    .height(p.height)
-                    .clip(true),
+                    .on_press(Message::PanelFocus),
                 )
-                .on_press(Message::PanelFocus))
-                .x(p.x)
-                .y(p.y)
+                .scale(scale)
+                .translate(move |_, _| offset))
+                .x(settled.x)
+                .y(settled.y)
                 .into(),
             );
         }
@@ -2069,12 +2106,12 @@ impl App {
         } else if self.panel == Panel::Agent {
             Some(
                 self.agents
-                    .view(self.locale, true, self.size.width, self.reduced_motion)
+                    .view(self.locale, true, WORKBENCH.width, self.reduced_motion)
                     .map(Message::Agents),
             )
         } else {
             self.knowledge
-                .document_view(self.locale, self.size.width)
+                .document_view(self.locale, WORKBENCH.width)
                 .map(|document| document.map(Message::Knowledge))
         };
         if let Some(child) = child {
@@ -2088,7 +2125,14 @@ impl App {
                 .into(),
             );
         }
-        stack(layers).into()
+        container(
+            container(stack(layers))
+                .width(WORKBENCH.width)
+                .height(WORKBENCH.height)
+                .clip(true),
+        )
+        .center(Length::Fill)
+        .into()
     }
 }
 fn main() -> iced::Result {
@@ -2133,6 +2177,7 @@ fn main() -> iced::Result {
             }
         })
         .subscription(App::subscription)
+        .scale_factor(|app| app.ui_scale)
         .theme(|app: &App| {
             if app.modes.copilot_active() {
                 style::copilot_theme()

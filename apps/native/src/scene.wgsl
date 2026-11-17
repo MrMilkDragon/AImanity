@@ -229,7 +229,8 @@ fn cable(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
  let dx=abs(6.*u*t*span);
  let dy=3.*((bend-a.y-4.)*u*u+(b.y+4.-bend)*t*t);
  let distance=abs(p.y-y)*dx/max(length(vec2(dx,dy)),.01);
- let segment=step(min(a.x,b.x)+.5,p.x)*step(p.x,max(a.x,b.x)-.5)*step(min(a.y,b.y)+4.,p.y);
+ let reveal=1.-smoothstep(scene.device_scale.w-.005,scene.device_scale.w,t);
+ let segment=step(min(a.x,b.x)+.5,p.x)*step(p.x,max(a.x,b.x)-.5)*step(min(a.y,b.y)+4.,p.y)*reveal;
  let shadow=(1.-smoothstep(2.,3.,distance))*segment*.9;
  let wire=(1.-smoothstep(.5,1.5,distance))*segment;
  let plug=min(sdf(p,vec4(a-vec2(4.,2.),8.,9.),2.),sdf(p,vec4(b-vec2(4.,2.),8.,9.),2.));

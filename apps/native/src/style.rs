@@ -1,5 +1,5 @@
 use iced::{
-    Color, Size, Theme,
+    Color, Theme,
     theme::Palette,
     widget::{button, text},
 };
@@ -20,22 +20,29 @@ pub const MOTION_DEVICE: f32 = 0.56;
 pub const WINDOW_ENTER: f32 = 0.46;
 pub const WINDOW_EXIT: f32 = 0.24;
 pub const NAV_ICON_WIDTH: f32 = 36.;
+pub const NAVIGATION: [f32; 4] = [24., 11., 5., 38.];
+pub const NAV_TOOL_GAP: f32 = 3.;
+pub const NAV_SEPARATOR: f32 = 19.;
 pub const REGISTRY_CONTROL: f32 = 44.;
 
-pub fn navigation(size: Size) -> (f32, f32, f32, f32) {
-    if size.width <= 760. {
-        (10., 6., 4., 42.)
-    } else {
-        (24., 11., 5., 38.)
+pub fn bezier(progress: f32, [x1, y1, x2, y2]: [f32; 4]) -> f32 {
+    if progress <= 0. || progress >= 1. {
+        return progress;
     }
-}
-
-pub fn navigation_group(size: Size) -> (f32, f32) {
-    if size.width <= 760. {
-        (0., 8.)
-    } else {
-        (3., 19.)
+    let cubic = |t: f32, a, b| {
+        let u = 1. - t;
+        3. * u * t * (u * a + t * b) + t * t * t
+    };
+    let (mut low, mut high) = (0., 1.);
+    for _ in 0..12 {
+        let t = (low + high) * 0.5;
+        if cubic(t, x1, x2) < progress {
+            low = t;
+        } else {
+            high = t;
+        }
     }
+    cubic((low + high) * 0.5, y1, y2)
 }
 
 pub fn window_insets(width: f32) -> (f32, f32, f32) {

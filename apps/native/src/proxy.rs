@@ -6,7 +6,7 @@ use crate::{
 use ai_phone_api::wire;
 use iced::{
     Element, Length, Task,
-    widget::{column, pick_list, row, text, text_input, toggler},
+    widget::{checkbox, column, pick_list, row, space, text, text_input},
 };
 
 #[derive(Clone, Debug)]
@@ -80,42 +80,51 @@ impl Proxy {
         let mut body = column![].spacing(12);
         if let Some(state) = &self.state {
             let import = (!self.busy && !self.url.trim().is_empty()).then_some(Message::Import);
+            let mut subscription = row![
+                text_input(
+                    if state.has_subscription {
+                        locale.tr("已保存")
+                    } else {
+                        "https://"
+                    },
+                    &self.url
+                )
+                .secure(true)
+                .style(style::input)
+                .size(14)
+                .line_height(iced::Pixels(20.))
+                .padding([10, 12])
+                .on_input_maybe((!self.busy).then_some(Message::Edit))
+                .on_submit_maybe(import.clone()),
+                action_button(locale.tr("导入"), import).width(60),
+            ]
+            .spacing(8)
+            .align_y(iced::Center);
+            if state.has_subscription {
+                subscription = subscription.push(icon_button(
+                    Icon::Refresh,
+                    locale.tr("更新订阅"),
+                    (!self.busy).then_some(Message::Refresh),
+                ));
+            }
             body = body
                 .push(
-                    toggler(state.enabled)
-                        .label(locale.tr("启用"))
-                        .text_size(13)
-                        .on_toggle_maybe(
+                    row![
+                        text(locale.tr("启用")).size(14),
+                        space::horizontal(),
+                        checkbox(state.enabled).size(17).on_toggle_maybe(
                             (!self.busy && state.has_subscription).then_some(Message::Enable),
                         ),
-                )
-                .push(text(locale.tr("订阅地址")).size(12).color(style::MUTED))
-                .push(
-                    row![
-                        text_input(
-                            if state.has_subscription {
-                                locale.tr("已保存")
-                            } else {
-                                "https://"
-                            },
-                            &self.url
-                        )
-                        .secure(true)
-                        .style(style::input)
-                        .size(14)
-                        .line_height(iced::Pixels(20.))
-                        .padding([10, 12])
-                        .on_input_maybe((!self.busy).then_some(Message::Edit))
-                        .on_submit_maybe(import.clone()),
-                        action_button(locale.tr("导入"), import).width(60),
-                        icon_button(
-                            Icon::Refresh,
-                            locale.tr("更新订阅"),
-                            (!self.busy && state.has_subscription).then_some(Message::Refresh)
-                        )
                     ]
-                    .spacing(6)
+                    .spacing(8)
                     .align_y(iced::Center),
+                )
+                .push(
+                    column![
+                        text(locale.tr("订阅地址")).size(12).color(style::MUTED),
+                        subscription,
+                    ]
+                    .spacing(5),
                 );
             for group in &state.groups {
                 body = body.push(

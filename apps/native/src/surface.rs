@@ -38,6 +38,9 @@ pub fn tool_rect(view: Size, anchor: Rectangle, preferred: Size, beside: bool) -
 }
 
 pub fn tool_motion(anchor: Rectangle, panel: Rectangle, amount: f32) -> Rectangle {
+    if amount == 1. {
+        return panel;
+    }
     let center = anchor.center();
     let factor = |trigger: f32, extent: f32| {
         let folded = (trigger / extent).max(0.035);
@@ -179,8 +182,12 @@ impl Widget<Message, Theme, Renderer> for Surface {
                 Event::Keyboard(_) if state.preedit.is_some() => shell.capture_event(),
                 _ => {}
             }
+            let origin = layout.bounds();
             shell.request_input_method(&InputMethod::Enabled {
-                cursor: Rectangle::new(state.anchor, Size::new(1., 20.)),
+                cursor: Rectangle::new(
+                    state.anchor + iced::Vector::new(origin.x, origin.y),
+                    Size::new(1., 20.),
+                ),
                 purpose: input_method::Purpose::Normal,
                 preedit: state.preedit.clone(),
             });

@@ -1,19 +1,51 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, icon_button},
+    controls::{Icon, action_button, icon_button, sized_icon_button},
     style,
 };
 use ai_phone_api::wire::{self, FileLocation, FileOperation};
 use iced::{
-    Element, Length, Task,
+    Color, Element, Font, Length, Padding, Task, font,
     widget::{
-        button, checkbox, column, container, mouse_area, row, scrollable, space, text, text_input,
+        button, checkbox, column, container, mouse_area, row, rule, scrollable, space, text,
+        text_input, tooltip,
     },
 };
 use std::{
     collections::{HashSet, VecDeque},
     path::PathBuf,
 };
+
+const DEVICE_GAP: f32 = 16.;
+const PANE_PADDING: f32 = 8.;
+const TOOL_GAP: f32 = 4.;
+const SCROLLBAR_WIDTH: f32 = 4.;
+const SCROLLBAR_GAP: f32 = 2.;
+const SIZE_COLUMN: f32 = 80.;
+const MODIFIED_COLUMN: f32 = 112.;
+const CHECK_COLUMN: f32 = 36.;
+const GRIP_COLUMN: f32 = 24.;
+const FILE_BORDER: Color = Color::from_rgb8(222, 222, 222);
+
+fn file_divider(strength: f32) -> rule::Rule<'static> {
+    rule::horizontal(style::BORDER_WIDTH).style(move |theme| {
+        let mut appearance = rule::default(theme);
+        appearance.color = FILE_BORDER.scale_alpha(strength);
+        appearance
+    })
+}
+
+fn table_cell(label: text::Text<'_>, width: Length) -> container::Container<'_, Message> {
+    container(
+        label
+            .size(12)
+            .style(style::muted_text)
+            .wrapping(text::Wrapping::None),
+    )
+    .padding([0., PANE_PADDING])
+    .width(width)
+    .clip(true)
+}
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -479,13 +511,13 @@ impl Files {
             );
         }
         let workspace_height = (height * 0.36).max(150.);
-        let devices_height = (height - workspace_height - 16.).max(150.);
+        let devices_height = (height - workspace_height - DEVICE_GAP).max(150.);
         body = body.push(self.pane(0, workspace_height, locale)).push(
             row![
                 self.pane(1, devices_height, locale),
                 self.pane(2, devices_height, locale)
             ]
-            .spacing(16),
+            .spacing(DEVICE_GAP),
         );
         if let Some(edit) = &self.edit {
             let title = match edit.operation {
@@ -525,9 +557,22 @@ impl Files {
         let pane = &self.panes[i];
         let enabled = !self.busy && pane.device.is_some();
         let selected = !pane.selected.is_empty();
-        let op = |icon, label, message| icon_button(icon, label, enabled.then_some(message));
+        let control = |icon, label, message| sized_icon_button(icon, label, message, 36., 36.);
+        let op = |icon, label, message| control(icon, label, enabled.then_some(message));
+        let heading_font = Font {
+            weight: font::Weight::Medium,
+            ..Font::DEFAULT
+        };
+        let device_icon = [Icon::Folder, Icon::PhonePortrait, Icon::Screen][i];
         let header = row![
-            text(locale.tr(&pane.name)).size(13),
+            device_icon.view().width(16).height(16),
+            container(
+                text(locale.tr(&pane.name))
+                    .size(14)
+                    .font(heading_font)
+                    .wrapping(text::Wrapping::None)
+            )
+            .clip(true),
             space::horizontal(),
             op(
                 Icon::Refresh,
@@ -541,8 +586,9 @@ impl Files {
                 Message::Edit(i, FileOperation::Mkdir)
             )
         ]
+        .spacing(PANE_PADDING)
         .align_y(iced::Center);
-        let mut tools = row![].align_y(iced::Center);
+        let mut tools = row![].spacing(TOOL_GAP).align_y(iced::Center);
         if selected {
             let sources = pane.selection();
             let download = pane
@@ -551,7 +597,7 @@ impl Files {
                 .filter(|e| pane.selected.contains(&e.path))
                 .all(|e| !e.directory);
             tools = tools
-                .push(text(pane.selected.len().to_string()).size(12))
+                .push(container(text(pane.selected.len().to_string()).size(12)).padding([0, 4]))
                 .push(op(
                     Icon::Copy,
                     locale.tr("复制"),
@@ -562,12 +608,12 @@ impl Files {
                     locale.tr("剪切"),
                     Message::Clip(i, FileOperation::Move),
                 ))
-                .push(icon_button(
+                .push(control(
                     Icon::Download,
                     locale.tr("下载"),
                     (enabled && download).then_some(Message::Download(sources)),
                 ))
-                .push(icon_button(
+                .push(control(
                     Icon::Edit,
                     locale.tr("重命名"),
                     (enabled && pane.selected.len() == 1)
@@ -588,7 +634,7 @@ impl Files {
                 if parent.is_empty() { "/" } else { parent }
             });
             tools = tools
-                .push(icon_button(
+                .push(control(
                     Icon::Up,
                     locale.tr("上一级目录"),
                     (enabled && pane.path != "/").then(|| Message::Go(i, parent.into())),
@@ -597,91 +643,126 @@ impl Files {
                     text_input(locale.tr("路径"), &pane.address)
                         .on_input_maybe(enabled.then_some(move |v| Message::Address(i, v)))
                         .on_submit_maybe(enabled.then(|| Message::Go(i, pane.address.clone())))
-                        .style(style::input)
-                        .size(13)
-                        .padding([9, 10]),
+                        .style(|theme, status| {
+                            let mut appearance = style::input(theme, status);
+                            appearance.background = Color::TRANSPARENT.into();
+                            appearance.border.width = 0.;
+                            appearance
+                        })
+                        .size(12)
+                        .padding([9, 4]),
                 );
         }
         if self.clipboard.is_some() {
             tools = tools.push(op(Icon::Link, locale.tr("粘贴"), Message::Paste(i)));
         }
-        let mut listing = column![
-            row![
+        let table_header = row![
+            container(
                 checkbox(!pane.entries.is_empty() && pane.entries.len() == pane.selected.len())
+                    .size(15)
                     .on_toggle_maybe(
                         (enabled && !pane.entries.is_empty())
                             .then_some(move |b| Message::All(i, b))
-                    ),
-                text(locale.tr("名称")).size(12).width(Length::Fill),
-                text(locale.tr("大小")).size(12).width(55),
-                text(locale.tr("修改时间")).size(12).width(94),
-                space::horizontal().width(24)
-            ]
-            .spacing(8)
-            .align_y(iced::Center)
+                    )
+            )
+            .center_x(CHECK_COLUMN),
+            table_cell(text(locale.tr("名称")).font(heading_font), Length::Fill),
+            table_cell(
+                text(locale.tr("大小")).font(heading_font),
+                Length::Fixed(SIZE_COLUMN)
+            ),
+            table_cell(
+                text(locale.tr("修改时间")).font(heading_font),
+                Length::Fixed(MODIFIED_COLUMN)
+            ),
+            space::horizontal().width(GRIP_COLUMN + SCROLLBAR_WIDTH + SCROLLBAR_GAP)
         ]
-        .spacing(2);
+        .align_y(iced::Center);
+        let mut listing = column![];
         if pane.loading || !pane.error.is_empty() || pane.entries.is_empty() {
             listing = listing.push(
-                text(if pane.loading {
-                    locale.tr("读取中…")
-                } else if !pane.error.is_empty() {
-                    &pane.error
-                } else if pane.device.is_none() {
-                    locale.tr("尚未安装设备")
-                } else {
-                    locale.tr("暂无文件")
-                })
-                .size(12)
-                .color(style::MUTED),
+                container(
+                    text(if pane.loading {
+                        locale.tr("读取中…")
+                    } else if !pane.error.is_empty() {
+                        &pane.error
+                    } else if pane.device.is_none() {
+                        locale.tr("尚未安装设备")
+                    } else {
+                        locale.tr("暂无文件")
+                    })
+                    .size(12)
+                    .style(style::muted_text),
+                )
+                .padding([20, 12])
+                .center_x(Length::Fill),
             );
         } else {
             for entry in &pane.entries {
                 let path = entry.path.clone();
                 let browse = entry.directory || entry.symlink;
+                let checked = pane.selected.contains(&path);
                 let activate = if browse {
                     Message::Go(i, path.clone())
                 } else {
                     Message::Download(vec![pane.location(&path)])
                 };
-                let name = button(
-                    row![
-                        if browse {
-                            Icon::Folder.view()
-                        } else {
-                            Icon::Right.view()
-                        },
-                        container(text(&entry.name).size(12)).clip(true)
-                    ]
-                    .align_y(iced::Center)
-                    .spacing(6),
-                )
-                .width(Length::Fill)
-                .on_press_maybe(enabled.then_some(activate))
-                .style(style::quiet);
-                let handle = mouse_area(container(Icon::Grip.view()).center(Length::Fixed(24.)))
-                    .on_press(Message::Drag(i, path.clone()))
-                    .interaction(iced::mouse::Interaction::Grab);
+                let icon = if browse { Icon::Folder } else { Icon::Right };
+                let name = tooltip(
+                    button(
+                        row![
+                            icon.view().width(16).height(16),
+                            text(&entry.name).size(12).wrapping(text::Wrapping::None)
+                        ]
+                        .align_y(iced::Center)
+                        .spacing(PANE_PADDING),
+                    )
+                    .width(Length::Fill)
+                    .height(style::CONTROL_HEIGHT - style::BORDER_WIDTH)
+                    .padding([0., PANE_PADDING])
+                    .clip(true)
+                    .on_press_maybe(enabled.then_some(activate))
+                    .style(style::quiet),
+                    container(text(&entry.path).size(12)).max_width(380),
+                    tooltip::Position::Top,
+                );
+                let handle =
+                    mouse_area(container(Icon::Grip.view()).center(Length::Fixed(GRIP_COLUMN)))
+                        .on_press(Message::Drag(i, path.clone()))
+                        .interaction(iced::mouse::Interaction::Grab);
                 let entry_row = row![
-                    checkbox(pane.selected.contains(&path)).on_toggle_maybe(enabled.then(
+                    container(checkbox(checked).size(15).on_toggle_maybe(enabled.then(
                         move || {
                             let path = path.clone();
                             move |b| Message::Select(i, path.clone(), b)
                         }
-                    )),
+                    )))
+                    .center_x(CHECK_COLUMN),
                     name,
-                    text(if browse {
-                        "—".into()
-                    } else {
-                        size_label(entry.size_bytes)
-                    })
-                    .size(11)
-                    .width(55),
-                    text(timestamp(entry.modified_at_ms)).size(11).width(94),
+                    table_cell(
+                        text(if browse {
+                            "—".into()
+                        } else {
+                            size_label(entry.size_bytes)
+                        }),
+                        Length::Fixed(SIZE_COLUMN)
+                    ),
+                    table_cell(
+                        text(timestamp(entry.modified_at_ms)),
+                        Length::Fixed(MODIFIED_COLUMN)
+                    ),
                     handle
                 ]
-                .spacing(8)
                 .align_y(iced::Center);
+                let entry_row =
+                    container(column![entry_row, file_divider(0.55)]).style(move |theme| {
+                        let appearance = container::Style::default();
+                        if checked {
+                            appearance.background(style::accent(theme))
+                        } else {
+                            appearance
+                        }
+                    });
                 if browse && enabled && self.drag.is_some() {
                     listing = listing.push(
                         mouse_area(entry_row)
@@ -692,18 +773,50 @@ impl Files {
                 }
             }
         }
-        let content =
-            container(column![header, tools, scrollable(listing).height(Length::Fill)].spacing(4))
-                .padding(8)
+        let content = container(column![
+            container(header)
+                .padding([0., PANE_PADDING])
+                .height(style::CONTROL_HEIGHT - style::BORDER_WIDTH)
+                .align_y(iced::Center),
+            file_divider(1.),
+            container(tools)
+                .padding([0., PANE_PADDING])
+                .height(style::CONTROL_HEIGHT - style::BORDER_WIDTH)
+                .align_y(iced::Center),
+            file_divider(1.),
+            container(table_header)
                 .width(Length::Fill)
-                .height(height)
-                .style(|_| {
-                    container::Style::default().border(iced::Border {
-                        width: style::BORDER_WIDTH,
-                        color: iced::Color::from_rgba(0., 0., 0., 0.14),
-                        radius: style::CONTROL_RADIUS.into(),
+                .height(32)
+                .align_y(iced::Center)
+                .style(
+                    |theme| container::Style::default().background(if style::dark(theme) {
+                        Color::from_rgb8(48, 48, 48)
+                    } else {
+                        Color::from_rgb8(242, 242, 242)
                     })
-                });
+                ),
+            scrollable(
+                container(listing).padding(Padding::ZERO.right(SCROLLBAR_WIDTH + SCROLLBAR_GAP)),
+            )
+            .height(Length::Fill)
+            .direction(scrollable::Direction::Vertical(
+                scrollable::Scrollbar::new()
+                    .width(SCROLLBAR_WIDTH)
+                    .scroller_width(SCROLLBAR_WIDTH),
+            ))
+        ])
+        .width(Length::Fill)
+        .height(height)
+        .clip(true)
+        .style(|_| {
+            container::Style::default()
+                .background(Color::WHITE.scale_alpha(0.18))
+                .border(iced::Border {
+                    width: style::BORDER_WIDTH,
+                    color: FILE_BORDER,
+                    radius: style::CONTROL_RADIUS.into(),
+                })
+        });
         if enabled && self.drag.is_some() {
             mouse_area(content)
                 .on_release(Message::Drop(i, None))

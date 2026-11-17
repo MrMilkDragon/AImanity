@@ -1,3 +1,5 @@
+use iced::{Size, Task, window};
+
 #[derive(Clone, Debug)]
 pub enum ClipboardContent {
     Text(String),
@@ -29,6 +31,195 @@ pub fn reduced_motion() -> bool {
 #[cfg(not(any(windows, target_os = "macos")))]
 pub fn reduced_motion() -> bool {
     false
+}
+
+#[cfg(target_os = "macos")]
+fn appkit_view(window: &dyn window::Window) -> &objc2_app_kit::NSView {
+    use window::raw_window_handle::RawWindowHandle;
+
+    let RawWindowHandle::AppKit(handle) = window.window_handle().expect("AppKit handle").as_raw()
+    else {
+        unreachable!("AppKit window")
+    };
+    unsafe { handle.ns_view.cast::<objc2_app_kit::NSView>().as_ref() }
+}
+
+#[cfg(target_os = "macos")]
+pub fn lock_aspect(id: window::Id, aspect: Size) -> Task<()> {
+    use objc2::{
+        runtime::{AnyObject, Imp, Sel},
+        sel,
+    };
+    use objc2_app_kit::NSWindow;
+    use objc2_foundation::NSSize;
+
+    window::run(id, move |window| {
+        let window = appkit_view(window).window().expect("attached AppKit view");
+        let object: &AnyObject = window.as_ref();
+        // Winit resets resize increments at drag start and finish, which clears the ratio.
+        type ResizeIncrements = unsafe extern "C-unwind" fn(&NSWindow, Sel, NSSize);
+        unsafe {
+            objc2::ffi::class_addMethod(
+                std::ptr::from_ref(object.class()).cast_mut(),
+                sel!(setContentResizeIncrements:),
+                std::mem::transmute::<ResizeIncrements, Imp>(keep_content_aspect),
+                c"v@:{CGSize=dd}".as_ptr(),
+            );
+        }
+        window.setContentAspectRatio(NSSize::new(
+            f64::from(aspect.width),
+            f64::from(aspect.height),
+        ));
+    })
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C-unwind" fn keep_content_aspect(
+    window: &objc2_app_kit::NSWindow,
+    _: objc2::runtime::Sel,
+    size: objc2_foundation::NSSize,
+) {
+    use objc2::{ClassType, msg_send};
+    use objc2_app_kit::NSWindow;
+
+    if window.contentAspectRatio().height == 0. {
+        let _: () = unsafe {
+            msg_send![super(window, NSWindow::class()), setContentResizeIncrements: size]
+        };
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn content_size(id: window::Id) -> Task<Size> {
+    window::run(id, |window| {
+        let size = appkit_view(window).bounds().size;
+        Size::new(size.width as f32, size.height as f32)
+    })
+}
+
+#[cfg(windows)]
+fn hwnd(window: &dyn window::Window) -> windows_sys::Win32::Foundation::HWND {
+    use window::raw_window_handle::RawWindowHandle;
+
+    let RawWindowHandle::Win32(handle) = window.window_handle().expect("Win32 handle").as_raw()
+    else {
+        unreachable!("Win32 window")
+    };
+    handle.hwnd.get() as _
+}
+
+#[cfg(windows)]
+pub fn lock_aspect(id: window::Id, aspect: Size) -> Task<()> {
+    use windows_sys::Win32::UI::Shell::SetWindowSubclass;
+
+    let ratio = (aspect.width / aspect.height).to_bits() as usize;
+    window::run(id, move |window| {
+        assert_ne!(
+            unsafe { SetWindowSubclass(hwnd(window), Some(size_workbench), 0, ratio) },
+            0,
+            "Win32 window sizing hook"
+        );
+    })
+}
+
+#[cfg(windows)]
+pub fn content_size(id: window::Id) -> Task<Size> {
+    use windows_sys::Win32::{
+        Foundation::RECT,
+        UI::{HiDpi::GetDpiForWindow, WindowsAndMessaging::GetClientRect},
+    };
+
+    window::run(id, |window| unsafe {
+        let hwnd = hwnd(window);
+        let mut rect = RECT::default();
+        assert_ne!(GetClientRect(hwnd, &mut rect), 0, "Win32 client bounds");
+        let scale = GetDpiForWindow(hwnd) as f32 / 96.;
+        Size::new(rect.right as f32 / scale, rect.bottom as f32 / scale)
+    })
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn size_workbench(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    message: u32,
+    edge: usize,
+    lparam: isize,
+    subclass: usize,
+    data: usize,
+) -> isize {
+    use windows_sys::Win32::{
+        Foundation::RECT,
+        UI::{
+            Shell::{DefSubclassProc, RemoveWindowSubclass},
+            WindowsAndMessaging::{
+                GetClientRect, GetWindowRect, WM_NCDESTROY, WM_SIZING, WMSZ_BOTTOM,
+                WMSZ_BOTTOMLEFT, WMSZ_BOTTOMRIGHT, WMSZ_LEFT, WMSZ_RIGHT, WMSZ_TOP, WMSZ_TOPLEFT,
+                WMSZ_TOPRIGHT,
+            },
+        },
+    };
+
+    if message == WM_SIZING {
+        let mut frame = RECT::default();
+        let mut client = RECT::default();
+        if unsafe { GetWindowRect(hwnd, &mut frame) != 0 && GetClientRect(hwnd, &mut client) != 0 }
+        {
+            let rect = unsafe { &mut *(lparam as *mut RECT) };
+            let width =
+                f64::from(rect.right - rect.left - (frame.right - frame.left - client.right));
+            let height =
+                f64::from(rect.bottom - rect.top - (frame.bottom - frame.top - client.bottom));
+            let ratio = f64::from(f32::from_bits(data as u32));
+            let edge = edge as u32;
+            let (w, h) = match edge {
+                WMSZ_LEFT | WMSZ_RIGHT => (width, width / ratio),
+                WMSZ_TOP | WMSZ_BOTTOM => (height * ratio, height),
+                _ => {
+                    let h = (width * ratio + height) / (ratio * ratio + 1.);
+                    (h * ratio, h)
+                }
+            };
+            let resize = |low: &mut i32, high: &mut i32, delta: i32, start, end| {
+                let from_start = if start {
+                    delta
+                } else if end {
+                    0
+                } else {
+                    delta / 2
+                };
+                *low -= from_start;
+                *high += delta - from_start;
+            };
+            resize(
+                &mut rect.left,
+                &mut rect.right,
+                (w - width).round() as i32,
+                matches!(edge, WMSZ_LEFT | WMSZ_TOPLEFT | WMSZ_BOTTOMLEFT),
+                matches!(edge, WMSZ_RIGHT | WMSZ_TOPRIGHT | WMSZ_BOTTOMRIGHT),
+            );
+            resize(
+                &mut rect.top,
+                &mut rect.bottom,
+                (h - height).round() as i32,
+                matches!(edge, WMSZ_TOP | WMSZ_TOPLEFT | WMSZ_TOPRIGHT),
+                matches!(edge, WMSZ_BOTTOM | WMSZ_BOTTOMLEFT | WMSZ_BOTTOMRIGHT),
+            );
+            return 1;
+        }
+    } else if message == WM_NCDESTROY {
+        unsafe { RemoveWindowSubclass(hwnd, Some(size_workbench), subclass) };
+    }
+    unsafe { DefSubclassProc(hwnd, message, edge, lparam) }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn lock_aspect(_id: window::Id, _aspect: Size) -> Task<()> {
+    Task::none()
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn content_size(id: window::Id) -> Task<Size> {
+    window::size(id)
 }
 
 pub async fn read_clipboard() -> Result<Option<ClipboardContent>, String> {

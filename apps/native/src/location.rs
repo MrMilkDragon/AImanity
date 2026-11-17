@@ -7,7 +7,9 @@ use ai_phone_api::wire::{self, GeoPoint, LocationState};
 use iced::{
     Color, Element, Event, Length, Point, Rectangle, Renderer, Size, Subscription, Task, Theme,
     Vector, mouse,
-    widget::{button, canvas, column, image, pick_list, row, space, stack, text, toggler},
+    widget::{
+        button, canvas, column, container, image, pick_list, row, space, stack, svg, text, toggler,
+    },
 };
 use std::{
     collections::HashMap,
@@ -453,6 +455,28 @@ impl Location {
                     .align_y(iced::Bottom),
                 );
             }
+        } else if self.state.is_some() {
+            let locate = Icon::LocateFixed
+                .view()
+                .width(28)
+                .height(28)
+                .style(|theme, _| svg::Style {
+                    color: Some(style::muted_color(theme)),
+                });
+            let enable = button(
+                text(locale.tr("开启"))
+                    .size(14)
+                    .line_height(iced::Pixels(20.)),
+            )
+            .padding([8, 16])
+            .style(style::primary)
+            .on_press_maybe((!self.saving).then_some(Message::Enabled(true)));
+            body = body.push(
+                container(column![locate, enable].spacing(24).align_x(iced::Center))
+                    .width(Length::Fill)
+                    .align_x(iced::Center)
+                    .padding([32, 0]),
+            );
         }
         if let Some(state) = &self.state {
             body = body.push(

@@ -47,6 +47,7 @@ pub enum Icon {
     Volume,
     Muted,
     Compass,
+    LocateFixed,
     Mic,
     MicOff,
 }
@@ -98,6 +99,9 @@ impl Icon {
             }
             Self::Pin => {
                 "<path d='M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z'/><circle cx='12' cy='10' r='2.6'/>"
+            }
+            Self::LocateFixed => {
+                "<g stroke-width='2'><circle cx='12' cy='12' r='7'/><circle cx='12' cy='12' r='2'/><path d='M12 2v3m0 14v3M2 12h3m14 0h3'/></g>"
             }
             Self::Book => {
                 "<path d='M12 6C9 3 5 3 2 4v15c4-1 7-1 10 2 3-3 6-3 10-2V4c-3-1-7-1-10 2Zm0 0v15'/>"
@@ -228,6 +232,7 @@ pub fn sized_icon_button<'a, M: Clone + 'a>(
         )
         .width(width)
         .height(height)
+        .padding(0)
         .on_press_maybe(action)
         .style(style::quiet),
         text(label).size(12),

@@ -1,13 +1,13 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, icon_button},
+    controls::{Icon, action_button, sized_icon_button},
     locale::Locale,
     style,
     surface::tool_action,
 };
 use ai_phone_api::wire;
 use iced::{
-    Element, Font, Length, Task,
+    Element, Font, Length, Padding, Task,
     widget::{button, checkbox, column, container, row, rule, text, text_input},
 };
 use std::path::PathBuf;
@@ -269,22 +269,30 @@ impl Skills {
         if !self.loaded && self.error.is_empty() {
             content = content.push(text(locale.tr("读取中…")).size(13).style(style::muted_text));
         }
+        let mut list = column![].spacing(4);
         for skill in &self.items {
             let expanded = self.expanded.as_ref() == Some(&skill.id);
             let label = row![
-                if expanded { Icon::Down } else { Icon::Right }.view(),
-                text(&skill.name).size(14),
+                if expanded { Icon::Down } else { Icon::Right }
+                    .view()
+                    .width(15)
+                    .height(15),
+                text(&skill.name).size(14).font(Font {
+                    weight: iced::font::Weight::Medium,
+                    ..Font::DEFAULT
+                }),
             ]
-            .spacing(10)
+            .spacing(8)
+            .height(36)
             .align_y(iced::Alignment::Center);
             let mut heading = row![
                 button(label)
                     .style(style::quiet)
+                    .padding(0)
                     .width(Length::Fill)
-                    .height(40)
                     .on_press(Message::Expand(skill.id.clone()))
             ]
-            .spacing(8)
+            .spacing(12)
             .align_y(iced::Alignment::Center);
             if skill.builtin {
                 heading = heading.push(text(locale.tr("内置")).size(12).style(style::muted_text));
@@ -294,17 +302,24 @@ impl Skills {
                     .push(checkbox(skill.enabled).size(16).on_toggle_maybe(
                         (!self.busy).then_some(move |enabled| Message::Enable(id.clone(), enabled)),
                     ))
-                    .push(icon_button(
+                    .push(sized_icon_button(
                         Icon::Trash,
                         locale.tr("移除 Skill"),
                         (!self.busy).then(|| Message::Remove(skill.id.clone())),
+                        36.,
+                        36.,
                     ));
             }
-            content = content.push(heading);
+            let mut article = column![heading];
             if expanded {
                 let mut details = column![].spacing(10);
                 if !skill.description.is_empty() {
-                    details = details.push(text(&skill.description).size(14));
+                    details = details.push(
+                        text(&skill.description)
+                            .size(13)
+                            .line_height(iced::Pixels(21.45))
+                            .style(style::muted_text),
+                    );
                 }
                 if skill.source != "builtin" {
                     let source = text(&skill.source).size(12).style(style::muted_text);
@@ -320,10 +335,17 @@ impl Skills {
                     };
                 }
                 details = details.push(text(&skill.content).size(12).font(Font::MONOSPACE));
-                content = content.push(container(details).padding([6, 26]));
+                article = article.push(container(details).padding(Padding::ZERO.top(16).left(23)));
             }
-            content = content.push(rule::horizontal(1));
+            list = list.push(column![
+                container(article).padding([14, 0]),
+                rule::horizontal(1).style(|theme| rule::Style {
+                    color: style::FOREGROUND.scale_alpha(16. / 255.),
+                    ..rule::default(theme)
+                }),
+            ]);
         }
+        content = content.push(list);
         if self.removed.is_some() {
             content = content.push(
                 button(

@@ -114,7 +114,7 @@ struct PointerPress {
 
 impl Scene {
     fn occludes_device(&self, point: Point) -> bool {
-        point.y < self.layout.stage_top
+        point.y < crate::layout::STAGE_TOP
             || self.layout.chat.contains(point)
             || self.popup.contains(point)
             || self.child_popup.contains(point)
@@ -212,9 +212,11 @@ impl shader::Program<Message> for Scene {
         &self,
         state: &mut Pointer,
         event: &Event,
-        _bounds: Rectangle,
+        bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> Option<shader::Action<Message>> {
+        let origin = iced::Vector::new(bounds.x, bounds.y);
+        let cursor = cursor - origin;
         let touch_active = state
             .pressed
             .is_some_and(|press| matches!(press.source, PointerSource::Touch(_)));
@@ -252,10 +254,11 @@ impl shader::Program<Message> for Scene {
                 if touch_active {
                     return Some(shader::Action::capture());
                 }
-                if self.occludes_device(*position) {
+                let position = *position - origin;
+                if self.occludes_device(position) {
                     return None;
                 }
-                return self.begin_press(state, *position, PointerSource::Touch(*id));
+                return self.begin_press(state, position, PointerSource::Touch(*id));
             }
             Event::Touch(touch::Event::FingerMoved { id, position }) => {
                 let press = state
@@ -265,7 +268,7 @@ impl shader::Program<Message> for Scene {
                 if press.moved.is_none()
                     && self
                         .layout
-                        .local(press.device, *position)
+                        .local(press.device, *position - origin)
                         .is_some_and(|point| press.from.distance(point) > 0.015)
                 {
                     press.moved = Some(Instant::now());
@@ -273,14 +276,18 @@ impl shader::Program<Message> for Scene {
                 return Some(shader::Action::capture());
             }
             Event::Touch(touch::Event::FingerLifted { id, position }) => {
-                return self.release_press(state, Some(*position), PointerSource::Touch(*id));
+                return self.release_press(
+                    state,
+                    Some(*position - origin),
+                    PointerSource::Touch(*id),
+                );
             }
             Event::Touch(touch::Event::FingerLost { id, position }) => {
                 state
                     .pressed
                     .filter(|press| press.source == PointerSource::Touch(*id))?;
                 state.pressed = None;
-                state.touch_released = Some((*position, Instant::now()));
+                state.touch_released = Some((*position - origin, Instant::now()));
                 return Some(shader::Action::capture());
             }
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
@@ -426,8 +433,8 @@ impl shader::Program<Message> for Scene {
                 device_scale: [
                     self.layout.device_scale[0],
                     self.layout.device_scale[1],
-                    self.layout.stage_top,
-                    0.,
+                    crate::layout::STAGE_TOP,
+                    self.layout.cable_end,
                 ],
                 material: [
                     style::PANEL_RADIUS,
@@ -446,10 +453,10 @@ impl shader::Program<Message> for Scene {
     fn mouse_interaction(
         &self,
         _: &Pointer,
-        _: Rectangle,
+        bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> mouse::Interaction {
-        if cursor.position().is_some_and(|p| {
+        if cursor.position_from(bounds.position()).is_some_and(|p| {
             !self.occludes_device(p) && (0..2).any(|i| self.layout.local(i, p).is_some())
         }) {
             mouse::Interaction::Pointer
@@ -475,6 +482,46 @@ pub struct Uniforms {
     mode_motion: [f32; 4],
     agent_pointers: [[[f32; 4]; 5]; 2],
 }
+
+#[derive(PartialEq)]
+struct BackdropKey {
+    size_and_cable: [f32; 3],
+    devices: [[f32; 4]; 2],
+    state: [f32; 4],
+    scale_and_clip: [f32; 4],
+    background: [f32; 3],
+    blur: f32,
+    goal: f32,
+    pointers: [[[f32; 3]; 5]; 2],
+    sequences: [u64; 2],
+}
+
+impl BackdropKey {
+    fn new(scene: &Uniforms, sequences: [u64; 2]) -> Self {
+        let [width, height, cable, _] = scene.size;
+        let [red, green, blue, _] = scene.background;
+        Self {
+            size_and_cable: [width, height, cable],
+            devices: [scene.phone, scene.desktop],
+            state: scene.state,
+            scale_and_clip: scene.device_scale,
+            background: [red, green, blue],
+            blur: scene.material[2],
+            goal: scene.mode_effects[2],
+            pointers: scene.agent_pointers.map(|device| {
+                device.map(|[x, y, opacity, _]| {
+                    if opacity > 0. {
+                        [x, y, opacity]
+                    } else {
+                        [0.; 3]
+                    }
+                })
+            }),
+            sequences,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Primitive {
     uniforms: Uniforms,
@@ -490,6 +537,7 @@ pub struct Pipeline {
     glass_layout: wgpu::BindGroupLayout,
     glass_textures: [wgpu::Texture; 2],
     glass_groups: [wgpu::BindGroup; 2],
+    glass_key: Option<BackdropKey>,
     shader: wgpu::ShaderModule,
     copilot: Option<copilot::Draw>,
     copilot_mask: wgpu::Texture,
@@ -735,6 +783,7 @@ impl shader::Pipeline for Pipeline {
             glass_layout,
             glass_textures,
             glass_groups,
+            glass_key: None,
             shader,
             copilot: None,
             copilot_mask,
@@ -814,13 +863,24 @@ impl shader::Primitive for Primitive {
                 &pipeline.sampler,
             );
         }
-        let width = (self.uniforms.size[0] / 4.).ceil() as u32;
-        let height = (self.uniforms.size[1] / 4.).ceil() as u32;
-        if pipeline.glass_textures[0].width() != width
-            || pipeline.glass_textures[0].height() != height
-        {
-            (pipeline.glass_textures, pipeline.glass_groups) =
-                Pipeline::glass_buffers(device, &pipeline.glass_layout, width, height);
+        let needs_glass = !copilot_active
+            || (self.uniforms.popup[2] > 0. && self.uniforms.size[3] > 0.)
+            || self.uniforms.child_popup[2] > 0.;
+        if needs_glass {
+            let backdrop =
+                (!copilot_active).then(|| BackdropKey::new(&self.uniforms, pipeline.sequences));
+            if backdrop.is_some() && backdrop == pipeline.glass_key {
+                return;
+            }
+            pipeline.glass_key = backdrop;
+            let width = (self.uniforms.size[0] / 4.).ceil() as u32;
+            let height = (self.uniforms.size[1] / 4.).ceil() as u32;
+            if pipeline.glass_textures[0].width() != width
+                || pipeline.glass_textures[0].height() != height
+            {
+                (pipeline.glass_textures, pipeline.glass_groups) =
+                    Pipeline::glass_buffers(device, &pipeline.glass_layout, width, height);
+            }
         }
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("glass-backdrop"),
@@ -833,31 +893,33 @@ impl shader::Primitive for Primitive {
                 })
                 .render(&pipeline.copilot_mask, &mut encoder);
         }
-        for (index, render) in [&pipeline.backdrop, &pipeline.horizontal, &pipeline.vertical]
-            .into_iter()
-            .enumerate()
-        {
-            let destination = index % 2;
-            let view = pipeline.glass_textures[destination].create_view(&Default::default());
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("glass-blur"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            pass.set_pipeline(render);
-            pass.set_bind_group(0, &pipeline.group, &[]);
-            if index > 0 {
-                pass.set_bind_group(1, &pipeline.glass_groups[1 - destination], &[]);
+        if needs_glass {
+            for (index, render) in [&pipeline.backdrop, &pipeline.horizontal, &pipeline.vertical]
+                .into_iter()
+                .enumerate()
+            {
+                let destination = index % 2;
+                let view = pipeline.glass_textures[destination].create_view(&Default::default());
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("glass-blur"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    ..Default::default()
+                });
+                pass.set_pipeline(render);
+                pass.set_bind_group(0, &pipeline.group, &[]);
+                if index > 0 {
+                    pass.set_bind_group(1, &pipeline.glass_groups[1 - destination], &[]);
+                }
+                pass.draw(0..3, 0..1);
             }
-            pass.draw(0..3, 0..1);
         }
         queue.submit([encoder.finish()]);
     }

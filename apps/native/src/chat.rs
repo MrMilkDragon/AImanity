@@ -867,7 +867,6 @@ impl Chat {
         locale: crate::locale::Locale,
         device_name: &'a str,
         width: f32,
-        compact: bool,
         reduced_motion: bool,
     ) -> Element<'a, Message> {
         let copilot = modes.copilot_active();
@@ -968,9 +967,9 @@ impl Chat {
         }
         let editor = text_editor(&self.draft)
             .placeholder(locale.tr("发送消息…"))
-            .height(if compact { 76.8 } else { 72. })
+            .height(72.)
             .padding([0, 4])
-            .size(if compact { 16 } else { 15 })
+            .size(15)
             .line_height(iced::widget::text::LineHeight::Relative(1.6))
             .on_action(Message::Edit)
             .key_binding(|press| {
@@ -993,17 +992,15 @@ impl Chat {
                 s.border.width = 0.;
                 s
             });
-        let mut actions = row![
-            icon_button(Icon::Paperclip, locale.tr("添加附件"), Some(Message::Pick)),
-            modes.liberty_button().map(Message::Mode),
-            space::horizontal(),
+        let mut right_actions = row![
             modes
                 .copilot_button(!self.state.conversation_id.is_empty())
                 .map(Message::Mode),
         ]
-        .spacing(4);
+        .spacing(4)
+        .align_y(iced::Center);
         if matches!(self.state.run_status.as_str(), "queued" | "running") {
-            actions = actions.push(crate::loading::label(
+            right_actions = right_actions.push(crate::loading::label(
                 locale.tr(if self.state.run_status == "queued" {
                     "待继续"
                 } else {
@@ -1014,8 +1011,9 @@ impl Chat {
                 reduced_motion,
             ));
         }
+        let mut submit = row![].spacing(4).align_y(iced::Center);
         if self.state.run_status == "paused" {
-            actions = actions.push(icon_button(
+            submit = submit.push(icon_button(
                 Icon::Play,
                 locale.tr("继续"),
                 (!self.control_busy).then_some(Message::Command(Command::Resume)),
@@ -1026,27 +1024,46 @@ impl Chat {
             "queued" | "running" | "paused"
         ) {
             if self.state.can_pause && self.state.run_status != "paused" {
-                actions = actions.push(icon_button(
+                submit = submit.push(icon_button(
                     Icon::Pause,
                     locale.tr("暂停"),
                     (!self.control_busy).then_some(Message::Command(Command::Pause)),
                 ));
             }
-            actions = actions.push(icon_button(
+            submit = submit.push(icon_button(
                 Icon::Stop,
                 locale.tr("停止"),
                 (!self.control_busy).then_some(Message::Command(Command::Stop)),
             ));
         }
-        actions = actions.push(iced::widget::tooltip(
+        submit = submit.push(iced::widget::tooltip(
             button(container(Icon::Send.view()).center(Length::Fill))
                 .width(36)
                 .height(36)
+                .padding(0)
                 .style(style::primary)
                 .on_press_maybe(self.can_send().then_some(Message::Send)),
             text(locale.tr("发送 · ⌘ / Ctrl + Enter")).size(12),
             iced::widget::tooltip::Position::Top,
         ));
+        let actions = row![
+            row![
+                icon_button(Icon::Paperclip, locale.tr("添加附件"), Some(Message::Pick)),
+                modes.liberty_button().map(Message::Mode),
+            ]
+            .spacing(4)
+            .align_y(iced::Center),
+            container(
+                right_actions
+                    .push(submit)
+                    .wrap()
+                    .align_x(iced::alignment::Horizontal::Right)
+                    .vertical_spacing(6),
+            )
+            .width(Length::Fill)
+            .align_x(iced::Right),
+        ]
+        .spacing(4);
         let mut composer = column![].spacing(3);
         for upload in &self.uploads {
             composer = composer.push(
@@ -1077,7 +1094,7 @@ impl Chat {
         if !modes.transcript().is_empty() {
             composer = composer.push(container(text(modes.transcript()).size(13)).padding([6, 10]));
         }
-        composer = composer.push(editor).push(actions.align_y(iced::Center));
+        composer = composer.push(editor).push(actions);
         let agent_name = if self.state.agent_name.is_empty() {
             "Agent"
         } else {

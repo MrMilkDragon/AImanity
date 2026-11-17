@@ -296,7 +296,7 @@ async fn control(app: &App, device: &str, run: Option<Uuid>, take: bool) -> Resu
         epoch += 1;
     }
     if take {
-        sqlx::query("UPDATE desktop_controls SET epoch=$2,controller=$3,touched_at=now() WHERE device_id=$1").bind(device).bind(epoch).bind(owner).execute(&mut *tx).await.map_err(|e|e.to_string())?;
+        sqlx::query("UPDATE desktop_controls SET epoch=$2,controller=$3,touched_at=clock_timestamp() WHERE device_id=$1").bind(device).bind(epoch).bind(owner).execute(&mut *tx).await.map_err(|e|e.to_string())?;
     }
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(epoch)
@@ -483,12 +483,15 @@ async fn recorded_action(
         return Err("该操作已有执行记录，结果未知时不能重放，请重新观察".into());
     }
     let value = value.ok_or("结果不完整")?;
-    let mut observation = stored_observation(
-        connection,
-        value["observation_id"].as_str().ok_or("结果不完整")?,
-        true,
-    )
-    .await?;
+    let observation_id = value["observation_id"].as_str().ok_or("结果不完整")?;
+    if observation_id.is_empty() {
+        return Ok(Some(wire::DesktopObservation {
+            device_id: value["device_id"].as_str().ok_or("结果不完整")?.into(),
+            epoch: value["epoch"].as_u64().ok_or("结果不完整")?,
+            ..Default::default()
+        }));
+    }
+    let mut observation = stored_observation(connection, observation_id, true).await?;
     observation.frame_state = value["frame_state"]
         .as_str()
         .and_then(wire::DesktopFrameState::from_str_name)
@@ -513,12 +516,14 @@ pub async fn action(
     let fingerprint = crate::request_digest::encode(&request);
     input["action_id"] = json!(r.action_id);
     let mut tx = app.db.begin().await.map_err(|e| e.to_string())?;
-    let lock =
-        sqlx::query("SELECT epoch,controller FROM desktop_controls WHERE device_id=$1 FOR UPDATE")
-            .bind(&r.device_id)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
+    let lock = sqlx::query(
+        "SELECT epoch,controller,extract(epoch FROM touched_at)::double precision touched_at
+         FROM desktop_controls WHERE device_id=$1 FOR UPDATE",
+    )
+    .bind(&r.device_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
     if let Some(observation) = recorded_action(&mut tx, id, &fingerprint, &request).await? {
         return Ok(observation);
     }
@@ -533,12 +538,14 @@ pub async fn action(
     let observed: Option<(i64, i64)> = sqlx::query_as(
         "SELECT window_id,process_id FROM desktop_observations
          WHERE id=$1 AND device_id=$2 AND epoch=$3 AND captured_at>now()-interval '45 seconds'
+         AND ($4::double precision IS NULL OR captured_at >= to_timestamp($4))
          AND id=(SELECT id FROM desktop_observations WHERE device_id=$2 AND epoch=$3
                  ORDER BY captured_at DESC,id DESC LIMIT 1)",
     )
     .bind(uuid(&r.observation_id)?)
     .bind(&r.device_id)
     .bind(r.epoch as i64)
+    .bind(run.is_none().then(|| lock.get::<f64, _>("touched_at")))
     .fetch_optional(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
@@ -553,13 +560,26 @@ pub async fn action(
     sqlx::query("INSERT INTO desktop_actions(id,device_id,run_id,input_hash,status) VALUES($1,$2,$3,$4,'running')").bind(id).bind(&r.device_id).bind(run).bind(fingerprint).execute(&app.db).await.map_err(|e|e.to_string())?;
     let mut cursor = action_cursor(&r, expected);
     cursor_write(app, &cursor).await?;
-    let result = match helper_frame("action", input).await {
-        Ok(frame) => save_observation(app, &r.device_id, r.epoch as i64, frame).await,
-        Err(e) => Err(e),
+    let receipt_only = run.is_none() && !r.wait_for_paint && r.kind != "text";
+    let result = if receipt_only {
+        input["receipt_only"] = json!(true);
+        helper_bytes("action", input)
+            .await
+            .map(|_| wire::DesktopObservation {
+                device_id: r.device_id.clone(),
+                epoch: r.epoch,
+                ..Default::default()
+            })
+    } else {
+        match helper_frame("action", input).await {
+            Ok(frame) => save_observation(app, &r.device_id, r.epoch as i64, frame).await,
+            Err(e) => Err(e),
+        }
     };
     finish_action(app, id, &mut cursor, &result).await?;
-    sqlx::query("UPDATE desktop_controls SET touched_at=now() WHERE device_id=$1")
+    sqlx::query("UPDATE desktop_controls SET touched_at=GREATEST(touched_at,CASE WHEN $2 THEN clock_timestamp() ELSE now() END) WHERE device_id=$1")
         .bind(&r.device_id)
+        .bind(receipt_only)
         .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;

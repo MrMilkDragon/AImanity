@@ -1,13 +1,7 @@
-use crate::{
-    controls::{Icon, action_button},
-    host::Host,
-    locale::Locale,
-    spring_slider::SpringSlider,
-    style,
-};
+use crate::{controls::Icon, host::Host, locale::Locale, spring_slider::SpringSlider, style};
 use iced::{
     Element, Length,
-    widget::{button, column, container, image, radio, row, rule, space, stack, text},
+    widget::{button, column, container, float, image, row, rule, space, stack, text},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,6 +10,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::LazyLock,
+    time::{Duration, Instant},
 };
 
 #[path = "host_memory.rs"]
@@ -339,6 +334,7 @@ pub struct Setup {
     pub request: Request,
     pub locale: Option<Locale>,
     language: Locale,
+    language_entry: iced::Animation<bool>,
     pub attempted: bool,
     pub installed: bool,
     capacity: Result<Capacity, String>,
@@ -356,6 +352,9 @@ impl Setup {
             request: request.unwrap_or_default(),
             locale,
             language: locale.unwrap_or_default(),
+            language_entry: iced::Animation::new(false)
+                .duration(Duration::from_millis(480))
+                .easing(iced::animation::Easing::EaseOutQuart),
             installed,
             capacity,
             #[cfg(target_os = "macos")]
@@ -369,6 +368,7 @@ impl Setup {
                 self.locale = Some(self.language);
                 self.request.locale = self.language.code().into();
                 self.capacity = self.bundle.capacity(false);
+                self.language_entry.go_mut(true, Instant::now());
             }
             Message::RefreshCapacity => self.capacity = self.bundle.capacity(false),
             Message::Set(desktop, field, value) => {
@@ -385,6 +385,10 @@ impl Setup {
             }
             Message::Start | Message::Stop => {}
         }
+    }
+
+    pub fn animating_language(&self) -> bool {
+        self.language_entry.is_animating(Instant::now())
     }
     #[cfg(target_os = "macos")]
     pub fn activity(&mut self, activity: crate::host::Activity) {
@@ -540,7 +544,7 @@ impl Setup {
                 ),
                 Err(error) => (text(error).size(13).style(style::error_text).into(), false),
             };
-            column![
+            let panel = column![
                 container(content)
                     .width(Length::Fill)
                     .height(Length::Fill)
@@ -575,67 +579,96 @@ impl Setup {
                 right: 44.,
                 bottom: 26.,
                 left: 44.,
-            })
-            .into()
+            });
+            let now = Instant::now();
+            if !reduced_motion && self.language_entry.is_animating(now) {
+                let entry = self.language_entry.interpolate(0., 1., now);
+                float(panel)
+                    .scale(0.96 + 0.04 * entry)
+                    .translate(move |_, _| iced::Vector::new(0., 12. * (1. - entry)))
+                    .into()
+            } else {
+                panel.into()
+            }
         } else {
             let options: Vec<_> = Locale::all().collect();
             let locale = self.language;
+            let rtl = locale.code() == "ar";
+            let font = |language: Locale| {
+                let east_asian = matches!(language.code(), "zh-CN" | "zh-TW" | "ja" | "ko");
+                iced::Font::with_name(match (cfg!(target_os = "macos"), east_asian) {
+                    (true, true) => "PingFang SC",
+                    (true, false) => "Helvetica Neue",
+                    (false, true) => "Microsoft YaHei",
+                    (false, false) => "Segoe UI",
+                })
+            };
+            let bold = iced::Font {
+                weight: iced::font::Weight::Bold,
+                ..font(locale)
+            };
             column![
                 container(
                     column![
-                        text(locale.tr("选择语言")).size(34).font(SETUP_TITLE),
+                        text(locale.tr("选择语言")).size(33).font(bold),
                         container(
                             column(options.chunks(2).map(|pair| {
-                                row(pair.iter().map(|option| {
-                                    let selected = *option == locale;
-                                    container(
-                                        radio(
-                                            option.name(),
-                                            *option,
-                                            Some(locale),
-                                            Message::Choose,
-                                        )
-                                        .width(Length::Fill)
-                                        .spacing(10)
-                                        .size(12)
-                                        .font(if selected {
-                                            SETUP_TITLE
-                                        } else {
-                                            iced::Font::DEFAULT
-                                        })
-                                        .text_size(14)
-                                        .style(
-                                            move |_, _| radio::Style {
-                                                background: if selected {
-                                                    style::FOREGROUND.into()
-                                                } else {
-                                                    iced::Color::TRANSPARENT.into()
-                                                },
-                                                dot_color: iced::Color::WHITE,
-                                                border_width: 1.5,
-                                                border_color: if selected {
+                                row(pair.iter().enumerate().map(|(index, &option)| {
+                                    let option = if rtl {
+                                        pair[pair.len() - 1 - index]
+                                    } else {
+                                        option
+                                    };
+                                    let selected = option == locale;
+                                    let radio = container(space()).center(12).style(move |_| {
+                                        container::Style::default()
+                                            .background(if selected {
+                                                iced::Color::WHITE
+                                            } else {
+                                                iced::Color::TRANSPARENT
+                                            })
+                                            .border(iced::Border {
+                                                color: if selected {
                                                     style::FOREGROUND
                                                 } else {
                                                     iced::Color::from_rgb8(150, 150, 150)
                                                 },
-                                                text_color: Some(if selected {
-                                                    style::FOREGROUND
-                                                } else {
-                                                    style::MUTED
-                                                }),
-                                            },
-                                        ),
+                                                width: if selected { 4. } else { 1.5 },
+                                                radius: 6.into(),
+                                            })
+                                    });
+                                    let label = text(option.name()).size(14).font(iced::Font {
+                                        weight: if selected {
+                                            iced::font::Weight::Bold
+                                        } else {
+                                            iced::font::Weight::Normal
+                                        },
+                                        ..font(option)
+                                    });
+                                    button(
+                                        if rtl {
+                                            row![space::horizontal(), label, radio]
+                                        } else {
+                                            row![radio, label]
+                                        }
+                                        .height(Length::Fill)
+                                        .spacing(10)
+                                        .align_y(iced::Center),
                                     )
                                     .width(Length::Fill)
                                     .height(SETUP_CONTROL)
-                                    .align_y(iced::Center)
-                                    .padding([0, 12])
-                                    .style(move |_| container::Style {
-                                        background: Some(
-                                            iced::Color::WHITE
-                                                .scale_alpha(style::GLASS_OPACITY)
-                                                .into(),
-                                        ),
+                                    .padding([0, 13])
+                                    .style(move |theme, status| button::Style {
+                                        background: Some(style::control_fill(theme).into()),
+                                        text_color: if selected
+                                            || matches!(
+                                                status,
+                                                button::Status::Hovered | button::Status::Pressed
+                                            ) {
+                                            style::FOREGROUND
+                                        } else {
+                                            style::MUTED
+                                        },
                                         border: iced::Border {
                                             color: if selected {
                                                 style::FOREGROUND
@@ -647,6 +680,7 @@ impl Setup {
                                         },
                                         ..Default::default()
                                     })
+                                    .on_press(Message::Choose(option))
                                     .into()
                                 }))
                                 .spacing(8)
@@ -660,9 +694,14 @@ impl Setup {
                     .align_x(iced::Center)
                 )
                 .center(Length::Fill),
-                action_button(locale.tr("继续"), Some(Message::Continue))
-                    .width(142)
-                    .height(SETUP_CONTROL)
+                button(
+                    container(text(locale.tr("继续")).size(14).font(SETUP_TITLE))
+                        .center(Length::Fill)
+                )
+                .width(142)
+                .height(SETUP_CONTROL)
+                .style(style::primary)
+                .on_press(Message::Continue)
             ]
             .align_x(iced::Center)
             .padding(iced::Padding {
