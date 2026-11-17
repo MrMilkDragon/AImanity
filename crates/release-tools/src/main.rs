@@ -1,11 +1,25 @@
 mod android_package;
 mod capsule;
+mod source;
+#[cfg(unix)]
+mod windows_release;
 #[cfg(unix)]
 mod wsl_qualification;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Value>> {
+    #[cfg(unix)]
+    if let [command, rest @ ..] = arguments.as_slice()
+        && command == "windows-release"
+    {
+        return windows_release::seal(rest).map(Some);
+    }
+    if let [command, rest @ ..] = arguments.as_slice()
+        && command == "source"
+    {
+        return source::run(rest);
+    }
     if arguments
         .first()
         .is_some_and(|value| value == "decode-capsule")
@@ -16,11 +30,25 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         };
         let input = io::stdin().lock();
         let mut decoded: Box<dyn Read> = match codec.to_str() {
-            Some("gzip") => Box::new(flate2::read::GzDecoder::new(input)),
+            Some("gzip") => Box::new(flate2::read::MultiGzDecoder::new(input)),
             Some("xz") => Box::new(xz2::read::XzDecoder::new(input)),
             _ => return Err("Unsupported capsule codec".into()),
         };
         io::copy(&mut decoded, &mut io::stdout().lock())?;
+        return Ok(None);
+    }
+    if arguments
+        .first()
+        .is_some_and(|value| value == "encode-gzip")
+    {
+        use flate2::{Compression, write::GzEncoder};
+        use std::io::{self, Write};
+        if arguments.len() != 1 {
+            return Err("encode-gzip takes its input through stdin".into());
+        }
+        let mut output = GzEncoder::new(io::stdout().lock(), Compression::best());
+        io::copy(&mut io::stdin().lock(), &mut output)?;
+        output.finish()?.flush()?;
         return Ok(None);
     }
     if arguments

@@ -16,7 +16,6 @@ const LIMIT: usize = 16448;
 #[cfg(any(test, windows, all(target_os = "linux", target_arch = "x86_64")))]
 const NATIVE_PORTS: [u16; 4] = [17862, 17863, 17864, 17865];
 
-#[cfg(windows)]
 pub async fn native_credentials(
     key: &Path,
 ) -> Result<ai_phone_api::wire::LinuxVmNativeCredentials> {

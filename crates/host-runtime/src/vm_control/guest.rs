@@ -3,8 +3,8 @@ use super::GUEST_PORT;
 use super::{LIMIT, NATIVE_PORTS};
 use crate::{Error, Result, linux_vm, native_ipc};
 use ai_phone_api::wire::{
-    LinuxVmControlReply, LinuxVmControlRequest, LinuxVmNativeCredentials, LinuxVmNativeService,
-    LinuxVmOperation,
+    DeviceBridgePeerOwner, LinuxVmControlReply, LinuxVmControlRequest, LinuxVmNativeCredentials,
+    LinuxVmNativeService, LinuxVmOperation,
 };
 use prost::Message;
 use ring::hmac;
@@ -155,8 +155,22 @@ async fn handle(mut stream: TcpStream, key: &hmac::Key) -> Result<()> {
             tokio::io::copy_bidirectional(&mut stream, &mut service).await?;
             return Ok(());
         }
+        LinuxVmOperation::PhoneStatus => {
+            let observation = async {
+                if request.payload.len() > native_ipc::LIMIT {
+                    return Err(native_ipc::invalid().into());
+                }
+                let owner = DeviceBridgePeerOwner::decode(request.payload.as_slice())
+                    .map_err(|_| native_ipc::invalid())?;
+                let status = crate::device_bridge::guest::observe(&owner).await?;
+                Ok(status.encode_to_vec())
+            };
+            let result = tokio::time::timeout(Duration::from_secs(15), observation)
+                .await
+                .unwrap_or(Err(Error::Invalid("vm_control_timeout")));
+            return reply(&mut stream, key, &nonce, result).await;
+        }
         LinuxVmOperation::PhonePeer => "--phone-peer",
-        LinuxVmOperation::PhoneStatus => "--phone-peer-status",
         LinuxVmOperation::SetupDevices => "--setup-wsl-devices",
         LinuxVmOperation::Unspecified => return Err(Error::Invalid("vm_control_operation")),
     };

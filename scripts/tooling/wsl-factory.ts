@@ -21,7 +21,7 @@ import { Readable } from "node:stream";
 import { digest, run, output } from "./process";
 import { json, save, collect, records } from "./inventory";
 import { tarEntries, entryBytes } from "./archive";
-import { fetchPin } from "./factory";
+import { databaseImage, fetchPin } from "./factory";
 import { packageInputs } from "./container-host";
 import { imageManifest } from "./image-capsule";
 import {
@@ -49,6 +49,7 @@ export function wslPlan(root: string) {
   return {
     ...policy,
     engine_image: engine.builder_image,
+    redis_image: databaseImage(root, "redis"),
     engine_packages: engine.packages,
     engine_versions: { docker: engine.docker, compose: engine.compose },
   };
@@ -240,8 +241,21 @@ function dockerfile(plan: any) {
   return `FROM ${plan.engine_image} AS engine
 COPY packages/ /packages/
 RUN apk --no-network add /packages/*.apk && rm -rf /packages /var/cache/apk/*
+FROM ${plan.redis_image} AS redis
+USER root
+RUN mkdir -p /native-redis/lib /native-redis/bin && \\
+    cp -L /lib/ld-musl-x86_64.so.1 /native-redis/lib/ && \\
+    for command in redis-server redis-cli; do \\
+        binary="/usr/local/bin/$command"; \\
+        cp -L "$binary" /native-redis/bin/; \\
+        libraries="$(ldd "$binary")" || exit 1; \\
+        for library in $(printf '%s\\n' "$libraries" | awk '$2 == "=>" && substr($3, 1, 1) == "/" {print $3}'); do \\
+            cp -L "$library" /native-redis/lib/ || exit 1; \\
+        done; \\
+    done
 FROM ${plan.base_image}
 COPY --from=engine / /opt/aiphone/engine/
+COPY --from=redis /native-redis/ /opt/aiphone/redis/
 RUN find /opt/aiphone/engine/bin /opt/aiphone/engine/sbin /opt/aiphone/engine/usr /opt/aiphone/engine/lib /opt/aiphone/engine/etc /opt/aiphone/engine/var -type l -exec sh -c 'for path do target=$(readlink "$path"); case "$target" in /*) if [ -e "/opt/aiphone/engine$target" ] || [ -L "/opt/aiphone/engine$target" ]; then ln -snf "/opt/aiphone/engine$target" "$path"; fi;; esac; done' sh {} +
 COPY phone-tools/ /opt/aiphone/native-phone-bridge/
 COPY source.payload images.payload source.sha256 /opt/aiphone/bundle/
@@ -254,6 +268,8 @@ RUN printf '%s\\n' '/opt/aiphone/engine/lib:/opt/aiphone/engine/usr/lib' > /etc/
 RUN /usr/bin/env -i PATH=/usr/bin:/bin /opt/aiphone/engine/usr/bin/runc --version
 RUN /usr/local/bin/docker --version && /usr/local/bin/docker compose version && /usr/local/bin/dockerd --version
 RUN /opt/aiphone/native-phone-bridge/platform-tools/adb version
+RUN /usr/bin/setpriv --reuid=65534 --regid=65534 --clear-groups -- /opt/aiphone/redis/lib/ld-musl-x86_64.so.1 --library-path /opt/aiphone/redis/lib /opt/aiphone/redis/bin/redis-server --version && \\
+    /opt/aiphone/redis/lib/ld-musl-x86_64.so.1 --library-path /opt/aiphone/redis/lib /opt/aiphone/redis/bin/redis-cli --version
 RUN rm -rf /usr/share/gcc/python && rm -f /usr/share/gdb/auto-load/usr/lib/x86_64-linux-gnu/libstdc++.so.*-gdb.py /usr/share/apport/package-hooks/source_shadow.py && \
     ! command -v python && ! command -v python3 && ! /usr/bin/test -x /opt/aiphone/engine/usr/bin/python3 && \
     test -z "$(find /usr /opt/aiphone/engine -type f -name '*.py' -print -quit)"
@@ -362,6 +378,7 @@ export async function buildWsl(
     fd = openSync(archive, "wx");
   try {
     run(["docker", "export", container], { stdio: ["ignore", fd, "inherit"] });
+    run(["docker", "cp", container + ":/opt/aiphone/redis", join(context, "redis")]);
   } finally {
     closeSync(fd);
     run(["docker", "rm", container]);

@@ -32,7 +32,7 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
-./scripts/bun scripts/source.ts check --repository
+cargo run --quiet --locked -p ai-phone-release-tools -- source check --repository
 ./scripts/bun "$planner" plan "$report" > "$work/plan.json"
 # A unique tag must be absent before this invocation can own its draft or cleanup.
 gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$work/existing.json"

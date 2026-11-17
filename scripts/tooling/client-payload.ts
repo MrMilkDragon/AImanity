@@ -47,7 +47,7 @@ export async function preparePayload(
   const folder = join(root, hostResources);
   mkdirSync(folder, { recursive: true });
   const speech = await prepareSpeechModel(root);
-  const selected: SourceFile[] = sourceFiles(root),
+  const selected: SourceFile[] = await sourceFiles(root),
     components: string[] = [];
   const producers: [
     keyof PayloadOptions,

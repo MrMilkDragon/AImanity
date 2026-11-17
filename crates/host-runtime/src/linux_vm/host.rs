@@ -22,8 +22,6 @@ const START_LIMIT: Duration = Duration::from_secs(1950);
 const STOP_LIMIT: Duration = Duration::from_secs(30);
 const PROFILE_FRAME: usize = 8192 + 8;
 const HIDDEN: u32 = 0x08000000;
-const ALUMINUM_BASE: &str = "348baa7207524397b74de603f08357b6d3b73947514eb9f662c6eb4e52a365a5";
-const ALUMINUM_BASE_SIZE: u64 = 1_101_660_160;
 
 struct QemuVmConfig<'a> {
     runtime: &'a Path,
@@ -453,11 +451,22 @@ pub async fn ensure(
     let base_size = filesystem::regular(&bundle.join("guest/guest.qcow2"))?
         .metadata()?
         .len();
-    let base_sha256 = match base_size {
-        size if size == base_record.size => base_record.sha256.as_str(),
-        ALUMINUM_BASE_SIZE => ALUMINUM_BASE,
-        _ => return Err(Error::Invalid("vm_bundle_changed")),
+    let disk = home.join("disk");
+    let recorded = if disk.try_exists()? {
+        filesystem::existing_directory(&disk)?;
+        Some(filesystem::bounded_file_with_limit(
+            &disk.join("base.sha256"),
+            64,
+        )?)
+    } else {
+        None
     };
+    let base_sha256 = linux_vm::disk_base::select(
+        (&base_record.sha256, base_record.size),
+        base_size,
+        recorded.as_deref(),
+        manifest.release_sha256.is_some(),
+    )?;
     let config = QemuVmConfig {
         runtime: &bundle.join("runtime"),
         guest: &bundle.join("guest"),

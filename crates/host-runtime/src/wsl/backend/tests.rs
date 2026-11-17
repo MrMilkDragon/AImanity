@@ -27,6 +27,7 @@ impl Execute for Fixture {
         let event = match args.first().map(String::as_str) {
             Some("--service-control") => format!("{}-{}", args[2], args[3]),
             Some("container") => args[1].clone(),
+            Some("--library-path") if program == REDIS_LOADER => "redis-ping".into(),
             Some(value) => value.into(),
             None => "none".into(),
         };
@@ -95,6 +96,7 @@ impl Execute for Fixture {
                 }
             }
             Some("--service-control") => b"true".to_vec(),
+            Some("--library-path") if program == REDIS_LOADER => b"PONG\n".to_vec(),
             _ => Vec::new(),
         };
         Ok(std::process::Output {
@@ -179,7 +181,9 @@ async fn first_boot_runs_every_native_phase_with_one_owned_socket() {
             "info",
             "ls",
             "--activate-images",
+            "redis-start",
             "compose",
+            "redis-ping",
             "assistant-status",
             "--prepare-database",
             "--migrate",
@@ -202,7 +206,9 @@ async fn each_failed_initialization_phase_stops_before_later_effects() {
         "info",
         "ls",
         "--activate-images",
+        "redis-start",
         "compose",
+        "redis-ping",
         "assistant-status",
         "--prepare-database",
         "--migrate",
@@ -435,13 +441,14 @@ async fn fresh_backend_uses_native_services_and_never_creates_desktop_or_starts_
         })
         .map(|(_, args, _)| args[2].as_str())
         .collect();
-    assert_eq!(names, ["runner", "assistant", "channels", "media"]);
-    assert!(calls.iter().any(|(_, args, _)| args.ends_with(&[
-        "postgres".into(),
-        "redis".into(),
-        "ocr".into()
-    ]) && args.contains(&"--no-build".into())
-        && args.contains(&"never".into())));
+    assert_eq!(names, ["redis", "runner", "assistant", "channels", "media"]);
+    assert!(
+        calls
+            .iter()
+            .any(|(_, args, _)| args.ends_with(&["postgres".into()])
+                && args.contains(&"--no-build".into())
+                && args.contains(&"never".into()))
+    );
     assert!(!calls.iter().any(|(program, args, _)| {
         program.contains("python")
             || args
@@ -456,13 +463,61 @@ async fn fresh_backend_uses_native_services_and_never_creates_desktop_or_starts_
         .map(|(_, _, input)| serde_json::from_slice(input).unwrap())
         .collect();
     assert!(
-        specifications[0]["environment"]["AI_PHONE_OCR"]
+        specifications[1]["environment"]["AI_PHONE_OCR"]
             .as_str()
             .unwrap()
             .ends_with("/runtime/services/bin/vision")
     );
-    for specification in &specifications[1..] {
+    assert!(
+        specifications[0]["environment"]
+            .get("AI_PHONE_OCR")
+            .is_none()
+    );
+    for specification in &specifications[2..] {
         assert!(specification["environment"].get("AI_PHONE_OCR").is_none());
+    }
+}
+
+#[tokio::test]
+async fn resume_retires_only_the_owned_legacy_ocr_and_cache_containers() {
+    let id = "a".repeat(64);
+    for (name, expected) in [
+        ("/ai-phone-ocr", vec![vec!["rm", "--force", &id]]),
+        (
+            "/ai-phone-redis-1",
+            vec![vec!["stop", "--time", "10", &id], vec!["rm", &id]],
+        ),
+    ] {
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path().canonicalize().unwrap();
+        let mut backend = fixture(
+            &root,
+            Fixture {
+                inspection: Some(json!({
+                    "id": id,
+                    "name": name,
+                    "image": "bundled-image",
+                    "running": true,
+                    "labels": {
+                        "com.docker.compose.project": "ai-phone",
+                        "com.docker.compose.project.working_dir": root,
+                    },
+                })),
+                ..Fixture::default()
+            },
+        );
+        backend
+            .start(Path::new("images.payload"), None, Path::new("/root"))
+            .await
+            .unwrap();
+        let removal: Vec<_> = backend
+            .execute
+            .calls
+            .iter()
+            .filter(|(_, args, _)| matches!(args[0].as_str(), "stop" | "rm"))
+            .map(|(_, args, _)| args.iter().map(String::as_str).collect::<Vec<_>>())
+            .collect();
+        assert_eq!(removal, expected);
     }
 }
 
@@ -527,41 +582,29 @@ async fn resume_keeps_tokens_skips_live_database_and_only_starts_exact_stopped_d
             assert_eq!(starts[0].1, ["start".into(), "a".repeat(64)]);
         }
         let calls = &backend.execute.calls;
+        assert!(
+            !calls
+                .iter()
+                .any(|(_, args, _)| args.iter().any(|arg| arg == "compose.desktop.yaml"))
+        );
         assert_eq!(
-            calls.iter().any(|(_, args, _)| args
-                == &[
-                    "compose",
-                    "-f",
-                    "compose.desktop.yaml",
-                    "up",
-                    "-d",
-                    "--wait",
-                    "--no-build",
-                    "--pull",
-                    "never",
-                    "desktop",
-                ]),
-            refresh
+            backend.env["AI_PHONE_DESKTOP_IMAGE"],
+            "ai-phone-desktop:aluminum"
         );
         let update = calls
             .iter()
             .position(|(_, args, _)| args.first().map(String::as_str) == Some("exec"));
         assert_eq!(update.is_some(), staged);
         if let Some(index) = update {
-            assert_eq!(
-                calls[index].1[4],
-                if refresh {
-                    "ai-phone-desktop".into()
-                } else {
-                    "a".repeat(64)
-                }
-            );
+            assert_eq!(calls[index].1[4], "a".repeat(64));
             assert_eq!(calls[index].2, b"guest bridge");
-            let first_service = calls
+            let runner = calls
                 .iter()
-                .position(|(_, args, _)| args[0] == "--service-control" && args[3] == "start")
+                .position(|(_, args, _)| {
+                    args[0] == "--service-control" && args[2] == "runner" && args[3] == "start"
+                })
                 .unwrap();
-            assert!(index < first_service);
+            assert!(index < runner);
         }
     }
 }

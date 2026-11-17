@@ -138,7 +138,15 @@ pub(super) async fn database_roles(context: &Context, receipt: &mut Receipt) -> 
     receipt.checked("database_roles");
     let response = context
         .execute(
-            ["docker", "exec", "ai-phone-redis-1", "redis-cli", "ping"],
+            [
+                "/opt/aiphone/redis/lib/ld-musl-x86_64.so.1",
+                "--library-path",
+                "/opt/aiphone/redis/lib",
+                "/opt/aiphone/redis/bin/redis-cli",
+                "-p",
+                "56382",
+                "PING",
+            ],
             &[],
             120,
         )

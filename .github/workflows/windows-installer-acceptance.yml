@@ -27,8 +27,10 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.source_sha }}
       - name: Prepare acceptance tools
-        shell: bash
-        run: ./scripts/bootstrap.sh
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
       - name: Choose a fresh installation volume
         shell: pwsh
         run: |
@@ -62,4 +64,4 @@ jobs:
           AIMANITY_QA_SOURCE: ${{ inputs.source_sha }}
           AIMANITY_QA_ANDROID_AUDIO: '1'
         shell: pwsh
-        run: ./.tools/bin/bun.exe scripts/qualify-windows-installer.ts
+        run: cargo run --release --locked -p ai-phone-host-runtime --bin qualify-windows-installer

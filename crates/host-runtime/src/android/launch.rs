@@ -5,28 +5,32 @@ use ai_phone_api::wire::{
     NativeAndroidBooted, NativeAndroidSessionControl, NativeAndroidSessionReply,
     NativeAndroidStart, NativeAndroidVmEndpoint, native_android_session_reply::Result as Reply,
 };
-use std::{process::Stdio, time::Duration};
-use tokio::process::{Child, Command};
+use std::{future::Future, io, pin::pin, process::Stdio, time::Duration};
+use tokio::{
+    process::{Child, ChildStdin, Command},
+    sync::oneshot,
+};
 
 pub async fn cancelled(test: &dyn Fn() -> bool) {
     while !test() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
-async fn launch(
-    request: NativeAndroidStart,
+pub async fn start(
+    phone: &Prepared,
+    linux_vm: NativeAndroidVmEndpoint,
+    linux_ready: oneshot::Receiver<()>,
     cancel: &dyn Fn() -> bool,
 ) -> Result<NativeAndroidBooted, String> {
     if cancel() {
         return Err("installation_cancelled".into());
     }
-    let engine = Engine::installed(std::path::Path::new(
-        &request
-            .phone
-            .as_ref()
-            .ok_or("android_session_phone")?
-            .sdk_root,
-    ));
+    let engine = Engine::installed(&phone.sdk_root);
+    let request = NativeAndroidStart {
+        phone: Some(phone.wire().map_err(|e| e.code().to_string())?),
+        linux_vm: Some(linux_vm),
+        ..Default::default()
+    };
     let mut command = Command::new(std::env::current_exe().map_err(|_| "android_session_program")?);
     command
         .arg("--android-session")
@@ -38,22 +42,28 @@ async fn launch(
     let mut child = command.spawn().map_err(|_| "android_session_start")?;
     // Always close both pipes before reaping: EOF unblocks the worker's stdin.
     // A missing/truncated reply cannot prove whether the phone already started.
-    let receipt = exchange(&mut child, &request, engine.boot_timeout(), cancel).await;
+    let serial = engine.serial(5564);
+    let receipt = exchange(
+        &mut child,
+        &request,
+        &serial,
+        engine.boot_timeout(),
+        linux_ready,
+        cancel,
+    )
+    .await;
     tokio::spawn(async move {
         let _ = child.wait().await;
     });
-    interpret(
-        receipt?,
-        cancel(),
-        !request.wsl_distribution.is_empty() || request.linux_vm.is_some(),
-        &engine.serial(5564),
-    )
+    interpret(receipt?, cancel(), &serial)
 }
 
 async fn exchange(
     child: &mut Child,
     request: &NativeAndroidStart,
+    serial: &str,
     boot_timeout: Duration,
+    linux_ready: oneshot::Receiver<()>,
     cancel: &dyn Fn() -> bool,
 ) -> Result<NativeAndroidSessionReply, &'static str> {
     let mut input = child
@@ -67,13 +77,76 @@ async fn exchange(
     native_ipc::write_bounded(&mut input, request, 16384)
         .await
         .map_err(|_| "android_session_outcome_unknown")?;
-    tokio::select! {
-            result=tokio::time::timeout(boot_timeout + Duration::from_secs(30),native_ipc::read_bounded::<NativeAndroidSessionReply>(&mut output,512))=>result.map_err(|_|"android_session_outcome_unknown")?,
-            _=cancelled(cancel)=>{
-                native_ipc::write_bounded(&mut input,&NativeAndroidSessionControl{cancel_startup:true},512).await.map_err(|_|"android_session_outcome_unknown")?;
-                tokio::time::timeout(Duration::from_secs(20),native_ipc::read_bounded::<NativeAndroidSessionReply>(&mut output,512)).await.map_err(|_|"android_session_outcome_unknown")?
-            }
-        }.map_err(|_| "android_session_outcome_unknown")
+    let boot = wait_for_reply(
+        &mut input,
+        native_ipc::read(&mut output),
+        boot_timeout + Duration::from_secs(30),
+        cancel,
+    )
+    .await?;
+    match &boot.result {
+        Some(Reply::Booted(receipt)) if valid_boot(receipt, serial) && !receipt.backend_paired => {}
+        Some(Reply::Failure(_)) => return Ok(boot),
+        _ => return Err("android_session_outcome_unknown"),
+    }
+    let mut reply = pin!(native_ipc::read(&mut output));
+    let pair = tokio::select! { biased;
+        _ = cancelled(cancel) => false,
+        value = &mut reply => return value.map_err(|_| "android_session_outcome_unknown"),
+        result = linux_ready => result.is_ok(),
+    };
+    if !pair {
+        return cancel_startup(&mut input, reply).await;
+    }
+    native_ipc::write(
+        &mut input,
+        &NativeAndroidSessionControl {
+            cancel_startup: false,
+            linux_ready: true,
+        },
+    )
+    .await
+    .map_err(|_| "android_session_outcome_unknown")?;
+    wait_for_reply(&mut input, reply, Duration::from_secs(30), cancel).await
+}
+
+async fn wait_for_reply(
+    input: &mut ChildStdin,
+    reply: impl Future<Output = io::Result<NativeAndroidSessionReply>>,
+    deadline: Duration,
+    cancel: &dyn Fn() -> bool,
+) -> Result<NativeAndroidSessionReply, &'static str> {
+    let mut reply = pin!(reply);
+    tokio::select! { biased;
+        _ = cancelled(cancel) => {
+            cancel_startup(input, reply).await?;
+            Err("installation_cancelled")
+        }
+        value = &mut reply => value.map_err(|_| "android_session_outcome_unknown"),
+        _ = tokio::time::sleep(deadline) => {
+            cancel_startup(input, reply).await?;
+            Err("android_session_outcome_unknown")
+        }
+    }
+}
+
+async fn cancel_startup(
+    input: &mut ChildStdin,
+    reply: impl Future<Output = io::Result<NativeAndroidSessionReply>>,
+) -> Result<NativeAndroidSessionReply, &'static str> {
+    native_ipc::write(
+        input,
+        &NativeAndroidSessionControl {
+            cancel_startup: true,
+            linux_ready: false,
+        },
+    )
+    .await
+    .map_err(|_| "android_session_outcome_unknown")?;
+    tokio::time::timeout(Duration::from_secs(20), reply)
+        .await
+        .map_err(|_| "android_session_outcome_unknown")?
+        .map_err(|_| "android_session_outcome_unknown")
 }
 
 fn valid_boot(boot: &NativeAndroidBooted, serial: &str) -> bool {
@@ -88,19 +161,17 @@ fn valid_boot(boot: &NativeAndroidBooted, serial: &str) -> bool {
 fn interpret(
     receipt: NativeAndroidSessionReply,
     cancelled: bool,
-    paired: bool,
     serial: &str,
 ) -> Result<NativeAndroidBooted, String> {
     match receipt.result {
         Some(Reply::Booted(boot))
             if valid_boot(&boot, serial)
-                && (!paired
-                    || (boot.backend_paired
-                        && boot.backend_bridge_id.len() == 32
-                        && boot
-                            .backend_bridge_id
-                            .bytes()
-                            .all(|v| v.is_ascii_hexdigit()))) =>
+                && boot.backend_paired
+                && boot.backend_bridge_id.len() == 32
+                && boot
+                    .backend_bridge_id
+                    .bytes()
+                    .all(|v| v.is_ascii_hexdigit()) =>
         {
             if cancelled {
                 Err("installation_cancelled".into())
@@ -117,23 +188,6 @@ fn interpret(
     }
 }
 
-pub async fn start(
-    phone: &Prepared,
-    distribution: &str,
-    linux_vm: Option<NativeAndroidVmEndpoint>,
-    cancel: &dyn Fn() -> bool,
-) -> Result<NativeAndroidBooted, String> {
-    let request = NativeAndroidStart {
-        phone: Some(phone.wire().map_err(|e| e.code().to_string())?),
-        adb_port: 0,
-        console_port: 0,
-        grpc_port: 0,
-        wsl_distribution: distribution.into(),
-        linux_vm,
-    };
-    launch(request, cancel).await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,7 +200,13 @@ mod tests {
             reused_device: false,
         };
         assert_eq!(
-            start(&phone, "", None, &|| true).await,
+            start(
+                &phone,
+                NativeAndroidVmEndpoint::default(),
+                oneshot::channel().1,
+                &|| true
+            )
+            .await,
             Err("installation_cancelled".into())
         );
     }
@@ -171,7 +231,6 @@ mod tests {
                         result: Some(Reply::Booted(boot))
                     },
                     false,
-                    false,
                     "emulator-5564",
                 ),
                 Err("android_session_outcome_unknown".into())
@@ -186,7 +245,7 @@ mod tests {
             )),
         };
         assert_eq!(
-            interpret(unknown, false, false, "emulator-5564"),
+            interpret(unknown, false, "emulator-5564"),
             Err("android_session_outcome_unknown".into())
         );
     }
@@ -203,19 +262,18 @@ mod tests {
         let reply = |boot| NativeAndroidSessionReply {
             result: Some(Reply::Booted(boot)),
         };
-        assert!(interpret(reply(boot.clone()), false, false, "emulator-5564").is_ok());
         assert_eq!(
-            interpret(reply(boot.clone()), false, true, "emulator-5564"),
+            interpret(reply(boot.clone()), false, "emulator-5564"),
             Err("android_session_outcome_unknown".into())
         );
         boot.backend_paired = true;
         boot.backend_bridge_id = "a".repeat(32);
         assert_eq!(
-            interpret(reply(boot.clone()), false, true, "emulator-5564").unwrap(),
+            interpret(reply(boot.clone()), false, "emulator-5564").unwrap(),
             boot
         );
         assert_eq!(
-            interpret(reply(boot), true, true, "emulator-5564"),
+            interpret(reply(boot), true, "emulator-5564"),
             Err("installation_cancelled".into())
         );
     }

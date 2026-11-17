@@ -28,6 +28,7 @@ type FileReceipt = { path: string; size: number; sha256: string };
 export type WindowsQemuManifest = { format: number; component: string; version: string; files: FileReceipt[] };
 const guestManifest = "WINDOWS-VM-DISK-MANIFEST.json";
 const guestFiles = ["bzImage", "guest.qcow2", "kernel.config", "KERNEL-LICENSE.txt"];
+const guestLayer = ["release-init.cpio.gz", "release.ext4"];
 const qemuPrograms = [
   "runtime/qemu-system-x86_64.exe",
   "runtime/qemu-img.exe",
@@ -62,7 +63,7 @@ async function stageGuest(source: string, identity: string, stage: string) {
       manifest = JSON.parse((await entryBytes(entry, 16384)).toString());
       continue;
     }
-    if (!guestFiles.includes(entry.name) || files.has(entry.name))
+    if (![...guestFiles, ...guestLayer].includes(entry.name) || files.has(entry.name))
       throw Error("Unexpected Windows guest capsule member");
     const measured = createHash("sha256"),
       path = "guest/" + entry.name;
@@ -85,7 +86,8 @@ async function stageGuest(source: string, identity: string, stage: string) {
     manifest.runtime !== "qemu-linux-backend" ||
     JSON.stringify([...manifest.source_components].sort()) !==
       JSON.stringify(nativeWindowsBackendComponents) ||
-    files.size !== guestFiles.length
+    !/^[a-f0-9]{64}$/.test(manifest.release_sha256) ||
+    files.size !== guestFiles.length + guestLayer.length
   )
     throw Error("Invalid Windows guest capsule");
   for (const [name, row] of [
@@ -93,10 +95,11 @@ async function stageGuest(source: string, identity: string, stage: string) {
     ["guest.qcow2", manifest.disk],
     ["kernel.config", manifest.kernel_source.config],
     ["KERNEL-LICENSE.txt", manifest.kernel_source.license],
+    ...guestLayer.map(name => [name, manifest.release_layer.find((row: FileReceipt) => row.path === name)] as const),
   ] as const) {
     const actual = files.get(name)!;
     if (
-      row.path !== name ||
+      !row || row.path !== name ||
       actual.sha256 !== row.sha256 ||
       (row.size !== undefined && actual.size !== row.size)
     )
@@ -171,6 +174,7 @@ export async function stageWindowsVm(
       files: [...qemu.files, ...guest.files].sort((a, b) => a.path.localeCompare(b.path)),
       qemu_factory_manifest_sha256: input.qemuIdentity,
       guest_capsule_sha256: input.guestIdentity,
+      release_sha256: guest.manifest.release_sha256,
       qemu: qemu.manifest,
       guest: guest.manifest,
       windows_boot_verified: false,

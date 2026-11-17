@@ -29,6 +29,9 @@ const required = new Set([
   "usr/local/libexec/aiphone-bootstrap",
   "usr/local/bin/docker",
   "usr/local/bin/dockerd",
+  "opt/aiphone/redis/bin/redis-server",
+  "opt/aiphone/redis/bin/redis-cli",
+  "opt/aiphone/redis/lib/ld-musl-x86_64.so.1",
   ...phoneRequired.map((name) => phoneRoot + name),
 ]);
 async function inspectRootfs(source: AsyncIterable<Buffer>) {

@@ -76,6 +76,7 @@ impl Default for Ledger {
 struct Runner {
     phone_id: String,
     media_url: String,
+    adb_media: bool,
     adb: ai_phone_adb::Client,
     token: String,
     ledger_path: PathBuf,
@@ -398,9 +399,11 @@ async fn notifications(
 }
 
 async fn capture_frame(runner: &Runner) -> Result<(Vec<u8>, u32, u32), String> {
-    let mut png = Vec::new();
-    let (width, height);
-    if let Ok(response) = runner
+    let png = if runner.adb_media {
+        media::adb_png(&runner.adb)
+            .await
+            .map_err(|e| e.to_string())?
+    } else if let Ok(response) = runner
         .local
         .get(format!("{}/snapshot", runner.media_url))
         .timeout(Duration::from_secs(2))
@@ -409,20 +412,24 @@ async fn capture_frame(runner: &Runner) -> Result<(Vec<u8>, u32, u32), String> {
         .await
         && response.status().is_success()
     {
-        png = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
-    }
-    if png.is_empty() {
+        response.bytes().await.map_err(|e| e.to_string())?.to_vec()
+    } else {
+        Vec::new()
+    };
+    let png = if png.is_empty() && !runner.adb_media {
         let (ok, data, errors) = adb(runner, args(&["exec-out", "screencap", "-p"])).await?;
         if !ok {
             return Err(errors);
         }
-        png = data;
-    }
+        data
+    } else {
+        png
+    };
     if png.len() < 24 || !png.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Err("Cannot capture device".into());
     }
-    width = u32::from_be_bytes(png[16..20].try_into().unwrap());
-    height = u32::from_be_bytes(png[20..24].try_into().unwrap());
+    let width = u32::from_be_bytes(png[16..20].try_into().unwrap());
+    let height = u32::from_be_bytes(png[20..24].try_into().unwrap());
     runner.width.store(width, Ordering::Release);
     runner.height.store(height, Ordering::Release);
     Ok((png, width, height))
@@ -1002,9 +1009,10 @@ async fn refresh_root_readiness(runner: &Runner) {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let adb_media = std::env::var("AI_PHONE_ANDROID_QEMU").as_deref() == Ok("1");
     match std::env::args().nth(1).as_deref() {
         Some("--media") => {
-            return media::run()
+            return media::run(adb_media)
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error> { e });
         }
@@ -1047,6 +1055,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         phone_id: std::env::var("AI_PHONE_DEVICE_ID").unwrap_or_else(|_| "phone-local-01".into()),
         media_url: std::env::var("AI_PHONE_MEDIA_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:17865".into()),
+        adb_media,
         adb: ai_phone_adb::Client::new(
             adb_server_port()?,
             std::env::var("AI_PHONE_SERIAL").unwrap_or_else(|_| "emulator-5564".into()),
@@ -1125,6 +1134,7 @@ mod observation_tests {
             Runner {
                 phone_id: "phone-local-01".into(),
                 media_url: "http://127.0.0.1:0".into(),
+                adb_media: false,
                 adb: self.adb_server(source),
                 token: "test-only".into(),
                 vision: self.0.join("unavailable-ocr"),

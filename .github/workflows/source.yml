@@ -32,10 +32,9 @@ jobs:
       - name: Fixed Bun and locked dependencies
         run: |
           ./scripts/bootstrap.sh
-          git diff --exit-code -- packages/protocol/src/gen
       - name: Source privacy and licence metadata
         run: |
-          ./scripts/bun scripts/source.ts check --repository --manifest
+          cargo run --quiet --locked -p ai-phone-release-tools -- source check --repository --manifest
       - name: protobuf, TypeScript and Rust
         run: ./scripts/bun run check
       - name: Build native test fixtures

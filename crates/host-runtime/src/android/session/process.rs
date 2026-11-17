@@ -99,7 +99,11 @@ fn space(plan: &Plan) -> Result<()> {
     }
     Ok(())
 }
-pub(super) async fn start(plan: Plan, stop: &mut watch::Receiver<bool>) -> Result<Started> {
+pub(super) async fn start(
+    plan: Plan,
+    stop: &mut watch::Receiver<bool>,
+    linux_ready: impl AsyncFnOnce(&NativeAndroidBooted, &mut watch::Receiver<bool>) -> Result<()>,
+) -> Result<Started> {
     readiness::cancelled(stop)?;
     if let Some(super::plan::Backend::Wsl(distribution)) = &plan.backend {
         super::link::ensure_wsl(distribution, stop).await?;
@@ -108,15 +112,43 @@ pub(super) async fn start(plan: Plan, stop: &mut watch::Receiver<bool>) -> Resul
     let owner = read_owner(&plan)?;
     let Some(lease) = lease else {
         owner.ok_or(Error::Invalid("android_session_starting"))?;
-        let receipt = if plan.backend.is_none() {
-            readiness::existing(&client(&plan), stop, Duration::from_secs(120)).await?
-        } else {
-            super::link::observe(&plan, stop).await?
+        let receipt = match &plan.backend {
+            None => readiness::existing(&client(&plan), stop, Duration::from_secs(120)).await?,
+            Some(backend) => {
+                if matches!(backend, super::plan::Backend::Vm { .. }) {
+                    let boot =
+                        readiness::existing(&client(&plan), stop, Duration::from_secs(120)).await?;
+                    linux_ready(&boot, stop).await?;
+                }
+                super::link::observe(&plan, stop).await?
+            }
         };
         return Ok(Started::Existing(receipt));
     };
     let mut phone = Phone::new(plan, lease)?;
-    if let Err(error) = phone.launch(stop).await {
+    let result = async {
+        let mut receipt = phone.boot(stop).await?;
+        if matches!(phone.plan.backend, Some(super::plan::Backend::Vm { .. })) {
+            let mut lifetime = stop.clone();
+            tokio::select! { biased;
+                result = linux_ready(&receipt, stop) => result?,
+                result = phone.wait(&mut lifetime) => {
+                    result?;
+                    readiness::cancelled(stop)?;
+                    return Err(Error::Invalid("android_emulator_exited"));
+                }
+            }
+        }
+        if phone.plan.backend.is_some() {
+            let (link, paired) = super::link::start(&phone.plan, stop).await?;
+            phone.link = Some(link);
+            receipt = paired;
+        }
+        phone.receipt = Some(receipt);
+        Ok(())
+    }
+    .await;
+    if let Err(error) = result {
         if let Err(cleanup) = phone.shutdown().await {
             eprintln!("android_start_cleanup: {}: {:?}", error.code(), cleanup);
         }
@@ -144,7 +176,7 @@ impl Phone {
         drop(reservations);
         Ok(value)
     }
-    async fn launch(&mut self, stop: &mut watch::Receiver<bool>) -> Result<()> {
+    async fn boot(&mut self, stop: &mut watch::Receiver<bool>) -> Result<NativeAndroidBooted> {
         #[cfg(windows)]
         if self.plan.engine == Engine::Whpx {
             self.plan.prepare_adb_keys(&self.log).await?;
@@ -186,17 +218,12 @@ impl Phone {
                 _ = stop.changed() => return Err(Error::Cancelled),
             }
         }
-        self.receipt = Some(self.wait_boot(stop).await?);
+        let receipt = self.wait_boot(stop).await?;
         #[cfg(windows)]
         if self.plan.engine == Engine::Whpx {
             super::windows_cuttlefish::stage_audio(&self.plan).await?;
         }
-        if self.plan.backend.is_some() {
-            let (link, receipt) = super::link::start(&self.plan, stop).await?;
-            self.link = Some(link);
-            self.receipt = Some(receipt);
-        }
-        Ok(())
+        Ok(receipt)
     }
     async fn wait_boot(&mut self, stop: &mut watch::Receiver<bool>) -> Result<NativeAndroidBooted> {
         let until = Instant::now() + self.plan.engine.boot_timeout();

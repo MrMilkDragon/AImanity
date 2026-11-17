@@ -32,6 +32,9 @@ const NAMES: [&str; 4] = [
     "ai-phone-ocr",
 ];
 const PATH: &str = "/usr/local/bin:/usr/bin:/bin";
+const REDIS: &str = "/opt/aiphone/redis";
+const REDIS_LOADER: &str = "/opt/aiphone/redis/lib/ld-musl-x86_64.so.1";
+const REDIS_LIB: &str = "/opt/aiphone/redis/lib";
 
 fn phase(name: &str) {
     eprintln!("AI_PHONE_INITIALIZE {name}");
@@ -258,6 +261,50 @@ impl<E: Execute> Backend<'_, E> {
         for name in ["assistant", "phone-runner", "channels"] {
             token(self.root, name)?;
         }
+        if let Some(ocr) = existing.get("ai-phone-ocr") {
+            self.docker(&["rm", "--force", &ocr.id]).await?;
+        }
+        if let Some(redis) = existing.get("ai-phone-redis-1") {
+            if redis.running {
+                self.docker(&["stop", "--time", "10", &redis.id]).await?;
+            }
+            self.docker(&["rm", &redis.id]).await?;
+        }
+        let redis_port = self.env["AI_PHONE_REDIS_PORT"].clone();
+        phase("redis_start");
+        self.unit(
+            "redis",
+            "start",
+            [
+                "/usr/bin/setpriv",
+                "--reuid=65534",
+                "--regid=65534",
+                "--clear-groups",
+                "--",
+                REDIS_LOADER,
+                "--library-path",
+                REDIS_LIB,
+                "/opt/aiphone/redis/bin/redis-server",
+                "--dir",
+                REDIS,
+                "--bind",
+                "127.0.0.1",
+                "--port",
+                &redis_port,
+                "--save",
+                "",
+                "--appendonly",
+                "no",
+                "--maxmemory",
+                "128mb",
+                "--maxmemory-policy",
+                "noeviction",
+            ]
+            .map(str::to_owned)
+            .into(),
+            &[],
+        )
+        .await?;
         phase("database_start");
         self.docker(&[
             "compose",
@@ -272,10 +319,9 @@ impl<E: Execute> Backend<'_, E> {
             "--pull",
             "never",
             "postgres",
-            "redis",
-            "ocr",
         ])
         .await?;
+        self.wait_redis(&redis_port).await?;
         let assistant = text(&self.root.join("runtime/services/bin/assistant"))?;
         phase("database_prepare");
         if self
@@ -290,33 +336,13 @@ impl<E: Execute> Backend<'_, E> {
             }
         }
         if let Some(desktop) = existing.get("ai-phone-desktop") {
-            let target = if self
-                .env
-                .get("AI_PHONE_DESKTOP_IMAGE")
-                .is_some_and(|image| image != &desktop.image)
-            {
-                self.docker(&[
-                    "compose",
-                    "-f",
-                    "compose.desktop.yaml",
-                    "up",
-                    "-d",
-                    "--wait",
-                    "--no-build",
-                    "--pull",
-                    "never",
-                    "desktop",
-                ])
-                .await?;
-                "ai-phone-desktop"
-            } else {
-                if !desktop.running {
-                    self.docker(&["start", &desktop.id]).await?;
-                }
-                &desktop.id
-            };
+            self.env
+                .insert("AI_PHONE_DESKTOP_IMAGE".into(), desktop.image.clone());
+            if !desktop.running {
+                self.docker(&["start", &desktop.id]).await?;
+            }
             if let Some(bridge) = crate::desktop_bridge::DesktopBridge::staged(self.root).await? {
-                let command = self.command("docker", bridge.install_args(target));
+                let command = self.command("docker", bridge.install_args(&desktop.id));
                 self.checked(command, bridge.bytes).await?;
             }
         }
@@ -349,6 +375,30 @@ impl<E: Execute> Backend<'_, E> {
         )
         .await?;
         Ok(())
+    }
+    async fn wait_redis(&mut self, port: &str) -> Result<()> {
+        let ready = Instant::now() + Duration::from_secs(10);
+        loop {
+            let command = self.command(
+                REDIS_LOADER,
+                [
+                    "--library-path",
+                    REDIS_LIB,
+                    "/opt/aiphone/redis/bin/redis-cli",
+                    "-p",
+                    port,
+                    "PING",
+                ],
+            );
+            let result = self.execute.run(command, Vec::new()).await?;
+            if result.status.success() && result.stdout == b"PONG\n" {
+                return Ok(());
+            }
+            if Instant::now() >= ready {
+                return Err(Error::Invalid("wsl_redis_not_ready"));
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 }
 fn identity(id: &str) -> bool {

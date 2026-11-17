@@ -1,3 +1,5 @@
+#[cfg(any(windows, test))]
+pub(crate) mod disk_base;
 #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 use crate::native_ipc;
 use crate::{Error, Result};

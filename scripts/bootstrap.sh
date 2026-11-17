@@ -23,4 +23,3 @@ if [ ! -x "$bun_bin" ]; then
 fi
 test "$("$bun_bin" --version)" = "$version"
 "$bun_bin" install --frozen-lockfile
-"$bun_bin" run proto:generate

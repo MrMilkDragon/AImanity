@@ -1,4 +1,5 @@
 import {
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -34,7 +35,9 @@ export async function prepareWindowsQemu(destination: string, calcium?: string) 
     }
 
     const extraction = join(work, "extracted");
+    const guestFiles = ["guest.qcow2", "bzImage", "kernel.config", "KERNEL-LICENSE.txt"];
     await unpackWindowsInstaller(ROOT, installer, extraction, [
+      ...guestFiles.map(name => "{app}\\host\\qemu\\guest\\" + name),
       "{app}\\host\\qemu\\manifest.json",
       "{app}\\host\\qemu\\runtime\\*",
       "{app}\\host\\qemu\\licenses\\*",
@@ -57,6 +60,17 @@ export async function prepareWindowsQemu(destination: string, calcium?: string) 
     };
     const stage = join(work, "output");
     await stageWindowsQemu(bundled, component, stage);
+    const baseline = join(stage, "baseline", "host", "qemu");
+    mkdirSync(join(baseline, "guest"), { recursive: true });
+    copyFileSync(installedManifest, join(baseline, "manifest.json"));
+    for (const name of guestFiles) {
+      const input = join(bundled, "guest", name);
+      const record = installed.files.find(row => row.path === "guest/" + name);
+      if (!record || lstatSync(input).size !== record.size)
+        throw Error("Missing pinned Calcium guest file: " + name);
+      copyFileSync(input, join(baseline, "guest", name));
+    }
+
     const runtime = join(stage, "runtime");
     const accelerators = output([join(runtime, "qemu-system-x86_64.exe"), "-accel", "help"]);
     if (!/^whpx$/im.test(accelerators) ||

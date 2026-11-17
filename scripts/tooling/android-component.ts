@@ -9,18 +9,12 @@ import {
   rmSync,
 } from "node:fs";
 import { join, dirname, resolve } from "node:path";
-import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
-import {
-  NativeAndroidPrepareSchema,
-  NativeAndroidPreparedSchema,
-} from "../../packages/protocol/src/gen/ai_phone/v1/native_android_pb";
 import {
   ROOT,
   digest,
   download,
   hostKey,
-  run,
-  nativeProgram,
+  nativeJson,
 } from "./process";
 import { canonical, json, type FileRecord } from "./inventory";
 import {
@@ -199,7 +193,7 @@ export async function prepareFactoryAndroid(
     ? await sealAndroidSdk(input.path, join(work, "android.payload"), preset, root)
     : { file: input.file, receipt: { archive_sha256: input.identity } };
   const qualification = join(work, "android-qualification");
-  const prepared = await prepareAndroid(file, qualification, identity, root);
+  const prepared = prepareAndroid(file, qualification, identity, root);
   const manifest = json<AndroidManifest>(join(prepared.sdkRoot, "..", "ANDROID-MANIFEST.json"));
   rmSync(qualification, { recursive: true });
   if (manifest.engine !== (hostKey() === "macos-arm64" ? "avo" : "whpx"))
@@ -207,26 +201,20 @@ export async function prepareFactoryAndroid(
   return { file, receipt: androidReceipt(manifest, identity) };
 }
 
-export async function prepareAndroid(
+export function prepareAndroid(
   payload: string,
   home: string,
   payloadSha256: string,
   root = ROOT,
-) {
-  const request = create(NativeAndroidPrepareSchema, {
-    version: 1,
-    payloadPath: payload,
-    payloadSha256,
-    cpus: 2,
-    memoryMb: 2048,
-    storageGb: 16,
-  });
-  const reply = run([nativeProgram(root), "--prepare-android", home], {
-    cwd: root,
-    input: Buffer.from(toBinary(NativeAndroidPrepareSchema, request)),
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  return fromBinary(NativeAndroidPreparedSchema, Buffer.from(reply.stdout!));
+): {
+  version: number;
+  sdkRoot: string;
+  avdHome: string;
+  avdName: string;
+  reusedSdk: boolean;
+  reusedDevice: boolean;
+} {
+  return nativeJson(["--prepare-android", home, payload, payloadSha256], root);
 }
 export async function androidManifest(payload: string, root = ROOT) {
   for await (const entry of tarEntries(payload, "xz", root)) {

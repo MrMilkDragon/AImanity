@@ -38,14 +38,14 @@ pub async fn status(arguments: &[OsString]) -> Result<()> {
     }
     let expected: DeviceBridgePeerOwner =
         native_ipc::read_bounded(&mut tokio::io::stdin(), 512).await?;
-    let value = observe(Path::new(RUNTIME), &expected).await?;
+    let value = observe(&expected).await?;
     native_ipc::write_bounded(&mut tokio::io::stdout(), &value, 512).await?;
     Ok(())
 }
-async fn observe(
-    home: &Path,
+pub(crate) async fn observe(
     expected: &DeviceBridgePeerOwner,
 ) -> Result<ai_phone_api::wire::NativeAndroidBooted> {
+    let home = Path::new(RUNTIME);
     let actual = owner(home)?;
     if expected.version != 1 || expected != &actual {
         return Err(Error::Invalid("phone_peer_identity"));

@@ -11,14 +11,14 @@ import {
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { run, output, hash, digest } from "./process";
-import { sourceFiles } from "./source";
+import { sourceEntries } from "./source";
 import { json, save } from "./inventory";
 export const guestTarget = "aarch64-unknown-linux-musl",
   guestBinary = "build/target/release/desktop-bridge";
 function sourceIdentity(root: string) {
   return hash(
     JSON.stringify(
-      sourceFiles(root)
+      sourceEntries(root)
         .filter(
           (f) =>
             [
@@ -32,7 +32,7 @@ function sourceIdentity(root: string) {
               "packages/protocol/proto/",
             ].some((prefix) => f.path.startsWith(prefix)),
         )
-        .map((f) => [f.path, hash(f.data)]),
+        .map((f) => [f.path, f.sha256]),
     ),
   );
 }

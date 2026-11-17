@@ -2,7 +2,8 @@
 use crate::{Installation, android, desktop_host_memory_mib, profile, qemu_host, vm_control};
 use ai_phone_api::wire::NativeAndroidVmEndpoint;
 use sha2::{Digest, Sha256};
-use std::{fs, path::Path};
+use std::{cell::Cell, fs, path::Path};
+use tokio::sync::oneshot;
 
 pub fn verify_manifest(resource: &Path, identity: &str) -> Result<(), String> {
     if !crate::manifest::identity(identity) {
@@ -76,34 +77,53 @@ impl Deployment<'_> {
         let guest_profile =
             serde_json::to_vec(&guest_profile).map_err(|_| "invalid_device_resources")?;
         let vm = self.home.join("user/qemu");
-        phase("engine");
-        qemu_host::ensure(
-            &self.resource.join("qemu"),
-            &vm,
-            request
-                .desktop
-                .cpus
-                .try_into()
-                .map_err(|_| "invalid_device_resources")?,
-            desktop_host_memory_mib(request.desktop.memory_mb),
-            &guest_profile,
-            cancel,
-            |_| {},
-        )
-        .await
-        .map_err(error)?;
+        let bundle = self.resource.join("qemu");
         let key = qemu_host::key_path(&vm);
-        phase("android");
-        let boot = android::launch::start(
-            &phone,
-            "",
-            Some(NativeAndroidVmEndpoint {
-                port: vm_control::GUEST_PORT.into(),
-                key_file: key.to_str().ok_or("vm_control_key_path")?.into(),
-            }),
-            cancel,
-        )
-        .await?;
+        let endpoint = NativeAndroidVmEndpoint {
+            port: vm_control::GUEST_PORT.into(),
+            key_file: key.to_str().ok_or("vm_control_key_path")?.into(),
+        };
+        let cpus = request
+            .desktop
+            .cpus
+            .try_into()
+            .map_err(|_| "invalid_device_resources")?;
+        let aborted = Cell::new(false);
+        let cancel_start = || cancel() || aborted.get();
+        let (ready, linux_ready) = oneshot::channel();
+        phase("engine");
+        let linux = async {
+            let result = qemu_host::ensure(
+                &bundle,
+                &vm,
+                cpus,
+                desktop_host_memory_mib(request.desktop.memory_mb),
+                &guest_profile,
+                &cancel_start,
+                |_| {},
+            )
+            .await;
+            if result.is_ok() {
+                phase("android");
+                let _ = ready.send(());
+            } else {
+                aborted.set(true);
+            }
+            result
+        };
+        let android = async {
+            let result = android::launch::start(&phone, endpoint, linux_ready, &cancel_start).await;
+            if result.is_err() {
+                aborted.set(true);
+            }
+            result
+        };
+        let (phone, linux) = tokio::join!(biased; android, linux);
+        let boot = match (linux, phone) {
+            (Ok(()), boot) => boot?,
+            (Err(crate::Error::Cancelled), Err(phone)) if !cancel() => return Err(phone),
+            (Err(linux), _) => return Err(error(linux)),
+        };
         phase("devices");
         tokio::select! { biased;
             _ = android::launch::cancelled(cancel) => Err("installation_cancelled".into()),

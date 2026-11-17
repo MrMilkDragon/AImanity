@@ -26,8 +26,8 @@ Describe the resulting behavior and how you verified it. For an app Skill, name 
 Refresh the public source manifest before submitting.
 
 ```sh
-./scripts/bun scripts/source.ts manifest
-./scripts/bun scripts/source.ts check --repository --manifest
+cargo run --quiet --locked -p ai-phone-release-tools -- source manifest
+cargo run --quiet --locked -p ai-phone-release-tools -- source check --repository --manifest
 ```
 
 Open a pull request against `master`. Required checks cover source, macOS Apple Silicon, Windows x64, Android guest helpers and the Linux backend. PR builds use read-only repository access and public build inputs. GitHub squash-merges accepted PRs.

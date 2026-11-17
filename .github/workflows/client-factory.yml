@@ -17,6 +17,7 @@ on:
         required: true
 permissions:
   contents: read
+  actions: read
 env:
   AIMANITY_ANDROID_DRAFT_ID: ${{ inputs.android_draft_id }}
   AIMANITY_ANDROID_PAYLOAD_SHA256: ${{ inputs.android_payload_sha256 }}
@@ -43,8 +44,10 @@ jobs:
 
   windows-guest:
     if: inputs.platform == 'windows'
-    needs: admit
+    needs: [admit, windows-qemu]
     uses: ./.github/workflows/windows-guest.yml
+    with:
+      baseline_artifact: ${{ needs.windows-qemu.outputs.baseline }}
 
   windows-exe:
     needs: [windows-qemu, windows-guest]
@@ -143,7 +146,7 @@ jobs:
           ./scripts/bootstrap.sh
       - name: Source and image handoff contracts
         run: |
-          ./scripts/bun scripts/source.ts check --repository --manifest
+          cargo run --quiet --locked -p ai-phone-release-tools -- source check --repository --manifest
       - name: Build and seal native ARM64 images
         id: assemble
         env:

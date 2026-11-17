@@ -1,4 +1,3 @@
-#define HasReleaseLayer FileExists(AppSource + "\host\qemu\guest\release.ext4")
 #define AluminumBaseSHA256 "348baa7207524397b74de603f08357b6d3b73947514eb9f662c6eb4e52a365a5"
 
 [Setup]
@@ -37,13 +36,9 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "arabic"; MessagesFile: "compiler:Languages\Arabic.isl"
 
 [Files]
-#if HasReleaseLayer
 Source: "{#AppSource}\ai-phone-client.exe"; DestDir: "{tmp}"; Flags: dontcopy noencryption
 Source: "{#AppSource}\host\qemu\guest\guest.qcow2"; DestDir: "{app}\host\qemu\guest"; Flags: onlyifdoesntexist
 Source: "{#AppSource}\*"; DestDir: "{app}"; Excludes: "\host\qemu\guest\guest.qcow2"; Flags: ignoreversion recursesubdirs createallsubdirs
-#else
-Source: "{#AppSource}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-#endif
 
 [InstallDelete]
 Type: files; Name: "{autoprograms}\AI Phone.lnk"
@@ -82,7 +77,6 @@ arabic.HostSetupFailed=تعذر تثبيت بيئة تشغيل الأجهزة.
 var
   HostRestart: Boolean;
 
-#if HasReleaseLayer
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Base: String;
@@ -107,7 +101,6 @@ begin
       Result := ExpandConstant('{cm:HostSetupFailed}');
   end;
 end;
-#endif
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var

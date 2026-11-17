@@ -154,7 +154,7 @@ fn prepare_cgroups(root: &Path) -> Result<()> {
     Ok(())
 }
 async fn shutdown(context: &Context) -> Result<()> {
-    for name in ["channels", "media", "assistant", "runner"] {
+    for name in ["channels", "media", "assistant", "runner", "redis"] {
         context
             .execute(
                 [
@@ -198,7 +198,6 @@ async fn shutdown(context: &Context) -> Result<()> {
                 "--timeout",
                 "15",
                 "postgres",
-                "redis",
             ],
             &[],
             120,

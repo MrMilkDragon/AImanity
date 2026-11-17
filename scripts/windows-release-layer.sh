@@ -28,7 +28,7 @@ debugfs -R "dump /opt/aiphone/engine/lib/ld-musl-x86_64.so.1 $temp/init/lib/ld-m
 rm "$temp/base.ext4"
 chmod 0755 "$temp/init/bin/busybox" "$temp/init/lib/ld-musl-x86_64.so.1"
 sudo chroot "$temp/init" /bin/busybox --list > "$temp/applets"
-for applet in mount sh sleep switch_root timeout; do
+for applet in mkdir mount sh sleep switch_root timeout; do
   grep -qx "$applet" "$temp/applets"
 done
 cat > "$temp/init/init" <<'INIT'
@@ -43,6 +43,10 @@ set -eu
 /bin/busybox mount -o bind /newroot/mnt/source.sha256 /newroot/opt/aiphone/bundle/source.sha256
 if [ -f /newroot/mnt/images.payload ]; then
   /bin/busybox mount -o bind /newroot/mnt/images.payload /newroot/opt/aiphone/bundle/images.payload
+fi
+if [ -d /newroot/mnt/redis ]; then
+  /bin/busybox mkdir -p /newroot/opt/aiphone/redis
+  /bin/busybox mount -o bind /newroot/mnt/redis /newroot/opt/aiphone/redis
 fi
 /bin/busybox mount -o move /dev /newroot/dev
 read -r release < /newroot/opt/aiphone/bundle/source.sha256
@@ -62,6 +66,15 @@ payloads=(bootstrap.program source.payload source.sha256)
 if [ -n "$images" ]; then
   install -m 0644 "$images" "$temp/layer/images.payload"
   payloads+=(images.payload)
+fi
+if [ -d "$compiled/redis" ]; then
+  for file in bin/redis-server bin/redis-cli lib/ld-musl-x86_64.so.1; do
+    test -x "$compiled/redis/$file"
+  done
+  cp -R "$compiled/redis" "$temp/layer/redis"
+  while IFS= read -r -d '' file; do
+    payloads+=("${file#"$temp/layer/"}")
+  done < <(find "$temp/layer/redis" -type f -print0)
 fi
 size=$(du -sb "$temp/layer" | cut -f 1)
 block_count=$(((size + 16 * 1024 * 1024 + 4095) / 4096))

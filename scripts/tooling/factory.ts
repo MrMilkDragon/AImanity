@@ -83,6 +83,22 @@ export function prepareApps(root: string, env: NodeJS.ProcessEnv) {
   );
   return json(join(root, ".tools/phone-apps/manifest.json"));
 }
+export function databaseImage(root: string, role: "postgres" | "redis") {
+  const compose = readFileSync(join(root, "compose.yaml"), "utf8"),
+    matches = [
+      ...compose.matchAll(
+        new RegExp("\\$\\{AI_PHONE_" + role.toUpperCase() + "_IMAGE:-([^}]+)\\}", "g"),
+      ),
+    ],
+    image = matches[0]?.[1];
+  if (
+    matches.length !== 1 ||
+    !image ||
+    !new RegExp("^" + role + ":[^@]+@sha256:[0-9a-f]{64}$").test(image)
+  )
+    throw Error("Immutable database image pin missing");
+  return role + "@" + image.split("@")[1];
+}
 export async function prepareImages(
   root: string,
   cache: string,
@@ -98,24 +114,8 @@ export async function prepareImages(
     "-" +
     randomUUID().replaceAll("-", "").slice(0, 12);
   const sources: Record<string, string> = {};
-  const compose = readFileSync(join(root, "compose.yaml"), "utf8");
-  for (const role of ["postgres", "redis"]) {
-    const matches = [
-      ...compose.matchAll(
-        new RegExp(
-          "\\$\\{AI_PHONE_" + role.toUpperCase() + "_IMAGE:-([^}]+)\\}",
-          "g",
-        ),
-      ),
-    ];
-    const image = matches[0]?.[1];
-    if (
-      matches.length !== 1 ||
-      !image ||
-      !new RegExp("^" + role + ":[^@]+@sha256:[0-9a-f]{64}$").test(image)
-    )
-      throw Error("Immutable database image pin missing");
-    const reference = role + "@" + image.split("@")[1];
+  for (const role of ["postgres", "redis"] as const) {
+    const reference = databaseImage(root, role);
     const platform = "linux/" + architecture;
     const cached = Bun.spawnSync(["docker", "image", "inspect", "--platform", platform, reference], {
       stdout: "ignore",

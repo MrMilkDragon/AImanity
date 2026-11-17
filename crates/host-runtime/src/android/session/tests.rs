@@ -110,7 +110,12 @@ fn plan(root: &Path, ports: Ports, mode: &str) -> Plan {
 }
 async fn start(plan: Plan, stop: &mut watch::Receiver<bool>) -> Result<Started> {
     let log = plan.home.join("sdk.log");
-    match tokio::time::timeout(Duration::from_secs(15), process::start(plan, stop)).await {
+    match tokio::time::timeout(
+        Duration::from_secs(15),
+        process::start(plan, stop, async |_, _| Ok(())),
+    )
+    .await
+    {
         Ok(result) => result,
         Err(error) => panic!(
             "fixture startup must settle: {error}; SDK log: {}",

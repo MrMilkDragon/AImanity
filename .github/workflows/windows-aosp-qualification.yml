@@ -53,8 +53,8 @@ jobs:
           /ucrt64/bin/qemu-system-x86_64.exe -accel help | grep -w whpx
           wait "$build"
           cargo build --locked -p ai-phone-release-tools --bin release-tools
-          AIMANITY_FACTORY_XZ="$(cygpath -am /usr/bin/xz.exe)" ./scripts/bun scripts/android-component.ts --sdk-input qualification/sdk --work qualification/payload --compression-preset 3
+          AIMANITY_FACTORY_XZ="$(cygpath -am /usr/bin/xz.exe)" ./scripts/bun scripts/android-component.ts --sdk-input qualification/sdk --work qualification/payload --compression-preset 3 --receipt qualification/payload/android.receipt.json
           rm -r qualification/sdk
       - name: Boot the bundled Android under WHPX without fetching device assets
         shell: msys2 {0}
-        run: ./scripts/bun scripts/qualify-windows-aosp.ts qualification/payload/android.payload qualification/install
+        run: cargo run --release --locked -p ai-phone-host-runtime --bin qualify-android-aosp -- qualification/payload/android.payload qualification/payload/android.receipt.json qualification/install

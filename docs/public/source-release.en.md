@@ -24,8 +24,8 @@ See [setup](getting-started.en.md), [runtime components](runtime-bundles.md), [a
 Source export uses an allowlist with privacy and licence checks. [Contribution guide](../../CONTRIBUTING.md)
 
 ```sh
-./scripts/bun scripts/source.ts check
-./scripts/bun scripts/source.ts export /path/to/new-review-directory --git
+cargo run --quiet --locked -p ai-phone-release-tools -- source check
+cargo run --quiet --locked -p ai-phone-release-tools -- source export /path/to/new-review-directory --git
 ```
 
 Export requires a new destination and produces a source manifest and local review repository without a remote. Review the exported diff against the public checkout before committing. Ongoing contributions preserve public history. Do not update a running user's state with a direct Git checkout; use versioned artifacts, backup, migration and recovery.

@@ -24,8 +24,8 @@ SDK 对实际请求的包提示许可确认。宿主默认直联，客体各有 
 导出工具按白名单选取源码，执行隐私和许可检查。开发流程见[贡献指南](../../CONTRIBUTING.md)。
 
 ```sh
-./scripts/bun scripts/source.ts check
-./scripts/bun scripts/source.ts export /path/to/new-review-directory --git
+cargo run --quiet --locked -p ai-phone-release-tools -- source check
+cargo run --quiet --locked -p ai-phone-release-tools -- source export /path/to/new-review-directory --git
 ```
 
 导出目标必须是新目录，产出源码清单和没有远端的本地审阅仓库。与公开 checkout 比较差异后提交，后续贡献保留公开历史。运行用户目录的升级使用版本化制品、备份、迁移和恢复流程，不直接用 Git 覆盖用户状态。

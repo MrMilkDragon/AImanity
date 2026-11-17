@@ -111,6 +111,55 @@ async fn cleanup(phone: &Phone) -> Result<Value> {
         .await?;
     Ok(json!({"removed": removed, "data_preserved": true}))
 }
+
+async fn source_network(phone: &Phone) -> Result<()> {
+    // ConnectivityService observes http_proxy and writes its active proxy to the global proxy fields.
+    let settings = ["shell", "settings", "list", "global"];
+    let current = phone.text(&settings).await?;
+    let legacy_cleared = current.lines().any(|line| line == "http_proxy=:0");
+    if !legacy_cleared || !proxy_cleared(&current) {
+        if legacy_cleared {
+            phone
+                .command(&["shell", "settings", "delete", "global", "http_proxy"])
+                .await?;
+        }
+        phone
+            .command(&["shell", "settings", "put", "global", "http_proxy", ":0"])
+            .await?;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !proxy_cleared(&phone.text(&settings).await?) {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            Ok::<(), Error>(())
+        })
+        .await
+        .map_err(|_| Error::Invalid("phone_global_proxy_not_cleared"))??;
+    }
+    phone
+        .command(&[
+            "shell",
+            "sh",
+            "-ec",
+            r#"
+for interface in all default eth0; do echo 1 > /proc/sys/net/ipv6/conf/$interface/disable_ipv6; done
+test "$(cat /proc/sys/net/ipv6/conf/eth0/disable_ipv6)" = 1
+"#,
+        ])
+        .await?;
+    Ok(())
+}
+
+fn proxy_cleared(settings: &str) -> bool {
+    settings.lines().all(|line| match line.split_once('=') {
+        Some(("global_http_proxy_port", value)) => value == "0",
+        Some((
+            "global_http_proxy_host" | "global_http_proxy_exclusion_list" | "global_proxy_pac_url",
+            value,
+        )) => value.is_empty(),
+        _ => true,
+    })
+}
+
 async fn ready(
     phone: &Phone,
     observe_only: bool,
@@ -146,6 +195,7 @@ async fn ready(
                     .await?;
             }
         }
+        source_network(phone).await?;
     }
     Ok(
         json!({"boot_completed": true, "root": value.root_verified, "settings_changed": !observe_only}),

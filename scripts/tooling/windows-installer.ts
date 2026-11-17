@@ -63,11 +63,9 @@ export async function buildWindowsInstaller(
   }
   const version = json(join(root, "config/release-policy.json")).version;
   const qemu = join(stage, "host/qemu");
-  const base = existsSync(join(qemu, "guest/release.ext4"))
-    ? json(join(qemu, "manifest.json")).files.find(
-      (file: { path: string }) => file.path === "guest/guest.qcow2",
-    ).sha256
-    : undefined;
+  const base = json(join(qemu, "manifest.json")).files.find(
+    (file: { path: string }) => file.path === "guest/guest.qcow2",
+  ).sha256;
   run([
     compiler,
     "/Qp",
@@ -75,7 +73,7 @@ export async function buildWindowsInstaller(
     "/DNumericVersion=" + version.split("-")[0] + ".0",
     "/DAppSource=" + stage,
     "/DProjectRoot=" + root,
-    ...(base ? ["/DBaseDiskSHA256=" + base] : []),
+    "/DBaseDiskSHA256=" + base,
     "/O" + dirname(destination),
     "/F" + basename(destination, ".exe"),
     join(root, "apps/native/windows/installer.iss"),

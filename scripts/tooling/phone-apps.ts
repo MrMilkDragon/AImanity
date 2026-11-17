@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { join, basename } from "node:path";
 import { ROOT, output, run, hash, download } from "./process";
-import { sourceFiles, type SourceFile } from "./source";
+import { sourceEntries, type SourceFile } from "./source";
 import {
   json,
   save,
@@ -26,7 +26,7 @@ export const probeSource =
 export function phoneFingerprint(root = ROOT) {
   return hash(
     JSON.stringify(
-      sourceFiles(root)
+      sourceEntries(root)
         .filter(
           (f) =>
             f.path.startsWith("apps/android-input/") ||
@@ -38,7 +38,7 @@ export function phoneFingerprint(root = ROOT) {
               probeSource,
             ].includes(f.path),
         )
-        .map((f) => [f.path, hash(f.data)]),
+        .map((f) => [f.path, f.sha256]),
     ),
   );
 }

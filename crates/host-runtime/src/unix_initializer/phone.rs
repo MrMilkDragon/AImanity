@@ -100,7 +100,7 @@ pub(super) async fn start(
     let receipt = tokio::select! {
         value=tokio::time::timeout(Duration::from_secs(150),native_ipc::read_bounded::<NativeAndroidSessionReply>(&mut output,512))=>value.map_err(|_|Error::Invalid("android_session_outcome_unknown"))?,
         _=stop.changed()=>{
-            native_ipc::write_bounded(&mut input,&NativeAndroidSessionControl{cancel_startup:true},512).await?;
+            native_ipc::write_bounded(&mut input,&NativeAndroidSessionControl{cancel_startup:true,linux_ready:false},512).await?;
             tokio::time::timeout(Duration::from_secs(20),native_ipc::read_bounded::<NativeAndroidSessionReply>(&mut output,512)).await.map_err(|_|Error::Invalid("android_session_outcome_unknown"))?
         }
     }?;

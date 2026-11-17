@@ -86,9 +86,10 @@ message NativeAndroidSessionReply {
   }
 }
 
-// Private pipe control during startup. EOF detaches; it does not stop the phone.
+// Private pipe control during startup. A VM session waits for Linux readiness before pairing.
 message NativeAndroidSessionControl {
   bool cancel_startup = 1;
+  bool linux_ready = 2;
 }
 
 // Local provisioning IPC. Paths refer to verified, bundled installer resources.

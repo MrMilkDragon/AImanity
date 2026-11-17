@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { ROOT, run, output, hash, hostKey } from "./process";
-import { sourceFiles, type SourceFile } from "./source";
+import { sourceEntries, type SourceFile } from "./source";
 import { json, save, records, verifyFiles, publicBytes } from "./inventory";
 import { prepareDependency } from "./linux-dependencies";
 import { fetchPin } from "./factory";
@@ -27,7 +27,7 @@ export const fixture = "crates/phone-runner/fixtures/ocr-probe.png";
 export function sourceFingerprint(root = ROOT) {
   return hash(
     JSON.stringify(
-      sourceFiles(root)
+      sourceEntries(root)
         .filter(
           (f) =>
             f.path.startsWith("crates/") ||
@@ -40,7 +40,7 @@ export function sourceFingerprint(root = ROOT) {
               "config/ocr-models.json",
             ].includes(f.path),
         )
-        .map((f) => [f.path, hash(f.data)]),
+        .map((f) => [f.path, f.sha256]),
     ),
   );
 }

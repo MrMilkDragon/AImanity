@@ -1,10 +1,7 @@
 import {
   createReadStream,
   createWriteStream,
-  existsSync,
   mkdirSync,
-  chmodSync,
-  readFileSync,
   openSync,
   closeSync,
 } from "node:fs";
@@ -12,7 +9,6 @@ import { join, dirname, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import type { Writable } from "node:stream";
-import { createGunzip, createGzip } from "node:zlib";
 import { ROOT, run } from "./process";
 import { canonical } from "./inventory";
 
@@ -24,7 +20,11 @@ export function releaseTools(root = ROOT) {
     process.platform === "win32" ? "release-tools.exe" : "release-tools",
   );
 }
+let builtReleaseTools: string | undefined;
 export function buildReleaseTools(root = ROOT) {
+  const executable = releaseTools(root);
+  const identity = `${resolve(root)}\0${executable}`;
+  if (builtReleaseTools === identity) return executable;
   run(
     [
       "cargo",
@@ -37,7 +37,8 @@ export function buildReleaseTools(root = ROOT) {
     ],
     { cwd: root },
   );
-  return releaseTools(root);
+  builtReleaseTools = identity;
+  return executable;
 }
 class Bytes {
   private iterator: AsyncIterator<Buffer>;
@@ -118,31 +119,26 @@ export async function* tarEntries(
   codec: "raw" | "gzip" | "xz" = "raw",
   root = ROOT,
 ): AsyncGenerator<TarEntry> {
-  const descriptor = codec === "xz" ? openSync(file, "r") : undefined;
-  const child =
-    descriptor === undefined
-      ? undefined
-      : spawn(releaseTools(root), ["decode-capsule", "xz"], {
-          stdio: [descriptor, "pipe", "inherit"],
-        });
-  if (descriptor !== undefined) closeSync(descriptor);
+  let child;
+  if (codec !== "raw") {
+    const executable = buildReleaseTools(root);
+    const descriptor = openSync(file, "r");
+    child = spawn(executable, ["decode-capsule", codec], {
+      stdio: [descriptor, "pipe", "inherit"],
+    });
+    closeSync(descriptor);
+  }
   const completed = child ? once(child, "close") : undefined;
-  const source = child ? undefined : createReadStream(file);
-  const input = child
-    ? child.stdout!
-    : codec === "gzip"
-      ? source!.pipe(createGunzip())
-      : source!;
+  const input = child?.stdout ?? createReadStream(file);
   try {
-    yield* readTar(input as AsyncIterable<Buffer>);
+    yield* readTar(input);
     if (completed) {
       const [code] = await completed;
       if (code !== 0) throw Error("Capsule decoder failed");
     }
   } finally {
-    source?.destroy();
+    input.destroy();
     if (child) {
-      child.stdout?.destroy();
       if (child.exitCode === null) child.kill();
       await completed;
     }
@@ -301,24 +297,21 @@ export async function writeTar(
   } = {},
 ) {
   mkdirSync(dirname(destination), { recursive: true });
-  const descriptor = codec === "xz" ? openSync(destination, "wx") : undefined;
-  const child =
-    descriptor === undefined
-      ? undefined
-      : spawn(
-          releaseTools(root),
-          ["encode-xz", architecture, String(preset), dirname(destination)],
-          { stdio: ["pipe", descriptor, "inherit"] },
-        );
-  if (descriptor !== undefined) closeSync(descriptor);
+  let child;
+  if (codec !== "raw") {
+    const executable = buildReleaseTools(root);
+    const descriptor = openSync(destination, "wx");
+    const args = codec === "xz"
+      ? ["encode-xz", architecture, String(preset), dirname(destination)]
+      : ["encode-gzip"];
+    child = spawn(executable, args, {
+      stdio: ["pipe", descriptor, "inherit"],
+    });
+    closeSync(descriptor);
+  }
   const completed = child ? once(child, "close") : undefined;
-  const file = child
-      ? undefined
-      : createWriteStream(destination, { flags: "wx" }),
-    compressed = codec === "gzip" ? createGzip({ level: 9 }) : undefined;
-  if (compressed) compressed.pipe(file!);
-  const target = child ? child.stdin! : compressed || file!;
-  const closed = file ? once(file, "close") : undefined;
+  const target = child?.stdin ?? createWriteStream(destination, { flags: "wx" });
+  const closed = child ? undefined : once(target, "close");
   try {
     await writeTarStream(target, files);
     if (completed) {

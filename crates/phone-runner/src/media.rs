@@ -26,6 +26,7 @@ mod desktop;
 mod grpc;
 mod hub;
 mod phone;
+pub(super) use phone::adb_png;
 pub const CONTRACT: &str = "ai-phone-media-v1";
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 fn now() -> u64 {
@@ -220,7 +221,7 @@ async fn action(State(media): State<Arc<Media>>, bytes: Bytes) -> Response {
         }
     }
 }
-pub async fn run() -> Result<()> {
+pub async fn run(adb_media: bool) -> Result<()> {
     let root = std::env::var_os("AI_PHONE_PROJECT_ROOT")
         .map(PathBuf::from)
         .unwrap_or(std::env::current_dir()?);
@@ -250,7 +251,7 @@ pub async fn run() -> Result<()> {
         channel,
         #[cfg(target_os = "macos")]
         avo: std::env::var_os("AI_PHONE_AVO_CONTROL_SOCKET").map(|path| avo::Avo::new(path.into())),
-        adb_media: std::env::var("AI_PHONE_ANDROID_QEMU").as_deref() == Ok("1"),
+        adb_media,
         adb,
         width: AtomicU32::new(720),
         height: AtomicU32::new(1440),
