@@ -1,0 +1,236 @@
+---
+name: Dysprosium real WHPX native Linux qualification
+'on':
+  push:
+    branches:
+    - codex/dysprosium-win-rootfs-qa-f7ad43a
+    paths:
+    - ".github/workflows/dysprosium-win-rootfs-qa.yml"
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: dysprosium-win-rootfs-qa
+  cancel-in-progress: false
+env:
+  PRODUCT_SOURCE: f7ad43aaec8c81edad78461bf229ff2c9771704a
+jobs:
+  windows-inputs:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    outputs:
+      artifact: "${{ steps.handoff.outputs.artifact-id }}"
+      identity: "${{ steps.build.outputs.sha256 }}"
+      baseline: "${{ steps.baseline.outputs.artifact-id }}"
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+        ref: "${{ env.PRODUCT_SOURCE }}"
+    - name: Install the pinned Rust toolchain
+      shell: bash
+      run: rustup toolchain install 1.96.0 --profile minimal
+    - name: Prepare the qualified Windows x64 QEMU component
+      id: build
+      shell: pwsh
+      run: |
+        cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory qemu . dist/windows-qemu
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $identity = (Get-FileHash dist/windows-qemu/windows-qemu.json -Algorithm SHA256).Hash.ToLowerInvariant()
+        "sha256=$identity" >> $env:GITHUB_OUTPUT
+    - name: Transfer the runtime and source receipt
+      id: handoff
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: windows-qemu
+        path: |
+          dist/windows-qemu/runtime/
+          dist/windows-qemu/licenses/
+          dist/windows-qemu/windows-qemu.json
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 7
+    - name: Transfer the unchanged Calcium backing disk and kernel
+      id: baseline
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: windows-calcium-baseline
+        path: dist/windows-qemu/baseline/
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 2
+  linux-final:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      artifact: "${{ steps.handoff.outputs.artifact-id }}"
+      identity: "${{ steps.disk.outputs.sha256 }}"
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      AI_PHONE_TEST_TESSERACT: "/usr/bin/tesseract"
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+        ref: "${{ env.PRODUCT_SOURCE }}"
+    - name: Set up the disposable Linux x64 builder
+      run: |
+        test "$RUNNER_ENVIRONMENT" = github-hosted
+        test "$(uname -m)" = x86_64
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "$ANDROID_HOME/ndk"
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential pkg-config libssl-dev cpio \
+          ca-certificates unzip e2fsprogs qemu-utils debootstrap zstd \
+          tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
+        rustup toolchain install 1.96.0 --profile minimal
+        rustup default 1.96.0
+        rustup target add aarch64-linux-android x86_64-linux-android
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: "${{ needs.windows-inputs.outputs.baseline }}"
+        path: "${{ runner.temp }}/windows-calcium-baseline"
+    - name: Build the amd64 filesystem and native offline assets
+      run: |
+        cargo build --quiet --locked -p ai-phone-release-tools --bin release-tools
+        keyring=$(scripts/stage-debian-keyring.sh "$RUNNER_TEMP/trixie-keyring")
+        sudo env AI_PHONE_DEBIAN_KEYRING="$keyring" \
+          "$PWD/target/debug/release-tools" factory-images rootfs amd64 "$RUNNER_TEMP/linux-rootfs.tar.zst"
+        sudo env AI_PHONE_DEBIAN_KEYRING="$keyring" \
+          "$PWD/target/debug/release-tools" windows-guest-assets "$RUNNER_TEMP/windows-guest-assets"
+    - name: Build the Linux release components
+      env:
+        GH_TOKEN: "${{ github.token }}"
+        AI_PHONE_DISPOSABLE_QUALIFICATION: '1'
+      run: |
+        cargo build --release --locked -p ai-phone-guest-runtime --bin desktop-bridge
+        AI_PHONE_RELEASE_DESKTOP_BRIDGE="$PWD/target/release/desktop-bridge" \
+          target/debug/release-tools windows-release-context "$RUNNER_TEMP/windows-release-context" \
+            --linux-rootfs "$RUNNER_TEMP/linux-rootfs.tar.zst" --guest-assets "$RUNNER_TEMP/windows-guest-assets"
+    - name: Assemble the offline layer on the immutable Calcium guest disk
+      id: disk
+      run: |
+        guest=dist/windows-guest/windows-guest.payload
+        target/debug/release-tools windows-release \
+          "$RUNNER_TEMP/windows-calcium-baseline" "$RUNNER_TEMP/windows-release-context" "$guest"
+        guest_hash=$(sha256sum "$guest")
+        printf 'sha256=%s\n' "${guest_hash%% *}" >> "$GITHUB_OUTPUT"
+    - name: Transfer the sealed guest to the Windows builder
+      id: handoff
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: windows-guest
+        path: dist/windows-guest/windows-guest.payload
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 2
+    needs: windows-inputs
+  windows-dev:
+    runs-on: windows-2025
+    timeout-minutes: 55
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+        ref: "${{ env.PRODUCT_SOURCE }}"
+    - name: Prepare acceptance tools
+      shell: pwsh
+      run: |
+        rustup toolchain install 1.96.0 --profile minimal
+        rustup default 1.96.0
+    - name: Choose a fresh installation volume
+      shell: pwsh
+      run: |
+        $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match '^[A-Z]:\\$' } | Sort-Object Free -Descending
+        $drives | ForEach-Object { 'Free on {0}: {1:N1} GiB' -f $_.Root, ($_.Free / 1GB) }
+        $os = Get-CimInstance Win32_OperatingSystem
+        '{0} build {1}, RAM {2:N1} GiB' -f $os.Caption, $os.BuildNumber, ($os.TotalVisibleMemorySize / 1MB)
+        $root = Join-Path $drives[0].Root "Dysprosium-QA-$env:GITHUB_RUN_ID"
+        $profile = Join-Path $root 'profile'
+        New-Item -ItemType Directory -Path $profile -Force | Out-Null
+        Add-Type -Name ShellFolders -Namespace Acceptance -MemberDefinition @'
+        [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, ExactSpelling = true)]
+        public static extern int SHSetKnownFolderPath(ref System.Guid folder, uint flags, System.IntPtr token, string path);
+        '@
+        $roaming = [Guid]'3eb685db-65f9-4cf6-a03a-e3ef65729f3d'
+        $redirect = [Acceptance.ShellFolders]::SHSetKnownFolderPath([ref] $roaming, 0, [IntPtr]::Zero, $profile)
+        if ($redirect -ne 0) { throw "Cannot redirect the runner's RoamingAppData: $redirect" }
+        if ([Environment]::GetFolderPath('ApplicationData') -ne $profile) {
+          throw 'The isolated Windows profile did not become the RoamingAppData known folder.'
+        }
+        "AIMANITY_QA_ROOT=$root" >> $env:GITHUB_ENV
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: "${{ needs.windows-inputs.outputs.artifact }}"
+        path: "${{ env.AIMANITY_QA_ROOT }}/qemu"
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: "${{ needs.linux-final.outputs.artifact }}"
+        path: "${{ env.AIMANITY_QA_ROOT }}/guest"
+    - name: Build the reviewed Rust workbench with the exact offline device inputs
+      shell: pwsh
+      env:
+        QEMU_ID: "${{ needs.windows-inputs.outputs.identity }}"
+        GUEST_ID: "${{ needs.linux-final.outputs.identity }}"
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
+        $root = $env:AIMANITY_QA_ROOT
+        if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or (git rev-parse HEAD) -ne $env:PRODUCT_SOURCE) { throw 'Expected the disposable reviewed Windows source' }
+        cargo build --quiet --locked -p ai-phone-release-tools --bin release-tools
+        $tool = Join-Path $PWD 'target/debug/release-tools.exe'
+        & $tool source check --repository --manifest
+        $resource = Join-Path $PWD 'apps/native/gen/host'
+        $guest = Join-Path $root 'guest/windows-guest.payload'
+        $qemu = Join-Path $root 'qemu'
+        $qemuManifest = & $tool windows-factory stage-vm . (Join-Path $resource 'qemu') $qemu $env:QEMU_ID $guest $env:GUEST_ID | ConvertFrom-Json
+        $calcium = (Get-Content 'config/windows-qemu.json' -Raw | ConvertFrom-Json).calcium_installer
+        $download = Join-Path $root $calcium.file
+        curl.exe -fsSL -o $download $calcium.url
+        if ((Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant() -ne $calcium.sha256) { throw 'Published Calcium input changed' }
+        $android = Join-Path $root 'android'
+        & $tool windows-factory unpack . $download $android '{app}\host\android.payload'
+        $androidBundle = Join-Path $android 'host/android.payload'
+        if ((Get-FileHash $androidBundle -Algorithm SHA256).Hash.ToLowerInvariant() -ne '23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce') { throw 'The published AOSP system asset changed' }
+        Remove-Item -LiteralPath $download
+        & $tool client-payload --android-runtime $androidBundle --qemu-manifest $qemuManifest
+        Remove-Item -LiteralPath $android -Recurse
+        $env:AIMANITY_BUNDLE_INTEGRITY = Join-Path $resource 'integrity.json'
+        $env:RUSTFLAGS = '-C target-feature=+crt-static'
+        cargo build --release --locked --manifest-path apps/native/Cargo.toml
+        $stage = Join-Path $root 'staged'
+        New-Item -ItemType Directory -Path $stage | Out-Null
+        Copy-Item 'apps/native/target/release/aimanity-native.exe' (Join-Path $stage 'ai-phone-client.exe')
+        Copy-Item -LiteralPath $resource -Destination (Join-Path $stage 'host') -Recurse
+    - name: Drive the staged native workbench and both WHPX devices
+      shell: pwsh
+      env:
+        AIMANITY_QA_SOURCE: "${{ env.PRODUCT_SOURCE }}"
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
+        $driver = Join-Path $PWD 'crates/host-runtime/src/bin/qualify-windows-installer.rs'
+        $rust = Get-Content -Raw $driver
+        $start = $rust.IndexOf('    let started = Instant::now();', $rust.IndexOf('async fn main()'))
+        $end = $rust.IndexOf('    let log = root.join("native.log");', $start)
+        if ($start -lt 0 -or $end -lt $start) { throw 'The exact Rust workbench qualification entry changed' }
+        $staged = @'
+            let root = PathBuf::from(root);
+            let install = root.join("staged");
+            let profile = root.join("profile");
+            let home = profile.join("dev.aimanity.native/host");
+            check(!home.exists(), "fresh isolated Windows runtime")?;
+            let integrity: Value = serde_json::from_reader(File::open(install.join("host/integrity.json"))?)?;
+            let payload = integrity["source.payload"].as_str().ok_or("Missing staged source receipt")?;
+
+        '@
+        $rust = ($rust.Substring(0, $start) + $staged + $rust.Substring($end)).Replace('&payload.sha256).await', 'payload).await')
+        Set-Content -LiteralPath $driver -Value $rust -Encoding utf8
+        cargo run --release --locked -p ai-phone-host-runtime --bin qualify-windows-installer
+    needs:
+    - windows-inputs
+    - linux-final
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
