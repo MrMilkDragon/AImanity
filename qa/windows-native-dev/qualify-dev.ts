@@ -51,39 +51,36 @@ async function probe(command: string, argument?: string) {
   const process_ = Bun.spawn(args, { env, stdout: "inherit", stderr: "inherit" });
   equal(await process_.exited, 0, command);
 }
-const androidRoot = join(home, "user", "data", "android");
 const logPaths = ["user/qemu/owner.log", "user/qemu/boot.log", "user/qemu/qemu.log",
   "user/data/android/native/sdk.log", "user/data/android/whpx-avd/cuttlefish/kernel.log", "request.json", "deployment.json"];
-let androidStarted = 0;
-let reportedAndroid = false;
-let reportedListeners = false;
-const watchAndroid = setInterval(() => {
-  if (!existsSync(join(androidRoot, "native", "sdk.log"))) return;
-  if (!androidStarted) androidStarted = Date.now();
-  const reportBoot = !reportedAndroid && Date.now() - androidStarted >= 85000;
-  const reportListeners = reportedAndroid && !reportedListeners && Date.now() - androidStarted >= 114000;
-  if (!reportBoot && !reportListeners) return;
+let observe = true;
+let observation: Promise<void> | undefined;
+async function sampleAndroidInput() {
   const components = join(home, "components", "android");
-  if (!existsSync(components)) return;
   const [identity] = readdirSync(components);
   const adb = join(components, identity!, "sdk", "platform-tools", "adb.exe");
-  const adbInfo = (...args: string[]) => Bun.spawnSync([adb, "-P", "15037", ...args], { env, timeout: 4000 }).stdout.toString().trim();
-  if (reportBoot) {
-    reportedAndroid = true;
-    console.log(`Android boot transport: ${adbInfo("devices", "-l")}\n${adbInfo("-s", "127.0.0.1:5565", "shell", "getprop sys.boot_completed; id -u")}`);
-  }
-  if (reportListeners) {
-    reportedListeners = true;
-    const shell = (command: string) => adbInfo("-s", "127.0.0.1:5565", "shell", command);
-    console.log(`Android first-run user state: ${shell("am get-started-user-state 0; date +%s")}; host clock ${Date.now()}`);
-    for (const name of ["notifications", "attention"]) {
-      const raw = shell(`cat /data/user/0/dev.aiphone.input/files/${name}.json 2>/dev/null`);
-      if (!raw) { console.log(`Android ${name} listener has not written a receipt`); continue; }
-      const receipt = JSON.parse(raw);
-      console.log(`Android ${name} listener: connected=${receipt.connected}, checked_at_ms=${receipt.checked_at_ms}`);
+  const state = [
+    "printf 'boot='; getprop sys.boot_completed; printf 'uid='; id -u",
+    "printf 'user0='; am get-started-user-state 0",
+    "printf 'selector='; settings --user 0 get secure enabled_accessibility_services",
+    "printf 'flag='; settings --user 0 get secure accessibility_enabled",
+    "printf 'package='; cmd package query-services --user 0 --components -a android.accessibilityservice.AccessibilityService -p dev.aiphone.input",
+    "dumpsys -t 2 accessibility | grep -Ei 'enabledServices|bindingServices|boundServices|PhoneAttention'",
+  ].join("; ");
+  let previous = "";
+  while (observe) {
+    const adbQuery = Bun.spawn([adb,"-P","15037","-s","127.0.0.1:5565","shell",state], {env, stdout:"pipe", stderr:"ignore"});
+    const timeout = setTimeout(() => adbQuery.kill(), 3700);
+    const result = (await new Response(adbQuery.stdout).text()).trim();
+    await adbQuery.exited;
+    clearTimeout(timeout);
+    if (result && result !== previous) {
+      console.log(JSON.stringify({ androidAccessibilityObservationMs: Math.round(performance.now() - started), state:result }));
+      previous = result;
     }
+    await Bun.sleep(900);
   }
-}, 10000);
+}
 
 async function vmCredentials() {
   const key = await readFile(join(home, "user", "qemu", "control.key"));
@@ -156,9 +153,14 @@ try {
     const lines = existsSync(log) ? readFileSync(log, "utf8").split("\n") : [];
     const phase = lines.findLast(line => line.startsWith("native_metric startup_phase="));
     if (phase && phase !== previousPhase) {
+      if (phase.includes("startup_phase=android") && previousPhase.includes("startup_phase=engine")) {
+        observation = sampleAndroidInput();
+      }
       previousPhase = phase;
       console.log(phase);
     }
+    const failure = lines.find(line => line.startsWith("AI_PHONE_QEMU_CONTROL_ERROR "));
+    if (failure) throw Error(failure);
     if (existsSync(checkpoint)) {
       const status = JSON.parse(readFileSync(checkpoint, "utf8"));
       if (status.progress?.state === "ready" && status.installed_payload === payload.sha256) break;
@@ -392,6 +394,7 @@ try {
   }
   throw error;
 } finally {
-  clearInterval(watchAndroid);
+  observe = false;
+  await observation;
   await stopApp();
 }
