@@ -6,14 +6,27 @@ use iced::advanced::{
 use iced::{Element, Event, Length, Rectangle, Renderer, Size, Theme, mouse};
 
 pub fn behind<'a, M: 'a>(content: Element<'a, M>, panel: Rectangle) -> Element<'a, M> {
-    Element::new(Behind { content, panel })
+    Element::new(Mask {
+        content,
+        panel,
+        inside: false,
+    })
 }
 
-struct Behind<'a, M> {
+pub fn within<'a, M: 'a>(content: Element<'a, M>, panel: Rectangle) -> Element<'a, M> {
+    Element::new(Mask {
+        content,
+        panel,
+        inside: true,
+    })
+}
+
+struct Mask<'a, M> {
     content: Element<'a, M>,
     panel: Rectangle,
+    inside: bool,
 }
-impl<M> Widget<M, Theme, Renderer> for Behind<'_, M> {
+impl<M> Widget<M, Theme, Renderer> for Mask<'_, M> {
     fn tag(&self) -> tree::Tag {
         self.content.as_widget().tag()
     }
@@ -60,9 +73,9 @@ impl<M> Widget<M, Theme, Renderer> for Behind<'_, M> {
         viewport: &Rectangle,
     ) {
         let blocked = match event {
-            Event::Mouse(_) => cursor.is_over(self.panel),
+            Event::Mouse(_) => cursor.is_over(self.panel) != self.inside,
             Event::Touch(iced::touch::Event::FingerPressed { position, .. }) => {
-                self.panel.contains(*position)
+                self.panel.contains(*position) != self.inside
             }
             _ => false,
         };
@@ -87,6 +100,16 @@ impl<M> Widget<M, Theme, Renderer> for Behind<'_, M> {
             return;
         };
         let viewport = &bounds;
+        if self.inside {
+            if let Some(region) = viewport.intersection(&self.panel) {
+                renderer.with_layer(region, |renderer| {
+                    self.content
+                        .as_widget()
+                        .draw(tree, renderer, theme, style, layout, cursor, &region)
+                });
+            }
+            return;
+        }
         let Some(hole) = viewport.intersection(&self.panel) else {
             self.content
                 .as_widget()
@@ -138,7 +161,7 @@ impl<M> Widget<M, Theme, Renderer> for Behind<'_, M> {
         viewport: &Rectangle,
         renderer: &Renderer,
     ) -> mouse::Interaction {
-        if cursor.is_over(self.panel) {
+        if cursor.is_over(self.panel) != self.inside {
             return mouse::Interaction::None;
         }
         self.content

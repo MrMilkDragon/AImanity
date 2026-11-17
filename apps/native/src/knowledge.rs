@@ -571,6 +571,9 @@ impl Knowledge {
     pub fn document_open(&self) -> bool {
         self.document_open
     }
+    pub fn editing(&self) -> bool {
+        self.editing
+    }
 
     pub fn escape(&self) -> Option<Message> {
         if self.picking {
@@ -645,10 +648,8 @@ impl Knowledge {
         &self,
         locale: Locale,
         viewport_width: f32,
-    ) -> Option<Element<'_, Message>> {
-        if !self.document_open {
-            return None;
-        }
+        editing: bool,
+    ) -> Element<'_, Message> {
         let draft = self.draft();
         let title = draft
             .map(|d| d.document.title.as_str())
@@ -663,7 +664,7 @@ impl Knowledge {
         use crate::surface::{tool_action, tool_header, tool_padding, tool_scroll};
         let mut actions = row![].spacing(2).align_y(iced::Alignment::Center);
         if let Some(draft) = draft {
-            if self.editing {
+            if editing {
                 actions = actions
                     .push(tool_action(
                         Icon::Image,
@@ -693,7 +694,7 @@ impl Knowledge {
             );
         }
         if let Some(draft) = draft {
-            if self.editing {
+            if editing {
                 if draft.dirty
                     && self
                         .documents
@@ -777,15 +778,13 @@ impl Knowledge {
                     .height(160),
             );
         }
-        Some(
-            column![
-                tool_header(title, viewport_width, actions),
-                scrollable(container(body).padding(tool_padding(viewport_width)))
-                    .direction(tool_scroll())
-                    .height(Length::Fill),
-            ]
-            .into(),
-        )
+        column![
+            tool_header(title, viewport_width, actions),
+            scrollable(container(body).padding(tool_padding(viewport_width)))
+                .direction(tool_scroll())
+                .height(Length::Fill),
+        ]
+        .into()
     }
 
     fn relations<'a>(&'a self, draft: &'a Draft, locale: Locale) -> Element<'a, Message> {

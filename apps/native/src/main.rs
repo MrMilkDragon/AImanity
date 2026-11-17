@@ -90,6 +90,7 @@ enum Message {
     ClosePanel,
     PanelSize(iced::Size),
     PanelFocus,
+    ClosedPaneInput,
     Link,
     Linked(Result<wire::DeviceLinkState, String>),
     RefreshLink,
@@ -121,6 +122,39 @@ enum Panel {
     Agent,
     Update,
     Capture(usize),
+}
+#[derive(Clone, PartialEq, Eq)]
+enum ChildPane {
+    Agent(String, agents::Tab),
+    Devices,
+    Knowledge(bool),
+    Preview { id: String, name: String },
+}
+impl ChildPane {
+    fn separate(&self) -> bool {
+        match self {
+            Self::Agent(id, _) => id.is_empty(),
+            Self::Devices | Self::Preview { .. } => false,
+            Self::Knowledge(_) => true,
+        }
+    }
+    fn same_window(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Agent(id, _), Self::Agent(other, _)) => id == other,
+            (Self::Knowledge(_), Self::Knowledge(_)) => true,
+            _ => false,
+        }
+    }
+}
+struct ChildWindow {
+    pane: ChildPane,
+    previous: Option<ChildPane>,
+    anchor: Rectangle,
+    bounds: Rectangle,
+    rect: Rectangle,
+    opacity: f32,
+    animation: Option<(Instant, Rectangle, f32)>,
+    open: bool,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AfterStop {
@@ -184,6 +218,8 @@ struct App {
     panel_content_height: f32,
     from_panel: Size,
     popup_transition: Option<Instant>,
+    child: Option<ChildWindow>,
+    agent_add_height: f32,
     panel_leave_pending: bool,
     started: Instant,
     input_started: Option<Instant>,
@@ -247,6 +283,8 @@ impl App {
             panel_content_height: 140.,
             from_panel: Size::new(400., 140.),
             popup_transition: None,
+            child: None,
+            agent_add_height: 505.,
             panel_leave_pending: false,
             started: Instant::now(),
             input_started: None,
@@ -347,6 +385,7 @@ impl App {
         if self.popup != open {
             self.popup = open;
             self.reflow_popup();
+            self.reflow_child();
         }
     }
     fn reflow_popup(&mut self) {
@@ -762,14 +801,24 @@ impl App {
                     self.keyboard_target = None;
                 }
                 if let Some(client) = &self.connection {
+                    let preview_changed = matches!(
+                        message,
+                        chat::Message::Attachment(_)
+                            | chat::Message::Preview(..)
+                            | chat::Message::ClosePreview
+                    );
                     let device_id = self.devices[self.focus]
                         .as_ref()
                         .map(|d| d.id.as_str())
                         .unwrap_or("");
-                    return self
+                    let task = self
                         .chat
                         .update(message, client, device_id)
                         .map(Message::Conversation);
+                    if preview_changed {
+                        self.reflow_child();
+                    }
+                    return task;
                 }
             }
             Message::Modes(message) => {
@@ -815,10 +864,12 @@ impl App {
             }
             Message::Knowledge(message) => {
                 if let Some(client) = &self.connection {
-                    return self
+                    let task = self
                         .knowledge
                         .update(message, client)
                         .map(Message::Knowledge);
+                    self.reflow_child();
+                    return task;
                 }
             }
             Message::Skills(message) => {
@@ -855,7 +906,7 @@ impl App {
                 }
             }
             Message::AttachCapture => {
-                if let Some(capture) = self.capture.take() {
+                if let Some(capture) = self.capture.clone() {
                     self.set_popup(false);
                     return self.update(Message::Conversation(chat::Message::Capture(
                         capture.name,
@@ -886,21 +937,24 @@ impl App {
             Message::CaptureSaved(Err(error)) => {
                 self.error = error;
             }
-            Message::PanelSize(size) | Message::Agents(agents::Message::Measured(size)) => {
-                let header = if matches!(message, Message::PanelSize(_)) {
-                    style::window_insets(WORKBENCH.width).2
-                } else {
-                    0.
-                };
+            Message::PanelSize(size) => {
+                let header = style::window_insets(WORKBENCH.width).2;
                 let height = (size.height + header).ceil();
                 if self.panel_content_height != height {
                     self.panel_content_height = height;
                     self.reflow_popup();
                 }
             }
+            Message::Agents(agents::Message::Measured(size)) if self.agents.adding() => {
+                let height = size.height.ceil().min(505.);
+                if self.agent_add_height != height {
+                    self.agent_add_height = height;
+                    self.reflow_child();
+                }
+            }
             Message::Agents(agents::Message::Devices) => {
                 self.show_devices = true;
-                self.reflow_popup();
+                self.reflow_child();
                 if let Some(device) = &self.devices[self.focus] {
                     return self.update(Message::Devices(devices::Message::Choose(
                         device.id.clone(),
@@ -909,7 +963,7 @@ impl App {
             }
             Message::CloseDevices => {
                 self.show_devices = false;
-                self.reflow_popup();
+                self.reflow_child();
             }
             Message::Devices(message) => {
                 if let Some(client) = &self.connection {
@@ -969,6 +1023,7 @@ impl App {
                     let before = self.panel_target();
                     let task = self.agents.update(message, client).map(Message::Agents);
                     let reload = changed.then(|| client.clone());
+                    self.reflow_child();
                     if self.panel_target() != before {
                         self.reflow_popup();
                     }
@@ -1059,23 +1114,20 @@ impl App {
                     }
                 }
                 if let Some(start) = self.popup_transition {
-                    let (target, duration, curve) = if self.popup {
-                        (1., style::WINDOW_ENTER, [0.2, 1.15, 0.3, 1.])
-                    } else {
-                        (0., style::WINDOW_EXIT, [0.32, 0., 0.65, 1.])
-                    };
-                    let t = (now.saturating_duration_since(start).as_secs_f32() / duration).min(1.);
-                    let blend = style::bezier(t, curve);
+                    let target = f32::from(self.popup);
+                    let (blend, finished) =
+                        surface::window_progress(now.saturating_duration_since(start), self.popup);
                     self.popup_amount = self.from_popup + (target - self.from_popup) * blend;
                     let to = self.panel_target();
                     self.panel_size = Size::new(
                         self.from_panel.width + (to.width - self.from_panel.width) * blend,
                         self.from_panel.height + (to.height - self.from_panel.height) * blend,
                     );
-                    if t >= 1. {
+                    if finished {
                         self.popup_transition = None;
                     }
                 }
+                self.animate_child(now);
             }
             Message::Event(Event::Window(window::Event::Opened { .. })) => {
                 #[cfg(target_os = "macos")]
@@ -1134,6 +1186,9 @@ impl App {
                 key: keyboard::Key::Named(keyboard::key::Named::Escape),
                 ..
             })) => {
+                if self.chat.preview.is_some() {
+                    return self.update(Message::Conversation(chat::Message::ClosePreview));
+                }
                 if self.popup
                     && self.panel == Panel::Knowledge
                     && let Some(message) = self.knowledge.escape()
@@ -1143,9 +1198,16 @@ impl App {
                 if self.popup && self.panel == Panel::Agent && self.agents.adding() {
                     return self.update(Message::Agents(agents::Message::Back));
                 }
+                if self.popup && self.panel == Panel::Agent {
+                    if self.show_devices {
+                        return self.update(Message::CloseDevices);
+                    }
+                    if self.agents.is_editing() {
+                        return self.update(Message::Agents(agents::Message::Back));
+                    }
+                }
                 self.set_popup(false);
                 self.pinned = false;
-                self.chat.preview = None;
                 self.keyboard_target = None;
             }
             Message::Event(Event::Mouse(iced::mouse::Event::CursorMoved { position })) => {
@@ -1211,6 +1273,9 @@ impl App {
                     let _ = self.update(Message::Agents(agents::Message::Back));
                 }
                 if self.panel != panel {
+                    self.show_devices = false;
+                }
+                if self.panel != panel {
                     self.panel = panel;
                     self.popup_amount = 0.;
                     self.panel_size = self.panel_target();
@@ -1221,6 +1286,7 @@ impl App {
                 self.pinned = click;
                 self.popup = true;
                 self.reflow_popup();
+                self.reflow_child();
                 self.keyboard_target = None;
                 return self.load_panel();
             }
@@ -1311,6 +1377,10 @@ impl App {
         })];
         if self.transition.is_some()
             || self.popup_transition.is_some()
+            || self
+                .child
+                .as_ref()
+                .is_some_and(|child| child.animation.is_some())
             || self.input_started.is_some()
             || (!self.reduced_motion
                 && (self.modes.animating()
@@ -1361,9 +1431,6 @@ impl App {
         Subscription::batch(subscriptions)
     }
     fn popup_rect(&self) -> Rectangle {
-        if let Some(preview) = self.chat.preview_bounds(WORKBENCH) {
-            return preview;
-        }
         if self.popup_amount > 0. {
             let anchor = self.panel_anchor(self.panel);
             let panel = surface::tool_rect(WORKBENCH, anchor, self.panel_size, false);
@@ -1515,10 +1582,42 @@ impl App {
         self.update(message)
     }
     fn child_rect(&self) -> Rectangle {
-        if !self.popup {
-            return Rectangle::default();
+        self.child.as_ref().map_or(Rectangle::default(), |child| {
+            if child.previous.is_some() {
+                child.bounds
+            } else {
+                child.rect
+            }
+        })
+    }
+    fn child_target(&self) -> Option<(ChildPane, Rectangle, Rectangle)> {
+        let button = |point: iced::Point, size: f32| {
+            Rectangle::new(
+                point - iced::Vector::new(size / 2., size / 2.),
+                Size::new(size, size),
+            )
+        };
+        if let Some(file) = &self.chat.preview {
+            let pane = ChildPane::Preview {
+                id: file.id.clone(),
+                name: file.name.clone(),
+            };
+            let anchor = self
+                .child
+                .as_ref()
+                .filter(|child| child.pane == pane)
+                .map_or_else(|| button(self.cursor, 32.), |child| child.anchor);
+            return Some((pane, anchor, self.chat.preview_bounds(&file.id, WORKBENCH)));
         }
-        let parent = self.popup_rect();
+        if !self.popup {
+            return None;
+        }
+        let parent = surface::tool_rect(
+            WORKBENCH,
+            self.panel_anchor(self.panel),
+            self.panel_target(),
+            false,
+        );
         let (_, trailing, header) = style::window_insets(WORKBENCH.width);
         match self.panel {
             Panel::Knowledge if self.knowledge.document_open() => {
@@ -1532,11 +1631,20 @@ impl App {
                             Size::new(32., 32.),
                         )
                     },
-                    |point| Rectangle::new(point, Size::ZERO),
+                    |point| button(point, 24.),
                 );
-                surface::tool_rect(WORKBENCH, anchor, Size::new(620., 600.), true)
+                let rect = surface::tool_rect(WORKBENCH, anchor, Size::new(620., 600.), true);
+                Some((ChildPane::Knowledge(self.knowledge.editing()), anchor, rect))
             }
-            Panel::Agent if self.agents.adding() && !self.show_devices => {
+            Panel::Agent if self.show_devices => {
+                let origin = if parent.contains(self.cursor) {
+                    self.cursor
+                } else {
+                    iced::Point::new(parent.x + 42., parent.y + parent.height - 45.)
+                };
+                Some((ChildPane::Devices, button(origin, 44.), parent))
+            }
+            Panel::Agent if self.agents.adding() => {
                 let anchor = Rectangle::new(
                     iced::Point::new(
                         parent.x + parent.width - trailing - 32.,
@@ -1544,33 +1652,161 @@ impl App {
                     ),
                     Size::new(32., 32.),
                 );
-                surface::tool_rect(
+                let rect = surface::tool_rect(
                     WORKBENCH,
                     anchor,
-                    Size::new(480., self.panel_content_height.min(505.)),
+                    Size::new(480., self.agent_add_height),
                     false,
-                )
+                );
+                Some((
+                    ChildPane::Agent(String::new(), agents::Tab::Model),
+                    anchor,
+                    rect,
+                ))
             }
-            _ => Rectangle::default(),
+            Panel::Agent => self.agents.editor().map(|(id, tab)| {
+                let origin = if parent.contains(self.cursor) {
+                    self.cursor
+                } else {
+                    iced::Point::new(parent.x + parent.width - trailing - 66., parent.y + header)
+                };
+                (
+                    ChildPane::Agent(id.to_owned(), tab),
+                    button(origin, 44.),
+                    parent,
+                )
+            }),
+            _ => None,
         }
     }
-    fn panel_body(&self) -> Element<'_, Message> {
-        let locale = self.locale;
-        let width = WORKBENCH.width;
-        let padding = surface::tool_padding(width);
-        if self.panel == Panel::Agent {
-            if !self.show_devices {
-                return self
-                    .agents
-                    .view(
-                        locale,
-                        !self.agents.adding() && self.agents.is_editing(),
-                        width,
-                        self.reduced_motion,
-                    )
-                    .map(Message::Agents);
+    fn reflow_child(&mut self) {
+        let Some((pane, anchor, bounds)) = self.child_target() else {
+            if self.reduced_motion {
+                if let Some(child) = self.child.take()
+                    && matches!(child.pane, ChildPane::Agent(..))
+                {
+                    self.agents.prune_editors(false);
+                }
+            } else if let Some(child) = &mut self.child
+                && child.open
+            {
+                child.open = false;
+                if child.previous.take().is_some() {
+                    child.rect = child.bounds;
+                    child.opacity = 1.;
+                }
+                child.animation = Some((Instant::now(), child.rect, child.opacity));
             }
-            return scrollable(
+            return;
+        };
+        if let Some(child) = &mut self.child
+            && child.pane == pane
+        {
+            if child.open && child.bounds == bounds && (child.anchor == anchor || !pane.separate())
+            {
+                return;
+            }
+            child.open = true;
+            if pane.separate() {
+                child.anchor = anchor;
+            }
+            child.bounds = bounds;
+            if self.reduced_motion {
+                child.rect = bounds;
+                child.opacity = 1.;
+                child.animation = None;
+            } else {
+                child.animation = Some((Instant::now(), child.rect, child.opacity));
+            }
+        } else {
+            let previous = self.child.as_ref().filter(|current| {
+                !self.reduced_motion
+                    && current.open
+                    && current.bounds == bounds
+                    && current.pane.same_window(&pane)
+            });
+            let transition_anchor =
+                previous
+                    .filter(|_| bounds.contains(self.cursor))
+                    .map_or(anchor, |_| {
+                        Rectangle::new(
+                            self.cursor - iced::Vector::new(16., 16.),
+                            Size::new(32., 32.),
+                        )
+                    });
+            let anchor = previous.map_or(anchor, |child| child.anchor);
+            let previous = previous.map(|child| child.pane.clone());
+            let rect = if self.reduced_motion {
+                bounds
+            } else {
+                surface::tool_motion(transition_anchor, bounds, 0.)
+            };
+            let opacity = f32::from(self.reduced_motion);
+            self.child = Some(ChildWindow {
+                pane,
+                previous,
+                anchor,
+                bounds,
+                rect,
+                opacity,
+                animation: (!self.reduced_motion).then(|| (Instant::now(), rect, opacity)),
+                open: true,
+            });
+        }
+    }
+    fn animate_child(&mut self, now: Instant) {
+        if let Some(child) = &mut self.child
+            && let Some((started, from, opacity)) = child.animation
+        {
+            let (blend, finished) =
+                surface::window_progress(now.saturating_duration_since(started), child.open);
+            let to = if child.open {
+                child.bounds
+            } else {
+                surface::tool_motion(child.anchor, child.bounds, 0.)
+            };
+            child.rect = Rectangle::new(
+                from.position() + (to.position() - from.position()) * blend,
+                Size::new(
+                    from.width + (to.width - from.width) * blend,
+                    from.height + (to.height - from.height) * blend,
+                ),
+            );
+            child.opacity = (opacity + (f32::from(child.open) - opacity) * blend).clamp(0., 1.);
+            if finished {
+                child.animation = None;
+                child.previous = None;
+                if !child.open {
+                    let edited_agent = matches!(child.pane, ChildPane::Agent(..));
+                    self.child = None;
+                    if edited_agent {
+                        self.agents.prune_editors(false);
+                    }
+                }
+            }
+        }
+    }
+    fn child_view<'a>(&'a self, pane: &'a ChildPane, bounds: Rectangle) -> Element<'a, Message> {
+        let locale = self.locale;
+        match pane {
+            ChildPane::Agent(id, tab) => self
+                .agents
+                .view(
+                    locale,
+                    Some((id, *tab)),
+                    WORKBENCH.width,
+                    self.reduced_motion,
+                )
+                .map(Message::Agents),
+            ChildPane::Knowledge(editing) => self
+                .knowledge
+                .document_view(locale, WORKBENCH.width, *editing)
+                .map(Message::Knowledge),
+            ChildPane::Preview { id, name } => self
+                .chat
+                .preview_view(id, name, bounds)
+                .map(Message::Conversation),
+            ChildPane::Devices => scrollable(
                 container(
                     column![
                         row![
@@ -1587,11 +1823,22 @@ impl App {
                     ]
                     .spacing(12),
                 )
-                .padding(padding),
+                .padding(surface::tool_padding(WORKBENCH.width)),
             )
             .direction(surface::tool_scroll())
             .height(Length::Fill)
-            .into();
+            .into(),
+        }
+    }
+    fn panel_body(&self) -> Element<'_, Message> {
+        let locale = self.locale;
+        let width = WORKBENCH.width;
+        let padding = surface::tool_padding(width);
+        if self.panel == Panel::Agent {
+            return self
+                .agents
+                .view(locale, None, width, self.reduced_motion)
+                .map(Message::Agents);
         }
         let title = match self.panel {
             Panel::Language => "Language",
@@ -1844,12 +2091,19 @@ impl App {
             focus: self.focus,
             linked: self.linked,
             popup,
-            popup_opacity: if self.chat.preview.is_some() {
-                0.
-            } else {
-                self.popup_amount.clamp(0., 1.)
-            },
+            popup_opacity: self.popup_amount.clamp(0., 1.),
             child_popup,
+            child_popup_opacity: self
+                .child
+                .as_ref()
+                .filter(|child| child.pane.separate())
+                .map_or(0., |child| {
+                    if child.previous.is_some() {
+                        1.
+                    } else {
+                        child.opacity
+                    }
+                }),
             mode_effects,
             mode_motion,
             keyboard_target: self.keyboard_target,
@@ -2075,91 +2329,72 @@ impl App {
             place(child_popup),
         ));
         let p = self.popup_rect();
-        if self.chat.preview.is_some() {
-            layers.push(
-                mouse_area(
-                    container(space())
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .style(|_| {
-                            container::Style::default()
-                                .background(iced::Color::BLACK.scale_alpha(0.5))
-                        }),
-                )
-                .on_press(Message::Conversation(chat::Message::ClosePreview))
-                .into(),
-            );
-            layers.push(
-                pin(mouse_area(
-                    container(iced::widget::themer(
-                        Some(style::theme()),
-                        self.chat.preview_view(p).map(Message::Conversation),
-                    ))
-                    .width(p.width)
-                    .height(p.height)
-                    .clip(true),
-                )
-                .on_press(Message::PanelFocus))
-                .x(p.x)
-                .y(p.y)
-                .into(),
-            );
-        } else if self.popup_amount > 0. {
+        if self.popup_amount > 0. {
             let settled = surface::tool_rect(
                 WORKBENCH,
                 self.panel_anchor(self.panel),
                 self.panel_size,
                 false,
             );
-            let scale = (p.width / settled.width).min(p.height / settled.height);
-            let offset = p.center() - settled.center();
-            layers.push(
-                pin(iced::widget::float(
-                    mouse_area(
-                        container(
-                            container(iced::widget::themer(
-                                Some(style::theme()),
-                                occlude::behind(self.panel_body(), place(child_popup)),
-                            ))
-                            .width(self.panel_target().width)
-                            .height(settled.height),
-                        )
-                        .width(settled.width)
-                        .height(settled.height)
-                        .clip(true),
-                    )
-                    .on_press(Message::PanelFocus),
-                )
-                .scale(scale)
-                .translate(move |_, _| offset))
-                .x(settled.x)
-                .y(settled.y)
-                .into(),
-            );
+            let content = container(occlude::behind(self.panel_body(), place(child_popup)))
+                .width(self.panel_target().width)
+                .height(settled.height);
+            layers.push(surface::tool_layer(
+                content.into(),
+                settled,
+                p,
+                Message::PanelFocus,
+            ));
         }
-        let child = if child_popup.width <= 0. {
-            None
-        } else if self.panel == Panel::Agent {
-            Some(
-                self.agents
-                    .view(self.locale, true, WORKBENCH.width, self.reduced_motion)
-                    .map(Message::Agents),
-            )
-        } else {
-            self.knowledge
-                .document_view(self.locale, WORKBENCH.width)
-                .map(|document| document.map(Message::Knowledge))
-        };
-        if let Some(child) = child {
-            layers.push(
-                pin(container(iced::widget::themer(Some(style::theme()), child))
-                    .width(child_popup.width)
-                    .height(child_popup.height)
-                    .clip(true))
-                .x(child_popup.x)
-                .y(child_popup.y)
-                .into(),
-            );
+        if let Some(child) = &self.child
+            && child.opacity > 0.
+        {
+            if matches!(child.pane, ChildPane::Preview { .. }) {
+                let opacity = child.opacity;
+                layers.push(
+                    mouse_area(
+                        container(space())
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                            .style(move |_| {
+                                container::Style::default()
+                                    .background(iced::Color::BLACK.scale_alpha(0.5 * opacity))
+                            }),
+                    )
+                    .on_press(Message::Conversation(chat::Message::ClosePreview))
+                    .into(),
+                );
+            }
+            if let Some(previous) = &child.previous {
+                let content =
+                    occlude::behind(self.child_view(previous, child.bounds), place(child.rect));
+                let outgoing = surface::tool_layer(
+                    content,
+                    child.bounds,
+                    child.bounds,
+                    Message::ClosedPaneInput,
+                );
+                layers.push(outgoing.map(|_| Message::ClosedPaneInput));
+            }
+            let content = self.child_view(&child.pane, child.bounds);
+            let in_place = child.previous.is_some()
+                || matches!(child.pane, ChildPane::Devices)
+                || matches!(&child.pane, ChildPane::Agent(id, _) if !id.is_empty());
+            let layer = if in_place && child.animation.is_some() {
+                surface::tool_layer(
+                    occlude::within(content, place(child.rect)),
+                    child.bounds,
+                    child.bounds,
+                    Message::PanelFocus,
+                )
+            } else {
+                surface::tool_layer(content, child.bounds, child.rect, Message::PanelFocus)
+            };
+            layers.push(if child.open {
+                layer
+            } else {
+                layer.map(|_| Message::ClosedPaneInput)
+            });
         }
         container(
             container(stack(layers))

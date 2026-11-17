@@ -350,7 +350,7 @@ fn liberty_glow(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
   c=mix(c,vec3(.90466),ink*(.23+.77*ink));
  }
  if scene.popup.z>0. && scene.size.w>0. {c=mix(c,tool_glass(p,scene.popup,c),scene.size.w);}
- if scene.child_popup.z>0. {c=tool_glass(p,scene.child_popup,c);}
+ if scene.child_popup.z>0. && scene.background.w>0. {c=mix(c,tool_glass(p,scene.child_popup,c),scene.background.w);}
  if scene.mode_effects.y>0. {c=liberty_glow(p,c);}
  return vec4(c,1.);
 }

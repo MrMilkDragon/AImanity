@@ -21,6 +21,7 @@ pub struct Scene {
     pub popup: Rectangle,
     pub popup_opacity: f32,
     pub child_popup: Rectangle,
+    pub child_popup_opacity: f32,
     pub mode_effects: [f32; 4],
     pub mode_motion: [f32; 4],
     pub keyboard_target: Option<usize>,
@@ -442,7 +443,11 @@ impl shader::Program<Message> for Scene {
                     style::GLASS_BLUR,
                     style::BORDER_WIDTH,
                 ],
-                background: style::BACKGROUND.into_linear(),
+                background: {
+                    let mut color = style::BACKGROUND.into_linear();
+                    color[3] = self.child_popup_opacity;
+                    color
+                },
                 mode_effects: self.mode_effects,
                 mode_motion: self.mode_motion,
                 agent_pointers: self.agent_pointers,

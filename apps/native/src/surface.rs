@@ -57,6 +57,42 @@ pub fn tool_motion(anchor: Rectangle, panel: Rectangle, amount: f32) -> Rectangl
     )
 }
 
+pub fn window_progress(elapsed: std::time::Duration, open: bool) -> (f32, bool) {
+    let (duration, curve) = if open {
+        (style::WINDOW_ENTER, [0.2, 1.15, 0.3, 1.])
+    } else {
+        (style::WINDOW_EXIT, [0.32, 0., 0.65, 1.])
+    };
+    let time = (elapsed.as_secs_f32() / duration).min(1.);
+    (style::bezier(time, curve), time == 1.)
+}
+
+pub fn tool_layer<'a, M: Clone + 'a>(
+    content: Element<'a, M>,
+    bounds: Rectangle,
+    frame: Rectangle,
+    focus: M,
+) -> Element<'a, M> {
+    let scale = (frame.width / bounds.width).min(frame.height / bounds.height);
+    let offset = frame.center() - bounds.center();
+    iced::widget::pin(
+        iced::widget::float(
+            iced::widget::mouse_area(
+                container(iced::widget::themer(Some(style::theme()), content))
+                    .width(bounds.width)
+                    .height(bounds.height)
+                    .clip(true),
+            )
+            .on_press(focus),
+        )
+        .scale(scale)
+        .translate(move |_, _| offset),
+    )
+    .x(bounds.x)
+    .y(bounds.y)
+    .into()
+}
+
 pub fn tool_header<'a, M: 'a>(
     title: &'a str,
     viewport_width: f32,

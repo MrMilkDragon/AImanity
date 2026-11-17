@@ -102,8 +102,25 @@ impl Agents {
     pub fn is_editing(&self) -> bool {
         self.current.is_some()
     }
+    pub fn editor(&self) -> Option<(&str, Tab)> {
+        let id = self.current.as_deref()?;
+        Some((id, self.editors.get(id)?.tab))
+    }
     pub fn adding(&self) -> bool {
         self.current.as_deref() == Some("")
+    }
+    pub fn prune_editors(&mut self, keep_current: bool) {
+        self.editors.retain(|id, editor| {
+            (keep_current && self.current.as_ref() == Some(id))
+                || self
+                    .registry
+                    .agents
+                    .iter()
+                    .find(|agent| agent.id == editor.agent.id)
+                    .map_or(editor.agent.revision == 0, |agent| {
+                        agent.revision == editor.agent.revision
+                    })
+        });
     }
     pub fn update(&mut self, message: Message, client: &Connection) -> Task<Message> {
         if self.busy && matches!(message, Message::Field(..) | Message::Provider(_)) {
@@ -112,6 +129,7 @@ impl Agents {
         match message {
             Message::Measured(_) | Message::Devices => {}
             Message::New | Message::Edit(_) => {
+                self.prune_editors(false);
                 let id = if let Message::Edit(id) = message {
                     id
                 } else {
@@ -190,15 +208,7 @@ impl Agents {
                 match result {
                     Ok(registry) => {
                         self.registry = registry;
-                        self.editors.retain(|_, editor| {
-                            self.registry
-                                .agents
-                                .iter()
-                                .find(|a| a.id == editor.agent.id)
-                                .map_or(editor.agent.revision == 0, |a| {
-                                    a.revision == editor.agent.revision
-                                })
-                        });
+                        self.prune_editors(true);
                         self.current = None;
                         self.deleting = None;
                         self.error.clear();
@@ -391,11 +401,12 @@ impl Agents {
     pub fn view<'a>(
         &'a self,
         locale: crate::locale::Locale,
-        editing: bool,
+        editing_tab: Option<(&str, Tab)>,
         width: f32,
         reduced_motion: bool,
     ) -> Element<'a, Message> {
-        let adding = editing && self.adding();
+        let adding = editing_tab.is_some_and(|(id, _)| id.is_empty());
+        let editing = editing_tab.is_some();
         let control = style::REGISTRY_CONTROL;
         let (_, _, header_height) = style::window_insets(width);
         let padding = tool_padding(width);
@@ -406,8 +417,10 @@ impl Agents {
         } else {
             "Agent"
         };
-        let actions = if editing {
+        let actions = if adding {
             row![]
+        } else if editing {
+            row![tool_action(Icon::Close, Some(Message::Back))]
         } else {
             let open = self.adding();
             row![tool_action(
@@ -432,11 +445,8 @@ impl Agents {
             ]
             .spacing(6)
         };
-        if let Some(editor) = self
-            .current
-            .as_ref()
-            .filter(|_| editing)
-            .and_then(|id| self.editors.get(id))
+        if let Some((id, current_tab)) = editing_tab
+            && let Some(editor) = self.editors.get(id)
         {
             if editor.agent.revision > 0 {
                 heading = heading.push(
@@ -451,7 +461,7 @@ impl Agents {
                         .map(|(tab, label)| {
                             tab_button(
                                 label,
-                                editor.tab == tab,
+                                current_tab == tab,
                                 (!self.busy).then_some(Message::Tab(tab)),
                             )
                         }))
@@ -463,11 +473,11 @@ impl Agents {
             if !self.error.is_empty() {
                 body = body.push(text(&self.error).size(14).style(style::error_text));
             }
-            if editor.tab != Tab::Model {
+            if current_tab != Tab::Model {
                 body = body.push(
                     editor
                         .details
-                        .view(editor.tab, locale)
+                        .view(current_tab, locale)
                         .map(|m| Message::Detail(editor.agent.id.clone(), m)),
                 );
                 footer = footer.push(space::horizontal()).push(

@@ -1132,10 +1132,9 @@ impl Chat {
         ]
         .into()
     }
-    pub fn preview_bounds(&self, viewport: Size) -> Option<Rectangle> {
-        let file = self.preview.as_ref()?;
+    pub fn preview_bounds(&self, file_id: &str, viewport: Size) -> Rectangle {
         let width = (viewport.width * 0.9).min(960.);
-        let image_height = match self.previews.get(&file.id) {
+        let image_height = match self.previews.get(file_id) {
             Some(Some(image::Handle::Rgba {
                 width: native_width,
                 height,
@@ -1146,22 +1145,24 @@ impl Chat {
             _ => 0.,
         };
         let height = 82. + image_height;
-        Some(Rectangle::new(
+        Rectangle::new(
             Point::new(
                 (viewport.width - width) * 0.5,
                 (viewport.height - height) * 0.5,
             ),
             Size::new(width, height),
-        ))
+        )
     }
 
-    pub fn preview_view(&self, bounds: Rectangle) -> Element<'_, Message> {
-        let Some(file) = &self.preview else {
-            return space().into();
-        };
+    pub fn preview_view<'a>(
+        &'a self,
+        file_id: &str,
+        name: &'a str,
+        bounds: Rectangle,
+    ) -> Element<'a, Message> {
         let mut content = column![
             container(
-                text(&file.name)
+                text(name)
                     .size(18)
                     .font(Font {
                         weight: font::Weight::Semibold,
@@ -1174,7 +1175,7 @@ impl Chat {
             .clip(true),
         ]
         .spacing(16);
-        if let Some(Some(handle)) = self.previews.get(&file.id) {
+        if let Some(Some(handle)) = self.previews.get(file_id) {
             content = content.push(
                 image(handle.clone())
                     .content_fit(iced::ContentFit::Contain)
