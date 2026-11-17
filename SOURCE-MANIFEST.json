@@ -73,8 +73,8 @@
     },
     {
       "path": ".github/workflows/windows-installer-acceptance.yml",
-      "size": 3126,
-      "sha256": "14f0710dcc3ad7e29c4f53b38f042d196dab6dcfae7b20326a7620a4695f8202"
+      "size": 3085,
+      "sha256": "64e8772d0586ca292dc846eb4eb7d62e917fd27d83ce0b285db1a95b4f7868c3"
     },
     {
       "path": ".github/workflows/windows-qemu.yml",
@@ -1758,8 +1758,8 @@
     },
     {
       "path": "crates/host-runtime/src/bin/qualify-windows-installer.rs",
-      "size": 26817,
-      "sha256": "0e4a5e9736e4b020c38154e7aa16207ad48eb59400a93d9db1b7aa2116a96ff8"
+      "size": 32726,
+      "sha256": "5c38ec1f76798e10e6124e595c7cab46468b11d5f2374eb6269f3a98f3ca1e92"
     },
     {
       "path": "crates/host-runtime/src/bin/wsl-host.rs",

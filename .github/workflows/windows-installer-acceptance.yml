@@ -62,6 +62,5 @@ jobs:
       - name: Install and drive the real first-run desktop client
         env:
           AIMANITY_QA_SOURCE: ${{ inputs.source_sha }}
-          AIMANITY_QA_ANDROID_AUDIO: '1'
         shell: pwsh
         run: cargo run --release --locked -p ai-phone-host-runtime --bin qualify-windows-installer

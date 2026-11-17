@@ -1,6 +1,8 @@
 use ai_phone_api::wire::{
-    ControlState, DeviceActionRequest, DeviceActionResponse, InputAction, RegistryRequest,
-    RegistryState, TakeControlRequest, TapAction, device_action_request::Action,
+    ControlState, DesktopActionRequest, DesktopObservation, DesktopRequest, DeviceActionRequest,
+    DeviceActionResponse, FileListing, FileLocation, FileManageRequest, FileManageResult,
+    FileOperation, InputAction, RegistryRequest, RegistryState, TakeControlRequest, TapAction,
+    device_action_request::Action,
 };
 use ai_phone_host_runtime::vm_control;
 use prost::Message;
@@ -27,6 +29,7 @@ const UI_DUMP: &str = "/sdcard/dysprosium-install.xml";
 const EDIT: &str = "android:id/search_src_text";
 const CLEAR: &str = "android:id/search_close_btn";
 const PHONE: &str = "http://127.0.0.1:17862";
+const ASSISTANT: &str = "http://127.0.0.1:17863";
 const MEDIA: &str = "http://127.0.0.1:17865";
 const SERIAL: &str = "127.0.0.1:5565";
 
@@ -298,6 +301,35 @@ async fn verify_frame(http: &Client, token: &str, path: &str, device: &str) -> R
     Err(format!("{device} did not send a complete JPEG").into())
 }
 
+async fn audio_levels(mut pcm: Response) -> Result<(i16, i16, usize)> {
+    let mut levels = (0, 0, 0);
+    let mut tail = None;
+    while let Some(chunk) = pcm.chunk().await? {
+        let mut bytes = tail.into_iter().chain(chunk.iter().copied());
+        tail = None;
+        while let Some(lo) = bytes.next() {
+            let Some(hi) = bytes.next() else {
+                tail = Some(lo);
+                break;
+            };
+            let sample = i16::from_le_bytes([lo, hi]);
+            levels.0 = levels.0.min(sample);
+            levels.1 = levels.1.max(sample);
+            levels.2 += 1;
+        }
+        if levels.0 < 0 && levels.1 > 0 {
+            return Ok(levels);
+        }
+    }
+    Err("Expected audible 48 kHz stereo PCM".into())
+}
+
+fn action_id() -> Result<String> {
+    let mut random = [0; 16];
+    getrandom::fill(&mut random)?;
+    Ok(hex::encode(random))
+}
+
 struct Phone<'a> {
     http: &'a Client,
     token: &'a str,
@@ -307,9 +339,7 @@ struct Phone<'a> {
 
 impl Phone<'_> {
     async fn action(&self, action: Action) -> Result<DeviceActionResponse> {
-        let mut random = [0; 16];
-        getrandom::fill(&mut random)?;
-        let action_id = hex::encode(random);
+        let action_id = action_id()?;
         let result: DeviceActionResponse = post(
             self.http,
             &format!("{PHONE}/v1/action"),
@@ -429,10 +459,7 @@ async fn verify_android(android: &Android, phone: &Phone<'_>) -> Result<()> {
         "{}",
         json!({"androidRoot": true, "androidFrame": [720, 1440], "androidWorkbenchTouch": true, "androidWorkbenchChinese": true, "linuxJpeg": true})
     );
-    if env::var("AIMANITY_QA_ANDROID_AUDIO").as_deref() == Ok("1") {
-        verify_audio(android, phone).await?;
-    }
-    Ok(())
+    verify_audio(android, phone).await
 }
 
 async fn verify_audio(android: &Android, phone: &Phone<'_>) -> Result<()> {
@@ -450,26 +477,10 @@ async fn verify_audio(android: &Android, phone: &Phone<'_>) -> Result<()> {
         )?;
     }
     let result = async {
-        let mut pcm = media(phone.http, phone.token, "/audio", "audio/l16;rate=48000;channels=2", 16 * SECOND).await?;
+        let pcm = media(phone.http, phone.token, "/audio", "audio/l16;rate=48000;channels=2", 16 * SECOND).await?;
         let playback = android.shell("am start -W -a android.intent.action.VIEW -d file:///product/media/audio/alarms/Neon.ogg -t audio/ogg -n com.android.music/.AudioPreview").await?;
         check(playback.lines().any(|line| line.trim() == "Status: ok"), "play real Android system audio")?;
-        let (mut min, mut max, mut samples) = (0, 0, 0);
-        let mut partial = Vec::new();
-        while min == 0 || max == 0 {
-            let Some(chunk) = pcm.chunk().await? else { break };
-            partial.extend_from_slice(&chunk);
-            let mut pairs = partial.chunks_exact(2);
-            for bytes in &mut pairs {
-                let sample = i16::from_le_bytes([bytes[0], bytes[1]]);
-                min = min.min(sample);
-                max = max.max(sample);
-                samples += 1;
-            }
-            let remainder = pairs.remainder().first().copied();
-            partial.clear();
-            partial.extend(remainder);
-        }
-        check(min < 0 && max > 0, "installed Android audio emitted nonzero stereo PCM")?;
+        let (min, max, samples) = audio_levels(pcm).await?;
         println!("{}", json!({"androidAudio": true, "rate": 48000, "channels": 2, "samples": samples, "min": min, "max": max}));
         Ok(())
     }.await;
@@ -483,6 +494,183 @@ async fn verify_audio(android: &Android, phone: &Phone<'_>) -> Result<()> {
         Ok(())
     };
     result.and(stopped.map(drop)).and(uninstalled)
+}
+
+async fn verify_desktop(http: &Client, assistant: &str, media_token: &str, id: &str) -> Result<()> {
+    let request = DesktopRequest {
+        device_id: id.into(),
+    };
+    let initial: DesktopObservation = post(
+        http,
+        &format!("{ASSISTANT}/v1/desktop/control"),
+        assistant,
+        request.clone(),
+        10 * SECOND,
+    )
+    .await?;
+    let observe = async || {
+        post::<_, DesktopObservation>(
+            http,
+            &format!("{ASSISTANT}/v1/desktop/observe"),
+            assistant,
+            request.clone(),
+            10 * SECOND,
+        )
+        .await
+    };
+    let act = async |mut action: DesktopActionRequest| {
+        let view = observe().await?;
+        check(view.epoch == initial.epoch, "Linux desktop control changed")?;
+        action.device_id = id.into();
+        action.action_id = action_id()?;
+        action.observation_id = view.observation_id;
+        action.epoch = view.epoch;
+        let receipt: DesktopObservation = post(
+            http,
+            &format!("{ASSISTANT}/v1/desktop/action"),
+            assistant,
+            action,
+            12 * SECOND,
+        )
+        .await?;
+        check(
+            receipt.device_id == id && receipt.epoch == initial.epoch,
+            "Linux desktop action receipt",
+        )
+    };
+    let key = async |key: &str| {
+        act(DesktopActionRequest {
+            kind: "key".into(),
+            key: key.into(),
+            ..Default::default()
+        })
+        .await
+    };
+    let text = async |text: String| {
+        act(DesktopActionRequest {
+            kind: "text".into(),
+            text,
+            ..Default::default()
+        })
+        .await
+    };
+    // The packaged desktop menu begins Browser, Files, Terminal.
+    act(DesktopActionRequest {
+        kind: "click".into(),
+        x: (initial.width / 2).try_into()?,
+        y: (initial.height / 2).try_into()?,
+        button: 3,
+        ..Default::default()
+    })
+    .await?;
+    for button in ["Home", "Down", "Down", "Return"] {
+        key(button).await?;
+    }
+    timeout(6 * SECOND, async {
+        loop {
+            if observe()
+                .await?
+                .application_id
+                .eq_ignore_ascii_case("linux:xterm")
+            {
+                return Ok::<(), Box<dyn std::error::Error + Send + Sync>>(());
+            }
+            sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await
+    .map_err(|_| "Linux desktop terminal did not open")??;
+
+    let sample = format!("原生中文回执-{}", &action_id()?[..8]);
+    let name = format!("{sample}.txt");
+    let started = Instant::now();
+    text(format!("printf %s '{sample}' > \"$HOME/Files/{name}\"")).await?;
+    let paste_ms = started.elapsed().as_millis();
+    key("Return").await?;
+    let saved = timeout(6 * SECOND, async {
+        loop {
+            let list: FileListing = post(
+                http,
+                &format!("{ASSISTANT}/v1/files/list"),
+                assistant,
+                FileLocation {
+                    device_id: id.into(),
+                    path: "/home/ai/Files".into(),
+                },
+                8 * SECOND,
+            )
+            .await?;
+            if let Some(saved) = list.entries.into_iter().find(|row| row.name == name) {
+                return Ok::<_, Box<dyn std::error::Error + Send + Sync>>(saved);
+            }
+            sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await
+    .map_err(|_| "Linux desktop input file was not written")??;
+    let copied: FileManageResult = post(
+        http,
+        &format!("{ASSISTANT}/v1/files/manage"),
+        assistant,
+        FileManageRequest {
+            operation: FileOperation::Copy.into(),
+            sources: vec![FileLocation {
+                device_id: id.into(),
+                path: saved.path,
+            }],
+            target: Some(FileLocation {
+                path: "/".into(),
+                ..Default::default()
+            }),
+            name: String::new(),
+        },
+        8 * SECOND,
+    )
+    .await?;
+    let path = copied
+        .results
+        .into_iter()
+        .next()
+        .filter(|result| result.error.is_empty())
+        .and_then(|result| result.target)
+        .ok_or("Linux desktop file copy failed")?
+        .path;
+    let bytes = http
+        .get(format!("{ASSISTANT}/v1/workbench/file"))
+        .query(&[("path", path.trim_start_matches('/'))])
+        .bearer_auth(assistant)
+        .timeout(8 * SECOND)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+    check(
+        bytes.as_ref() == sample.as_bytes(),
+        "Linux desktop input differs from the saved UTF-8 file",
+    )?;
+    println!(
+        "{}",
+        json!({"linuxChinese": true, "pasteMs": paste_ms, "bytes": bytes.len()})
+    );
+
+    let pcm = media(
+        http,
+        media_token,
+        "/desktop/audio",
+        "audio/l16;rate=48000;channels=2",
+        16 * SECOND,
+    )
+    .await?;
+    let started = Instant::now();
+    text("tone=$(mktemp --suffix=.wav); ffmpeg -loglevel error -y -f lavfi -i sine=frequency=660:duration=1.5 \"$tone\" && paplay --device=aiphone \"$tone\"; rm -f \"$tone\"".into()).await?;
+    key("Return").await?;
+    let (min, max, samples) = audio_levels(pcm).await?;
+    println!(
+        "{}",
+        json!({"linuxAudio": true, "firstSignalMs": started.elapsed().as_millis(), "rate": 48000, "channels": 2, "samples": samples, "min": min, "max": max})
+    );
+    Ok(())
 }
 
 async fn watch_android(home: PathBuf, profile: PathBuf) -> Result<()> {
@@ -662,19 +850,19 @@ async fn verify_installed(
     let http = Client::builder().no_proxy().build()?;
     let registry: RegistryState = post(
         &http,
-        "http://127.0.0.1:17863/v1/registry/state",
+        &format!("{ASSISTANT}/v1/registry/state"),
         credentials.assistant_token.trim(),
         RegistryRequest {},
         10 * SECOND,
     )
     .await?;
-    check(
-        registry
-            .devices
-            .iter()
-            .any(|device| device.kind == "desktop" && device.runtime_state == "managed"),
-        "installed desktop is registered",
-    )?;
+    let desktop = registry
+        .devices
+        .iter()
+        .find(|device| device.kind == "desktop" && device.runtime_state == "managed")
+        .ok_or("installed desktop is registered")?
+        .id
+        .clone();
     let phone = registry
         .devices
         .into_iter()
@@ -703,7 +891,12 @@ async fn verify_installed(
         id: phone.id,
         epoch: control.control_epoch,
     };
-    verify_android(&Android::open(home, profile)?, &phone).await
+    let android = Android::open(home, profile)?;
+    tokio::try_join!(
+        verify_android(&android, &phone),
+        verify_desktop(&http, credentials.assistant_token.trim(), token, &desktop),
+    )?;
+    Ok(())
 }
 
 #[tokio::main(flavor = "current_thread")]
