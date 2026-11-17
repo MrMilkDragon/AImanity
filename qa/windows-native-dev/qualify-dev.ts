@@ -33,7 +33,7 @@ const prepare = Bun.spawn([program, "--prepare-windows-host"], {cwd:dev, env, st
 equal(await prepare.exited, 0, "WHPX available on this disposable QA runner without pending restart");
 const launch = (file: string) => Bun.spawn([program], { cwd: dev, env, stdout: "ignore", stderr: Bun.file(file) });
 let app = launch(log);
-function gui(action: "fresh" | "capture" | "diagnostic" | "close") {
+function gui(action: "fresh" | "capture" | "diagnostic" | "keyboard" | "close") {
   return Bun.spawn(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
     "../qa/windows-native-dev/window.ps1", "-AppId", String(app.pid), "-Action", action],
   { env, stdout: "inherit", stderr: "inherit" }).exited;
@@ -143,6 +143,10 @@ try {
   const request = join(home, "request.json");
   const requestDeadline = performance.now() + 7500;
   while (!existsSync(request) && performance.now() < requestDeadline) await Bun.sleep(250);
+  if (!existsSync(request)) {
+    equal(await gui("keyboard"), 0, "observe the installed window after keyboard input");
+    console.log(`Setup request after Tab, Enter and Space: ${existsSync(request)}`);
+  }
   ok(existsSync(request), "Start installation must persist the native device setup request");
   console.log(`Native device setup request persisted after the Win32 installation click: ${Math.round(performance.now()-started)} ms`);
   const readyDeadline = performance.now() + 600000;

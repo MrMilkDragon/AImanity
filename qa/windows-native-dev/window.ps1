@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)] [int] $AppId,
-  [Parameter(Mandatory = $true)] [ValidateSet("fresh", "capture", "diagnostic", "close")] [string] $Action
+  [Parameter(Mandatory = $true)] [ValidateSet("fresh", "capture", "diagnostic", "keyboard", "close")] [string] $Action
 )
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Drawing
@@ -16,6 +16,7 @@ public static class NativeQaInput {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int key);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, IntPtr extra);
 }
 '@
@@ -56,12 +57,21 @@ function Capture([string] $name) {
   $bitmap.Save((Join-Path $env:AIMANITY_QA_ROOT $name), [System.Drawing.Imaging.ImageFormat]::Png)
   return $bitmap
 }
-function Click([double] $rx, [double] $ry) {
+function Click([double] $rx, [double] $ry, [bool] $trace = $false) {
   if ([NativeQaInput]::GetForegroundWindow() -ne $handle) { throw "Foreground changed. No input sent." }
   if (![NativeQaInput]::SetCursorPos([int]($origin.X + $width*$rx), [int]($origin.Y + $height*$ry))) { throw "Could not position QA cursor." }
+  Start-Sleep -Milliseconds 200
+  if ($trace) { (Capture "native-installation-hover.png").Dispose() }
+  if ([NativeQaInput]::GetForegroundWindow() -ne $handle) { throw "Foreground changed before DOWN. No input sent." }
   [NativeQaInput]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero)
-  Start-Sleep -Milliseconds 70
-  [NativeQaInput]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero)
+  try {
+    Start-Sleep -Milliseconds 190
+    if ($trace) {
+      Write-Host ('Windows DOWN hardware state={0}; foreground={1}' -f ([NativeQaInput]::GetAsyncKeyState(1) -lt 0), ([NativeQaInput]::GetForegroundWindow() -eq $handle))
+      (Capture "native-installation-pressed.png").Dispose()
+    }
+  } finally { [NativeQaInput]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero) }
+  if ($trace) { Write-Host ('Windows UP hardware state={0}; foreground={1}' -f ([NativeQaInput]::GetAsyncKeyState(1) -ge 0), ([NativeQaInput]::GetForegroundWindow() -eq $handle)) }
 }
 if ($Action -eq "capture") {
   (Capture "native-workbench.png").Dispose()
@@ -70,6 +80,13 @@ if ($Action -eq "capture") {
 }
 if ($Action -eq "diagnostic") {
   (Capture "native-installation-terminal.png").Dispose()
+  return
+}
+if ($Action -eq "keyboard") {
+  Add-Type -AssemblyName System.Windows.Forms
+  [System.Windows.Forms.SendKeys]::SendWait("{TAB}{ENTER} ")
+  Start-Sleep -Milliseconds 900
+  (Capture "native-installation-keyboard.png").Dispose()
   return
 }
 (Capture "native-language.png").Dispose()
@@ -88,7 +105,7 @@ try {
   }
   if ($hits.Count -lt 5) { throw "Install button did not render after choosing English." }
   $center = ($hits[0] + $hits[-1]) / 2
-  Click .85 ($center/$height)
+  Click .85 ($center/$height) $true
   Start-Sleep -Milliseconds 1300
   (Capture "native-installation-post-click.png").Dispose()
   Write-Host ('Native GUI selected English and clicked x={0}, y={1} inside the visible install button.' -f [int]($width*.85), [int]$center)

@@ -93,6 +93,9 @@ jobs:
           path: |
             ${{ env.AIMANITY_QA_ROOT }}/native-language.png
             ${{ env.AIMANITY_QA_ROOT }}/native-devices.png
+            ${{ env.AIMANITY_QA_ROOT }}/native-installation-hover.png
+            ${{ env.AIMANITY_QA_ROOT }}/native-installation-pressed.png
+            ${{ env.AIMANITY_QA_ROOT }}/native-installation-keyboard.png
             ${{ env.AIMANITY_QA_ROOT }}/native-installation-post-click.png
             ${{ env.AIMANITY_QA_ROOT }}/native-installation-terminal.png
             ${{ env.AIMANITY_QA_ROOT }}/native-workbench.png
