@@ -127,7 +127,7 @@ fn omitted(path: &str, name: &str) -> bool {
         || name.starts_with("._")
 }
 
-fn files(root: &Path, directory: &str, result: &mut Vec<String>) -> Result<()> {
+pub(super) fn files(root: &Path, directory: &str, result: &mut Vec<String>) -> Result<()> {
     let path = root.join(directory);
     if !path.try_exists()? {
         return Ok(());

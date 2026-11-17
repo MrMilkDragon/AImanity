@@ -10,10 +10,9 @@ import {
 import { join, basename } from "node:path";
 import { ROOT, digest, output, nativeProgram } from "./process";
 import { sourceFiles, type SourceFile } from "./source";
-import { json, save, records } from "./inventory";
-import { writeTar, tarEntries, entryBytes } from "./archive";
+import { collect, json, save, records } from "./inventory";
+import { buildReleaseTools, writeTar, tarEntries, entryBytes } from "./archive";
 import { prepareServices } from "./native-build";
-import { preparePhone } from "./phone-apps";
 import { prepareContainerHost } from "./container-host";
 import { hostResources } from "./resources";
 import { stageWindowsVm, type WindowsVmInputs } from "./windows-vm-payload";
@@ -52,7 +51,10 @@ export async function preparePayload(
       "native-services",
       () => prepareServices(root, options.linuxOcr),
     ],
-    ["phoneApps", "phone-apps", () => preparePhone(root)],
+    ["phoneApps", "phone-apps", () => {
+      output([buildReleaseTools(root), "phone-apps", "verify", root], { cwd: root });
+      return collect(join(root, ".tools/phone-apps"), "runtime/phone-apps").files;
+    }],
     ["containerHost", "container-host", () => prepareContainerHost(root)],
   ];
   for (const [key, name, produce] of producers)

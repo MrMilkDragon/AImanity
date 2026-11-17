@@ -6,7 +6,7 @@ The optional `phone-apps` runtime component carries AI Phone's Unicode input/not
 
 ```sh
 . ./scripts/android-env.sh
-./scripts/bun scripts/artifacts.ts phone --build
+cargo run --quiet --locked -p ai-phone-release-tools -- phone-apps build .
 ./scripts/bun scripts/build-client.ts --platform macos \
   --with-service-runtime --with-phone-apps \
   --android-runtime /path/to/android.payload

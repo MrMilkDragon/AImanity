@@ -7,7 +7,8 @@ import {
 } from "node:fs";
 import { join, resolve, basename } from "node:path";
 import { randomUUID } from "node:crypto";
-import { run, output, digest, download, bunProgram } from "./process";
+import { run, output, digest, download } from "./process";
+import { buildReleaseTools } from "./archive";
 import { json } from "./inventory";
 import { buildImages } from "./image-capsule";
 import { verifyGuest } from "./guest-build";
@@ -77,11 +78,7 @@ export function compilerEnvironment(sdk: string): NodeJS.ProcessEnv {
   };
 }
 export function prepareApps(root: string, env: NodeJS.ProcessEnv) {
-  run(
-    [bunProgram(root), join(root, "scripts/artifacts.ts"), "phone", "--build"],
-    { cwd: root, env },
-  );
-  return json(join(root, ".tools/phone-apps/manifest.json"));
+  return JSON.parse(output([buildReleaseTools(root), "phone-apps", "build", root], { cwd: root, env }));
 }
 export function databaseImage(root: string, role: "postgres" | "redis") {
   const compose = readFileSync(join(root, "compose.yaml"), "utf8"),

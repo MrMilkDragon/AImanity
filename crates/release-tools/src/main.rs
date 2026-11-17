@@ -2,6 +2,7 @@ mod android_package;
 mod assets;
 mod capsule;
 mod dependency_audit;
+mod phone_apps;
 mod source;
 mod update_feed;
 #[cfg(unix)]
@@ -29,7 +30,7 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         "stage-windows-android-audio" => assets::windows_audio(rest).map(|()| None),
         "audit-dependencies" => dependency_audit::run(rest).map(|()| None),
         "build-android-apk" => android_package::build(rest).map(Some),
-        "verify-android-apk" => android_package::verify(rest).map(Some),
+        "phone-apps" => phone_apps::run(rest).map(Some),
         "decode-capsule" => {
             let [codec] = rest else {
                 return Err("decode-capsule requires gzip or xz".into());

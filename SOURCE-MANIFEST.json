@@ -53,8 +53,8 @@
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 4683,
-      "sha256": "ba8c438a54e93cbc9b122d6bf08cfb02756ec72f131d3792dd9584f2dca024ff"
+      "size": 4768,
+      "sha256": "c50367d075b728a30ce4dd41b61c2a5f0623c6a3c3aff59023707a5d57f3d92d"
     },
     {
       "path": ".github/workflows/source.yml",
@@ -1858,8 +1858,8 @@
     },
     {
       "path": "crates/host-runtime/src/linux_vm.rs",
-      "size": 6452,
-      "sha256": "5a9670b3d0e9f56f1f872759e937e5873e5dc27239c2b41463d7c40761a3f777"
+      "size": 6425,
+      "sha256": "6797f6391b2de3f68d8af0aa1c018b2c17fd1029672c3ace4f79bf628efee628"
     },
     {
       "path": "crates/host-runtime/src/managed_engine.rs",
@@ -2213,13 +2213,13 @@
     },
     {
       "path": "crates/release-tools/src/android_package.rs",
-      "size": 6755,
-      "sha256": "233db70bdb1d1e9237f13f4a14e8ab642267bcf3071b0e7d61cae7ab9c28d581"
+      "size": 7008,
+      "sha256": "b3c8029364508071efa76ebc95e4907c84a7775a60bddf935cfc490e0087759a"
     },
     {
       "path": "crates/release-tools/src/assets.rs",
-      "size": 6856,
-      "sha256": "e5da830b5db404987a2a70623ef2e6b8ee11cab7686668b3e79f7cb3023c58c3"
+      "size": 6867,
+      "sha256": "f6989a019eb51b794b639da5c73171ec3b13a6723a64c9b86058f7608a7e1020"
     },
     {
       "path": "crates/release-tools/src/capsule.rs",
@@ -2234,12 +2234,17 @@
     {
       "path": "crates/release-tools/src/main.rs",
       "size": 3786,
-      "sha256": "1481d2d7a9cc4707a086fdb551d83fcd025606364d2bbfd993ef0c34dc30a85b"
+      "sha256": "b4e7f52d3075c4291dae0ddee3e761183abbd2ffbace646f6db1ace1e3969203"
+    },
+    {
+      "path": "crates/release-tools/src/phone_apps.rs",
+      "size": 5246,
+      "sha256": "b7cc08c160792b9e6fbaf7d9de08a3e0ed5960729f6170d14933267a505c606f"
     },
     {
       "path": "crates/release-tools/src/source.rs",
-      "size": 19166,
-      "sha256": "287e92db9cc7565743981cf04a3a73c3b00964bdb57ae7803234779cb7030769"
+      "size": 19177,
+      "sha256": "3fcc55acb8ebfd3418583f1fed9070f4eb447223f5a8d317317fb0a5fcb9a860"
     },
     {
       "path": "crates/release-tools/src/update_feed.rs",
@@ -2463,8 +2468,8 @@
     },
     {
       "path": "docs/public/engineering/phone-apps.md",
-      "size": 5962,
-      "sha256": "65bc2a7a7094e59a0f136d0a5cb2a1f1fae925ac853b4a432e56b8a528adcbe1"
+      "size": 5988,
+      "sha256": "238df2ad5c8492b853c3110ec722f64f1a3598c15294f35328f56b2b5c0fde47"
     },
     {
       "path": "docs/public/engineering/private-install-state.md",
@@ -3288,13 +3293,13 @@
     },
     {
       "path": "scripts/android-install-home.sh",
-      "size": 474,
-      "sha256": "c24956909409760776f2f14623b2317b249f4d4731165ee073e92e9af4b7e1bf"
+      "size": 649,
+      "sha256": "5dd7c3889795ec75e12ea1f037d5bf91e6e21c74a9615ea4e1e3377e7eabeb12"
     },
     {
       "path": "scripts/android-install-input.sh",
-      "size": 627,
-      "sha256": "3680643bee9ae0c99a1fd202b40d65d248c38126c8a667c64b60efd4b49bab29"
+      "size": 680,
+      "sha256": "998b632dd1093bd651598a5a08e74da62a275700796b299d8d2d75a23bd34228"
     },
     {
       "path": "scripts/android-maintenance",
@@ -3323,8 +3328,8 @@
     },
     {
       "path": "scripts/artifacts.ts",
-      "size": 704,
-      "sha256": "2ddc3598bd9d223be3eb1499fbcae16726d5952dd23cd9f82b739577f9f36b49"
+      "size": 353,
+      "sha256": "0dc3bf94f99a529077c6f6bac071a56be250b1736254349409b74164b2d5cd89"
     },
     {
       "path": "scripts/assistant-start.sh",
@@ -3453,8 +3458,8 @@
     },
     {
       "path": "scripts/tooling/client-payload.ts",
-      "size": 6244,
-      "sha256": "6ec8ddfcfc7b10989393a5859a34e665e4bbf3b3746b517643cb7abbe09fc02d"
+      "size": 6385,
+      "sha256": "9a6168b5b7c6d28dc3e61119d3edbc1bb636ddd02fbac0110b99cd66a5f92e94"
     },
     {
       "path": "scripts/tooling/container-host.ts",
@@ -3473,8 +3478,8 @@
     },
     {
       "path": "scripts/tooling/factory.ts",
-      "size": 5517,
-      "sha256": "66a69e1a2051c97d6668807d37ca9d9962a0cd7207eef3637954191ab9b0043d"
+      "size": 5479,
+      "sha256": "38a1d4ee6783e623d343b195a379703a9e292d852aa0752dd4da991889aa2df8"
     },
     {
       "path": "scripts/tooling/guest-build.ts",
@@ -3525,11 +3530,6 @@
       "path": "scripts/tooling/native-check.ts",
       "size": 6204,
       "sha256": "2e194281d1a4057e3c3cf6db13c64da970b3148329705ea1eb8ddaf43609723c"
-    },
-    {
-      "path": "scripts/tooling/phone-apps.ts",
-      "size": 4624,
-      "sha256": "1acb5d1265bc39344abd730678bda51182c0dc10fb0476d1bcfa5a0a6bd8ebda"
     },
     {
       "path": "scripts/tooling/process.ts",

@@ -55,7 +55,7 @@ where
     Ok(received == size && format!("{:x}", hash.finalize()) == digest)
 }
 
-fn stage_pin<D: Digest>(url: &str, path: &Path, size: u64, digest: &str) -> Result<()>
+pub(super) fn stage_pin<D: Digest>(url: &str, path: &Path, size: u64, digest: &str) -> Result<()>
 where
     sha2::digest::Output<D>: std::fmt::LowerHex,
 {

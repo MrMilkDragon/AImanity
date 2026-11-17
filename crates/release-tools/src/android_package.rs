@@ -20,10 +20,14 @@ pub fn select(files: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-fn sdk() -> Result<PathBuf> {
+pub(super) fn sdk() -> Result<PathBuf> {
     Ok(env::var_os("ANDROID_HOME")
         .map(PathBuf::from)
         .ok_or("ANDROID_HOME is required")?)
+}
+
+fn jdk() -> Result<PathBuf> {
+    Ok(PathBuf::from(env::var_os("JAVA_HOME").ok_or("JAVA_HOME is required")?).join("bin"))
 }
 
 fn program(directory: &Path, name: &str, extension: &str) -> Command {
@@ -60,7 +64,12 @@ fn matching_files(folder: &Path, extension: &str, output: &mut Vec<PathBuf>) -> 
     Ok(())
 }
 
-fn inspect(tools: &Path, apk: &Path, package: &str, pin: Option<&OsStr>) -> Result<Value> {
+pub(super) fn inspect(
+    tools: &Path,
+    apk: &Path,
+    package: &str,
+    pin: Option<&OsStr>,
+) -> Result<Value> {
     let certificates = program(tools, "apksigner", "bat")
         .args(["verify", "--print-certs"])
         .arg(apk)
@@ -93,15 +102,33 @@ fn inspect(tools: &Path, apk: &Path, package: &str, pin: Option<&OsStr>) -> Resu
     Ok(json!({"package": package, "signer_sha256": signer}))
 }
 
-pub fn verify(arguments: &[OsString]) -> Result<Value> {
-    let [apk, package, certificate] = arguments else {
-        return Err("verify-android-apk requires the file, package and signing certificate".into());
-    };
-    inspect(
-        &sdk()?.join("build-tools/35.0.0"),
-        Path::new(apk),
-        package.to_str().ok_or("Invalid Android package")?,
-        Some(certificate),
+fn compile(sdk: &Path, sources: Vec<PathBuf>, classes: &Path, dex: &Path) -> Result<()> {
+    let platform = sdk.join("platforms/android-35/android.jar");
+    fs::create_dir(classes)?;
+    run(program(&jdk()?, "javac", "exe")
+        .args(["--release", "8", "-classpath"])
+        .arg(&platform)
+        .arg("-d")
+        .arg(classes)
+        .args(sources))?;
+    let mut compiled = Vec::new();
+    matching_files(classes, "class", &mut compiled)?;
+    compiled.sort_unstable();
+    run(program(&sdk.join("build-tools/35.0.0"), "d8", "bat")
+        .arg("--lib")
+        .arg(&platform)
+        .args(["--min-api", "26", "--output"])
+        .arg(dex)
+        .args(compiled))
+}
+
+pub(super) fn notification_probe(source: PathBuf, destination: &Path) -> Result<()> {
+    let build = tempfile::tempdir()?;
+    compile(
+        &sdk()?,
+        vec![source],
+        &build.path().join("classes"),
+        destination,
     )
 }
 
@@ -113,20 +140,19 @@ pub fn build(arguments: &[OsString]) -> Result<Value> {
         Some(name @ ("home" | "input")) => name,
         _ => return Err("Android app role must be home or input".into()),
     };
-    let root = std::path::absolute(root)?;
+    let (apk, mut receipt) = build_app(&std::path::absolute(root)?, role)?;
+    receipt["file"] = serde_json::to_value(apk)?;
+    Ok(receipt)
+}
+
+pub(super) fn build_app(root: &Path, role: &str) -> Result<(PathBuf, Value)> {
     let source = root.join("apps").join(format!("android-{role}"));
     let out = root.join("data/android").join(role);
     fs::create_dir_all(&out)?;
     let build = tempfile::tempdir_in(&out)?;
-    let classes = build.path().join("classes");
-    fs::create_dir(&classes)?;
     let sdk = sdk()?;
     let tools = sdk.join("build-tools/35.0.0");
     let platform = sdk.join("platforms/android-35/android.jar");
-    let jdk = env::var_os("JAVA_HOME")
-        .map(PathBuf::from)
-        .ok_or("JAVA_HOME is required")?
-        .join("bin");
     let tool = |name, extension| {
         let mut command = program(&tools, name, extension);
         command.current_dir(build.path());
@@ -151,25 +177,12 @@ pub fn build(arguments: &[OsString]) -> Result<Value> {
     let mut sources = Vec::new();
     matching_files(&source.join("src"), "java", &mut sources)?;
     sources.sort_unstable();
-    run(program(&jdk, "javac", "exe")
-        .args(["--release", "8", "-classpath"])
-        .arg(&platform)
-        .arg("-d")
-        .arg(&classes)
-        .args(sources))?;
-    let mut compiled = Vec::new();
-    matching_files(&classes, "class", &mut compiled)?;
-    compiled.sort_unstable();
-    run(tool("d8", "bat")
-        .arg("--lib")
-        .arg(&platform)
-        .args(["--min-api", "26", "--output", "."])
-        .args(compiled))?;
+    compile(&sdk, sources, &build.path().join("classes"), build.path())?;
     run(tool("aapt", "exe").args(["add", "base.apk", "classes.dex"]))?;
     run(tool("zipalign", "exe").args(["-f", "4", "base.apk", "aligned.apk"]))?;
     let key = out.join("debug.jks");
     if !key.try_exists()? {
-        run(program(&jdk, "keytool", "exe")
+        run(program(&jdk()?, "keytool", "exe")
             .args(["-genkeypair", "-keystore"])
             .arg(&key)
             .args([
@@ -198,7 +211,6 @@ pub fn build(arguments: &[OsString]) -> Result<Value> {
         .args(["--ks-pass", "pass:android", "--out"])
         .arg(&apk)
         .arg("aligned.apk"))?;
-    let mut receipt = inspect(&tools, &apk, &format!("dev.aiphone.{role}"), None)?;
-    receipt["file"] = serde_json::to_value(apk)?;
-    Ok(receipt)
+    let receipt = inspect(&tools, &apk, &format!("dev.aiphone.{role}"), None)?;
+    Ok((apk, receipt))
 }
