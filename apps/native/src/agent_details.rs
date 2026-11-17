@@ -422,7 +422,6 @@ impl Details {
                     space::horizontal(),
                     icon_button(
                         Icon::Plus,
-                        locale.tr("添加记忆"),
                         (self.memory_loaded && !self.memory_busy).then_some(Message::NewMemory)
                     )
                 ]);
@@ -459,12 +458,10 @@ impl Details {
                                 space::horizontal(),
                                 icon_button(
                                     Icon::Trash,
-                                    locale.tr("删除"),
                                     (!self.memory_busy).then_some(Message::DeleteMemory(i))
                                 ),
                                 icon_button(
                                     Icon::Check,
-                                    locale.tr("保存"),
                                     (!self.memory_busy && changed)
                                         .then_some(Message::SaveMemory(i))
                                 )
@@ -575,7 +572,6 @@ impl Details {
                         space::horizontal(),
                         icon_button(
                             Icon::Trash,
-                            locale.tr("解除连接"),
                             (enabled && binding.is_some_and(|b| b.configured))
                                 .then_some(Message::Unbind)
                         )
@@ -607,7 +603,6 @@ impl Details {
                                     } else {
                                         Icon::Eye
                                     },
-                                    locale.tr("显示 / 隐藏密钥"),
                                     Some(Message::VoiceReveal)
                                 )
                             ]
@@ -679,7 +674,6 @@ impl Details {
                     space::horizontal(),
                     icon_button(
                         Icon::Trash,
-                        locale.tr("清除语音配置"),
                         (self.voice_loaded && !self.voice_busy).then_some(Message::VoiceSave(true))
                     )
                 ]);

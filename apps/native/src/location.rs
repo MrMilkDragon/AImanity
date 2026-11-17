@@ -341,7 +341,6 @@ impl Location {
                         .on_press_maybe(editable.then_some(Message::Draw)),
                     icon_button(
                         Icon::Undo,
-                        locale.tr("撤销路线点"),
                         (editable && self.edit && !self.route.is_empty()).then_some(Message::Undo)
                     )
                 ]
@@ -443,11 +442,6 @@ impl Location {
                         .menu_style(style::menu),
                         icon_button(
                             if moving { Icon::Pause } else { Icon::Play },
-                            if moving {
-                                locale.tr("暂停")
-                            } else {
-                                locale.tr("开始移动")
-                            },
                             (!self.saving && self.route.len() >= 2).then_some(Message::Move)
                         )
                     ]

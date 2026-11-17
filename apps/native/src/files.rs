@@ -8,7 +8,7 @@ use iced::{
     Color, Element, Font, Length, Padding, Task, font,
     widget::{
         button, checkbox, column, container, mouse_area, row, rule, scrollable, space, text,
-        text_input, tooltip,
+        text_input,
     },
 };
 use std::{
@@ -544,11 +544,7 @@ impl Files {
                     )
                     .width(70),
                 )
-                .push(icon_button(
-                    Icon::Close,
-                    locale.tr("取消"),
-                    Some(Message::Cancel),
-                )),
+                .push(icon_button(Icon::Close, Some(Message::Cancel))),
             );
         }
         body.into()
@@ -557,8 +553,8 @@ impl Files {
         let pane = &self.panes[i];
         let enabled = !self.busy && pane.device.is_some();
         let selected = !pane.selected.is_empty();
-        let control = |icon, label, message| sized_icon_button(icon, label, message, 36., 36.);
-        let op = |icon, label, message| control(icon, label, enabled.then_some(message));
+        let control = |icon, message| sized_icon_button(icon, message, 36., 36.);
+        let op = |icon, message| control(icon, enabled.then_some(message));
         let heading_font = Font {
             weight: font::Weight::Medium,
             ..Font::DEFAULT
@@ -574,17 +570,9 @@ impl Files {
             )
             .clip(true),
             space::horizontal(),
-            op(
-                Icon::Refresh,
-                locale.tr("刷新"),
-                Message::Go(i, pane.path.clone())
-            ),
-            op(Icon::Upload, locale.tr("上传"), Message::Pick(i)),
-            op(
-                Icon::Plus,
-                locale.tr("新建文件夹"),
-                Message::Edit(i, FileOperation::Mkdir)
-            )
+            op(Icon::Refresh, Message::Go(i, pane.path.clone())),
+            op(Icon::Upload, Message::Pick(i)),
+            op(Icon::Plus, Message::Edit(i, FileOperation::Mkdir))
         ]
         .spacing(PANE_PADDING)
         .align_y(iced::Center);
@@ -598,37 +586,19 @@ impl Files {
                 .all(|e| !e.directory);
             tools = tools
                 .push(container(text(pane.selected.len().to_string()).size(12)).padding([0, 4]))
-                .push(op(
-                    Icon::Copy,
-                    locale.tr("复制"),
-                    Message::Clip(i, FileOperation::Copy),
-                ))
-                .push(op(
-                    Icon::Cut,
-                    locale.tr("剪切"),
-                    Message::Clip(i, FileOperation::Move),
-                ))
+                .push(op(Icon::Copy, Message::Clip(i, FileOperation::Copy)))
+                .push(op(Icon::Cut, Message::Clip(i, FileOperation::Move)))
                 .push(control(
                     Icon::Download,
-                    locale.tr("下载"),
                     (enabled && download).then_some(Message::Download(sources)),
                 ))
                 .push(control(
                     Icon::Edit,
-                    locale.tr("重命名"),
                     (enabled && pane.selected.len() == 1)
                         .then_some(Message::Edit(i, FileOperation::Rename)),
                 ))
-                .push(op(
-                    Icon::Trash,
-                    locale.tr("删除"),
-                    Message::Edit(i, FileOperation::Delete),
-                ))
-                .push(op(
-                    Icon::Close,
-                    locale.tr("取消选择"),
-                    Message::All(i, false),
-                ));
+                .push(op(Icon::Trash, Message::Edit(i, FileOperation::Delete)))
+                .push(op(Icon::Close, Message::All(i, false)));
         } else {
             let parent = pane.path.rsplit_once('/').map_or("/", |(parent, _)| {
                 if parent.is_empty() { "/" } else { parent }
@@ -636,7 +606,6 @@ impl Files {
             tools = tools
                 .push(control(
                     Icon::Up,
-                    locale.tr("上一级目录"),
                     (enabled && pane.path != "/").then(|| Message::Go(i, parent.into())),
                 ))
                 .push(
@@ -654,7 +623,7 @@ impl Files {
                 );
         }
         if self.clipboard.is_some() {
-            tools = tools.push(op(Icon::Link, locale.tr("粘贴"), Message::Paste(i)));
+            tools = tools.push(op(Icon::Link, Message::Paste(i)));
         }
         let table_header = row![
             container(
@@ -708,24 +677,20 @@ impl Files {
                     Message::Download(vec![pane.location(&path)])
                 };
                 let icon = if browse { Icon::Folder } else { Icon::Right };
-                let name = tooltip(
-                    button(
-                        row![
-                            icon.view().width(16).height(16),
-                            text(&entry.name).size(12).wrapping(text::Wrapping::None)
-                        ]
-                        .align_y(iced::Center)
-                        .spacing(PANE_PADDING),
-                    )
-                    .width(Length::Fill)
-                    .height(style::CONTROL_HEIGHT - style::BORDER_WIDTH)
-                    .padding([0., PANE_PADDING])
-                    .clip(true)
-                    .on_press_maybe(enabled.then_some(activate))
-                    .style(style::quiet),
-                    container(text(&entry.path).size(12)).max_width(380),
-                    tooltip::Position::Top,
-                );
+                let name = button(
+                    row![
+                        icon.view().width(16).height(16),
+                        text(&entry.name).size(12).wrapping(text::Wrapping::None)
+                    ]
+                    .align_y(iced::Center)
+                    .spacing(PANE_PADDING),
+                )
+                .width(Length::Fill)
+                .height(style::CONTROL_HEIGHT - style::BORDER_WIDTH)
+                .padding([0., PANE_PADDING])
+                .clip(true)
+                .on_press_maybe(enabled.then_some(activate))
+                .style(style::quiet);
                 let handle =
                     mouse_area(container(Icon::Grip.view()).center(Length::Fixed(GRIP_COLUMN)))
                         .on_press(Message::Drag(i, path.clone()))

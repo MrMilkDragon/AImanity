@@ -344,48 +344,21 @@ impl Modes {
     pub fn liberty_button(&self) -> Element<'_, Message> {
         let liberty = self.state.as_ref().is_some_and(|state| state.exploring);
         let ready = self.state.is_some() && !self.saving && (!self.goal_active() || liberty);
-        let liberty_status = if self.goal_active() {
-            "目标运行中"
-        } else {
-            match self.state.as_ref().map(|s| s.status.as_str()) {
-                Some("exploring") => "Liberty 运行中",
-                Some("notification") => "查看手机动态",
-                Some("user_busy") => "正在处理你的任务",
-                Some("paused") => "任务已暂停",
-                Some("waiting") => "等待下一轮",
-                _ => "待机",
-            }
-        };
-        iced::widget::tooltip(
-            mode_button(
-                "Liberty",
-                if liberty { Icon::Pause } else { Icon::Compass },
-                liberty,
-                ready.then_some(Message::ToggleLiberty),
-            ),
-            text(self.locale.tr(liberty_status)).size(12),
-            iced::widget::tooltip::Position::Top,
+        mode_button(
+            "Liberty",
+            if liberty { Icon::Pause } else { Icon::Compass },
+            liberty,
+            ready.then_some(Message::ToggleLiberty),
         )
-        .into()
     }
     pub fn copilot_button(&self, conversation_ready: bool) -> Element<'_, Message> {
         let active = self.speech.active();
-        iced::widget::tooltip(
-            mode_button(
-                "Copilot",
-                if active { Icon::Mic } else { Icon::MicOff },
-                active,
-                (active || conversation_ready).then_some(Message::ToggleCopilot),
-            ),
-            text(self.locale.tr(if active {
-                "关闭 Copilot"
-            } else {
-                "开启 Copilot"
-            }))
-            .size(12),
-            iced::widget::tooltip::Position::Top,
+        mode_button(
+            "Copilot",
+            if active { Icon::Mic } else { Icon::MicOff },
+            active,
+            (active || conversation_ready).then_some(Message::ToggleCopilot),
         )
-        .into()
     }
     fn can_save_goal(&self, value: &str) -> bool {
         self.state.as_ref().is_some_and(|state| {
@@ -483,13 +456,33 @@ fn mode_button(
     action: Option<Message>,
 ) -> Element<'static, Message> {
     let liberty = label == "Liberty";
+    let ink = move |theme: &iced::Theme| {
+        if liberty && active {
+            Color::from_rgb8(0x51, 0x4b, 0x8a)
+        } else if liberty && !style::dark(theme) {
+            Color::from_rgb8(0x65, 0x6a, 0x78)
+        } else if active {
+            theme.palette().text
+        } else {
+            style::muted_color(theme)
+        }
+    };
     button(
         container(
             row![
                 icon.view()
                     .width(15)
                     .height(15)
-                    .opacity(if action.is_some() { 1. } else { 0.4 }),
+                    .opacity(if action.is_some() {
+                        1.
+                    } else if liberty {
+                        0.5
+                    } else {
+                        0.4
+                    })
+                    .style(move |theme, _| iced::widget::svg::Style {
+                        color: Some(ink(theme))
+                    }),
                 text(label.to_owned()).size(12)
             ]
             .align_y(iced::Alignment::Center)
@@ -501,13 +494,9 @@ fn mode_button(
     .padding([0, 10])
     .style(move |theme, status| {
         let mut s = style::quiet(theme, status);
-        s.text_color = if liberty && !style::dark(theme) {
-            Color::from_rgb8(0x65, 0x6a, 0x78)
-        } else {
-            style::muted_color(theme)
-        };
+        s.text_color = ink(theme);
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
         if active && liberty {
-            s.text_color = Color::from_rgb8(0x51, 0x4b, 0x8a);
             s.background = Some(
                 iced::gradient::Linear::new(iced::Degrees(115.))
                     .add_stop(0., Color::from_rgba8(0xb0, 0xdf, 0xfb, 0.188235))
@@ -516,13 +505,18 @@ fn mode_button(
                     .into(),
             );
         } else if active {
-            s.text_color = theme.palette().text;
             s.background = Some(theme.palette().background.scale_alpha(0.65).into());
             s.border.width = 1.;
             s.border.color = Color::from_rgb8(0x66, 0x66, 0x66);
+        } else if hovered && liberty {
+            s.background = Some(Color::from_rgba8(0x77, 0x71, 0x8a, 11. / 255.).into());
+            s.text_color = Color::from_rgb8(0x26, 0x23, 0x37);
+        } else if hovered {
+            s.background = Some(theme.palette().background.scale_alpha(0.4).into());
+            s.text_color = theme.palette().text;
         }
         if matches!(status, button::Status::Disabled) {
-            s.text_color = s.text_color.scale_alpha(0.45);
+            s.text_color = s.text_color.scale_alpha(if liberty { 0.5 } else { 0.4 });
         }
         s
     })

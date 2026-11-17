@@ -9,6 +9,16 @@ pub const FOREGROUND: Color = Color::from_rgb8(0x17, 0x17, 0x17);
 pub const BACKGROUND: Color = Color::from_rgb8(0xfa, 0xfa, 0xfa);
 pub const MUTED: Color = Color::from_rgb8(0x59, 0x59, 0x59);
 pub const ERROR: Color = Color::from_rgb8(0xb5, 0x25, 0x25);
+pub const LATIN_FONT: iced::Font = iced::Font::with_name(if cfg!(target_os = "macos") {
+    "Helvetica Neue"
+} else {
+    "Segoe UI"
+});
+pub const CJK_FONT: iced::Font = iced::Font::with_name(if cfg!(target_os = "macos") {
+    "PingFang SC"
+} else {
+    "Microsoft YaHei"
+});
 const COPILOT_BACKGROUND: Color = Color::from_rgb8(34, 34, 34);
 pub const CONTROL_RADIUS: f32 = 8.;
 pub const PANEL_RADIUS: f32 = 14.;
@@ -132,19 +142,49 @@ pub fn accent(theme: &Theme) -> Color {
     Color::from_rgb8(gray, gray, gray)
 }
 
+pub fn primary_ink(theme: &Theme) -> Color {
+    if dark(theme) {
+        Color::from_rgb8(32, 32, 32)
+    } else {
+        Color::WHITE
+    }
+}
+
 pub fn primary(theme: &Theme, status: button::Status) -> button::Style {
-    let mut style = button::primary(theme, status);
-    style.border.radius = CONTROL_RADIUS.into();
-    style
+    let opacity = match status {
+        button::Status::Active => 1.,
+        button::Status::Hovered | button::Status::Pressed => 0.9,
+        button::Status::Disabled => 0.5,
+    };
+    button::Style {
+        background: Some(theme.palette().primary.scale_alpha(opacity).into()),
+        text_color: primary_ink(theme).scale_alpha(if status == button::Status::Disabled {
+            0.5
+        } else {
+            1.
+        }),
+        border: iced::border::rounded(CONTROL_RADIUS),
+        ..Default::default()
+    }
 }
 
 pub fn quiet(theme: &Theme, status: button::Status) -> button::Style {
     let mut style = button::text(theme, status);
-    style.text_color = theme.palette().text;
+    style.text_color = theme
+        .palette()
+        .text
+        .scale_alpha(if status == button::Status::Disabled {
+            0.5
+        } else {
+            1.
+        });
     style.border.radius = CONTROL_RADIUS.into();
     if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-        let ink = if dark(theme) { 1. } else { 0. };
-        style.background = Some(Color::from_rgba(ink, ink, ink, 0.055).into());
+        style.background = Some(
+            accent(theme)
+                .scale_alpha(if dark(theme) { 0.5 } else { 1. })
+                .into(),
+        );
     }
     style
 }

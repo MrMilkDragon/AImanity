@@ -211,18 +211,10 @@ impl Skills {
         )
     }
 
-    pub fn actions(&self, locale: Locale) -> Element<'_, Message> {
+    pub fn actions(&self) -> Element<'_, Message> {
         row![
-            tool_action(
-                Icon::Upload,
-                locale.tr("上传Skill"),
-                (!self.busy).then_some(Message::ChooseFile),
-            ),
-            tool_action(
-                Icon::Plus,
-                locale.tr("添加Skill"),
-                Some(Message::ToggleImport),
-            ),
+            tool_action(Icon::Upload, (!self.busy).then_some(Message::ChooseFile)),
+            tool_action(Icon::Plus, Some(Message::ToggleImport)),
         ]
         .align_y(iced::Alignment::Center)
         .spacing(2)
@@ -304,7 +296,6 @@ impl Skills {
                     ))
                     .push(sized_icon_button(
                         Icon::Trash,
-                        locale.tr("移除 Skill"),
                         (!self.busy).then(|| Message::Remove(skill.id.clone())),
                         36.,
                         36.,

@@ -68,7 +68,11 @@ pub fn tool_header<'a, M: 'a>(
         .line_height(iced::Pixels(20.))
         .font(Font {
             weight: font::Weight::Medium,
-            ..Font::DEFAULT
+            ..if title.is_ascii() {
+                style::LATIN_FONT
+            } else {
+                style::CJK_FONT
+            }
         })
         .wrapping(text::Wrapping::None);
     container(
@@ -95,12 +99,8 @@ pub fn tool_padding(viewport_width: f32) -> iced::Padding {
         .left(inset)
 }
 
-pub fn tool_action<'a, M: Clone + 'a>(
-    icon: Icon,
-    label: &'a str,
-    message: Option<M>,
-) -> Element<'a, M> {
-    sized_icon_button(icon, label, message, 32., 32.)
+pub fn tool_action<'a, M: Clone + 'a>(icon: Icon, message: Option<M>) -> Element<'a, M> {
+    sized_icon_button(icon, message, 32., 32.)
 }
 
 pub fn tool_scroll() -> scrollable::Direction {

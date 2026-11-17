@@ -132,24 +132,28 @@ fn mark_position(p:vec2<f32>)->vec4<f32> {
  let size=scene.size.xy;
  let scale=min(size.x,size.y);
  let time=scene.mode_effects.x;
- let x=2.*f32(point%52u)/51.-1.;
- let z=2.*f32(point/52u)/17.-1.;
- let phase=time*2.75;
- let yaw=-.18+.10*sin(time*1.35);
- let depth=scale*.057;
- let crest=pow(1.-.78*abs(x),1.2);
  let seed=f32(point)*2.399963;
- let wave=cos(phase-x*2.5+z*.36)*crest*.58;
- let ripple=sin(phase*2.1+x*18.+z*6.)*.128;
- let scatter=sin(seed+phase*2.6)*.107;
+ let grain=fract(f32(point)*vec2(.754877666,.569840291));
+ let cell=vec2(f32(point%48u),f32(point/48u))+(grain-.5)*1.45;
+ let x=cell.x/23.5-1.;
+ let z=cell.y/7.5-1.;
+ let phase=.43+time*1.67;
+ let sway=cos(time*3.141593);
+ let yaw=.24*sin(time*1.18)-.12;
+ let depth=scale*(.028-.017*sway);
+ let crest=pow(max(0.,1.-.66*abs(x)),1.2);
+ let wave=.62*cos(phase-x*2.75+z*.46)*crest-.19*cos(phase);
+ let ripple=.112*sin(phase*2.3+x*18.+z*6.);
+ let scatter=.15*sin(seed+phase*2.1);
  let near=(z+1.)*.5;
- let perspective=.87+near*.13;
+ let perspective=.93+near*.11;
+ let span=scale*(.214+.022*sway);
  let position=vec2(
-  size.x*.5+(x*cos(yaw)+z*sin(yaw)*.16)*size.x*.465*perspective,
-  size.y*.49+z*depth+x*depth*yaw-(wave+ripple+scatter)*scale*.108*scene.mode_motion.z);
+  size.x*.5-scale*(.009+.012*sin(time*1.57+.1))+(x*cos(yaw)+z*sin(yaw)*.38)*span*perspective,
+  size.y*.476+z*depth+x*depth*yaw-(wave+ripple+scatter)*scale*.066*scene.mode_motion.z);
  let sparkle=.5+.5*cos(seed+phase*1.74);
- let radius=clamp(scale/435.,.58,2.3)*(.55+near*.38+sparkle*.44);
- let shades=array<f32,5>(.18,.32,.51,.72,.94);
+ let radius=clamp(scale/336.,.65,3.1)*(.49+near*.34+sparkle*.58);
+ let shades=array<f32,5>(.18,.36,.57,.76,.91);
  var mark:CopilotMark;
  mark.distance=quad[vertex_index]*(radius+.5);
  mark.position=mark_position(position+mark.distance);
@@ -204,17 +208,23 @@ const WAVE_POINTS=array<vec2<f32>,56>(
 fn copilot_background(p:vec2<f32>)->vec3<f32> {
  let size=scene.size.xy;
  let uv=p/size;
- let radial=1.-clamp(length((uv-vec2(.48,.02))/vec2(.735,1.386))/.74,0.,1.);
- let gradient=mix(mix(.02624,.01229,uv.y),.03689,radial);
- let y=(uv.y-.58)/.32;
- let directions=abs(fract((vec2(uv.x)+vec2(2.,-2.)*y)*16.+.5)-vec2(.5));
- let distance=min(directions.x,directions.y)/length(vec2(16./size.x,100./size.y));
- let intensity=select(0.,min(y/.4,(1.-y)/.6)*.141,y>0.&&y<1.);
- let grid=line_alpha(distance,.8,1.)*intensity;
- let stretch=vec2(size.x*.46,min(size.x,size.y)*.046);
- let shadow=1.-clamp((length((p-vec2(.5,.71)*size)/stretch)-.08)/.92,0.,1.);
+ let scale=min(size.x,size.y);
+ let radial=1.-clamp(length((uv-vec2(.48,.02))/vec2(.77,1.08))/.74,0.,1.);
+ let gradient=mix(mix(.027,.0156,uv.y),.039,radial);
+ let y=(uv.y-.585)/.33;
+ let lattice=vec2(p.x/scale)+vec2(2.6,-2.6)*y;
+ let directions=abs(fract(lattice*6.5+.5)-vec2(.5));
+ let distance=min(directions.x,directions.y)/length(vec2(6.5/scale,16.9/(.33*size.y)));
+ let intensity=max(0.,min(y/.4,(1.-y)/.6))*.048;
+ let grid=line_alpha(distance,.72,1.)*intensity;
+ let sway=cos(scene.mode_effects.x*3.141593);
+ let drag=-.009-.012*sin(scene.mode_effects.x*1.57+.1);
+ let offset=(p-vec2(.5,.746)*size-vec2(drag*scale,0.))/scale;
+ let stretch=vec2(.225+.021*sway,.026-.007*sway);
+ let shadow_distance=offset/stretch;
+ let shadow=(1.-smoothstep(.02,1.,dot(shadow_distance,shadow_distance)))*.58;
  let points=textureSampleLevel(copilot_ink,linear_sampler,uv,0.).r;
- return vec3(mix(mix(gradient,.46208,grid)*(1.-shadow*.667),.93869,points));
+ return vec3(mix(mix(gradient,.46208,grid)*(1.-shadow),.93869,points*(.23+.77*points)));
 }
 fn cable(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
  let a=vec2(scene.phone.x+scene.phone.z*.5,scene.phone.y+scene.phone.w);
@@ -336,9 +346,8 @@ fn liberty_glow(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
  if p.y>=scene.device_scale.z {c=glass(p,scene.chat,c);}
  if p.y>=scene.device_scale.z && scene.mode_effects.w>0. && sdf(p,scene.chat,scene.material.x)<0. {
   let x=(p.x-scene.chat.x)/scene.chat.z;
-  let mask=clamp(min(x,1.-x)/.1,0.,1.);
-  let ink=textureSampleLevel(copilot_ink,linear_sampler,p/scene.size.xy,0.).g;
-  c=mix(c,vec3(.90466),ink*mask);
+  let ink=textureSampleLevel(copilot_ink,linear_sampler,p/scene.size.xy,0.).g*clamp(min(x,1.-x)/.1,0.,1.);
+  c=mix(c,vec3(.90466),ink*(.23+.77*ink));
  }
  if scene.popup.z>0. && scene.size.w>0. {c=mix(c,tool_glass(p,scene.popup,c),scene.size.w);}
  if scene.child_popup.z>0. {c=tool_glass(p,scene.child_popup,c);}

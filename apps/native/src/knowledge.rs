@@ -580,12 +580,8 @@ impl Knowledge {
         }
     }
 
-    pub fn new_action(&self, locale: Locale) -> Element<'_, Message> {
-        crate::surface::tool_action(
-            Icon::Plus,
-            locale.tr("新建知识文档"),
-            (!self.busy).then_some(Message::New),
-        )
+    pub fn new_action(&self) -> Element<'_, Message> {
+        crate::surface::tool_action(Icon::Plus, (!self.busy).then_some(Message::New))
     }
 
     pub fn view(&self, locale: Locale, reduced_motion: bool) -> Element<'_, Message> {
@@ -671,34 +667,23 @@ impl Knowledge {
                 actions = actions
                     .push(tool_action(
                         Icon::Image,
-                        locale.tr("插入图片"),
                         (!self.busy).then_some(Message::PickImage),
                     ))
                     .push(tool_action(
                         Icon::Check,
-                        locale.tr("保存文档"),
                         (!self.busy && draft.savable()).then_some(Message::Save),
                     ));
             } else {
-                actions = actions.push(tool_action(
-                    Icon::Edit,
-                    locale.tr("编辑文档"),
-                    Some(Message::Edit),
-                ));
+                actions = actions.push(tool_action(Icon::Edit, Some(Message::Edit)));
             }
             if !draft.document.id.is_empty() {
                 actions = actions.push(tool_action(
                     Icon::Trash,
-                    locale.tr("移除当前文档"),
                     (!self.busy).then_some(Message::Delete),
                 ));
             }
         }
-        let actions = actions.push(tool_action(
-            Icon::Close,
-            locale.tr("关闭文档"),
-            Some(Message::CloseDocument),
-        ));
+        let actions = actions.push(tool_action(Icon::Close, Some(Message::CloseDocument)));
         let mut body = column![].spacing(14);
         if !self.document_error.is_empty() {
             body = body.push(
@@ -814,11 +799,6 @@ impl Knowledge {
                         Icon::Close
                     } else {
                         Icon::Link
-                    },
-                    if self.picking {
-                        locale.tr("收起关联选择")
-                    } else {
-                        locale.tr("关联文档")
                     },
                     (!self.busy).then_some(Message::TogglePicker)
                 )

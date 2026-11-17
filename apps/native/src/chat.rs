@@ -721,11 +721,7 @@ impl Chat {
             .as_str(),
         );
     }
-    fn attachments<'a>(
-        &'a self,
-        files: &'a [wire::ChatAttachment],
-        locale: crate::locale::Locale,
-    ) -> Element<'a, Message> {
+    fn attachments<'a>(&'a self, files: &'a [wire::ChatAttachment]) -> Element<'a, Message> {
         column(files.iter().map(|file| {
             let content: Element<'_, Message> =
                 if let Some(Some(handle)) = self.previews.get(&file.id) {
@@ -738,11 +734,7 @@ impl Chat {
                     .style(style::quiet)
                     .on_press(Message::Attachment(file.clone())),
                 space::horizontal(),
-                icon_button(
-                    Icon::Download,
-                    locale.tr("保存附件"),
-                    Some(Message::Download(file.clone()))
-                )
+                icon_button(Icon::Download, Some(Message::Download(file.clone())))
             ]
             .align_y(iced::Alignment::Center)
             .into()
@@ -929,7 +921,7 @@ impl Chat {
                 item = item.push(self.trace(message, &theme, locale));
             }
             if !message.attachments.is_empty() {
-                item = item.push(self.attachments(&message.attachments, locale));
+                item = item.push(self.attachments(&message.attachments));
             }
             if let Some(items) = self.markdown.get(&message.id) {
                 item = item.push(
@@ -948,7 +940,7 @@ impl Chat {
         for pending in &self.pending {
             let mut item = column![
                 text(&pending.message.text).size(14),
-                self.attachments(&pending.message.attachments, locale)
+                self.attachments(&pending.message.attachments)
             ]
             .spacing(6);
             let delivery: Element<'_, Message> = if pending.sending {
@@ -1015,7 +1007,6 @@ impl Chat {
         if self.state.run_status == "paused" {
             submit = submit.push(icon_button(
                 Icon::Play,
-                locale.tr("继续"),
                 (!self.control_busy).then_some(Message::Command(Command::Resume)),
             ));
         }
@@ -1026,29 +1017,32 @@ impl Chat {
             if self.state.can_pause && self.state.run_status != "paused" {
                 submit = submit.push(icon_button(
                     Icon::Pause,
-                    locale.tr("暂停"),
                     (!self.control_busy).then_some(Message::Command(Command::Pause)),
                 ));
             }
             submit = submit.push(icon_button(
                 Icon::Stop,
-                locale.tr("停止"),
                 (!self.control_busy).then_some(Message::Command(Command::Stop)),
             ));
         }
-        submit = submit.push(iced::widget::tooltip(
-            button(container(Icon::Send.view()).center(Length::Fill))
+        let can_send = self.can_send();
+        let send = Icon::Send
+            .view()
+            .opacity(if can_send { 1. } else { 0.5 })
+            .style(|theme, _| iced::widget::svg::Style {
+                color: Some(style::primary_ink(theme)),
+            });
+        submit = submit.push(
+            button(container(send).center(Length::Fill))
                 .width(36)
                 .height(36)
                 .padding(0)
                 .style(style::primary)
-                .on_press_maybe(self.can_send().then_some(Message::Send)),
-            text(locale.tr("发送 · ⌘ / Ctrl + Enter")).size(12),
-            iced::widget::tooltip::Position::Top,
-        ));
+                .on_press_maybe(can_send.then_some(Message::Send)),
+        );
         let actions = row![
             row![
-                icon_button(Icon::Paperclip, locale.tr("添加附件"), Some(Message::Pick)),
+                icon_button(Icon::Paperclip, Some(Message::Pick)),
                 modes.liberty_button().map(Message::Mode),
             ]
             .spacing(4)
@@ -1081,11 +1075,7 @@ impl Chat {
                     .size(12)
                     .style(style::muted_text),
                     space::horizontal(),
-                    icon_button(
-                        Icon::Trash,
-                        locale.tr("移除附件"),
-                        Some(Message::Remove(upload.id.clone()))
-                    )
+                    icon_button(Icon::Trash, Some(Message::Remove(upload.id.clone())))
                 ]
                 .spacing(6)
                 .align_y(iced::Alignment::Center),
@@ -1165,11 +1155,7 @@ impl Chat {
         ))
     }
 
-    pub fn preview_view(
-        &self,
-        locale: crate::locale::Locale,
-        bounds: Rectangle,
-    ) -> Element<'_, Message> {
+    pub fn preview_view(&self, bounds: Rectangle) -> Element<'_, Message> {
         let Some(file) = &self.preview else {
             return space().into();
         };
@@ -1196,11 +1182,7 @@ impl Chat {
                     .height(bounds.height - 82.),
             );
         }
-        let close = crate::surface::tool_action(
-            Icon::Close,
-            locale.tr("关闭"),
-            Some(Message::ClosePreview),
-        );
+        let close = crate::surface::tool_action(Icon::Close, Some(Message::ClosePreview));
         container(stack![
             container(content).padding(24),
             pin(close).x(bounds.width - 48.).y(8.)

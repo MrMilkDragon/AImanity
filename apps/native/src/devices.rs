@@ -234,7 +234,6 @@ impl Devices {
                     text(tr("添加设备")).size(12),
                     icon_button(
                         Icon::Plus,
-                        tr("添加设备"),
                         (!self.busy && draft.is_none_or(|d| d.expected_revision != 0))
                             .then(|| Message::New((*kind).into()))
                     )

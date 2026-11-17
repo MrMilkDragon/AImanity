@@ -532,7 +532,6 @@ impl Agents {
                                     } else {
                                         Icon::Eye
                                     },
-                                    locale.tr("显示 / 隐藏密钥"),
                                     (!self.busy).then_some(Message::Reveal),
                                     control,
                                     control,
@@ -620,27 +619,23 @@ impl Agents {
                         .font(semibold)
                         .line_height(iced::Pixels(title_line)),
                     space::horizontal(),
-                    iced::widget::tooltip(
-                        button(container(Icon::Plus.view()).center(Length::Fill))
-                            .width(control)
-                            .height(control)
-                            .style(|theme, status| {
-                                let mut appearance = style::quiet(theme, status);
-                                appearance.border = Border {
-                                    radius: style::CONTROL_RADIUS.into(),
-                                    width: 1.,
-                                    color: theme.palette().text.scale_alpha(0.16),
-                                };
-                                appearance
-                            })
-                            .on_press_maybe((!self.busy).then_some(if self.adding() {
-                                Message::Back
-                            } else {
-                                Message::New
-                            })),
-                        text(locale.tr("添加 Agent")).size(12),
-                        iced::widget::tooltip::Position::Bottom,
-                    ),
+                    button(container(Icon::Plus.view()).center(Length::Fill))
+                        .width(control)
+                        .height(control)
+                        .style(|theme, status| {
+                            let mut appearance = style::quiet(theme, status);
+                            appearance.border = Border {
+                                radius: style::CONTROL_RADIUS.into(),
+                                width: 1.,
+                                color: theme.palette().text.scale_alpha(0.16),
+                            };
+                            appearance
+                        })
+                        .on_press_maybe((!self.busy).then_some(if self.adding() {
+                            Message::Back
+                        } else {
+                            Message::New
+                        })),
                 ]
                 .align_y(iced::Alignment::Center),
             );
@@ -695,14 +690,12 @@ impl Agents {
                     row![
                         sized_icon_button(
                             Icon::Edit,
-                            locale.tr("编辑"),
                             (!self.busy).then_some(Message::Edit(agent.id.clone())),
                             control,
                             control,
                         ),
                         sized_icon_button(
                             Icon::Trash,
-                            locale.tr("删除"),
                             (!self.busy).then_some(Message::Delete(agent.id.clone())),
                             control,
                             control,

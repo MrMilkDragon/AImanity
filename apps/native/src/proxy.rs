@@ -103,7 +103,6 @@ impl Proxy {
             if state.has_subscription {
                 subscription = subscription.push(icon_button(
                     Icon::Refresh,
-                    locale.tr("更新订阅"),
                     (!self.busy).then_some(Message::Refresh),
                 ));
             }

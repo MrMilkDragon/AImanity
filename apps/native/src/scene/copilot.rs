@@ -119,7 +119,7 @@ impl Draw {
         });
         pass.set_pipeline(&self.particles);
         pass.set_bind_group(0, &self.scene, &[]);
-        pass.draw(0..6, 0..(52 * 18));
+        pass.draw(0..6, 0..(48 * 16));
         pass.set_pipeline(&self.waves);
         pass.draw(0..(6 * 24 + 1) * 2, 0..4);
     }

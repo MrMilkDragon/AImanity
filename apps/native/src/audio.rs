@@ -1,13 +1,9 @@
 use crate::{
     connection::Connection,
     controls::{Icon, sized_icon_button},
-    locale::Locale,
     spring_slider::SpringSlider,
 };
-use iced::{
-    Element, Task,
-    widget::{row, text, tooltip},
-};
+use iced::{Element, Task, widget::row};
 use rodio::{OutputStreamBuilder, Source};
 use std::{
     collections::VecDeque,
@@ -175,13 +171,7 @@ impl Playback {
         task
     }
 
-    pub fn view(
-        &self,
-        enabled: bool,
-        index: usize,
-        locale: Locale,
-        reduced_motion: bool,
-    ) -> Element<'_, Message> {
+    pub fn view(&self, enabled: bool, reduced_motion: bool) -> Element<'_, Message> {
         let volume = if self.active.is_some() {
             self.volume
         } else {
@@ -190,27 +180,14 @@ impl Playback {
         let muted = volume == 0;
         let button = sized_icon_button(
             if muted { Icon::Muted } else { Icon::Volume },
-            locale.tr(if muted { "开启声音" } else { "静音" }),
             enabled.then_some(Message::Toggle),
             32.,
             34.,
         );
-        let range = tooltip(
-            SpringSlider::new(100, volume, Message::Volume)
-                .width(60)
-                .active(enabled)
-                .reduce_motion(reduced_motion),
-            text(format!(
-                "{} {volume}%",
-                locale.tr(if index == 0 {
-                    "手机播放音量"
-                } else {
-                    "电脑播放音量"
-                })
-            ))
-            .size(12),
-            tooltip::Position::Bottom,
-        );
+        let range = SpringSlider::new(100, volume, Message::Volume)
+            .width(60)
+            .active(enabled)
+            .reduce_motion(reduced_motion);
         row![button, range].align_y(iced::Alignment::Center).into()
     }
 }

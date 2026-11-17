@@ -594,18 +594,9 @@ impl Setup {
             let options: Vec<_> = Locale::all().collect();
             let locale = self.language;
             let rtl = locale.code() == "ar";
-            let font = |language: Locale| {
-                let east_asian = matches!(language.code(), "zh-CN" | "zh-TW" | "ja" | "ko");
-                iced::Font::with_name(match (cfg!(target_os = "macos"), east_asian) {
-                    (true, true) => "PingFang SC",
-                    (true, false) => "Helvetica Neue",
-                    (false, true) => "Microsoft YaHei",
-                    (false, false) => "Segoe UI",
-                })
-            };
             let bold = iced::Font {
                 weight: iced::font::Weight::Bold,
-                ..font(locale)
+                ..locale.font()
             };
             column![
                 container(
@@ -643,7 +634,7 @@ impl Setup {
                                         } else {
                                             iced::font::Weight::Normal
                                         },
-                                        ..font(option)
+                                        ..option.font()
                                     });
                                     button(
                                         if rtl {

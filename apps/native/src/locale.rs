@@ -40,6 +40,13 @@ impl Locale {
     pub fn glyph(self) -> &'static str {
         LOCALES[self.0].2
     }
+    pub fn font(self) -> iced::Font {
+        if matches!(self.code(), "zh-CN" | "zh-TW" | "ja" | "ko") {
+            crate::style::CJK_FONT
+        } else {
+            crate::style::LATIN_FONT
+        }
+    }
     pub fn tr(self, key: &str) -> &str {
         static CATALOGS: [OnceLock<HashMap<String, String>>; LOCALES.len()] =
             [const { OnceLock::new() }; LOCALES.len()];

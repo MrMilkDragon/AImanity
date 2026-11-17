@@ -1375,7 +1375,7 @@ impl App {
     fn panel_target(&self) -> Size {
         let (width, max_height, fit) = match self.panel {
             Panel::Agent => (680., 600., false),
-            Panel::Language => (280., 480., true),
+            Panel::Language => (280., 480., false),
             Panel::Skills => (650., 560., true),
             Panel::Knowledge => (850., 590., false),
             Panel::Files => (1120., 760., false),
@@ -1574,7 +1574,6 @@ impl App {
                         row![
                             controls::icon_button(
                                 controls::Icon::Back,
-                                locale.tr("返回"),
                                 Some(Message::CloseDevices)
                             ),
                             text(locale.tr("设备")).size(14)
@@ -1606,10 +1605,8 @@ impl App {
         };
         let actions = row![].align_y(iced::Center).spacing(2);
         let actions = match self.panel {
-            Panel::Skills => actions.push(self.skills.actions(locale).map(Message::Skills)),
-            Panel::Knowledge => {
-                actions.push(self.knowledge.new_action(locale).map(Message::Knowledge))
-            }
+            Panel::Skills => actions.push(self.skills.actions().map(Message::Skills)),
+            Panel::Knowledge => actions.push(self.knowledge.new_action().map(Message::Knowledge)),
             Panel::Location if self.location.enabled() => {
                 actions.push(self.location.enable_action().map(Message::Location))
             }
@@ -1620,7 +1617,6 @@ impl App {
             width,
             actions.push(surface::tool_action(
                 controls::Icon::Close,
-                locale.tr("关闭"),
                 Some(Message::ClosePanel),
             )),
         );
@@ -1647,33 +1643,48 @@ impl App {
                 .view(locale, self.reduced_motion)
                 .map(Message::Update),
             Panel::Language => column(locale::Locale::all().map(|l| {
-                button(
-                    row![
-                        container(text(l.glyph()).size(13)).center_x(24),
-                        text(l.name()).size(14),
-                        space::horizontal(),
-                        container(controls::Icon::Check.view().opacity(if locale == l {
-                            1.
-                        } else {
-                            0.
-                        }))
-                        .width(18)
-                    ]
-                    .spacing(12)
-                    .align_y(iced::Center),
+                let glyph = container(
+                    text(l.glyph())
+                        .size(13)
+                        .line_height(iced::Pixels(13.))
+                        .font(iced::Font {
+                            weight: iced::font::Weight::Semibold,
+                            ..l.font()
+                        }),
                 )
-                .on_press(Message::SetLocale(l))
-                .padding([0, 12])
-                .height(40)
-                .width(Length::Fill)
-                .style(move |theme, status| {
-                    let mut appearance = style::quiet(theme, status);
-                    if locale == l || matches!(status, iced::widget::button::Status::Hovered) {
-                        appearance.background = Some(style::accent(theme).into());
-                    }
-                    appearance
-                })
-                .into()
+                .center_x(24);
+                let name = text(l.name())
+                    .size(14)
+                    .line_height(iced::Pixels(22.))
+                    .font(l.font());
+                let check = controls::Icon::Check
+                    .view()
+                    .width(16)
+                    .height(16)
+                    .opacity(if locale == l { 1. } else { 0. });
+                let option = if l.code() == "ar" {
+                    row![check, space::horizontal(), name, glyph]
+                } else {
+                    row![glyph, name, space::horizontal(), check]
+                };
+                button(option.height(42).spacing(12).align_y(iced::Center))
+                    .on_press(Message::SetLocale(l))
+                    .padding([0, 12])
+                    .width(Length::Fill)
+                    .style(move |theme, status| {
+                        let mut appearance = style::quiet(theme, status);
+                        if locale == l
+                            || matches!(
+                                status,
+                                iced::widget::button::Status::Hovered
+                                    | iced::widget::button::Status::Pressed
+                            )
+                        {
+                            appearance.background = Some(style::accent(theme).into());
+                        }
+                        appearance
+                    })
+                    .into()
             }))
             .spacing(3)
             .into(),
@@ -1734,6 +1745,34 @@ impl App {
         let padded = container(content).padding(padding).width(Length::Fill);
         let body: Element<'_, Message> = match self.panel {
             Panel::Knowledge => padded.height(Length::Fill).into(),
+            Panel::Language => container(
+                scrollable(padded)
+                    .direction(surface::tool_scroll())
+                    .style(|theme, status| {
+                        let mut appearance = scrollable::default(theme, status);
+                        let rail_engaged = matches!(
+                            status,
+                            scrollable::Status::Hovered {
+                                is_vertical_scrollbar_hovered: true,
+                                ..
+                            } | scrollable::Status::Dragged {
+                                is_vertical_scrollbar_dragged: true,
+                                ..
+                            }
+                        );
+                        appearance.vertical_rail.background = None;
+                        appearance.vertical_rail.scroller.background = theme
+                            .palette()
+                            .text
+                            .scale_alpha(if rail_engaged { 0.32 } else { 0. })
+                            .into();
+                        appearance
+                    })
+                    .height(Length::Fill),
+            )
+            .padding(1)
+            .height(Length::Fill)
+            .into(),
             Panel::Files => scrollable(padded)
                 .direction(surface::tool_scroll())
                 .height(Length::Fill)
@@ -1828,65 +1867,61 @@ impl App {
                 .wrapping(iced::widget::text::Wrapping::None)
         };
         let [inset, nav_top, nav_gap, nav_height] = style::NAVIGATION;
-        let mut shared = row![sized_icon_button(
-            Icon::Cable,
-            tr(if self.linked {
-                "断开数据线"
-            } else {
-                "连接数据线"
-            }),
-            self.connection.as_ref().map(|_| Message::Link),
-            style::NAV_ICON_WIDTH,
-            nav_height,
-        )];
+        let linked = self.linked;
+        let cable = Icon::Cable
+            .view()
+            .style(move |theme, _| iced::widget::svg::Style {
+                color: Some(if linked {
+                    style::primary_ink(theme)
+                } else {
+                    style::muted_color(theme)
+                }),
+            });
+        let mut shared = row![
+            button(container(cable).center(Length::Fill))
+                .width(style::NAV_ICON_WIDTH)
+                .height(nav_height)
+                .padding(0)
+                .on_press_maybe(self.connection.as_ref().map(|_| Message::Link))
+                .style(if linked { style::primary } else { style::quiet })
+        ];
         for panel in Self::NAV_PANELS {
-            let (icon, label, active) = match panel {
-                Panel::Language => (Icon::Settings, self.locale.name(), false),
-                Panel::Skills => (Icon::Wrench, tr("Skill管理"), false),
-                Panel::Location => (Icon::Pin, tr("模拟位置"), self.location.enabled()),
-                Panel::Proxy => (Icon::Network, tr("工作台代理"), self.proxy.enabled()),
-                Panel::Knowledge => (Icon::Book, tr("知识库"), false),
-                Panel::Files => (Icon::Folder, tr("文件管理"), false),
-                Panel::Goal => (Icon::Target, tr("任务与目标"), self.modes.goal_active()),
-                Panel::Agent => (Icon::Settings, tr("配置中心"), false),
+            let (icon, active) = match panel {
+                Panel::Language | Panel::Agent => (Icon::Settings, false),
+                Panel::Skills => (Icon::Wrench, false),
+                Panel::Location => (Icon::Pin, self.location.enabled()),
+                Panel::Proxy => (Icon::Network, self.proxy.enabled()),
+                Panel::Knowledge => (Icon::Book, false),
+                Panel::Files => (Icon::Folder, false),
+                Panel::Goal => (Icon::Target, self.modes.goal_active()),
                 Panel::Capture(_) | Panel::Update => unreachable!(),
             };
             let click = self
                 .connection
                 .as_ref()
                 .map(|_| Message::OpenPanel(panel, true));
-            let open = self.popup && self.panel == panel;
-            let chosen = open || active;
+            let chosen = self.popup && self.panel == panel || active;
             let trigger: Element<'_, Message> = if panel == Panel::Language || chosen {
                 let content: Element<'_, Message> = if panel == Panel::Language {
                     text(self.locale.glyph()).size(13).into()
                 } else {
                     icon.view().into()
                 };
-                let trigger = button(container(content).center(Length::Fill))
+                button(container(content).center(Length::Fill))
                     .width(style::NAV_ICON_WIDTH)
                     .height(nav_height)
                     .padding(0)
                     .style(move |theme, status| {
                         let mut s = style::quiet(theme, status);
                         if chosen {
-                            s.background = Some(iced::Color::from_rgba(0., 0., 0., 0.10).into());
+                            s.background = Some(style::accent(theme).into());
                         }
                         s
                     })
-                    .on_press_maybe(click);
-                if open {
-                    trigger.into()
-                } else {
-                    iced::widget::tooltip(
-                        trigger,
-                        text(label).size(12),
-                        iced::widget::tooltip::Position::Bottom,
-                    )
+                    .on_press_maybe(click)
                     .into()
-                }
             } else {
-                sized_icon_button(icon, label, click, style::NAV_ICON_WIDTH, nav_height)
+                sized_icon_button(icon, click, style::NAV_ICON_WIDTH, nav_height)
             };
             shared = shared.push(if self.connection.is_some() {
                 mouse_area(trigger)
@@ -1900,7 +1935,6 @@ impl App {
             shared = shared.push(
                 mouse_area(sized_icon_button(
                     Icon::Download,
-                    tr("更新可用"),
                     Some(Message::OpenPanel(Panel::Update, true)),
                     style::NAV_ICON_WIDTH,
                     nav_height,
@@ -1919,7 +1953,6 @@ impl App {
             .height(nav_height),
             sized_icon_button(
                 Icon::Refresh,
-                tr("刷新对话显示"),
                 if !self.error.is_empty() && !self.root.is_empty() {
                     Some(Message::Retry)
                 } else {
@@ -1959,12 +1992,7 @@ impl App {
             let name = text(name).size(13);
             let mut tools = row![
                 self.audio[index]
-                    .view(
-                        self.connection.is_some(),
-                        index,
-                        self.locale,
-                        self.reduced_motion
-                    )
+                    .view(self.connection.is_some(), self.reduced_motion)
                     .map(move |m| Message::Audio(index, m))
             ]
             .align_y(iced::Center);
@@ -1976,11 +2004,6 @@ impl App {
                     } else {
                         Icon::PhonePortrait
                     },
-                    tr(if landscape {
-                        "切换竖屏"
-                    } else {
-                        "切换横屏"
-                    }),
                     self.frames[0].as_ref().map(|_| Message::Rotate),
                     32.,
                     34.,
@@ -1988,7 +2011,6 @@ impl App {
             }
             tools = tools.push(controls::sized_icon_button(
                 Icon::Camera,
-                tr("截图"),
                 self.frames[index]
                     .as_ref()
                     .map(|_| Message::OpenPanel(Panel::Capture(index), true)),
@@ -2055,9 +2077,7 @@ impl App {
                 pin(mouse_area(
                     container(iced::widget::themer(
                         Some(style::theme()),
-                        self.chat
-                            .preview_view(self.locale, p)
-                            .map(Message::Conversation),
+                        self.chat.preview_view(p).map(Message::Conversation),
                     ))
                     .width(p.width)
                     .height(p.height)
@@ -2192,10 +2212,6 @@ fn main() -> iced::Result {
             exit_on_close_request: false,
             ..Default::default()
         })
-        .default_font(iced::Font::with_name(if cfg!(target_os = "macos") {
-            "PingFang SC"
-        } else {
-            "Microsoft YaHei"
-        }))
+        .default_font(style::CJK_FONT)
         .run()
 }

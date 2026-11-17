@@ -1,7 +1,7 @@
 use crate::style;
 use iced::{
     Element, Length,
-    widget::{button, column, container, rule, svg, text, text_input, tooltip},
+    widget::{button, column, container, rule, svg, text, text_input},
 };
 
 #[derive(Clone, Copy)]
@@ -201,43 +201,25 @@ impl Icon {
             })
     }
 }
-pub fn icon_button<'a, M: Clone + 'a>(
-    icon: Icon,
-    label: &'a str,
-    action: Option<M>,
-) -> Element<'a, M> {
-    sized_icon_button(
-        icon,
-        label,
-        action,
-        style::CONTROL_HEIGHT,
-        style::CONTROL_HEIGHT,
-    )
+pub fn icon_button<'a, M: Clone + 'a>(icon: Icon, action: Option<M>) -> Element<'a, M> {
+    sized_icon_button(icon, action, style::CONTROL_HEIGHT, style::CONTROL_HEIGHT)
 }
 
 pub fn sized_icon_button<'a, M: Clone + 'a>(
     icon: Icon,
-    label: &'a str,
     action: Option<M>,
     width: f32,
     height: f32,
 ) -> Element<'a, M> {
-    tooltip(
-        button(
-            container(
-                icon.view()
-                    .opacity(if action.is_some() { 1. } else { 0.35 }),
-            )
+    button(
+        container(icon.view().opacity(if action.is_some() { 1. } else { 0.5 }))
             .center(Length::Fill),
-        )
-        .width(width)
-        .height(height)
-        .padding(0)
-        .on_press_maybe(action)
-        .style(style::quiet),
-        text(label).size(12),
-        tooltip::Position::Bottom,
     )
+    .width(width)
+    .height(height)
+    .padding(0)
+    .on_press_maybe(action)
+    .style(style::quiet)
     .into()
 }
 pub fn field<'a, M: Clone + 'a>(
