@@ -11,7 +11,7 @@ concurrency:
   group: dysprosium-win-native-postgres-qa
   cancel-in-progress: false
 env:
-  PRODUCT_SOURCE: 95e722cd18d3d116d2570be6175e5fd2aedfaff7
+  PRODUCT_SOURCE: 2d3899dadb191fb6651f66f391398d3075cc6c9f
   QA_PREVIOUS_SOURCE: cf4bbf371d4d3272627f802698a6d4aff22ffa23
   QA_LINUX_ARTIFACT: native-postgres-linux-qa-layer
   CALCIUM_BASE_SHA: 1184c13114500f919b6bcc738d9af7e1f872ff192aef624e67aa87a6f9b7446f
@@ -64,16 +64,16 @@ jobs:
           echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/ocr-models" >> "$GITHUB_ENV"
           echo "QA_LAYER=$RUNNER_TEMP/linux-layer" >> "$GITHUB_ENV"
           echo "QA_PREVIOUS_LAYER=$RUNNER_TEMP/prior-guest" >> "$GITHUB_ENV"
-      - name: Compile exact-source Rust guest services and Android inputs
-        working-directory: exact
-        timeout-minutes: 20
-        run: ./scripts/bun ../qa/windows-native-dev/build-linux-postgres-layer.ts services
       - uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
         with:
           version: v29.9.2
           context: aimanity-postgres-qa
           set-host: true
           daemon-config: '{"features":{"containerd-snapshotter":true}}'
+      - name: Compile exact-source Rust services, Android inputs and OCR closure
+        working-directory: exact
+        timeout-minutes: 24
+        run: ./scripts/bun ../qa/windows-native-dev/build-linux-postgres-layer.ts services
       - name: Stage PostgreSQL and Redis with a database-free guest overlay
         working-directory: exact
         timeout-minutes: 18

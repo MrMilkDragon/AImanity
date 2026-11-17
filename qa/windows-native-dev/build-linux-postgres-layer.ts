@@ -1,9 +1,9 @@
 import { copyFileSync, mkdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, digest, hash, output, run } from "../../exact/scripts/tooling/process";
+import { ROOT, digest, output, run } from "../../exact/scripts/tooling/process";
 import { json, save } from "../../exact/scripts/tooling/inventory";
 import { buildPhone } from "../../exact/scripts/tooling/phone-apps";
-import { dependencyFingerprint, profiles, verifyDependency } from "../../exact/scripts/tooling/linux-dependencies";
+import { buildFactoryDependency } from "../../exact/scripts/tooling/factory-inputs";
 import { preparePayload } from "../../exact/scripts/tooling/client-payload";
 import { buildNative } from "../../exact/scripts/tooling/native-build";
 import { stageWindowsServices } from "../../exact/scripts/tooling/wsl-factory";
@@ -25,30 +25,9 @@ if (manifest.source_commit !== previousSource || manifest.guest.disk.sha256 !== 
     changes) throw Error("The previous desktop or OCR inputs do not cover these changes: " + changes);
 const diskRecord = manifest.files.find((row: {path:string}) => row.path === "guest/release.ext4");
 if (process.argv[2] === "services") {
-  if (statSync(previousDisk).size !== diskRecord.size || await digest(previousDisk) !== diskRecord.sha256)
-    throw Error("Previous ext4 bytes differ from the checked guest artifact");
-  const priorPayload = join(work, "staged-previous-source.payload");
   const ocr = join(work, "ocr");
-  mkdirSync(ocr, { recursive:true });
-  run(["debugfs", "-R", `dump /source.payload ${priorPayload}`, previousDisk]);
-  if (await digest(priorPayload) !== manifest.release_sha256) throw Error("Prior Linux source bytes differ");
-  run(["tar", "-x", "-f", priorPayload, "--strip-components=3", "-C", ocr, "--wildcards", "runtime/services/ocr/*"]);
-  rmSync(priorPayload);
-  const profile = profiles["linux-ocr"]!;
-  const ocrManifestPath = join(ocr, "manifest.json");
-  const ocrManifest = json(ocrManifestPath);
-  const recipeChanges = output(["git", "diff", "--name-only", previousSource, source!, "--", ...profile.source], { cwd: ROOT });
-  const originalFingerprint = hash(JSON.stringify(profile.source.map(path => [
-    path,
-    hash(run(["git", "show", previousSource + ":" + path], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] }).stdout),
-  ])));
-  if (recipeChanges !== "scripts/tooling/linux-dependencies.ts" ||
-      ocrManifest.source_sha256 !== originalFingerprint)
-    throw Error("Cannot carry the original sealed OCR through the reviewed import-only change");
-  rmSync(ocrManifestPath);
-  save(ocrManifestPath, { ...ocrManifest, source_sha256: dependencyFingerprint(ROOT, profile) });
   await buildPhone(ROOT);
-  await verifyDependency(ROOT, ocr, "linux-ocr");
+  await buildFactoryDependency(ROOT, join(work, "ocr-context"), ocr, "linux-ocr");
   await buildNative(ROOT);
   await preparePayload(ROOT, { nativeServices: true, phoneApps: true, linuxOcr: ocr });
   const payload = join(ROOT, "apps/native/gen/host/source.payload");
@@ -65,6 +44,8 @@ if (process.argv[2] === "services") {
   process.exit(0);
 }
 if (process.argv[2] !== "layer") throw Error("Expected services or layer phase");
+if (statSync(previousDisk).size !== diskRecord.size || await digest(previousDisk) !== diskRecord.sha256)
+  throw Error("Previous ext4 bytes differ from the checked guest artifact");
 const immutableNames = ["guest.qcow2", "bzImage", "kernel.config", "KERNEL-LICENSE.txt"];
 const guest = join(destination, "guest");
 mkdirSync(guest, { recursive: true });
