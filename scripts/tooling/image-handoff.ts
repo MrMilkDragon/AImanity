@@ -67,9 +67,8 @@ export async function admitImages(
   const manifest = await imageManifest(file, root);
   if (
     manifest.architecture !== "arm64" ||
-    ["workspace", "desktop", "postgres", "redis"].some(
-      (role) => !manifest.images?.[role],
-    )
+    Object.keys(manifest.images).length !== 2 ||
+    !manifest.images.workspace || !manifest.images.desktop
   )
     throw Error("Native Mac images must be ARM64");
   return { file, manifest, sha256: value.artifact.sha256 };
@@ -262,7 +261,7 @@ export async function buildImageHandoff(
   buildReleaseTools(root);
   mkdirSync(work, { recursive: true });
   const identity = await digest(join(root, "SOURCE-MANIFEST.json"));
-  const result = await prepareImages(root, work, identity, "arm64");
+  const result = await prepareImages(root, work, identity, "arm64", undefined, false);
   if ((await digest(join(root, "SOURCE-MANIFEST.json"))) !== identity)
     throw Error("Factory source inventory changed");
   return stageImages(root, result.file, source);

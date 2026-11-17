@@ -34,7 +34,9 @@ fn definition(
             {"mode":"system","script":format!("#!/bin/sh\nset -eu\npackages={packages}\napk --no-network add \"$packages\"/*.apk\nrc-service docker start\n")}],
         "probes":[{"script":"#!/bin/sh\nsudo docker info >/dev/null 2>&1\n","hint":"The local container engine must be ready"}],
         "hostResolver":{"hosts":{"host.docker.internal":"host.lima.internal"}},
-        "portForwards":[{"guestPortRange":[17860,17869],"ignore":true}]
+        "portForwards":[{"guestPortRange":[17860,17869],"ignore":true},
+            {"guestPort":55482,"guestIP":"127.0.0.1","hostIP":"127.0.0.1"},
+            {"guestPort":56382,"guestIP":"127.0.0.1","hostIP":"127.0.0.1"}]
     }))
 }
 
@@ -43,8 +45,6 @@ fn wrapper(root: &Path, command: &Path, state: &Path) -> Result<String> {
         ("AI_PHONE_DESKTOP_CPUS", "2"),
         ("AI_PHONE_DESKTOP_MEMORY", "2560m"),
         ("AI_PHONE_CONTAINER_PROXY", ""),
-        ("AI_PHONE_POSTGRES_IMAGE", ""),
-        ("AI_PHONE_REDIS_IMAGE", ""),
         ("AI_PHONE_DESKTOP_IMAGE", ""),
         ("AI_PHONE_WORKSPACE_IMAGE", ""),
         ("AI_PHONE_IMAGE_PULL_POLICY", "missing"),

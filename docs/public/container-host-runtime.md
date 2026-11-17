@@ -1,6 +1,6 @@
 # Offline container host
 
-The Apple Silicon client includes Lima with Virtualization.framework, a pinned Alpine image and offline Docker/Compose packages. The engine uses an installation-owned Docker context. Windows runs its [QEMU Linux guest](windows-backend-runtime.md).
+The Apple Silicon client includes Lima with Virtualization.framework, a pinned Alpine image and offline packages. PostgreSQL and Redis run directly in the guest. The desktop and workspace use the installation-owned Docker context. Windows runs its [QEMU Linux guest](windows-backend-runtime.md).
 
 ## Assembly
 
@@ -14,6 +14,6 @@ Android acceleration, two-device readiness, media and upgrades have separate acc
 
 ## 中文
 
-Apple Silicon 客户端内置 Lima/VZ 引擎、Alpine 镜像和离线 Docker/Compose 软件包。引擎使用应用自己的 Docker context。Windows 使用 QEMU Linux 客体。
+Apple Silicon 客户端内置 Lima/VZ、Alpine 镜像和离线软件包。PostgreSQL 和 Redis 在客体直接运行。桌面和工作区使用应用自己的 Docker context。Windows 使用 QEMU Linux 客体。
 
 引擎数据归属于当前安装，重启时复用。完整设备就绪、媒体、更新与发行资格分别记录，详见[发行状态](release-status.md)。

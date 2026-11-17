@@ -7,7 +7,7 @@ use std::{
     collections::BTreeMap,
     ffi::OsString,
     fs::{self, File},
-    io::{self, Write},
+    io::{self, Read, Write},
     path::{Component, Path, PathBuf},
     process::Command,
 };
@@ -503,14 +503,24 @@ fn append_file<W: Write>(
     data: &[u8],
     mode: u32,
 ) -> Result<()> {
+    append_entry(archive, path, data.len() as u64, mode, data)
+}
+
+pub(super) fn append_entry(
+    archive: &mut tar::Builder<impl Write>,
+    path: impl AsRef<Path>,
+    size: u64,
+    mode: u32,
+    contents: impl Read,
+) -> Result<()> {
     let mut header = tar::Header::new_ustar();
     header.set_mode(mode);
-    header.set_size(data.len() as u64);
+    header.set_size(size);
     header.set_uid(0);
     header.set_gid(0);
     header.set_mtime(0);
     header.set_entry_type(tar::EntryType::Regular);
-    archive.append_data(&mut header, path, data)?;
+    archive.append_data(&mut header, path, contents)?;
     Ok(())
 }
 

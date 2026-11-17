@@ -10,7 +10,9 @@ use std::{
 };
 use tokio::process::Command;
 
-const SERVICES: [(&str, &str); 5] = [
+const SERVICES: [(&str, &str); 7] = [
+    ("postgres", "dev.aiphone.postgres.native"),
+    ("redis", "dev.aiphone.redis.native"),
     ("emulator", "dev.aiphone.emulator.p2"),
     ("runner", "dev.aiphone.runner.p2"),
     ("assistant", "dev.aiphone.assistant"),

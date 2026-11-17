@@ -267,7 +267,7 @@ RUN set -eu; \\
     source=/usr/lib/postgresql/17; \\
     output=/native-postgres; \\
     mkdir -p "$output/lib/postgresql/17/bin" "$output/lib/postgresql/17/lib" "$output/share/postgresql" "$output/runtime"; \\
-    for binary in postgres initdb pg_isready psql; do \\
+    for binary in postgres initdb; do \\
         cp -L "$source/bin/$binary" "$output/lib/postgresql/17/bin/"; \\
     done; \\
     find "$source/lib" -maxdepth 1 -name '*.so' ! -name llvmjit.so -exec cp -L -t "$output/lib/postgresql/17/lib" {} +; \\
@@ -291,7 +291,7 @@ RUN set -eu; \\
     mkdir /tmp/native-postgres; \\
     chown 65534:65534 /tmp/native-postgres; \\
     setpriv --reuid=65534 --regid=65534 --clear-groups "$bin/initdb" -D /tmp/native-postgres -U ai_phone --locale-provider=builtin --locale=C.UTF-8; \\
-    "$bin/psql" --version
+    "$bin/postgres" --version
 FROM scratch
 COPY --from=redis /native-redis/ /redis/
 COPY --from=postgres-check /opt/aiphone/postgres/ /postgres/

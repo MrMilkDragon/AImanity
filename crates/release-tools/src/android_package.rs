@@ -1,6 +1,8 @@
 //! Android helper APK assembly and offline SDK file selection.
 use crate::Result;
+use apk::sign::{Keystore, Signer, verify};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     env,
     ffi::{OsStr, OsString},
@@ -20,7 +22,7 @@ pub fn select(files: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-pub(super) fn sdk() -> Result<PathBuf> {
+fn sdk() -> Result<PathBuf> {
     Ok(env::var_os("ANDROID_HOME")
         .map(PathBuf::from)
         .ok_or("ANDROID_HOME is required")?)
@@ -64,39 +66,8 @@ fn matching_files(folder: &Path, extension: &str, output: &mut Vec<PathBuf>) -> 
     Ok(())
 }
 
-fn inspect(tools: &Path, apk: &Path, package: &str) -> Result<Value> {
-    let certificates = program(tools, "apksigner", "bat")
-        .args(["verify", "--print-certs"])
-        .arg(apk)
-        .output()?;
-    if !certificates.status.success() {
-        return Err(String::from_utf8_lossy(&certificates.stderr)
-            .trim()
-            .to_owned()
-            .into());
-    }
-    let output = std::str::from_utf8(&certificates.stdout)?;
-    let certificate =
-        regex::Regex::new(r"(?m)^Signer #\d+ certificate SHA-256 digest: ([0-9a-f]{64})\r?$")?;
-    let mut signatures = certificate.captures_iter(output);
-    let (_, [signer]) = signatures.next().ok_or("APK signer missing")?.extract();
-    if signatures.next().is_some() {
-        return Err("APK signer mismatch".into());
-    }
-    verify_package(tools, apk, package)?;
-    Ok(json!({"package": package, "signer_sha256": signer}))
-}
-
-pub(super) fn verify_package(tools: &Path, apk: &Path, package: &str) -> Result<()> {
-    let badging = program(tools, "aapt2", "exe")
-        .args(["dump", "badging"])
-        .arg(apk)
-        .output()?;
-    if !badging.status.success()
-        || !badging
-            .stdout
-            .starts_with(format!("package: name='{package}'").as_bytes())
-    {
+pub(super) fn verify_package(path: &Path, package: &str) -> Result<()> {
+    if apk::Apk::open(path)?.manifest()?.package() != Some(package) {
         return Err("APK package mismatch".into());
     }
     Ok(())
@@ -179,7 +150,6 @@ pub(super) fn build_app(root: &Path, role: &str) -> Result<(PathBuf, Value)> {
     sources.sort_unstable();
     compile(&sdk, sources, &build.path().join("classes"), build.path())?;
     run(tool("aapt", "exe").args(["add", "base.apk", "classes.dex"]))?;
-    run(tool("zipalign", "exe").args(["-f", "4", "base.apk", "aligned.apk"]))?;
     let key = out.join("debug.jks");
     if !key.try_exists()? {
         run(Command::new("openssl")
@@ -209,12 +179,11 @@ pub(super) fn build_app(root: &Path, role: &str) -> Result<(PathBuf, Value)> {
         store.persist_noclobber(&key)?;
     }
     let apk = out.join(format!("ai-phone-{role}.apk"));
-    run(tool("apksigner", "bat")
-        .args(["sign", "--ks"])
-        .arg(key)
-        .args(["--ks-pass", "pass:android", "--out"])
-        .arg(&apk)
-        .arg("aligned.apk"))?;
-    let receipt = inspect(&tools, &apk, &format!("dev.aiphone.{role}"))?;
-    Ok((apk, receipt))
+    let identity = Keystore::open(key, "android")?.sole_identity(None)?;
+    Signer::new(identity).sign(build.path().join("base.apk"), &apk)?;
+    let signed = verify(&apk)?;
+    let package = format!("dev.aiphone.{role}");
+    verify_package(&apk, &package)?;
+    let signer = format!("{:x}", Sha256::digest(signed.certificate().der()));
+    Ok((apk, json!({"package": package, "signer_sha256": signer})))
 }

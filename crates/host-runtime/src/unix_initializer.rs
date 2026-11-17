@@ -90,13 +90,14 @@ fn command_label(command: &Command) -> Option<&'static str> {
     match (name, args.next()?) {
         ("limactl", "list") => Some("limactl list"),
         ("limactl", "start") => Some("limactl start --tty=false"),
-        ("docker", "compose") => Some("docker compose … up -d --wait"),
         ("docker", "container") if args.next() == Some("ls") => Some("docker container ls"),
         (_, "--activate-images") => Some("ai-phone-client --activate-images"),
         (_, "--prepare-database") => Some("assistant --prepare-database"),
         (_, "--migrate") => Some("assistant --migrate"),
         (_, "--setup-devices") => Some("assistant --setup-devices"),
         (_, "--service-control") => match (args.nth(1)?, args.next()?) {
+            ("postgres", "start") => Some("ai-phone-client --service-control … postgres start"),
+            ("redis", "start") => Some("ai-phone-client --service-control … redis start"),
             ("assistant", "start") => Some("ai-phone-client --service-control … assistant start"),
             ("runner", "start") => Some("ai-phone-client --service-control … runner start"),
             _ => None,
@@ -317,7 +318,7 @@ async fn initialize(
                     &args.resource.join("images.payload"),
                     args.images.as_deref(),
                     &user,
-                    Database::MacContainers,
+                    Database::MacNative,
                 )
                 .await
         };

@@ -97,6 +97,7 @@ impl Execute for Fixture {
             }
             Some("--service-control") => b"true".to_vec(),
             Some("--library-path") if program == REDIS_LOADER => b"PONG\n".to_vec(),
+            Some("shell") if args.last().is_some_and(|arg| arg == "PING") => b"PONG\n".to_vec(),
             _ => Vec::new(),
         };
         Ok(std::process::Output {
@@ -444,17 +445,30 @@ async fn macos_starts_redis_in_the_same_guest_as_postgres() {
             Path::new("images.payload"),
             None,
             Path::new("/root"),
-            Database::MacContainers,
+            Database::MacNative,
         )
         .await
         .unwrap();
     let calls = &backend.execute.calls;
-    assert!(calls.iter().any(|(_, args, _)| {
-        args[0] == "compose" && args.ends_with(&["postgres".into(), "redis".into()])
-    }));
-    assert!(!calls.iter().any(|(program, args, _)| {
-        program == REDIS_LOADER || (args[0] == "--service-control" && args[2] == "redis")
-    }));
+    for (unit, binary) in [
+        ("postgres", "/usr/libexec/postgresql17/postgres"),
+        ("redis", "/usr/bin/redis-server"),
+    ] {
+        let (_, _, input) = calls
+            .iter()
+            .find(|(_, args, _)| {
+                args[0] == "--service-control" && args[2] == unit && args[3] == "start"
+            })
+            .unwrap();
+        let spec: Value = serde_json::from_slice(input).unwrap();
+        assert_eq!(spec["command"][5], "ai-phone");
+        assert_eq!(spec["command"][11], binary);
+    }
+    assert!(
+        !calls
+            .iter()
+            .any(|(program, args, _)| program == REDIS_LOADER || args[0] == "compose")
+    );
 }
 
 #[tokio::test]

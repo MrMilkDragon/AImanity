@@ -2,6 +2,8 @@
 mod postgres;
 pub(crate) mod process;
 use crate::{Error, Result, filesystem, profile};
+#[cfg(target_os = "macos")]
+pub(crate) use postgres::MAC_POSTGRES_SHUTDOWN;
 use process::{Execute, Process};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -78,9 +80,29 @@ pub(crate) struct Backend<'a, E> {
 }
 
 pub(crate) enum Database {
-    MacContainers,
+    MacNative,
     Container,
     Native,
+}
+
+fn mac_guest(lima: &str, owner: &str, args: &[&str]) -> Vec<String> {
+    [
+        lima,
+        "shell",
+        "--tty=false",
+        "--workdir",
+        "/",
+        "ai-phone",
+        "sudo",
+        "-n",
+        "-u",
+        owner,
+        "--",
+    ]
+    .into_iter()
+    .chain(args.iter().copied())
+    .map(str::to_owned)
+    .collect()
 }
 
 impl<E: Execute> Backend<'_, E> {
@@ -273,16 +295,20 @@ impl<E: Execute> Backend<'_, E> {
         if let Some(ocr) = existing.get("ai-phone-ocr") {
             self.docker(&["rm", "--force", &ocr.id]).await?;
         }
+        let lima = matches!(database, Database::MacNative)
+            .then(|| text(&self.root.join("runtime/container-host/lima/bin/limactl")))
+            .transpose()?;
+        let lima = lima.as_deref();
         let redis_port = self.env["AI_PHONE_REDIS_PORT"].clone();
-        if !matches!(database, Database::MacContainers) {
-            self.start_redis(&redis_port, existing.get("ai-phone-redis-1"))
-                .await?;
+        let redis = existing.get("ai-phone-redis-1");
+        if lima.is_none() {
+            self.start_redis(&redis_port, redis, None).await?;
         }
         phase("database_start");
         match database {
-            Database::Native => self.start_postgres().await?,
-            Database::Container | Database::MacContainers => {
-                let mut command = vec![
+            Database::Native | Database::MacNative => self.start_postgres(lima).await?,
+            Database::Container => {
+                self.docker(&[
                     "compose",
                     "-f",
                     "compose.yaml",
@@ -295,16 +321,14 @@ impl<E: Execute> Backend<'_, E> {
                     "--pull",
                     "never",
                     "postgres",
-                ];
-                if matches!(database, Database::MacContainers) {
-                    command.push("redis");
-                }
-                self.docker(&command).await?;
+                ])
+                .await?;
             }
         }
-        if !matches!(database, Database::MacContainers) {
-            self.wait_redis(&redis_port).await?;
+        if lima.is_some() {
+            self.start_redis(&redis_port, redis, lima).await?;
         }
+        self.wait_redis(&redis_port, lima).await?;
         let assistant = text(&self.root.join("runtime/services/bin/assistant"))?;
         phase("database_prepare");
         if self
@@ -359,7 +383,12 @@ impl<E: Execute> Backend<'_, E> {
         .await?;
         Ok(())
     }
-    async fn start_redis(&mut self, port: &str, legacy: Option<&Container>) -> Result<()> {
+    async fn start_redis(
+        &mut self,
+        port: &str,
+        legacy: Option<&Container>,
+        lima: Option<&str>,
+    ) -> Result<()> {
         if let Some(redis) = legacy {
             if redis.running {
                 self.docker(&["stop", "--time", "10", &redis.id]).await?;
@@ -367,10 +396,13 @@ impl<E: Execute> Backend<'_, E> {
             self.docker(&["rm", &redis.id]).await?;
         }
         phase("redis_start");
-        self.unit(
-            "redis",
-            "start",
-            [
+        let (mut command, directory) = if let Some(lima) = lima {
+            (
+                mac_guest(lima, "redis", &["/usr/bin/redis-server"]),
+                "/var/lib/redis",
+            )
+        } else {
+            let args = [
                 "/usr/bin/setpriv",
                 "--reuid=65534",
                 "--regid=65534",
@@ -380,8 +412,13 @@ impl<E: Execute> Backend<'_, E> {
                 "--library-path",
                 REDIS_LIB,
                 "/opt/aiphone/redis/bin/redis-server",
+            ];
+            (args.map(str::to_owned).into(), REDIS)
+        };
+        command.extend(
+            [
                 "--dir",
-                REDIS,
+                directory,
                 "--bind",
                 "127.0.0.1",
                 "--port",
@@ -395,27 +432,30 @@ impl<E: Execute> Backend<'_, E> {
                 "--maxmemory-policy",
                 "noeviction",
             ]
-            .map(str::to_owned)
-            .into(),
-            &[],
-        )
-        .await?;
+            .map(str::to_owned),
+        );
+        self.unit("redis", "start", command, &[]).await?;
         Ok(())
     }
-    async fn wait_redis(&mut self, port: &str) -> Result<()> {
+    async fn wait_redis(&mut self, port: &str, lima: Option<&str>) -> Result<()> {
+        let args = if let Some(lima) = lima {
+            mac_guest(lima, "redis", &["/usr/bin/redis-cli", "-p", port, "PING"])
+        } else {
+            [
+                REDIS_LOADER,
+                "--library-path",
+                REDIS_LIB,
+                "/opt/aiphone/redis/bin/redis-cli",
+                "-p",
+                port,
+                "PING",
+            ]
+            .map(str::to_owned)
+            .into()
+        };
         let ready = Instant::now() + Duration::from_secs(10);
         loop {
-            let command = self.command(
-                REDIS_LOADER,
-                [
-                    "--library-path",
-                    REDIS_LIB,
-                    "/opt/aiphone/redis/bin/redis-cli",
-                    "-p",
-                    port,
-                    "PING",
-                ],
-            );
+            let command = self.command(&args[0], &args[1..]);
             let result = self.execute.run(command, Vec::new()).await?;
             if result.status.success() && result.stdout == b"PONG\n" {
                 return Ok(());

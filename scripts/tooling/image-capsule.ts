@@ -244,8 +244,6 @@ export async function buildImages(
         : architecture;
   if (!["amd64", "arm64"].includes(arch))
     throw Error("Unsupported Docker architecture");
-  if (roles.length === 2 && arch !== "amd64")
-    throw Error("The native database payload targets Windows x64");
   const records: Record<string, Image> = {};
   for (const role of roles) {
     const record = JSON.parse(

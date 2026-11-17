@@ -15,7 +15,10 @@ The host requirement is an Apple Silicon Mac running macOS 15.0 or later, at lea
 | Media and connections | Compiled services and their locked production dependencies |
 | Device networking | Direct by default, with an optional workbench proxy |
 | Android | AOSP Android 17 ARM64 (build 16644040), Avo 1.1.0 and ADB 36.0.1. [Sources and staging](android-runtime.md) |
-| Linux and data services | Clean desktop/workspace images, PostgreSQL and Redis |
+| Linux desktop and workspace | Clean desktop and workspace images |
+| Data services | Offline Alpine PostgreSQL 17 and Redis packages, started directly in the Lima guest |
+
+PostgreSQL and Redis listen on loopback ports 55482 and 56382. PostgreSQL stores its cluster on the installation's Linux guest disk.
 
 Resources are sealed by SHA-256 inventories. Runtime selection checks the host, component identity and file permissions. The distribution includes an inspectable source snapshot; chat, accounts, user files and device disks are never package inputs.
 

@@ -95,6 +95,9 @@ pub(super) fn run(args: &[OsString]) -> Result<Value> {
             }
         }
     }
+    if ocr.is_some() && !service {
+        return Err("--linux-ocr requires --with-service-runtime".into());
+    }
     let mut runtime = Vec::new();
     let mut components = Vec::new();
     if service {

@@ -63,7 +63,7 @@ export function compilerEnvironment(sdk: string): NodeJS.ProcessEnv {
     !java ||
     ![
       "platforms/android-35/android.jar",
-      ...["aapt2", "d8", "apksigner"].map(
+      ...["aapt2", "d8"].map(
         (name) => "build-tools/35.0.0/" + name,
       ),
     ].every((name) => existsSync(join(sdk, name))) ||

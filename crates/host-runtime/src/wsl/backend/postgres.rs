@@ -1,12 +1,6 @@
-use super::{Backend, Execute, text};
+use super::{Backend, Execute, mac_guest, text};
 use crate::{Error, Result, filesystem};
-use std::{
-    collections::BTreeMap,
-    fs,
-    io::Write,
-    path::Path,
-    time::{Duration, Instant},
-};
+use std::{fs, io::Write, path::Path};
 
 const BIN: &str = "/opt/aiphone/postgres/lib/postgresql/17/bin";
 const LIB: &str = "/opt/aiphone/postgres/runtime";
@@ -14,6 +8,28 @@ const STATE: &str = "/var/lib/aiphone-postgres";
 const DATA: &str = "/var/lib/aiphone-postgres/data";
 const OWNER: &str = "aiphone-postgres";
 const LEGACY: &str = "/var/lib/aiphone/docker/volumes/ai-phone_postgres_data/_data/PG_VERSION";
+const MAC_BIN: &str = "/usr/libexec/postgresql17/postgres";
+#[cfg(target_os = "macos")]
+pub(crate) const MAC_POSTGRES_SHUTDOWN: &str = r#"data=/var/lib/aiphone-postgres/data
+control=/usr/libexec/postgresql17/pg_ctl
+if sudo -n -u postgres -- "$control" -D "$data" status >/dev/null 2>&1; then
+    exec sudo -n -u postgres -- "$control" -s -D "$data" -m fast -t 5 -w stop
+fi
+"#;
+const MAC_INIT: &str = r#"set -eu
+test ! -f /var/lib/docker/volumes/ai-phone_postgres_data/_data/PG_VERSION || exit 64
+state=/var/lib/aiphone-postgres
+test ! -d "$state/data" || exit 0
+install -d -m 0711 "$state"
+stage=$(mktemp -d "$state/.init-XXXXXXXX")
+trap 'rm -rf "$stage"' EXIT
+umask 077
+cat > "$stage/password"
+chown -R postgres:postgres "$stage"
+sudo -n -u postgres -- /usr/libexec/postgresql17/initdb -D "$stage/data" -U "$1" --locale-provider=builtin --locale=C.UTF-8 --auth=scram-sha-256 --pwfile="$stage/password"
+mv "$stage/data" "$state/data"
+sync -f "$state"
+"#;
 
 pub(super) fn check_guest() -> Result<()> {
     filesystem::regular(&Path::new(BIN).join("postgres"))?;
@@ -40,101 +56,69 @@ fn owner_command(tool: &str, args: &[&str]) -> Vec<String> {
 }
 
 impl<E: Execute> Backend<'_, E> {
-    pub(super) async fn start_postgres(&mut self) -> Result<()> {
-        let source = fs::read_to_string(self.root.join(".env"))?;
-        let values: BTreeMap<_, _> = source
-            .lines()
-            .filter_map(|line| line.split_once('='))
-            .map(|(key, value)| (key.trim(), value.trim()))
-            .collect();
-        let value = |key| {
-            values
-                .get(key)
-                .copied()
-                .filter(|value| !value.is_empty())
-                .ok_or(Error::Invalid("postgres_configuration"))
-        };
-        let (database, username, password) = (
-            value("POSTGRES_DB")?,
-            value("POSTGRES_USER")?,
-            value("POSTGRES_PASSWORD")?,
-        );
+    pub(super) async fn start_postgres(&mut self, lima: Option<&str>) -> Result<()> {
         let port = self
             .env
             .entry("AI_PHONE_PG_PORT".into())
             .or_insert_with(|| "55482".into())
             .clone();
 
-        if !Path::new(DATA).try_exists()? {
-            self.initialize_postgres(username, password).await?;
+        if lima.is_some() || !Path::new(DATA).try_exists()? {
+            let source = fs::read_to_string(self.root.join(".env"))?;
+            let value = |key| {
+                source
+                    .lines()
+                    .rev()
+                    .filter_map(|line| line.split_once('='))
+                    .find_map(|(name, value)| (name.trim() == key).then(|| value.trim()))
+                    .filter(|value| !value.is_empty())
+                    .ok_or(Error::Invalid("postgres_configuration"))
+            };
+            let (username, password) = (value("POSTGRES_USER")?, value("POSTGRES_PASSWORD")?);
+            if let Some(lima) = lima {
+                let args = mac_guest(
+                    lima,
+                    "root",
+                    &["/bin/sh", "-c", MAC_INIT, "aiphone-initdb", username],
+                );
+                let command = self.command(&args[0], &args[1..]);
+                match self
+                    .execute
+                    .run(command, format!("{password}\n").into_bytes())
+                    .await?
+                    .status
+                    .code()
+                {
+                    Some(0) => {}
+                    Some(64) => {
+                        return Err(Error::Invalid("macos_guest_existing_container_database"));
+                    }
+                    _ => return Err(Error::Invalid("macos_guest_postgres_initialization")),
+                }
+            } else {
+                self.initialize_postgres(username, password).await?;
+            }
         }
-        self.unit(
-            "postgres",
-            "start",
-            owner_command(
-                "postgres",
-                &[
-                    "-D",
-                    DATA,
-                    "-h",
-                    "127.0.0.1",
-                    "-p",
-                    &port,
-                    "-k",
-                    "",
-                    "-c",
-                    "jit=off",
-                ],
-            ),
-            &[],
-        )
-        .await?;
-        let connection = [
+        let args = [
+            "-D",
+            DATA,
             "-h",
             "127.0.0.1",
             "-p",
             &port,
-            "-U",
-            username,
-            "-d",
-            "postgres",
+            "-k",
+            "",
+            "-c",
+            "jit=off",
         ];
-        let ready = Instant::now() + Duration::from_secs(15);
-        loop {
-            let mut command = self.command(format!("{BIN}/pg_isready"), ["-q", "-t", "1"]);
-            command.args(connection).env("LD_LIBRARY_PATH", LIB);
-            if self
-                .execute
-                .run(command, Vec::new())
-                .await?
-                .status
-                .success()
-            {
-                break;
-            }
-            if Instant::now() >= ready {
-                return Err(Error::Invalid("windows_guest_postgres_not_ready"));
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        let mut command = self.command(format!("{BIN}/psql"), connection);
-        command
-            .args([
-                "-qXw",
-                "-v",
-                "ON_ERROR_STOP=1",
-                "-v",
-                &format!("database={database}"),
-            ])
-            .env("LD_LIBRARY_PATH", LIB)
-            .env("PGPASSWORD", password);
-        self.checked(
-            command,
-            b"SELECT format('CREATE DATABASE %I', :'database') WHERE NOT EXISTS \
-              (SELECT FROM pg_database WHERE datname = :'database')\n\\gexec\n"
-                .to_vec(),
-        )
-        .await?;
+        let command = if let Some(lima) = lima {
+            let mut command = mac_guest(lima, "postgres", &[MAC_BIN]);
+            command.extend(args.map(str::to_owned));
+            command
+        } else {
+            owner_command("postgres", &args)
+        };
+        self.unit("postgres", "start", command, &[]).await?;
         Ok(())
     }
 

@@ -262,8 +262,26 @@ pub(crate) async fn shutdown(home: &Path, user: &Path) -> Result<()> {
         if matches!(observed.stdout.trim_ascii(), b"" | b"Stopped") {
             return Ok(());
         }
+        let database = command(&[
+            "shell",
+            "--tty=false",
+            "--workdir",
+            "/",
+            "ai-phone",
+            "sudo",
+            "-n",
+            "--",
+            "/bin/sh",
+            "-c",
+            crate::wsl::backend::MAC_POSTGRES_SHUTDOWN,
+        ])
+        .status()
+        .await;
         if !command(&["stop", "ai-phone"]).status().await?.success() {
             return Err(Error::Invalid("container_host_stop_failed"));
+        }
+        if !database?.success() {
+            return Err(Error::Invalid("macos_guest_postgres_stop_failed"));
         }
         Ok(())
     };

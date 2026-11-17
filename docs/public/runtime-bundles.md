@@ -13,7 +13,8 @@ AI Phone separates versioned application code, clean device baselines and persis
 | macOS container host | App-owned Lima, clean Alpine ISO and offline Docker/Compose packages | [Host component and ownership](container-host-runtime.md) |
 | Android runtime | Matched emulator, platform tools and clean Android factory image | Host/guest ABI, complete file inventory and archive integrity must match; redistribution qualification is separate |
 | Windows Linux guest | QEMU, WHPX, Linux kernel and QCOW2 base disk | Setup enables Windows Hypervisor Platform and creates a persistent overlay |
-| Container images | Clean Linux desktop/workspace, PostgreSQL and Redis images, including the desktop browser | Role, architecture, image identities and capsule integrity must match before import |
+| Container images | Clean Linux desktop and workspace, including the desktop browser | Role, architecture and image identities must match before import |
+| Data services | PostgreSQL and Redis run directly in the Linux guests | macOS supplies Alpine packages. Windows supplies dedicated executables and libraries |
 
 
 Each component manifest records file sizes, SHA-256 hashes and permissions. Native builds also record source fingerprints and compiler provenance. The packager accepts only matching builds. macOS helpers cannot require a newer OS than the client.

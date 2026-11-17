@@ -125,7 +125,7 @@ export async function macosFactory(
   const apps = prepareApps(root, env),
     images =
       prepared ||
-      (await prepareImages(root, work, source, "arm64", context)).file;
+      (await prepareImages(root, work, source, "arm64", context, false)).file;
   run(
     [
       bunProgram(root),

@@ -65,12 +65,11 @@ impl Manifest {
             2 => "images.tar.xz",
             _ => return Err(Error::Invalid("image_manifest")),
         };
-        let roles: &[&str] =
-            if value.format == 2 && value.architecture == "amd64" && value.images.len() == 2 {
-                &ROLES[..2]
-            } else {
-                &ROLES
-            };
+        let roles: &[&str] = if value.format == 2 && value.images.len() == 2 {
+            &ROLES[..2]
+        } else {
+            &ROLES
+        };
         if value.os != "linux"
             || !matches!(value.architecture.as_str(), "arm64" | "amd64")
             || value.redistribution != "review-pending"
@@ -159,10 +158,13 @@ mod tests {
         let images = value["images"].as_object_mut().unwrap();
         images.remove("postgres");
         images.remove("redis");
-        let environment = parse(&value).unwrap().environment();
-        assert_eq!(environment.len(), 3);
-        assert!(environment.contains_key("AI_PHONE_DESKTOP_IMAGE"));
-        assert!(environment.contains_key("AI_PHONE_WORKSPACE_IMAGE"));
+        for architecture in ["arm64", "amd64"] {
+            value["architecture"] = json!(architecture);
+            let environment = parse(&value).unwrap().environment();
+            assert_eq!(environment.len(), 3);
+            assert!(environment.contains_key("AI_PHONE_DESKTOP_IMAGE"));
+            assert!(environment.contains_key("AI_PHONE_WORKSPACE_IMAGE"));
+        }
     }
     #[test]
     fn malformed_shapes_types_aliases_codecs_and_limits_are_rejected() {

@@ -119,11 +119,7 @@ fn build(root: &Path, cache: &Path, destination: &Path, identity: String) -> Res
         "x86_64"
     };
     let browser = policy.abis[abi].stage(&cache.join("phone-browser"))?;
-    android_package::verify_package(
-        &android_package::sdk()?.join("build-tools/35.0.0"),
-        &browser,
-        &policy.package,
-    )?;
+    android_package::verify_package(&browser, &policy.package)?;
     fs::hard_link(browser, work.path().join("browser.apk"))?;
     let manifest = Manifest {
         format: 1,
