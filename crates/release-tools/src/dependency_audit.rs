@@ -1,5 +1,4 @@
 use crate::Result;
-use regex::Regex;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -68,9 +67,6 @@ pub(super) fn run(arguments: &[OsString]) -> Result<()> {
             );
         }
     };
-    let package_pattern = Regex::new(r"^[a-z0-9._-]+@[0-9][a-zA-Z0-9.+_-]*$")?;
-    let advisory_pattern =
-        Regex::new(r"^(?:RUSTSEC-[0-9]{4}-[0-9]{4}|GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4})$")?;
     let mut rust = BTreeMap::new();
     let mut blocked: BTreeMap<_, Vec<String>> = TARGETS
         .into_iter()
@@ -97,34 +93,38 @@ pub(super) fn run(arguments: &[OsString]) -> Result<()> {
         let vulnerabilities = report["vulnerabilities"]["list"]
             .as_array()
             .ok_or("Vulnerability result missing")?;
-        let reachable = TARGETS
-            .into_iter()
-            .filter(|target| name == "server" || !target.contains("linux"))
-            .map(|target| Ok((target, graph(manifest, target)?)))
-            .collect::<Result<Vec<_>>>()?;
         let warnings = report["warnings"]
             .as_object()
             .into_iter()
             .flatten()
             .filter_map(|(category, rows)| Some((category.as_str(), rows.as_array()?)));
+        let mut advisories = std::iter::once(("vulnerability", vulnerabilities))
+            .chain(warnings)
+            .filter(|(_, rows)| !rows.is_empty())
+            .peekable();
+        let reachable = if advisories.peek().is_some() {
+            TARGETS
+                .into_iter()
+                .filter(|target| name == "server" || !target.contains("linux"))
+                .map(|target| Ok((target, graph(manifest, target)?)))
+                .collect::<Result<Vec<_>>>()?
+        } else {
+            Vec::new()
+        };
         let mut findings = Vec::new();
-        for (category, rows) in std::iter::once(("vulnerability", vulnerabilities)).chain(warnings)
-        {
+        for (category, rows) in advisories {
             let blocking = matches!(category, "vulnerability" | "unsound");
-            let category = match category {
-                "vulnerability" | "unsound" | "unmaintained" | "yanked" | "notice" => category,
-                _ => "unknown",
-            };
             for row in rows {
                 let package = format!(
                     "{}@{}",
-                    row["package"]["name"].as_str().unwrap_or_default(),
-                    row["package"]["version"].as_str().unwrap_or_default()
+                    row["package"]["name"]
+                        .as_str()
+                        .ok_or("Missing advisory package name")?,
+                    row["package"]["version"]
+                        .as_str()
+                        .ok_or("Missing advisory package version")?
                 );
-                let advisory = row["advisory"]["id"]
-                    .as_str()
-                    .filter(|id| advisory_pattern.is_match(id))
-                    .unwrap_or("unknown");
+                let advisory = row["advisory"]["id"].as_str().unwrap_or("unknown");
                 let active: Vec<_> = reachable
                     .iter()
                     .filter(|(_, graph)| graph.contains(&package))
@@ -139,7 +139,7 @@ pub(super) fn run(arguments: &[OsString]) -> Result<()> {
                     }
                 }
                 findings.push(json!({
-                    "package": if package.len() <= 256 && package_pattern.is_match(&package) { package.as_str() } else { "unknown" },
+                    "package": package,
                     "advisory": advisory, "category": category, "active_targets": active, "blocking_when_active": blocking,
                 }));
             }

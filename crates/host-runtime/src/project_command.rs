@@ -1,4 +1,4 @@
-use crate::{Error, Result, capsule, component, control::Control, profile, runtime_environment};
+use crate::{Error, Result, component, profile, runtime_environment};
 use serde_json::{Value, json};
 use std::{
     env,
@@ -38,12 +38,19 @@ fn prompt(label: &str, current: &Value) -> Result<String> {
     })
 }
 
-fn configure(root: &Path, user: &Path, supplied: Option<&OsStr>) -> Result<Value> {
+fn deployment_profile(
+    root: &Path,
+    user: &Path,
+    supplied: Option<&OsStr>,
+    installing: bool,
+) -> Result<Value> {
     let saved = root.join("data/deployment/profile.json");
-    let mut value = if let Some(path) = supplied {
-        read(Path::new(path))?
-    } else if saved.try_exists()? {
-        read(&saved)?
+    let saved = ((installing || supplied.is_none()) && saved.try_exists()?).then_some(saved);
+    if installing && let Some(path) = &saved {
+        return read(path);
+    }
+    let mut value = if let Some(path) = supplied.map(Path::new).or(saved.as_deref()) {
+        read(path)?
     } else {
         let env = runtime_environment::resolve(root, user)?;
         let template = if env["AI_PHONE_ANDROID_ABI"] == "x86_64" {
@@ -124,9 +131,10 @@ fn total_memory() -> Option<u64> {
 
 fn doctor(root: &Path, args: &[OsString]) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
+    let path = env::var_os("PATH");
     let executable = |name: &str| {
-        env::var_os("PATH").is_some_and(|path| {
-            env::split_paths(&path).any(|directory| {
+        path.as_ref().is_some_and(|path| {
+            env::split_paths(path).any(|directory| {
                 fs::metadata(directory.join(name))
                     .is_ok_and(|info| info.is_file() && info.permissions().mode() & 0o111 != 0)
             })
@@ -154,9 +162,8 @@ fn doctor(root: &Path, args: &[OsString]) -> Result<()> {
             "{}",
             Value::Array(
                 checks
-                    .iter()
                     .map(|(name, passed)| json!({"name":name,"passed":passed}))
-                    .collect()
+                    .into()
             )
         );
     } else {
@@ -172,12 +179,7 @@ fn doctor(root: &Path, args: &[OsString]) -> Result<()> {
 }
 
 fn install(root: &Path, user: &Path, args: &[OsString]) -> Result<()> {
-    let saved = root.join("data/deployment/profile.json");
-    let value = if saved.try_exists()? {
-        read(&saved)?
-    } else {
-        configure(root, user, option(args, "--profile"))?
-    };
+    let value = deployment_profile(root, user, option(args, "--profile"), true)?;
     let resources = option(args, "--resources")
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join("apps/native/gen/host"));
@@ -237,7 +239,10 @@ pub(crate) fn run(args: &[OsString]) -> Result<()> {
     match operation.to_str().ok_or(INVALID)? {
         "doctor" => doctor(&root, rest),
         "configure" => {
-            println!("{}", configure(&root, &user, option(rest, "--profile"))?);
+            println!(
+                "{}",
+                deployment_profile(&root, &user, option(rest, "--profile"), false)?
+            );
             Ok(())
         }
         "install" => install(&root, &user, rest),
@@ -248,29 +253,7 @@ pub(crate) fn run(args: &[OsString]) -> Result<()> {
         "open" if cfg!(target_os = "macos") => {
             status(Command::new("open").args(["-a", "AImanity"]).status()?)
         }
-        "env" => {
-            for (key, value) in runtime_environment::resolve(&root, &user)? {
-                println!("export {key}='{}'", value.replace('\'', "'\\''"));
-            }
-            Ok(())
-        }
-        "stage" => {
-            let archive = PathBuf::from(option(rest, "--archive").ok_or(INVALID)?);
-            let destination = PathBuf::from(option(rest, "--destination").ok_or(INVALID)?);
-            let identity = capsule::hash(
-                &mut File::open(&archive)?,
-                &Control {
-                    available: &|_| 0,
-                    cancelled: &|| false,
-                },
-            )?;
-            let source = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()?
-                .block_on(crate::source_cli::stage(archive, destination, identity))?;
-            println!("{}", source.directory.display());
-            Ok(())
-        }
+        "env" => runtime_environment::run(&[root.into(), user.into(), "shell".into()]),
         "backup" | "restore" | "recover-desktop" => status(
             Command::new(assistant(&root))
                 .current_dir(&root)

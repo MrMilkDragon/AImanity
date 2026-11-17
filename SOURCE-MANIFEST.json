@@ -1898,8 +1898,8 @@
     },
     {
       "path": "crates/host-runtime/src/project_command.rs",
-      "size": 9774,
-      "sha256": "2068438b6060faab60ffca2d0cb98d76a0f44d64b310f88784fca44e75a25a5a"
+      "size": 9023,
+      "sha256": "90263edae80becf3f3f72549bf8c82b28e4d136d601757c8efadee4ea1f4badc"
     },
     {
       "path": "crates/host-runtime/src/runtime_environment.rs",
@@ -1908,8 +1908,8 @@
     },
     {
       "path": "crates/host-runtime/src/source_cli.rs",
-      "size": 2098,
-      "sha256": "186912dffcbd535f2aaa9e3fde2b39edfd4100b3c8a334104b871a1985025d48"
+      "size": 1929,
+      "sha256": "77ce30bb8c7b040ed187a386a8a3117749f4300772a2bfbb68cf8f2ece6bd894"
     },
     {
       "path": "crates/host-runtime/src/source_services.rs",
@@ -2213,8 +2213,8 @@
     },
     {
       "path": "crates/release-tools/src/android_package.rs",
-      "size": 7004,
-      "sha256": "27ac738c650af3aeee3acf50f00f3c1fd7d38703b3bd94355868e9da7b53cd6d"
+      "size": 6755,
+      "sha256": "233db70bdb1d1e9237f13f4a14e8ab642267bcf3071b0e7d61cae7ab9c28d581"
     },
     {
       "path": "crates/release-tools/src/assets.rs",
@@ -2228,13 +2228,13 @@
     },
     {
       "path": "crates/release-tools/src/dependency_audit.rs",
-      "size": 6412,
-      "sha256": "07e91f6f6b81b67c70c0a23148ab9c32881ad6b38da63a695bec5b85c77289d7"
+      "size": 6176,
+      "sha256": "72bde4edf86ab84580601e395a49eb792c81b660abb9752c6f6c2b267f853dc4"
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 4513,
-      "sha256": "df273b4c1099699a7f619c0efbb7a72f812c649f0cf572dff49019858eef4501"
+      "size": 3786,
+      "sha256": "1481d2d7a9cc4707a086fdb551d83fcd025606364d2bbfd993ef0c34dc30a85b"
     },
     {
       "path": "crates/release-tools/src/source.rs",

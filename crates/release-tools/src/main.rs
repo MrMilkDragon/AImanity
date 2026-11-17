@@ -12,118 +12,80 @@ mod wsl_qualification;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Value>> {
-    #[cfg(unix)]
-    if let [command, rest @ ..] = arguments.as_slice()
-        && command == "windows-release"
-    {
-        return windows_release::seal(rest).map(Some);
+    use std::{
+        io::{self, Read, Write},
+        path::Path,
+    };
+    let unknown = "Unknown release tool command";
+    let (command, rest) = arguments.split_first().ok_or(unknown)?;
+    match command.to_str().ok_or(unknown)? {
+        #[cfg(unix)]
+        "windows-release" => windows_release::seal(rest).map(Some),
+        "source" => source::run(rest),
+        "sign-update" => update_feed::sign(rest).map(|()| None),
+        "prepare-ocr-models" => assets::ocr(rest).map(Some),
+        "verify-upload" => assets::verify_upload(rest).map(Some),
+        "fetch-windows-aosp" => assets::windows_aosp(rest).map(|()| None),
+        "stage-windows-android-audio" => assets::windows_audio(rest).map(|()| None),
+        "audit-dependencies" => dependency_audit::run(rest).map(|()| None),
+        "build-android-apk" => android_package::build(rest).map(Some),
+        "verify-android-apk" => android_package::verify(rest).map(Some),
+        "decode-capsule" => {
+            let [codec] = rest else {
+                return Err("decode-capsule requires gzip or xz".into());
+            };
+            let input = io::stdin().lock();
+            let mut decoded: Box<dyn Read> = match codec.to_str() {
+                Some("gzip") => Box::new(flate2::read::MultiGzDecoder::new(input)),
+                Some("xz") => Box::new(xz2::read::XzDecoder::new(input)),
+                _ => return Err("Unsupported capsule codec".into()),
+            };
+            io::copy(&mut decoded, &mut io::stdout().lock())?;
+            Ok(None)
+        }
+        "encode-gzip" => {
+            if !rest.is_empty() {
+                return Err("encode-gzip takes its input through stdin".into());
+            }
+            let mut output =
+                flate2::write::GzEncoder::new(io::stdout().lock(), flate2::Compression::best());
+            io::copy(&mut io::stdin().lock(), &mut output)?;
+            output.finish()?.flush()?;
+            Ok(None)
+        }
+        "windows-sdk-files" => {
+            if !rest.is_empty() {
+                return Err("windows-sdk-files takes the file list through stdin".into());
+            }
+            let files = serde_json::from_reader(io::stdin().lock())?;
+            Ok(Some(serde_json::to_value(android_package::select(files))?))
+        }
+        "encode-xz" => {
+            let [arch, preset, directory] = rest else {
+                return Err("encode-xz requires architecture, preset and output directory".into());
+            };
+            capsule::encode(
+                &mut io::stdin().lock(),
+                io::stdout().lock(),
+                arch.to_str().ok_or("Invalid image architecture")?,
+                preset.to_str().ok_or("Invalid XZ preset")?.parse()?,
+                Path::new(directory),
+            )?;
+            Ok(None)
+        }
+        #[cfg(unix)]
+        "wsl-qualify" => {
+            if !rest.is_empty() {
+                return Err("qualification_arguments".into());
+            }
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?
+                .block_on(wsl_qualification::run())
+                .map(Some)
+        }
+        _ => Err(unknown.into()),
     }
-    if let [command, rest @ ..] = arguments.as_slice()
-        && command == "source"
-    {
-        return source::run(rest);
-    }
-    if let [command, rest @ ..] = arguments.as_slice()
-        && command == "sign-update"
-    {
-        update_feed::sign(rest)?;
-        return Ok(None);
-    }
-    if let [command, rest @ ..] = arguments.as_slice() {
-        if command == "prepare-ocr-models" {
-            return assets::ocr(rest).map(Some);
-        }
-        if command == "verify-upload" {
-            return assets::verify_upload(rest).map(Some);
-        }
-        if command == "fetch-windows-aosp" {
-            assets::windows_aosp(rest)?;
-            return Ok(None);
-        }
-        if command == "stage-windows-android-audio" {
-            assets::windows_audio(rest)?;
-            return Ok(None);
-        }
-        if command == "audit-dependencies" {
-            dependency_audit::run(rest)?;
-            return Ok(None);
-        }
-        if command == "build-android-apk" {
-            return android_package::build(rest).map(Some);
-        }
-        if command == "verify-android-apk" {
-            return android_package::verify(rest).map(Some);
-        }
-    }
-    if arguments
-        .first()
-        .is_some_and(|value| value == "decode-capsule")
-    {
-        use std::io::{self, Read};
-        let [_, codec] = arguments.as_slice() else {
-            return Err("decode-capsule requires gzip or xz".into());
-        };
-        let input = io::stdin().lock();
-        let mut decoded: Box<dyn Read> = match codec.to_str() {
-            Some("gzip") => Box::new(flate2::read::MultiGzDecoder::new(input)),
-            Some("xz") => Box::new(xz2::read::XzDecoder::new(input)),
-            _ => return Err("Unsupported capsule codec".into()),
-        };
-        io::copy(&mut decoded, &mut io::stdout().lock())?;
-        return Ok(None);
-    }
-    if arguments
-        .first()
-        .is_some_and(|value| value == "encode-gzip")
-    {
-        use flate2::{Compression, write::GzEncoder};
-        use std::io::{self, Write};
-        if arguments.len() != 1 {
-            return Err("encode-gzip takes its input through stdin".into());
-        }
-        let mut output = GzEncoder::new(io::stdout().lock(), Compression::best());
-        io::copy(&mut io::stdin().lock(), &mut output)?;
-        output.finish()?.flush()?;
-        return Ok(None);
-    }
-    if arguments
-        .first()
-        .is_some_and(|value| value == "windows-sdk-files")
-    {
-        if arguments.len() != 1 {
-            return Err("windows-sdk-files takes the file list through stdin".into());
-        }
-        let files = serde_json::from_reader(std::io::stdin().lock())?;
-        return Ok(Some(serde_json::to_value(android_package::select(files))?));
-    }
-    if arguments.first().is_some_and(|value| value == "encode-xz") {
-        if arguments.len() != 4 {
-            return Err("encode-xz requires architecture, preset and output directory".into());
-        }
-        capsule::encode(
-            &mut std::io::stdin().lock(),
-            std::io::stdout().lock(),
-            arguments[1].to_str().ok_or("Invalid image architecture")?,
-            arguments[2].to_str().ok_or("Invalid XZ preset")?.parse()?,
-            std::path::Path::new(&arguments[3]),
-        )?;
-        return Ok(None);
-    }
-    #[cfg(unix)]
-    if arguments
-        .first()
-        .is_some_and(|value| value == "wsl-qualify")
-    {
-        if arguments.len() != 1 {
-            return Err("qualification_arguments".into());
-        }
-        return tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?
-            .block_on(wsl_qualification::run())
-            .map(Some);
-    }
-    Err("Unknown release tool command".into())
 }
 
 fn main() {
