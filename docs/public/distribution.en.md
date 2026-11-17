@@ -20,7 +20,7 @@ host/
     data/                     guests, account/model/channel state, files
 ```
 
-`crates/host-runtime/src/source_cli.rs` validates and stages this hash-addressed layout. Existing bytes, aliases and persistent links are checked on retry; occupied or changed code is rejected. It does not replace existing user state. The prebuilt [web component](runtime-bundles.md) contains Next standalone and pinned Bun.
+`crates/host-runtime/src/source_cli.rs` stages the versioned [runtime components](runtime-bundles.md) and validates the links to persistent user data.
 
 The contributor staging command uses the same native, content-addressed source stager.
 

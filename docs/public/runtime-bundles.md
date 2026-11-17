@@ -4,7 +4,7 @@ AI Phone separates versioned application code, clean device baselines and persis
 
 ## Package format
 
-`scripts/prepare-client.ts` creates a deterministic `source.payload` archive and an integrity record. The client runs its native Rust initializer. Format 1 contains reviewed source. Format 2 declares a nonempty subset in this order: `web`, `native-services`, `phone-apps`, `container-host`. Source-only resources remain readable for contributors and stored-format compatibility.
+`scripts/prepare-client.ts` creates a deterministic `source.payload` archive and an integrity record. The client runs its native Rust initializer. Format 1 contains reviewed source. Format 2 declares a nonempty subset in this order: `native-services`, `phone-apps`, `container-host`.
 
 | Component | Contents | Launch requirement |
 |---|---|---|
@@ -69,8 +69,8 @@ Physical installation on Apple Silicon macOS and Windows x64 remains unverified.
 
 ## 中文
 
-客户端将版本化程序、干净设备基础和持久用户数据分开。网页组件包含 Next standalone、静态资源及对应宿主的 Bun；原生组件包含 Rust 助手、手机执行器与 OCR。macOS/Linux 启动已有原生组件时校验宿主、摘要和执行权限；组件损坏会明确失败，不回退到源码编译掩盖错误。
+客户端将版本化程序、设备基础和持久用户数据分开。工作台使用 Iced 和 wgpu，原生运行组件包含 Rust 助手、手机执行器与 OCR。
 
-真实归档在空白目录验证网页资源、程序版本和 OCR。数据库验证只使用有专用标签且仅回环监听的临时实例，检查迁移、受限运行角色和 DDL 拒绝。手机与电脑共用 Rust PNG/OCR 流程；Tesseract 在隔离服务或 Linux 随包原生依赖中识别，Rust 负责画面摘要、文字边界和置信度解析。
+归档在空白目录中验证程序版本和 OCR。数据库验证使用专用的回环临时实例，检查迁移和受限运行角色。手机与电脑共用 Rust PNG/OCR 流程。Tesseract 执行识别，Rust 负责画面摘要、文字边界和置信度解析。
 
 macOS 安装包包含七组资源。Windows 安装包包含原生 Android 和 QEMU Linux 客体。首启、升级恢复和许可的核对结果见[发行状态](release-status.md)。

@@ -20,7 +20,7 @@ host/
     data/                     客体、账号、模型、渠道与工作文件
 ```
 
-`crates/host-runtime/src/source_cli.rs`负责按资源摘要暂存。重试核对已有文件、依赖链接与持久目录；代码被改或目标被占用时拒绝替换，不覆盖用户状态。[预编译网页组件](runtime-bundles.md)已包含Next standalone和固定Bun。
+`crates/host-runtime/src/source_cli.rs` 按资源摘要暂存[运行组件](runtime-bundles.md)，并核对指向持久用户数据的链接。
 
 源码暂存命令复用原生的内容寻址暂存器。
 

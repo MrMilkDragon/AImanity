@@ -35,7 +35,7 @@ copies the native worker from the installed workspace image and replaces only
 its reserved executable by rename. An executing binary keeps its old inode.
 The assistant caches worker readiness by container ID.
 
-The workspace image includes Bun, curl, Git, and document tools. The Rust
+The workspace image includes curl, Git, and document tools. The Rust
 worker executes and cancels shell jobs.
 
 ## Maintainer verification

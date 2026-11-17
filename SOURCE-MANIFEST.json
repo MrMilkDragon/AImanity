@@ -1088,8 +1088,8 @@
     },
     {
       "path": "crates/assistant/src/desktop.rs",
-      "size": 88748,
-      "sha256": "2df6ecf12f8f2bb5c906650b0e33d5cbf3c51ab8622a9c6785337b4339f9b7c5"
+      "size": 88742,
+      "sha256": "9017201698c9e3b181461868ded3d87af6be99eabcf30c091f3fe6c82e2badf5"
     },
     {
       "path": "crates/assistant/src/device_exchange/kafka.rs",
@@ -1378,8 +1378,8 @@
     },
     {
       "path": "crates/assistant/src/tool_catalog.rs",
-      "size": 17683,
-      "sha256": "c553a60ae1958c1cfcf9c4006f53aa1045af0752f7559d0762c4d3a1558355ba"
+      "size": 17677,
+      "sha256": "64f0abe940b036022849e12b5073fdd13f122ee45a146ab074ed06550c3a3e2c"
     },
     {
       "path": "crates/assistant/src/voice_input.rs",
@@ -2388,13 +2388,13 @@
     },
     {
       "path": "docs/public/distribution.en.md",
-      "size": 2987,
-      "sha256": "e1ca6f6d6cdd84368784695d7936d5ce7822a91c65bd8b18049379b131afade8"
+      "size": 2813,
+      "sha256": "2102b368af208f51952f8f740cdaca2236621eadcd210e0c94006d4abd03fc52"
     },
     {
       "path": "docs/public/distribution.zh-CN.md",
-      "size": 2571,
-      "sha256": "bedbdcac45eec72e91b0331600207e45f69e53182bc90bda43a6f7a36cc67a39"
+      "size": 2434,
+      "sha256": "cf6c65a0a920bc9d709c798adfaa45416baf81bb90bea92be3366bc5aa2a4c3a"
     },
     {
       "path": "docs/public/engineering/android-corresponding-source.md",
@@ -2478,8 +2478,8 @@
     },
     {
       "path": "docs/public/engineering/workspace-runtime.md",
-      "size": 2547,
-      "sha256": "09683c931bd9651a58a35928911ed22ecee5b57aa25af762d589a859146f9f5f"
+      "size": 2542,
+      "sha256": "f30093f79aa6a46837a9b480349835823a5c0ab261aa8cac22d2e4619e5b8504"
     },
     {
       "path": "docs/public/event-relay.md",
@@ -3053,8 +3053,8 @@
     },
     {
       "path": "docs/public/runtime-bundles.md",
-      "size": 7757,
-      "sha256": "8d871af4403ebeb2616b71660b6edfc0e68219ed4baa7fc7d1b1c6d746f47f10"
+      "size": 7377,
+      "sha256": "3d1743ffa33410eec9927a024bb9d2ab87b2d094c6a469215fc021201db8a8ba"
     },
     {
       "path": "docs/public/simulated-location.md",
@@ -3143,8 +3143,8 @@
     },
     {
       "path": "infra/workspace/Dockerfile",
-      "size": 1352,
-      "sha256": "fec8118ea2d9cef1ffa32ded6f51d18c8e3e1dde156d8562ea2f9b902978693e"
+      "size": 1199,
+      "sha256": "62812f25bf5c4e87d330ed095c5a0adc0b1f96a41a59d187198cb56d722d3610"
     },
     {
       "path": "package.json",

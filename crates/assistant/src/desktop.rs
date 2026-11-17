@@ -1435,7 +1435,7 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "computer_run",
-            "在这台Linux桌面容器执行命令，工作目录/home/ai/Files；提供Bun、curl、git和LibreOffice。日常办公优先通过computer-use操作桌面应用。可sudo -n取得客体root配置系统；命令执行必须如实记录，不能假称鼠标操作。不能访问macOS。",
+            "在这台Linux桌面容器执行命令，工作目录/home/ai/Files；提供curl、git和LibreOffice。日常办公优先通过computer-use操作桌面应用。可sudo -n取得客体root配置系统；命令执行必须如实记录，不能假称鼠标操作。不能访问macOS。",
             json!({"device_id":id,"script":id}),
             vec!["device_id", "script"],
         ),
