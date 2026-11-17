@@ -4,6 +4,8 @@ import {
   lstatSync,
   readFileSync,
   writeFileSync,
+  mkdtempSync,
+  rmSync,
   copyFileSync,
   cpSync,
   createReadStream,
@@ -237,11 +239,8 @@ function engineScript(program: string) {
     '" "$@"\n'
   );
 }
-function dockerfile(plan: any) {
-  return `FROM ${plan.engine_image} AS engine
-COPY packages/ /packages/
-RUN apk --no-network add /packages/*.apk && rm -rf /packages /var/cache/apk/*
-FROM ${plan.redis_image} AS redis
+function redisStage(image: string) {
+  return `FROM ${image} AS redis
 USER root
 RUN mkdir -p /native-redis/lib /native-redis/bin && \\
     cp -L /lib/ld-musl-x86_64.so.1 /native-redis/lib/ && \\
@@ -253,7 +252,39 @@ RUN mkdir -p /native-redis/lib /native-redis/bin && \\
             cp -L "$library" /native-redis/lib/ || exit 1; \\
         done; \\
     done
-FROM ${plan.base_image}
+RUN chroot /native-redis /lib/ld-musl-x86_64.so.1 --library-path /lib /bin/redis-server --version && \\
+    chroot /native-redis /lib/ld-musl-x86_64.so.1 --library-path /lib /bin/redis-cli --version
+`;
+}
+
+export function stageRedis(root: string, destination: string) {
+  const parent = dirname(destination);
+  mkdirSync(parent, { recursive: true });
+  const context = mkdtempSync(join(parent, ".redis-build-"));
+  try {
+    writeFileSync(
+      join(context, "Dockerfile"),
+      redisStage(databaseImage(root, "redis")) +
+        "FROM scratch\nCOPY --from=redis /native-redis/ /\n",
+    );
+    run(
+      [
+        "docker", "buildx", "build", "--platform", "linux/amd64",
+        "--network", "none", "--provenance=false",
+        "--output", "type=local,dest=" + destination, context,
+      ],
+      { cwd: root },
+    );
+  } finally {
+    rmSync(context, { recursive: true });
+  }
+}
+
+function dockerfile(plan: any) {
+  return `FROM ${plan.engine_image} AS engine
+COPY packages/ /packages/
+RUN apk --no-network add /packages/*.apk && rm -rf /packages /var/cache/apk/*
+${redisStage(plan.redis_image)}FROM ${plan.base_image}
 COPY --from=engine / /opt/aiphone/engine/
 COPY --from=redis /native-redis/ /opt/aiphone/redis/
 RUN find /opt/aiphone/engine/bin /opt/aiphone/engine/sbin /opt/aiphone/engine/usr /opt/aiphone/engine/lib /opt/aiphone/engine/etc /opt/aiphone/engine/var -type l -exec sh -c 'for path do target=$(readlink "$path"); case "$target" in /*) if [ -e "/opt/aiphone/engine$target" ] || [ -L "/opt/aiphone/engine$target" ]; then ln -snf "/opt/aiphone/engine$target" "$path"; fi;; esac; done' sh {} +
@@ -278,6 +309,26 @@ RUN test "$(/usr/bin/timeout 10 /usr/local/libexec/aiphone-bootstrap --qemu-gues
 ENTRYPOINT ["/usr/local/libexec/aiphone-bootstrap", "--initialize-wsl-backend"]
 `;
 }
+
+export async function stageBackendSource(
+  root: string,
+  context: string,
+  source: string,
+  sourceIdentity: string,
+) {
+  copyFileSync(source, join(context, "source.payload"));
+  await Bun.write(join(context, "source.sha256"), sourceIdentity + "\n");
+  for await (const entry of tarEntries(source, "xz", root))
+    if (entry.name === "runtime/services/bin/assistant") {
+      const target = createWriteStream(join(context, "bootstrap.program"), {
+        flags: "wx",
+        mode: 0o755,
+      });
+      await pipeline(Readable.from(entry.body), target);
+      break;
+    }
+}
+
 export async function buildWsl(
   root: string,
   work: string,
@@ -306,20 +357,8 @@ export async function buildWsl(
     throw Error("Insufficient WSL factory capacity");
   const context = join(work, "context");
   mkdirSync(context, { recursive: true });
-  for (const [file, name] of [
-    [source, "source.payload"],
-    [images, "images.payload"],
-  ])
-    copyFileSync(file!, join(context, name!));
-  await Bun.write(join(context, "source.sha256"), input.sha256 + "\n");
-  for await (const entry of tarEntries(source, "xz", root))
-    if (entry.name === "runtime/services/bin/assistant") {
-      const target = createWriteStream(join(context, "bootstrap.program"), {
-        flags: "wx",
-        mode: 0o755,
-      });
-      await pipeline(Readable.from(entry.body), target);
-    }
+  await stageBackendSource(root, context, source, input.sha256);
+  copyFileSync(images, join(context, "images.payload"));
   cpSync(packages, join(context, "packages"), { recursive: true });
   cpSync(phoneTools, join(context, "phone-tools"), { recursive: true });
   for (const program of ["docker", "dockerd"])
@@ -378,7 +417,6 @@ export async function buildWsl(
     fd = openSync(archive, "wx");
   try {
     run(["docker", "export", container], { stdio: ["ignore", fd, "inherit"] });
-    run(["docker", "cp", container + ":/opt/aiphone/redis", join(context, "redis")]);
   } finally {
     closeSync(fd);
     run(["docker", "rm", container]);

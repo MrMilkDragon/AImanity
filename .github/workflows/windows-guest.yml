@@ -65,20 +65,20 @@ jobs:
           set-host: true
           daemon-config: |
             {"features":{"containerd-snapshotter":true}}
-      - name: Seal the Linux backend with phone components
+      - name: Build the Linux release components
         env:
           GH_TOKEN: ${{ github.token }}
           AI_PHONE_DISPOSABLE_QUALIFICATION: '1'
         run: |
           cargo build --release --locked -p ai-phone-guest-runtime --bin desktop-bridge
-          AI_PHONE_RELEASE_DESKTOP_BRIDGE="$PWD/target/release/desktop-bridge" ./scripts/bun scripts/wsl-backend.ts
+          AI_PHONE_RELEASE_DESKTOP_BRIDGE="$PWD/target/release/desktop-bridge" \
+            ./scripts/bun scripts/wsl-backend.ts --release-layer "$RUNNER_TEMP/windows-release-context"
       - name: Assemble the offline layer on the immutable Calcium guest disk
         id: disk
         run: |
           guest=dist/windows-guest/windows-guest.payload
-          context=.tools/wsl-backend-qualification/assembled/context
           cargo run --locked --quiet -p ai-phone-release-tools -- \
-            windows-release "$RUNNER_TEMP/windows-calcium-baseline" "$context" "$guest"
+            windows-release "$RUNNER_TEMP/windows-calcium-baseline" "$RUNNER_TEMP/windows-release-context" "$guest"
           guest_hash=$(sha256sum "$guest")
           printf 'sha256=%s\n' "${guest_hash%% *}" >> "$GITHUB_OUTPUT"
       - name: Transfer the sealed guest to the Windows builder

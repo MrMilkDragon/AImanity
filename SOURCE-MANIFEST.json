@@ -68,8 +68,8 @@
     },
     {
       "path": ".github/workflows/windows-guest.yml",
-      "size": 3756,
-      "sha256": "e0bd5845bfc98162da25016f5fe7c7cbb8cfbe95941eabd20000a3608980d82d"
+      "size": 3774,
+      "sha256": "10a3f080ed838a22633ec175c02079e3d6d5b3e65a522682fb26b56b19772b88"
     },
     {
       "path": ".github/workflows/windows-installer-acceptance.yml",
@@ -3718,13 +3718,13 @@
     },
     {
       "path": "scripts/tooling/wsl-factory.ts",
-      "size": 15498,
-      "sha256": "554c5450c5b403349f7f01194c821bbe2927a551a8b43509a8ec67fe9df4c8fa"
+      "size": 16569,
+      "sha256": "fe254d01a1bc740ffd5551198a702569dc95f4dc1ac35b343f03a4f7d61a3be1"
     },
     {
       "path": "scripts/tooling/wsl-qualification.ts",
-      "size": 12209,
-      "sha256": "6b055dd9861897035e5526e188c9a090bda1865c6c43c666a29595500a7f89f7"
+      "size": 13141,
+      "sha256": "a798891ae83eaff2ca0b09f4d27e9f13ccb47604a177c3743bde4da11c21cd24"
     },
     {
       "path": "scripts/tooling/zip.ts",
@@ -3773,8 +3773,8 @@
     },
     {
       "path": "scripts/wsl-backend.ts",
-      "size": 162,
-      "sha256": "8587f3d8250187d274ba12709d14391c97ae78a6e76eea41d4c06e22e0971e28"
+      "size": 451,
+      "sha256": "29315a74d44a804bcc9d00e89e5251283f8a03856619f776f0fab257593b0442"
     },
     {
       "path": "skills/builtin/autonomous-learning/SKILL.md",

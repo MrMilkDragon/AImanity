@@ -7,7 +7,7 @@ import {
   openSync,
   closeSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { ROOT, hostKey, run, output, digest } from "./process";
@@ -24,6 +24,8 @@ import {
   wslPlan,
   preparePhoneTools,
   sourceInput,
+  stageBackendSource,
+  stageRedis,
 } from "./wsl-factory";
 import { verifyWsl } from "./wsl-capsule";
 import { imageManifest } from "./image-capsule";
@@ -309,29 +311,25 @@ function retireImageCache(root: string) {
     capacity_guard_changed: false,
   };
 }
-export async function buildWslBackend(
-  root = ROOT,
-  deviceApps = false,
-  linuxOcr?: string,
-) {
+function requireLinuxFactory(root: string) {
   disposable(root);
   if (hostKey() !== "linux-x64" || free(root) < 4 * 1024 ** 3)
     throw Error("WSL assembly needs Linux x64 and free capacity");
   checkDocker();
   checkSource(root);
-  const work = join(root, ".tools/wsl-backend-qualification");
+}
+async function prepareBackendSource(
+  root: string,
+  work: string,
+  deviceApps: boolean,
+  linuxOcr?: string,
+) {
   const ocr =
     linuxOcr === undefined
       ? join(root, ".tools/linux-ocr-runtime")
       : resolve(linuxOcr);
   if (linuxOcr !== undefined) await verifyDependency(root, ocr, "linux-ocr");
-  mkdirSync(work);
-  const packages = join(work, "packages");
-  mkdirSync(packages);
-  for (const pin of wslPlan(root).engine_packages)
-    await fetchPin(packages, pin.file, pin);
   if (deviceApps) prepareApps(root, { ...process.env });
-  const phone = await preparePhoneTools(root, join(work, "phone-tools"));
   if (linuxOcr === undefined)
     await buildFactoryDependency(root, join(work, "ocr-context"), ocr, "linux-ocr");
   buildReleaseTools(root);
@@ -341,8 +339,38 @@ export async function buildWslBackend(
     phoneApps: deviceApps,
     linuxOcr: ocr,
   });
-  const source = join(root, hostResources, "source.payload"),
-    retired: any = await retireCompilerCache(root, source);
+  return join(root, hostResources, "source.payload");
+}
+export async function prepareWindowsReleaseContext(context: string, root = ROOT) {
+  requireLinuxFactory(root);
+  context = resolve(context);
+  if (existsSync(context)) throw Error("Use a new Windows release context");
+  mkdirSync(context, { recursive: true });
+  const source = await prepareBackendSource(root, dirname(context), true);
+  const input = await sourceInput(source, root);
+  await stageBackendSource(root, context, source, input.sha256);
+  stageRedis(root, join(context, "redis"));
+  await prepareImages(
+    root,
+    context,
+    await digest(join(root, "SOURCE-MANIFEST.json")),
+    "amd64",
+  );
+}
+export async function buildWslBackend(
+  root = ROOT,
+  deviceApps = false,
+  linuxOcr?: string,
+) {
+  requireLinuxFactory(root);
+  const work = join(root, ".tools/wsl-backend-qualification");
+  const packages = join(work, "packages");
+  mkdirSync(packages, { recursive: true });
+  for (const pin of wslPlan(root).engine_packages)
+    await fetchPin(packages, pin.file, pin);
+  const phone = await preparePhoneTools(root, join(work, "phone-tools"));
+  const source = await prepareBackendSource(root, work, deviceApps, linuxOcr);
+  const retired: any = await retireCompilerCache(root, source);
   const images = (
     await prepareImages(
       root,
