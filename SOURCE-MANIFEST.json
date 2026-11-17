@@ -2218,8 +2218,8 @@
     },
     {
       "path": "crates/release-tools/src/assets.rs",
-      "size": 6867,
-      "sha256": "f6989a019eb51b794b639da5c73171ec3b13a6723a64c9b86058f7608a7e1020"
+      "size": 9040,
+      "sha256": "68814c8c6bcba4308b4e57f5f8c0e57ca8eb70cde9e7e98e5f95a01897832aa4"
     },
     {
       "path": "crates/release-tools/src/capsule.rs",
@@ -2233,8 +2233,8 @@
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 3786,
-      "sha256": "b4e7f52d3075c4291dae0ddee3e761183abbd2ffbace646f6db1ace1e3969203"
+      "size": 3858,
+      "sha256": "da18f31fc4d7f74607defeb9a1d286d14543d27b3773e958045322d5434eec5d"
     },
     {
       "path": "crates/release-tools/src/phone_apps.rs",
@@ -3568,8 +3568,8 @@
     },
     {
       "path": "scripts/tooling/windows-installer.ts",
-      "size": 2867,
-      "sha256": "96da758a8052d52fc0b427f7ae55560b18766c651bd33cf09164fd0ddfec13a1"
+      "size": 2274,
+      "sha256": "54e7d5def3fbdd6cb8c9255b5e865a7b223784446ff8ccea2ec0be16f0227afa"
     },
     {
       "path": "scripts/tooling/windows-qemu.ts",
@@ -3595,11 +3595,6 @@
       "path": "scripts/tooling/wsl-qualification.ts",
       "size": 12918,
       "sha256": "915d9db9fde066126e5c3fdfac6e1473238a68f782d340e9bec9eb0adef93a72"
-    },
-    {
-      "path": "scripts/tooling/zip.ts",
-      "size": 4882,
-      "sha256": "e1ec46b7f2cea7ca59c45cf140e117361cce6c3532fc49b417ef270480518c0b"
     },
     {
       "path": "scripts/tsconfig.json",

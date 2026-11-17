@@ -28,6 +28,7 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         "verify-upload" => assets::verify_upload(rest).map(Some),
         "fetch-windows-aosp" => assets::windows_aosp(rest).map(|()| None),
         "stage-windows-android-audio" => assets::windows_audio(rest).map(|()| None),
+        "windows-unpacker" => assets::windows_unpacker(rest).map(Some),
         "audit-dependencies" => dependency_audit::run(rest).map(|()| None),
         "build-android-apk" => android_package::build(rest).map(Some),
         "phone-apps" => phone_apps::run(rest).map(Some),

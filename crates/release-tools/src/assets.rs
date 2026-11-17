@@ -161,6 +161,63 @@ pub(super) fn windows_audio(arguments: &[OsString]) -> Result<()> {
     Ok(())
 }
 
+pub(super) fn windows_unpacker(arguments: &[OsString]) -> Result<Value> {
+    let [root] = arguments else {
+        return Err("windows-unpacker requires the project root".into());
+    };
+    let root = std::path::absolute(root)?;
+    let policy: Value =
+        serde_json::from_reader(File::open(root.join("config/windows-installer.json"))?)?;
+    let pin = &policy["unpacker"];
+    let version = pin["version"]
+        .as_str()
+        .ok_or("Missing Inno unpacker version")?;
+    let folder = root.join(".tools/windows-installer");
+    let program = folder.join(format!("innounp-{version}.exe"));
+    if !program.try_exists()? {
+        let archive = folder.join(format!("innounp-{version}.zip"));
+        stage_pin::<Sha256>(
+            pin["url"].as_str().ok_or("Missing Inno unpacker URL")?,
+            &archive,
+            pin["size_bytes"]
+                .as_u64()
+                .ok_or("Missing Inno unpacker size")?,
+            pin["sha256"]
+                .as_str()
+                .ok_or("Missing Inno unpacker digest")?,
+        )?;
+        let output = Command::new("tar")
+            .arg("-xOf")
+            .arg(archive)
+            .arg("innounp.exe")
+            .output()?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr)
+                .trim()
+                .to_owned()
+                .into());
+        }
+        let mut bytes = output.stdout;
+        let offset = u32::from_le_bytes(
+            bytes
+                .get(60..64)
+                .ok_or("Missing Inno PE header")?
+                .try_into()?,
+        ) as usize;
+        let flags = bytes
+            .get_mut(offset..)
+            .filter(|header| header.starts_with(b"PE\0\0"))
+            .and_then(|header| header.get_mut(22..24))
+            .ok_or("Invalid Inno PE header")?;
+        let large_address = u16::from_le_bytes((&*flags).try_into()?) | 0x20;
+        flags.copy_from_slice(&large_address.to_le_bytes());
+        let mut staged = tempfile::NamedTempFile::new_in(folder)?;
+        staged.write_all(&bytes)?;
+        staged.persist_noclobber(&program)?;
+    }
+    Ok(serde_json::to_value(program)?)
+}
+
 #[derive(Deserialize)]
 struct UploadPlan {
     source_commit: String,

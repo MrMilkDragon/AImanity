@@ -1,29 +1,10 @@
-import { existsSync, mkdirSync, writeFileSync, linkSync, lstatSync } from "node:fs";
+import { existsSync, mkdirSync, linkSync, lstatSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
-import { run } from "./process";
+import { output, run } from "./process";
 import { json } from "./inventory";
 import { fetchPin } from "./factory";
 import { resourceMap } from "./resources";
-import { Zip } from "./zip";
-
-async function unpacker(root: string) {
-  const folder = join(root, ".tools/windows-installer"),
-    pin = json(join(root, "config/windows-installer.json")).unpacker,
-    archive = await fetchPin(folder, "innounp.zip", pin),
-    program = join(folder, "innounp.exe");
-  if (!existsSync(program)) {
-    const zip = new Zip(archive),
-      member = zip.entries.find((entry) => entry.name === "innounp.exe")!,
-      executable = await zip.bytes(member),
-      characteristics = executable.readUInt32LE(60) + 22;
-    executable.writeUInt16LE(
-      executable.readUInt16LE(characteristics) | 0x20,
-      characteristics,
-    );
-    writeFileSync(program, executable, { flag: "wx" });
-  }
-  return program;
-}
+import { buildReleaseTools } from "./archive";
 
 export async function unpackWindowsInstaller(
   root: string,
@@ -31,9 +12,10 @@ export async function unpackWindowsInstaller(
   folder: string,
   members = ["{app}\\*"],
 ) {
+  const program: string = JSON.parse(output([buildReleaseTools(root), "windows-unpacker", root], { cwd: root }));
   run(
     [
-      await unpacker(root),
+      program,
       "-x", "-b", "-q", "-a", "-c{app}",
       "-d" + folder, installer, ...members,
     ],
