@@ -1,0 +1,71 @@
+name: Verify lean Windows release context
+on:
+  push:
+    branches: [codex/dysprosium-lean-context-qa]
+    paths: ['.github/workflows/dysprosium-lean-context.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  context:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PRODUCT_SOURCE: ebe12f4c8f3ae24cce97d18bcb8100216f70d768
+      DONOR_SOURCE: cf4bbf371d4d3272627f802698a6d4aff22ffa23
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: 44027285557
+          artifact-ids: 14304292451
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/verified-input
+      - name: Prepare and verify the source tools
+        run: |
+          test "$(git rev-parse HEAD^)":"$(git diff-tree --no-commit-id --name-only -r HEAD)" = "$PRODUCT_SOURCE:.github/workflows/dysprosium-lean-context.yml"
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+      - name: Assemble only the lean release context
+        run: |
+          donor="$RUNNER_TEMP/verified-input"
+          disk="$donor/guest/release.ext4"
+          manifest="$donor/manifest.json"
+          test "$(jq -r .source_commit "$manifest")" = "$DONOR_SOURCE"
+          printf '%s  %s\n' "$(jq -er '.files[] | select(.path == "guest/release.ext4") | .sha256' "$manifest")" "$disk" | sha256sum -c -
+          input="$RUNNER_TEMP/context-inputs"
+          export CONTEXT="$RUNNER_TEMP/release-context"
+          export SOURCE_PAYLOAD="$input/source.payload"
+          mkdir "$input" "$CONTEXT"
+          for file in source.payload images.payload bootstrap.program; do
+            debugfs -R "dump /$file $input/$file" "$disk"
+            test -s "$input/$file"
+          done
+          debugfs -R "rdump /redis $input" "$disk"
+          printf '%s  %s\n' "$(jq -er .release_sha256 "$manifest")" "$SOURCE_PAYLOAD" | sha256sum -c -
+          printf '%s  %s\n' "$(jq -er .release_images_sha256 "$manifest")" "$input/images.payload" | sha256sum -c -
+          ln "$input/images.payload" "$CONTEXT/images.payload"
+          ./scripts/bun -e '
+            import { sourceInput, stageBackendSource, stageRedis } from "./scripts/tooling/wsl-factory";
+            import { imageManifest } from "./scripts/tooling/image-capsule";
+            const root = process.cwd();
+            const context = process.env.CONTEXT!;
+            const source = process.env.SOURCE_PAYLOAD!;
+            const inputs = await sourceInput(source, root);
+            if (inputs.components.join(",") !== "native-services,phone-apps") throw Error("Unexpected release components");
+            await stageBackendSource(root, context, source, inputs.sha256);
+            stageRedis(root, context + "/redis");
+            const images = await imageManifest(context + "/images.payload", root);
+            if (images.architecture !== "amd64") throw Error("Unexpected OCI architecture");
+          '
+          cmp "$input/bootstrap.program" "$CONTEXT/bootstrap.program"
+          cmp "$SOURCE_PAYLOAD" "$CONTEXT/source.payload"
+          diff -qr --no-dereference "$input/redis" "$CONTEXT/redis"
+          redis="$CONTEXT/redis"
+          "$redis/lib/ld-musl-x86_64.so.1" --library-path "$redis/lib" "$redis/bin/redis-server" --version
+          printf 'Verified source, bootstrap, OCI and pinned Redis closure with no installer or VM build.\n'
