@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, digest, output, run } from "../../exact/scripts/tooling/process";
 import { json, save } from "../../exact/scripts/tooling/inventory";
@@ -7,7 +7,7 @@ import { buildFactoryDependency } from "../../exact/scripts/tooling/factory-inpu
 import { preparePayload } from "../../exact/scripts/tooling/client-payload";
 import { buildNative } from "../../exact/scripts/tooling/native-build";
 import { stageWindowsServices } from "../../exact/scripts/tooling/wsl-factory";
-import { buildImages, imageManifest } from "../../exact/scripts/tooling/image-capsule";
+import { prepareImages } from "../../exact/scripts/tooling/factory";
 
 const { QA_PREVIOUS_LAYER: prior, QA_LAYER: destination, PRODUCT_SOURCE: source,
   CALCIUM_BASE_SHA: baseHash, QA_PREVIOUS_SOURCE: previousSource } = process.env;
@@ -15,15 +15,10 @@ if (!prior || !destination || !previousSource || process.env.RUNNER_ENVIRONMENT 
     process.platform !== "linux" || output(["git", "rev-parse", "HEAD"], { cwd: ROOT }) !== source)
   throw Error("Expected disposable Linux runner and exact product source");
 const work = join(ROOT, ".tools", "windows-native-dev"), compiled = join(work, "compiled");
-const previousGuest = join(prior, "guest"), previousDisk = join(previousGuest, "release.ext4");
+const previousGuest = join(prior, "guest");
 const manifest = json(join(prior, "manifest.json"));
-const unchanged = ["config/linux-ocr.json", "config/ocr-models.json", "infra/desktop", "infra/workspace",
-  "crates/guest-runtime",
-  "infra/network", "compose.yaml", "compose.dev.yaml", "compose.desktop.yaml"];
-const changes = output(["git", "diff", "--name-only", previousSource, source!, "--", ...unchanged], {cwd:ROOT});
-if (manifest.source_commit !== previousSource || manifest.guest.disk.sha256 !== baseHash ||
-    changes) throw Error("The previous desktop or OCR inputs do not cover these changes: " + changes);
-const diskRecord = manifest.files.find((row: {path:string}) => row.path === "guest/release.ext4");
+if (manifest.source_commit !== previousSource || manifest.guest.disk.sha256 !== baseHash)
+  throw Error("Prior artifact does not expose the expected immutable Calcium backing disk");
 if (process.argv[2] === "services") {
   const ocr = join(work, "ocr");
   await buildPhone(ROOT);
@@ -44,8 +39,6 @@ if (process.argv[2] === "services") {
   process.exit(0);
 }
 if (process.argv[2] !== "layer") throw Error("Expected services or layer phase");
-if (statSync(previousDisk).size !== diskRecord.size || await digest(previousDisk) !== diskRecord.sha256)
-  throw Error("Previous ext4 bytes differ from the checked guest artifact");
 const immutableNames = ["guest.qcow2", "bzImage", "kernel.config", "KERNEL-LICENSE.txt"];
 const guest = join(destination, "guest");
 mkdirSync(guest, { recursive: true });
@@ -59,15 +52,8 @@ for (const name of immutableNames) {
 
 const layerSource = join(compiled, "source.payload");
 const sourceManifest = await digest(join(ROOT, "SOURCE-MANIFEST.json"));
-const priorImages = join(work, "reused-images.payload");
-run(["debugfs", "-R", `dump /images.payload ${priorImages}`, previousDisk]);
-if (await digest(priorImages) !== manifest.release_images_sha256) throw Error("Prior Windows OCI bytes differ");
-const priorCatalogue = await imageManifest(priorImages, ROOT);
-run(["bash", "-c", 'set -o pipefail; tar -xOf "$1" images.tar.xz | docker image load', "load", priorImages], { cwd: ROOT });
-rmSync(priorImages);
-const { workspace, desktop } = priorCatalogue.images;
-const { images, archive_sha256 } = await buildImages(
-  ROOT, { workspace: workspace.ref, desktop: desktop.ref }, join(compiled, "images.payload"),
+const { receipt: { images, archive_sha256 } } = await prepareImages(
+  ROOT, compiled, sourceManifest, "amd64", undefined, false,
 );
 if (Object.keys(images).sort().join(",") !== "desktop,workspace")
   throw Error("Native databases require exactly the desktop and workspace images");
@@ -98,4 +84,4 @@ for (const name of ["release-init.cpio.gz", "release.ext4"]) {
 }
 save(join(destination, "manifest.json"), manifest);
 console.log(JSON.stringify({ source, baseHash, sourceManifest, release: manifest.release_sha256,
-  images: manifest.release_images_sha256, imageRoles: manifest.release_image_roles, reusedDesktopFrom: previousSource }));
+  images: manifest.release_images_sha256, imageRoles: manifest.release_image_roles, immutableBackingFrom: previousSource }));

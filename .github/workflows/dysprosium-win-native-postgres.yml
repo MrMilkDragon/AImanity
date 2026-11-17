@@ -11,7 +11,7 @@ concurrency:
   group: dysprosium-win-native-postgres-qa
   cancel-in-progress: false
 env:
-  PRODUCT_SOURCE: 2d3899dadb191fb6651f66f391398d3075cc6c9f
+  PRODUCT_SOURCE: 0278ab1a5d3d4c3ec326d84ed998ee9fef535df7
   QA_PREVIOUS_SOURCE: cf4bbf371d4d3272627f802698a6d4aff22ffa23
   QA_LINUX_ARTIFACT: native-postgres-linux-qa-layer
   CALCIUM_BASE_SHA: 1184c13114500f919b6bcc738d9af7e1f872ff192aef624e67aa87a6f9b7446f
@@ -21,7 +21,7 @@ env:
 jobs:
   linux-final:
     runs-on: ubuntu-24.04
-    timeout-minutes: 65
+    timeout-minutes: 85
     env:
       GH_TOKEN: ${{ github.token }}
       AI_PHONE_TEST_TESSERACT: /usr/bin/tesseract
@@ -48,7 +48,6 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$(uname -m)" = x86_64
           test "$(git rev-parse HEAD)" = "$PRODUCT_SOURCE"
-          git fetch --no-tags --depth=1 origin "$QA_PREVIOUS_SOURCE"
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "${ANDROID_HOME:?}/ndk"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-utils e2fsprogs cpio tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
@@ -72,11 +71,11 @@ jobs:
           daemon-config: '{"features":{"containerd-snapshotter":true}}'
       - name: Compile exact-source Rust services, Android inputs and OCR closure
         working-directory: exact
-        timeout-minutes: 24
+        timeout-minutes: 35
         run: ./scripts/bun ../qa/windows-native-dev/build-linux-postgres-layer.ts services
       - name: Stage PostgreSQL and Redis with a database-free guest overlay
         working-directory: exact
-        timeout-minutes: 18
+        timeout-minutes: 32
         run: ./scripts/bun ../qa/windows-native-dev/build-linux-postgres-layer.ts layer
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -87,7 +86,7 @@ jobs:
           retention-days: 1
   windows-dev:
     runs-on: windows-2025
-    timeout-minutes: 85
+    timeout-minutes: 110
     env:
       GH_TOKEN: ${{ github.token }}
       CARGO_HTTP_MULTIPLEXING: 'false'
@@ -127,10 +126,10 @@ jobs:
           cargo build --locked --manifest-path apps/native/Cargo.toml
       - name: Wait for the exact-source Linux device artifact
         shell: bash
-        timeout-minutes: 45
+        timeout-minutes: 72
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 140); do
+          for attempt in $(seq 1 275); do
             status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --jq '.jobs[] | select(.name == "linux-final") | .conclusion // empty')
             if [ "$status" = success ]; then exit 0; fi
             if [ -n "$status" ]; then echo "Linux device build: $status"; exit 1; fi
