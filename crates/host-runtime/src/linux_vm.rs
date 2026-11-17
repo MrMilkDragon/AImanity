@@ -1,4 +1,3 @@
-#[cfg(any(windows, test))]
 #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 use crate::native_ipc;
 use crate::{Error, Result};
