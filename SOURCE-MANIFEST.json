@@ -53,8 +53,8 @@
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 4768,
-      "sha256": "c50367d075b728a30ce4dd41b61c2a5f0623c6a3c3aff59023707a5d57f3d92d"
+      "size": 4504,
+      "sha256": "17247e984c3d3fdb9d832702075be8f75f7af14f1ebd5efb2eda1e901308b08e"
     },
     {
       "path": ".github/workflows/source.yml",
