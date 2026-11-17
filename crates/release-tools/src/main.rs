@@ -27,6 +27,7 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         "source" => source::run(rest),
         "sign-update" => update_feed::sign(rest).map(|()| None),
         "prepare-ocr-models" => assets::ocr(rest).map(Some),
+        "prepare-speech-model" => assets::speech(rest).map(Some),
         #[cfg(unix)]
         "linux-ocr" => linux_ocr::run(rest).map(Some),
         "verify-upload" => assets::verify_upload(rest).map(Some),

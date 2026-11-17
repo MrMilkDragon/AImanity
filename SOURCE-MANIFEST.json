@@ -2213,8 +2213,8 @@
     },
     {
       "path": "crates/release-tools/src/assets.rs",
-      "size": 9160,
-      "sha256": "9864e8053a28bf183e1d9dac01e847e5194a25c85574658d262836652dd9601e"
+      "size": 9854,
+      "sha256": "1f50a6bf2474c211d55e9969c330b27327f56d970c85a66526869ae6917c4ae1"
     },
     {
       "path": "crates/release-tools/src/capsule.rs",
@@ -2233,8 +2233,8 @@
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 3962,
-      "sha256": "8024a1479c5a71ece1cf04a02d214191d6000574126b965e47c6f79537ee3d43"
+      "size": 4028,
+      "sha256": "174a3f54cee6f44cd41513d12c75242e62bf4fd43f5c560c7234eee32a156d2b"
     },
     {
       "path": "crates/release-tools/src/phone_apps.rs",
@@ -3448,8 +3448,8 @@
     },
     {
       "path": "scripts/tooling/client-payload.ts",
-      "size": 6385,
-      "sha256": "9a6168b5b7c6d28dc3e61119d3edbc1bb636ddd02fbac0110b99cd66a5f92e94"
+      "size": 6436,
+      "sha256": "e4216108ce93af2aa3864136a5f6b172f955f7258735a934c4728d82cd078b9a"
     },
     {
       "path": "scripts/tooling/container-host.ts",
@@ -3525,11 +3525,6 @@
       "path": "scripts/tooling/source.ts",
       "size": 1383,
       "sha256": "a9b42b4e0292afddb6d89d4d08ddaa475e30dce4e4da823fccde4643cb25975a"
-    },
-    {
-      "path": "scripts/tooling/speech-model.ts",
-      "size": 715,
-      "sha256": "5a03d377bd382748fc1269c087a1893e60c8ba3d76f1b497183668c01309f1d8"
     },
     {
       "path": "scripts/tooling/task-recovery.ts",

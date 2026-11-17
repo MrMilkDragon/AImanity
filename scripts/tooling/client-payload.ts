@@ -16,7 +16,6 @@ import { prepareServices } from "./native-build";
 import { prepareContainerHost } from "./container-host";
 import { hostResources } from "./resources";
 import { stageWindowsVm, type WindowsVmInputs } from "./windows-vm-payload";
-import { prepareSpeechModel } from "./speech-model";
 
 export const componentManifests = {
   "native-services": "runtime/services/manifest.json",
@@ -38,7 +37,10 @@ export async function preparePayload(
 ) {
   const folder = join(root, hostResources);
   mkdirSync(folder, { recursive: true });
-  const speech = await prepareSpeechModel(root);
+  const speech = JSON.parse(output(
+    [buildReleaseTools(root), "prepare-speech-model", join(root, ".tools/speech"), folder],
+    { cwd: root },
+  ));
   const selected: SourceFile[] = await sourceFiles(root),
     components: string[] = [];
   const producers: [

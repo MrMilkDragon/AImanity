@@ -28,6 +28,9 @@ pub(super) struct Pin {
 impl Pin {
     pub(super) fn stage(&self, directory: &Path) -> Result<std::path::PathBuf> {
         let file = directory.join(&self.file);
+        if file.is_symlink() {
+            return Err("Pinned asset cache cannot be a symbolic link".into());
+        }
         stage_pin::<Sha256>(&self.url, &file, self.size_bytes, &self.sha256)?;
         Ok(file)
     }
@@ -116,6 +119,18 @@ pub(super) fn ocr(arguments: &[OsString]) -> Result<Value> {
         model.stage(destination)?;
     }
     Ok(json!({"models":policy.models.len(),"source_commit":policy.source_commit}))
+}
+
+pub(super) fn speech(arguments: &[OsString]) -> Result<Value> {
+    let [cache, host] = arguments else {
+        return Err("prepare-speech-model requires CACHE_DIRECTORY HOST_DIRECTORY".into());
+    };
+    let model: Pin = serde_json::from_str(include_str!("../../../config/speech-model.json"))?;
+    let source = model.stage(Path::new(cache))?;
+    let directory = Path::new(host).join("speech");
+    fs::create_dir_all(&directory)?;
+    fs::copy(source, directory.join(&model.file))?;
+    Ok(json!({"resource":format!("speech/{}", model.file),"sha256":model.sha256}))
 }
 
 pub(super) fn windows_aosp(arguments: &[OsString]) -> Result<()> {
