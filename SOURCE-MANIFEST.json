@@ -358,8 +358,8 @@
     },
     {
       "path": "apps/native/src/layout.rs",
-      "size": 7304,
-      "sha256": "0e8a2340b5e351f2423815198c38bf83d7b5dd72c36d7f77b30a90a5bfe28bf1"
+      "size": 7322,
+      "sha256": "eef9ff3b3d12482d7a8551f1212f4d8f0e777e072b46ff98548b42290b49c15c"
     },
     {
       "path": "apps/native/src/loading.rs",

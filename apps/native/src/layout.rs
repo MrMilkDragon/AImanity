@@ -22,6 +22,7 @@ impl Layout {
         let wide = linked || focus == 1 || aspects[0] > 1.;
         let (top, gap) = if wide { (60., 18.) } else { (66., 24.) };
         let inset = SIDE_INSET;
+        let linked_gap = 2. * inset;
         let bottom = 20.;
         let grid_width = size.width - 2. * inset;
         let grid_height = size.height - top - bottom;
@@ -51,18 +52,13 @@ impl Layout {
             let rear = !linked && index != focus;
             let rear_phone = wide && rear && index == 0;
             let pane_width = if linked {
-                ((stage_width - gap) * 0.5).min(900.)
+                ((stage_width - linked_gap) * 0.5).min(900.)
             } else if rear_phone {
                 (stage_width * 0.32).min(1000.)
             } else if wide {
                 (stage_width * 0.76).min(1000.)
             } else {
                 stage_width * 0.86
-            };
-            let pane_center = if linked {
-                stage_center + (stage_width + gap) * 0.25 * if index == 0 { -1. } else { 1. }
-            } else {
-                stage_center
             };
             let header_height = if rear { 40. } else { 44. };
             let header_space = if linked { 64. } else { 56. };
@@ -74,13 +70,7 @@ impl Layout {
             } else {
                 top + header_height + 12.
             };
-            let screen_left = if linked && index == 0 {
-                inset
-            } else if linked {
-                size.width - inset - width
-            } else {
-                pane_center - width * 0.5
-            };
+            let screen_left = stage_center - width * 0.5;
             devices[index] = Rectangle {
                 x: screen_left,
                 y: screen_top,
@@ -105,7 +95,7 @@ impl Layout {
                 let origin_y =
                     STAGE_TOP + (size.height - STAGE_TOP) * if wide { 0.25 } else { 0.5 };
                 let depth = PERSPECTIVE / (PERSPECTIVE + 35.);
-                let x = origin_x + (pane_center + pane_width * shift * side - origin_x) * depth;
+                let x = origin_x + (stage_center + pane_width * shift * side - origin_x) * depth;
                 let y = origin_y
                     + (top
                         + stage_height * 0.5
@@ -122,6 +112,13 @@ impl Layout {
                 angles[index] = -side * 10_f32.to_radians();
                 device_scale[index] = scale;
             }
+        }
+        if linked {
+            let [phone, desktop] = &mut devices;
+            phone.x = stage_center - (phone.width + linked_gap + desktop.width) * 0.5;
+            desktop.x = phone.x + phone.width + linked_gap;
+            toolbars[0].x = phone.x - (toolbars[0].width - phone.width).max(0.);
+            toolbars[1].x = desktop.x;
         }
         let chat = if wide {
             Rectangle {
