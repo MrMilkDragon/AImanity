@@ -271,7 +271,7 @@ RUN set -eu; \\
         cp -L "$source/bin/$binary" "$output/lib/postgresql/17/bin/"; \\
     done; \\
     find "$source/lib" -maxdepth 1 -name '*.so' ! -name llvmjit.so -exec cp -L -t "$output/lib/postgresql/17/lib" {} +; \\
-    cp -a /usr/share/postgresql/17 "$output/share/postgresql/"; \\
+    cp -aL /usr/share/postgresql/17 "$output/share/postgresql/"; \\
     cp --parents -L /usr/share/doc/*/copyright "$output/"; \\
     for object in "$output"/lib/postgresql/17/bin/* "$output"/lib/postgresql/17/lib/*.so; do \\
         libraries=$(ldd "$object"); \\
