@@ -3,7 +3,6 @@ import { join } from "node:path";
 import {
   nativeClosure,
   packageRecords,
-  archiveDependency,
 } from "../tooling/linux-dependencies";
 const root = "/out";
 mkdirSync(root);
@@ -19,5 +18,3 @@ copyFileSync(
   join(root, "tessdata/configs/tsv"),
 );
 packageRecords(root, files);
-mkdirSync("/export");
-await archiveDependency(root, "/export/linux-x64-ocr.tar.gz");

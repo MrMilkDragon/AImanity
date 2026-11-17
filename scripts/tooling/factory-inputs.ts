@@ -1,14 +1,15 @@
-import { mkdirSync, copyFileSync, cpSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, copyFileSync, cpSync, existsSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { run } from "./process";
 import { json } from "./inventory";
-import { buildDependency, dependencyArchive } from "./linux-dependencies";
+import { sealDependency, verifyDependency } from "./linux-dependencies";
 import { fetchPin } from "./factory";
 
-export async function dependencyContext(
+async function dependencyContext(
   root: string,
   folder: string,
   role: string,
+  destination: string,
 ) {
   mkdirSync(folder, { recursive: true });
   copyFileSync(
@@ -32,7 +33,6 @@ export async function dependencyContext(
       recursive: true,
     });
   }
-  const destination = join(folder, "output");
   run(
     [
       "docker",
@@ -48,7 +48,6 @@ export async function dependencyContext(
     ],
     { cwd: root },
   );
-  return destination;
 }
 
 export async function buildFactoryDependency(
@@ -57,7 +56,16 @@ export async function buildFactoryDependency(
   destination: string,
   role: string,
 ) {
-  const archive = dependencyArchive(root, role);
-  const output = await dependencyContext(root, work, role);
-  return buildDependency(root, join(output, archive), destination, role);
+  if (existsSync(destination)) return verifyDependency(root, destination, role);
+  const parent = dirname(resolve(destination));
+  mkdirSync(parent, { recursive: true });
+  const output = mkdtempSync(join(parent, ".dependency-"));
+  try {
+    await dependencyContext(root, work, role, output);
+    const result = sealDependency(root, output, role);
+    renameSync(output, destination);
+    return result;
+  } finally {
+    rmSync(output, { recursive: true, force: true });
+  }
 }

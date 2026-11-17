@@ -548,8 +548,8 @@
     },
     {
       "path": "config/linux-ocr.json",
-      "size": 284,
-      "sha256": "7c3b33a68b97b3a123d4b2a5ce3ba96cd6ccf2b76ab959709b0cf18fcc000ada"
+      "size": 229,
+      "sha256": "8544f8c00a7a9dc98d32d4d144a285730a9a762e34472450bcaffefb21628d2f"
     },
     {
       "path": "config/macos-factory.json",
@@ -2443,8 +2443,8 @@
     },
     {
       "path": "docs/public/engineering/linux-offline-ocr.md",
-      "size": 2545,
-      "sha256": "3428c149a625fbc4d4ea000461f66455c548523e29b8308c08a9d1be93583290"
+      "size": 2529,
+      "sha256": "bde0a8c72050e772c1d22c753e91181c25b70292186051c14c622f21ab635a17"
     },
     {
       "path": "docs/public/engineering/macos-full-runtime.md",
@@ -3388,13 +3388,13 @@
     },
     {
       "path": "scripts/linux-ocr/Dockerfile",
-      "size": 951,
-      "sha256": "d712e32a750045db9631dcd8367996ac020faa0e69d7c765ab1498f653a82c5b"
+      "size": 948,
+      "sha256": "7c110972043bafb3ec201c1e89c831f5cc01e476c7e1f1ff0e0970e018d9480f"
     },
     {
       "path": "scripts/linux-ocr/collect.ts",
-      "size": 777,
-      "sha256": "7dcb840f676613a66168ccb20c86e7caa364af8da296188f4c3d44202c199c32"
+      "size": 671,
+      "sha256": "311110e47d01c831e25651f397136b3d7012709345aee6db6961c413a8925486"
     },
     {
       "path": "scripts/macos-client-factory.ts",
@@ -3468,8 +3468,8 @@
     },
     {
       "path": "scripts/tooling/factory-inputs.ts",
-      "size": 1843,
-      "sha256": "acce5e732e4602d0e6558171a734d194530ab152fcf0d23f4f06bf6681017142"
+      "size": 2146,
+      "sha256": "f3cd4f6e7b0ef9ae9346b5e6bfbaebe380b0b7f110acaeb6f5675a9c81d87482"
     },
     {
       "path": "scripts/tooling/factory.ts",
@@ -3508,8 +3508,8 @@
     },
     {
       "path": "scripts/tooling/linux-dependencies.ts",
-      "size": 5699,
-      "sha256": "11184187db3ec29922fbc48e1d5bdbca232225231ba639bbc9a55d9cb56ce93c"
+      "size": 4386,
+      "sha256": "b8559dc725c07d37f863a0473b0a0c3f7dc12a1f7bd4ff5c410bda8306e2e2d6"
     },
     {
       "path": "scripts/tooling/macos-factory.ts",
