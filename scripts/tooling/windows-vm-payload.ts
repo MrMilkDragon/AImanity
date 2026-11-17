@@ -1,20 +1,17 @@
 import {
-  copyFileSync,
   createReadStream,
   createWriteStream,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
-  realpathSync,
   renameSync,
   rmSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
-import { dirname, join, sep } from "node:path";
+import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { entryBytes, readTar } from "./archive";
-import { json, save } from "./inventory";
+import { buildReleaseTools, entryBytes, readTar } from "./archive";
+import { save } from "./inventory";
 import { digest, output } from "./process";
 import { nativeWindowsBackendComponents } from "./wsl-factory";
 
@@ -25,16 +22,9 @@ export type WindowsVmInputs = {
   guestIdentity: string;
 };
 type FileReceipt = { path: string; size: number; sha256: string };
-export type WindowsQemuManifest = { format: number; component: string; version: string; files: FileReceipt[] };
 const guestManifest = "WINDOWS-VM-DISK-MANIFEST.json";
 const guestFiles = ["bzImage", "guest.qcow2", "kernel.config", "KERNEL-LICENSE.txt"];
 const guestLayer = ["release-init.cpio.gz", "release.ext4"];
-const qemuPrograms = [
-  "runtime/qemu-system-x86_64.exe",
-  "runtime/qemu-img.exe",
-  "runtime/share/bios-256k.bin",
-  "runtime/share/linuxboot_dma.bin",
-];
 
 export async function windowsSourceIdentity(root: string) {
   const commit = output(["git", "rev-parse", "HEAD"], { cwd: root });
@@ -108,46 +98,6 @@ async function stageGuest(source: string, identity: string, stage: string) {
   return { manifest, files: [...files.values()] };
 }
 
-export async function stageWindowsQemu(
-  source: string,
-  manifest: WindowsQemuManifest,
-  stage: string,
-) {
-  source = realpathSync(source);
-  if (manifest.format !== 1 || manifest.component !== "windows-qemu-whpx")
-    throw Error("Invalid Windows QEMU factory manifest");
-  const files: FileReceipt[] = [],
-    paths = new Set<string>();
-  for (const row of manifest.files) {
-    if (row.path.startsWith("source/")) continue;
-    const allowed =
-      qemuPrograms.includes(row.path) ||
-      /^runtime\/[\w.-]+\.dll$/i.test(row.path) ||
-      /^licenses\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*$/.test(row.path);
-    if (!allowed || paths.has(row.path.toLowerCase()))
-      throw Error("Unexpected Windows QEMU file: " + row.path);
-    paths.add(row.path.toLowerCase());
-    const input = join(source, row.path), target = join(stage, row.path),
-      info = lstatSync(input);
-    if (
-      !info.isFile() ||
-      !realpathSync(input).startsWith(source + sep) ||
-      info.size !== row.size ||
-      (await digest(input)) !== row.sha256
-    )
-      throw Error("Windows QEMU file changed: " + row.path);
-    mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(input, target);
-    files.push(row);
-  }
-  if (
-    qemuPrograms.some((name) => !paths.has(name)) ||
-    !paths.has("licenses/qemu/copying")
-  )
-    throw Error("Windows QEMU runtime or license missing");
-  return { manifest, files };
-}
-
 export async function stageWindowsVm(
   root: string,
   destination: string,
@@ -160,7 +110,10 @@ export async function stageWindowsVm(
     const qemuManifest = join(input.qemu, "windows-qemu.json");
     if ((await digest(qemuManifest)) !== input.qemuIdentity)
       throw Error("Windows QEMU factory manifest changed");
-    const qemu = await stageWindowsQemu(input.qemu, json(qemuManifest), stage);
+    const qemu = JSON.parse(output(
+      [buildReleaseTools(root), "windows-factory", "stage-qemu", input.qemu, qemuManifest, stage],
+      { cwd: root },
+    )) as { manifest: unknown; files: FileReceipt[] };
     const guest = await stageGuest(input.guest, input.guestIdentity, stage);
     if (
       guest.manifest.source_commit !== source.source_commit ||

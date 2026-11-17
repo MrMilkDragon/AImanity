@@ -78,8 +78,8 @@
     },
     {
       "path": ".github/workflows/windows-qemu.yml",
-      "size": 2482,
-      "sha256": "eb1e65a309dac997566946af554135c606ad032379b0c44fbb2cfc2ea957f904"
+      "size": 2559,
+      "sha256": "b9712920bed3c4ac409a7e0fef7b08ef80a1a25c36d5056668a425c545553c7d"
     },
     {
       "path": ".github/workflows/wsl-backend.yml",
@@ -2213,8 +2213,8 @@
     },
     {
       "path": "crates/release-tools/src/assets.rs",
-      "size": 9854,
-      "sha256": "1f50a6bf2474c211d55e9969c330b27327f56d970c85a66526869ae6917c4ae1"
+      "size": 9996,
+      "sha256": "ed675c7d84e96baadf7dd93ba367f6e15a19f6bea3755e538d64295aca9e062b"
     },
     {
       "path": "crates/release-tools/src/capsule.rs",
@@ -2233,8 +2233,8 @@
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 4028,
-      "sha256": "174a3f54cee6f44cd41513d12c75242e62bf4fd43f5c560c7234eee32a156d2b"
+      "size": 4074,
+      "sha256": "623b65f538e2f684085e6eaa4f4b81319e2a8d1a8d44bd1bba72791fd6681a62"
     },
     {
       "path": "crates/release-tools/src/phone_apps.rs",
@@ -2250,6 +2250,11 @@
       "path": "crates/release-tools/src/update_feed.rs",
       "size": 5437,
       "sha256": "7da0888f07f455223f2763ddc423446696823ffe7beee904c2bb808f8788f384"
+    },
+    {
+      "path": "crates/release-tools/src/windows_factory.rs",
+      "size": 11196,
+      "sha256": "05c109ff46db522f568f2abafb7e74553eec1d10670d6601dc5698519cd9c795"
     },
     {
       "path": "crates/release-tools/src/windows_release.rs",
@@ -2403,8 +2408,8 @@
     },
     {
       "path": "docs/public/engineering/android-corresponding-source.md",
-      "size": 6749,
-      "sha256": "c14fd57b5455448f3773f4d245e7e45404795a768d391f10c96ea132ee99457a"
+      "size": 6761,
+      "sha256": "038c84266eec36f6fc6835edd0d4b726bfd67d058ea04865bf09c8a89d1bccd5"
     },
     {
       "path": "docs/public/engineering/android-runtime.md",
@@ -3093,8 +3098,8 @@
     },
     {
       "path": "docs/public/windows-backend-runtime.md",
-      "size": 6338,
-      "sha256": "a8826183331f69e22b53b2e1780a065b0e8c8f01be86d4bd9465bde7c8890985"
+      "size": 6317,
+      "sha256": "815b574e4462097bfb1d044a875f0085ae5e49b3bca5cec2c231ac7040d3dcae"
     },
     {
       "path": "docs/public/windows-client-factory.md",
@@ -3443,8 +3448,8 @@
     },
     {
       "path": "scripts/tooling/client-build.ts",
-      "size": 16841,
-      "sha256": "af5f1dae2fe6b6b2004b75a7839ba4cb4c955bb387be792021bd697d2dee0a95"
+      "size": 16994,
+      "sha256": "eabba659b9193157395c8ca33d842d42c1a8acf34919edf04776165939acb3cc"
     },
     {
       "path": "scripts/tooling/client-payload.ts",
@@ -3542,19 +3547,9 @@
       "sha256": "d33db1014b224769b3fc4c04e9f9bd76a5e0656bc9cdd8d799633d2df8a50b8b"
     },
     {
-      "path": "scripts/tooling/windows-installer.ts",
-      "size": 2274,
-      "sha256": "54e7d5def3fbdd6cb8c9255b5e865a7b223784446ff8ccea2ec0be16f0227afa"
-    },
-    {
-      "path": "scripts/tooling/windows-qemu.ts",
-      "size": 3734,
-      "sha256": "d2300d26eb0f034e892a5b623882ee58e2fd89ea2bcb0d76afadfe825f9339c8"
-    },
-    {
       "path": "scripts/tooling/windows-vm-payload.ts",
-      "size": 6978,
-      "sha256": "8706fd457f737e446627a513ffc2357c47bc5548246b8a3d8c0f410e1e3da6a1"
+      "size": 5389,
+      "sha256": "3fbabf8939432d1328892e8458851653ae8bb2e4d5d5c2d665c85a42fad0ff77"
     },
     {
       "path": "scripts/tooling/wsl-capsule.ts",
@@ -3590,11 +3585,6 @@
       "path": "scripts/windows-guest-disk.ts",
       "size": 716,
       "sha256": "f902f05ec93f04723e3ac1f9039d774f6d40776c8dbc7c013fd79cc00d45cc94"
-    },
-    {
-      "path": "scripts/windows-qemu.ts",
-      "size": 326,
-      "sha256": "83b6c11ea051ff2eef206cfa62c5958865a5cde5051a167a06283ef4435edcb4"
     },
     {
       "path": "scripts/windows-release-layer.sh",

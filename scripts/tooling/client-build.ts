@@ -20,7 +20,7 @@ import { join, relative, resolve, basename, dirname, sep } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { ROOT, run, output, digest, hash } from "./process";
 import { json, save } from "./inventory";
-import { buildWindowsInstaller, unpackWindowsInstaller } from "./windows-installer";
+import { buildReleaseTools } from "./archive";
 import {
   macReleaseSigning,
   notarizeMacImage,
@@ -117,7 +117,7 @@ async function inspectPayload(files: Record<string, string>, root: string) {
 async function inspectPackage(file: string, root: string) {
   const folder = mkdtempSync(join(tmpdir(), "aiphone-package-"));
   try {
-    await unpackWindowsInstaller(root, file, folder);
+    run([buildReleaseTools(root), "windows-factory", "unpack", root, file, folder], { cwd: root });
     const files = filesIn(folder),
       program = Object.entries(files).find(([name]) =>
         name.endsWith("ai-phone-client.exe"),
@@ -426,7 +426,11 @@ export async function buildClient(
   const source = nativeBinary(root, platform);
   const destination = join(dist, `AImanity-${version}-windows-x64-setup.exe`);
   if (credentials) signWindowsRelease(source, credentials);
-  await buildWindowsInstaller(root, source, destination);
+  run([buildReleaseTools(root), "windows-factory", "assemble", root, source, destination], {
+    cwd: root,
+    input: JSON.stringify(resourceMap(root)),
+    stdio: ["pipe", "inherit", "inherit"],
+  });
   if (credentials) signWindowsRelease(destination, credentials);
   const signature = credentials
     ? releaseWindowsSignature
