@@ -358,8 +358,8 @@
     },
     {
       "path": "apps/native/src/layout.rs",
-      "size": 7322,
-      "sha256": "eef9ff3b3d12482d7a8551f1212f4d8f0e777e072b46ff98548b42290b49c15c"
+      "size": 7314,
+      "sha256": "c2a0fe7920d258e5bbcf84630ff6ad40d9a570ad113aca6f59a0a0180562f778"
     },
     {
       "path": "apps/native/src/loading.rs",
@@ -1263,8 +1263,8 @@
     },
     {
       "path": "crates/assistant/src/proactive.rs",
-      "size": 80638,
-      "sha256": "2c302da8eb59e7865a90705b684a0404e373c2a5490acae98d28bdbb216cd5c0"
+      "size": 80729,
+      "sha256": "be446f03431f8e55b12dc8a230b55206bfb43f79982e539d9eb2242c5134289b"
     },
     {
       "path": "crates/assistant/src/redis_events.rs",

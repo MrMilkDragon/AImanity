@@ -2,6 +2,7 @@ use iced::{Point, Rectangle, Size};
 
 const PERSPECTIVE: f32 = 1800.;
 const BEZEL: f32 = 5.;
+const LINKED_GAP: f32 = 64.;
 pub const STAGE_TOP: f32 = 60.;
 pub const SIDE_INSET: f32 = 24.;
 pub const CHAT_PADDING: [f32; 2] = [14., 18.];
@@ -22,7 +23,6 @@ impl Layout {
         let wide = linked || focus == 1 || aspects[0] > 1.;
         let (top, gap) = if wide { (60., 18.) } else { (66., 24.) };
         let inset = SIDE_INSET;
-        let linked_gap = 2. * inset;
         let bottom = 20.;
         let grid_width = size.width - 2. * inset;
         let grid_height = size.height - top - bottom;
@@ -52,7 +52,7 @@ impl Layout {
             let rear = !linked && index != focus;
             let rear_phone = wide && rear && index == 0;
             let pane_width = if linked {
-                ((stage_width - linked_gap) * 0.5).min(900.)
+                ((stage_width - LINKED_GAP) * 0.5).min(900.)
             } else if rear_phone {
                 (stage_width * 0.32).min(1000.)
             } else if wide {
@@ -115,8 +115,8 @@ impl Layout {
         }
         if linked {
             let [phone, desktop] = &mut devices;
-            phone.x = stage_center - (phone.width + linked_gap + desktop.width) * 0.5;
-            desktop.x = phone.x + phone.width + linked_gap;
+            phone.x = stage_center - (phone.width + LINKED_GAP + desktop.width) * 0.5;
+            desktop.x = phone.x + phone.width + LINKED_GAP;
             toolbars[0].x = phone.x - (toolbars[0].width - phone.width).max(0.);
             toolbars[1].x = desktop.x;
         }
