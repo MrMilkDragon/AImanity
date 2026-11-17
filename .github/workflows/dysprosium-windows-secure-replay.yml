@@ -42,7 +42,7 @@ jobs:
           github-token: ${{ github.token }}
           name: isolated-input-apk
           path: ${{ env.AIMANITY_QA_ROOT }}/inputs
-      - name: Boot the portable WHPX guest and replay the exact selector transition once
+      - name: Observe one exact selector and service binding transition on WHPX
         working-directory: exact
         shell: bash
         run: |

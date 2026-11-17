@@ -68,14 +68,15 @@ function adbOutput(...args: string[]) {
 }
 const packageResult = adbOutput("install", "--no-incremental", "-r", "--user", "0", apk);
 console.log(JSON.stringify({inputApk:packageResult}));
-if (packageResult.status !== 0 || packageResult.stdout !== "Success") throw Error("The sealed input package was not installed");
+if (packageResult.status !== 0 || packageResult.stdout.split(/\r?\n/).at(-1) !== "Success")
+  throw Error("The sealed input package was not installed");
 function states() {
   return {
     user:adbOutput("shell", "am get-started-user-state 0"),
     selector:adbOutput("shell", "settings --user 0 get secure " + enabled),
     global:adbOutput("shell", "settings --user 0 get secure accessibility_enabled"),
     component:adbOutput("shell", "cmd package query-services --user 0 --components -a android.accessibilityservice.AccessibilityService -p " + packageName),
-    binding:adbOutput("shell", "dumpsys activity services " + attention + " | grep -E 'ServiceRecord|PhoneAttention|No services'"),
+    binding:adbOutput("shell", "dumpsys -t 2 activity services " + attention + " | grep -E 'ServiceRecord|PhoneAttention|No services|requested='"),
   };
 }
 const before = states();
