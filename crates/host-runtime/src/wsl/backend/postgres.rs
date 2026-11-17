@@ -3,6 +3,7 @@ use crate::{Error, Result, filesystem};
 use std::{
     collections::BTreeMap,
     fs,
+    io::Write,
     path::Path,
     time::{Duration, Instant},
 };
@@ -159,9 +160,16 @@ impl<E: Execute> Backend<'_, E> {
         }
         let staging = tempfile::tempdir_in(state)?;
         let directory = text(staging.path())?;
+        let mut credentials = tempfile::NamedTempFile::new_in(state)?;
+        writeln!(credentials, "{password}")?;
+        let password_file = text(credentials.path())?;
         let command = self.command(
             "/usr/bin/chown",
-            [format!("{OWNER}:{OWNER}"), directory.clone()],
+            [
+                format!("{OWNER}:{OWNER}"),
+                directory.clone(),
+                password_file.clone(),
+            ],
         );
         self.checked(command, Vec::new()).await?;
         let args = owner_command(
@@ -174,13 +182,13 @@ impl<E: Execute> Backend<'_, E> {
                 "--locale-provider=builtin",
                 "--locale=C.UTF-8",
                 "--auth=scram-sha-256",
-                "--pwfile=/dev/stdin",
+                &format!("--pwfile={password_file}"),
             ],
         );
         let mut command = self.command(&args[0], &args[1..]);
         command.current_dir(state);
-        self.checked(command, format!("{password}\n").into_bytes())
-            .await?;
+        self.checked(command, Vec::new()).await?;
+        drop(credentials);
         fs::rename(staging.path(), DATA)?;
         fs::File::open(state)?.sync_all()?;
         Ok(())
