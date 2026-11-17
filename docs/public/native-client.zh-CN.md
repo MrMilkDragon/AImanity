@@ -36,8 +36,7 @@ Rust 原生客户端负责本机配置。两端都运行原生 Android。macOS �
 ## 构建
 
 ```sh
-./scripts/bootstrap.sh
-./scripts/bun scripts/build-client.ts
+cargo build --release --locked --manifest-path apps/native/Cargo.toml
 ```
 
 这条命令构建开发客户端。完整安装包见 [macOS 工厂](engineering/macos-full-runtime.md)及 [Windows 工厂](windows-client-factory.md)。

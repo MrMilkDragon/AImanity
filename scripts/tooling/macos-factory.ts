@@ -6,7 +6,7 @@ import {
   lstatSync,
 } from "node:fs";
 import { join } from "node:path";
-import { run, output, digest, bunProgram, hostKey } from "./process";
+import { run, output, digest, hostKey } from "./process";
 import { json, save } from "./inventory";
 import { extractTar, buildReleaseTools } from "./archive";
 import {
@@ -29,7 +29,6 @@ import {
 import { admitImages } from "./image-handoff";
 import { deliveryMetadata } from "./client-payload";
 import { checkSource } from "./source";
-import { macReleaseSigning } from "./installer-signing";
 
 async function host(root: string, work: string) {
   const cached = join(root, ".tools/container-host");
@@ -90,7 +89,6 @@ export async function macosFactory(
   const androidInput = factoryAndroidInput();
   const prebuiltHost = existsSync(join(root, ".tools/container-host"));
   const prebuiltApps = existsSync(join(root, ".tools/phone-apps"));
-  if (releaseSigning) macReleaseSigning();
   capacity(root, candidate && prebuiltHost && prebuiltApps && androidInput.kind === "sealed" ? 24 : 35);
   checkSource(root);
   if (!sdk && !prebuiltApps) throw Error("--compiler-sdk required to build phone helpers");
@@ -119,20 +117,18 @@ export async function macosFactory(
       throw Error("Mac factory requires an ARM64 image engine");
     context = await guest(root, work);
   }
-  buildReleaseTools(root);
+  const release = buildReleaseTools(root);
   const engine = await host(root, work),
     android = await prepareFactoryAndroid(androidInput, work, 3, root);
   const apps = prepareApps(root, env),
     images =
       prepared ||
       (await prepareImages(root, work, source, "arm64", context, false)).file;
+  run([release, "native-services", "build"], { cwd: root, env });
   run(
     [
-      bunProgram(root),
-      join(root, "scripts/build-client.ts"),
-      "--platform",
-      "macos",
-      releaseSigning ? "--sign-release" : "--sign-temporary",
+      release,
+      "client-payload",
       "--with-service-runtime",
       "--with-phone-apps",
       "--with-container-host",
@@ -143,6 +139,7 @@ export async function macosFactory(
     ],
     { cwd: root, env },
   );
+  run([release, "client-installer", releaseSigning ? "--sign-release" : "--sign-temporary"], { cwd: root, env });
   const version = json(join(root, "config/release-policy.json")).version,
     file = join(root, "dist", `AImanity-${version}-macos-arm64.dmg`),
     manifest = json(file + ".manifest.json"),

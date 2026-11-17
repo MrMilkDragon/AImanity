@@ -42,7 +42,6 @@ These commands are for maintainers building components. Native OCR qualification
 ./scripts/bootstrap.sh
 cargo run --quiet --locked -p ai-phone-release-tools -- native-services build
 cargo run --locked -p ai-phone-release-tools -- client-payload --with-service-runtime
-./scripts/bun scripts/build-client.ts --platform macos --with-service-runtime
 ```
 
 For full distribution commands and factory-resource requirements, use the [Apple Silicon build guide](engineering/macos-full-runtime.md#build) or [Windows factory guide](windows-client-factory.md). The commands above exercise individual components.

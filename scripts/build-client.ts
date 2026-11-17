@@ -3,26 +3,18 @@ import { ROOT, output, run } from "./tooling/process";
 import { checkSource } from "./tooling/source";
 import { preparePayload, type PayloadOptions } from "./tooling/client-payload";
 import { buildReleaseTools } from "./tooling/archive";
-import {
-  buildClient,
-  type Platform,
-} from "./tooling/client-build";
-import { macReleaseSigning, windowsReleaseSigning } from "./tooling/installer-signing";
+
 
 const args = process.argv.slice(2),
   option = (name: string) =>
     args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
-const platform = (option("--platform") || "macos") as Platform,
+const platform = (option("--platform") || "macos"),
   root = option("--root") ? resolve(option("--root")!) : ROOT;
 if (!["macos", "windows"].includes(platform))
   throw Error("--platform macos|windows is required");
 const releaseSigning = args.includes("--sign-release");
 const temporarySigning = args.includes("--sign-temporary");
-if (releaseSigning) {
-  if (temporarySigning) throw Error("Select release signing or a temporary signature");
-  if (platform === "macos") macReleaseSigning();
-  else windowsReleaseSigning();
-}
+if (releaseSigning && temporarySigning) throw Error("Select one signing mode");
 checkSource(root);
 if (output(["rustc", "--version"]).split(" ")[1] !== "1.96.0")
   throw Error("Rust 1.96.0 is required");
@@ -43,7 +35,4 @@ const options: PayloadOptions = {
 if (options.nativeServices)
   run([buildReleaseTools(root), "native-services", "build"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
 await preparePayload(root, options);
-console.log(JSON.stringify(await buildClient(platform, root, {
-  temporarySigning,
-  releaseSigning,
-})));
+run([buildReleaseTools(root), "client-installer", ...args.filter(arg => ["--sign-release", "--sign-temporary"].includes(arg))], {cwd: root});

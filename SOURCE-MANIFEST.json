@@ -2227,6 +2227,26 @@
       "sha256": "1b83ed8b584c99f0168a36ecd07ff27249c063901d1e6cdc19a9be520d770f07"
     },
     {
+      "path": "crates/release-tools/src/client_installer/bundle.rs",
+      "size": 11830,
+      "sha256": "3dc8cadef39af33b5ea4ee0a60348b8e02d594e771c2572141e3d2aa3f31a9ee"
+    },
+    {
+      "path": "crates/release-tools/src/client_installer/notices.rs",
+      "size": 8072,
+      "sha256": "b3ec129eab6f743f69456afcb283aabd972d8c1f22d19d608464254e711caade"
+    },
+    {
+      "path": "crates/release-tools/src/client_installer/resources.rs",
+      "size": 10358,
+      "sha256": "34094d7b37653bd12e998431600bac2972113953c7523deb2cacd6c14e946ef2"
+    },
+    {
+      "path": "crates/release-tools/src/client_installer.rs",
+      "size": 8497,
+      "sha256": "5e1a4c2dd3cdab6d66f1f197dfe0bc8a9bdf680b3470099f743242ba4a5ab461"
+    },
+    {
       "path": "crates/release-tools/src/client_payload.rs",
       "size": 5786,
       "sha256": "c8a089174c5815ee4e87875a85426f38ff0d931e0d03e571518d195775945662"
@@ -2263,8 +2283,8 @@
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 4533,
-      "sha256": "03191f81b16bf93a186a9de7ac33c594ce58350fa0e1361215e70b3e94e7a09f"
+      "size": 4716,
+      "sha256": "76804b93ee5616c415b6f9f697abc2d248b3f0cfa8ec4af4b1f89b569cb0e7c2"
     },
     {
       "path": "crates/release-tools/src/native_services.rs",
@@ -2278,8 +2298,8 @@
     },
     {
       "path": "crates/release-tools/src/source.rs",
-      "size": 23312,
-      "sha256": "0abf12e5c419400ee168334a0495ec7fc6ea7469deec92afce53eda2a40680a9"
+      "size": 23323,
+      "sha256": "ac7a22f131405eecbc5149b274edba4c46aba1fec1e996e339eca6c3c4fdb420"
     },
     {
       "path": "crates/release-tools/src/update_feed.rs",
@@ -2288,8 +2308,8 @@
     },
     {
       "path": "crates/release-tools/src/windows_factory.rs",
-      "size": 11196,
-      "sha256": "05c109ff46db522f568f2abafb7e74553eec1d10670d6601dc5698519cd9c795"
+      "size": 11261,
+      "sha256": "a6ab1750cf36fdc8f12825fc1c3b8bbfb0ea9a4de4c2d5f90a2c9939681e9d2e"
     },
     {
       "path": "crates/release-tools/src/windows_release.rs",
@@ -2483,8 +2503,8 @@
     },
     {
       "path": "docs/public/engineering/linux-image-runtime.md",
-      "size": 5148,
-      "sha256": "1876712e30e704dd4ba9581d0935702af799acb0fec47d2a65d573298acccfc2"
+      "size": 5156,
+      "sha256": "0e76d82d629783a9025e128938aff3ae5c53c155643981394743805f701c7473"
     },
     {
       "path": "docs/public/engineering/linux-offline-ocr.md",
@@ -2493,8 +2513,8 @@
     },
     {
       "path": "docs/public/engineering/macos-full-runtime.md",
-      "size": 5811,
-      "sha256": "34fd08bd109eac4df56ff17d65a63fca89921e9e91f6dbbbbb983d29f228df68"
+      "size": 5901,
+      "sha256": "b00927cd78bc0192e2af22f86a2e5d5a95580a0a88e84816a1222bd75c17657c"
     },
     {
       "path": "docs/public/engineering/native-android-preparation.md",
@@ -2508,8 +2528,8 @@
     },
     {
       "path": "docs/public/engineering/phone-apps.md",
-      "size": 5466,
-      "sha256": "920fd637984ed7331d1abccf63819954314eae3f14c1853817976ade537891e5"
+      "size": 5474,
+      "sha256": "949e6098a5987394e4d96166e39ced38cf270dedd89ef0efbe7fd021d9f83351"
     },
     {
       "path": "docs/public/engineering/private-install-state.md",
@@ -3008,13 +3028,13 @@
     },
     {
       "path": "docs/public/native-client.en.md",
-      "size": 3886,
-      "sha256": "6c230722fc8467ae2be2a3cbae6b1595f231a6b6cb303e0efde12b10ed3ba928"
+      "size": 3895,
+      "sha256": "20506c82d347d9479415f48ed1bbef0a21ea0a994161879829ab202ccd34b7f1"
     },
     {
       "path": "docs/public/native-client.zh-CN.md",
-      "size": 3338,
-      "sha256": "4ff729e312cbc7d74ed12952bb84af9cb6356f64ffd94f8e1232e6acd75d072b"
+      "size": 3347,
+      "sha256": "c1ea0b03574cdfbcf4bc75c90c8e3067cdfa718ea42ef907e0e121c4e816f2a4"
     },
     {
       "path": "docs/public/native-services-license-inventory.json",
@@ -3098,8 +3118,8 @@
     },
     {
       "path": "docs/public/runtime-bundles.md",
-      "size": 7530,
-      "sha256": "ef84b08ad153e1d3c4a1bceb7d11286618a18f66e549a418077930b02501bf5f"
+      "size": 7452,
+      "sha256": "2a1a30948164a5b70ffcaeaa99bcf02dca432dde7af52f939b90cdb2d6c08017"
     },
     {
       "path": "docs/public/simulated-location.md",
@@ -3373,8 +3393,8 @@
     },
     {
       "path": "scripts/build-client.ts",
-      "size": 2078,
-      "sha256": "0f2698c0105206c5e183acc690d3b269b43bd876fff800a4cbd9aa137785e33b"
+      "size": 1827,
+      "sha256": "a89928687a70a924ef11027ce031d781b73374bbdffbf4fe2af289938867a933"
     },
     {
       "path": "scripts/bun",
@@ -3462,24 +3482,14 @@
       "sha256": "2b4ab982ebb1bd0c2da23b7955ac3de4fc7f9a047e9b0d6359d5f75619f222a7"
     },
     {
-      "path": "scripts/tooling/client-build.ts",
-      "size": 16988,
-      "sha256": "0de897414c048ecad3f8aabbbcd386db471cb486f6a9156fbc877c8f1f3be11b"
-    },
-    {
       "path": "scripts/tooling/client-payload.ts",
-      "size": 3857,
-      "sha256": "4db021caabc2ca95a0e249bf4de113fa5b199d160771a1c36250e5e1081fb5fb"
+      "size": 2687,
+      "sha256": "32b6bf47f40e32d3f4c9d80741777258870be087e36a022be7b711501b2b31d0"
     },
     {
       "path": "scripts/tooling/container-host.ts",
       "size": 8703,
       "sha256": "41aa0f2218c7a8f8db6a48216cd4af6f183052eeddfa999f54f18467f3fff485"
-    },
-    {
-      "path": "scripts/tooling/dependency-inventory.ts",
-      "size": 5544,
-      "sha256": "49023ee15e9676ae55668e9014a001ce30074f30678d4743a1b0b41e932d825a"
     },
     {
       "path": "scripts/tooling/factory.ts",
@@ -3503,8 +3513,8 @@
     },
     {
       "path": "scripts/tooling/installer-signing.ts",
-      "size": 4296,
-      "sha256": "bc0b6d02b77d251006d411f664a25253e8fcf89ea711b4d81559566dda96bc73"
+      "size": 531,
+      "sha256": "67a2b51539d5a933ae577cec3019455cf24ae087a446da6c737fb31e72f62888"
     },
     {
       "path": "scripts/tooling/inventory.ts",
@@ -3518,8 +3528,8 @@
     },
     {
       "path": "scripts/tooling/macos-factory.ts",
-      "size": 6746,
-      "sha256": "f35749637664992842643f48c94e2813c0deb3d1b0c16890a938c77981880fb5"
+      "size": 6703,
+      "sha256": "c7b06c19bc7a0cb786af1da835a89ebf33dfb40df284d834a490e43271dbe60b"
     },
     {
       "path": "scripts/tooling/native-check.ts",
@@ -3533,8 +3543,8 @@
     },
     {
       "path": "scripts/tooling/resources.ts",
-      "size": 5044,
-      "sha256": "0752f74c146bb19b4f758928fce6f290add88fb086f6f48d8fb4b59aad8e1a5c"
+      "size": 53,
+      "sha256": "ca7708cbae6940b6905b98f4b3bc7a7af8cea208905996d449dbf57d2d800d95"
     },
     {
       "path": "scripts/tooling/source.ts",

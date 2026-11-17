@@ -45,11 +45,12 @@ Private Actions storage retains the DMG, inventory and receipt. The maintainer p
 Use a reviewed source checkout and architecture-matched factory resources. The distribution command is:
 
 ```sh
-./scripts/bun scripts/build-client.ts --platform macos \
+cargo run --locked -p ai-phone-release-tools -- client-payload \
   --with-service-runtime --with-phone-apps \
   --with-container-host \
   --android-runtime /factory/android.payload \
   --images-runtime /factory/images.payload
+cargo run --locked -p ai-phone-release-tools -- client-installer --sign-temporary
 ```
 
 Factory inputs must satisfy their source pins and redistribution requirements. The packager rejects compiled web routes absent from the public source selection. It compiles the application, checks its resources, and creates a verified compressed disk image containing the app and an Applications shortcut. Failed image creation preserves the previous artifact.

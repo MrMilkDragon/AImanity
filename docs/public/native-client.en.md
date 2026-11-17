@@ -36,8 +36,7 @@ The setup screen supports ten languages, keyboard-accessible selectors, retry an
 ## Build
 
 ```sh
-./scripts/bootstrap.sh
-./scripts/bun scripts/build-client.ts
+cargo build --release --locked --manifest-path apps/native/Cargo.toml
 ```
 
 This command builds a development client. For complete packages, see the [macOS factory](engineering/macos-full-runtime.md) and [Windows factory](windows-client-factory.md).

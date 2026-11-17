@@ -31,37 +31,6 @@ export async function preparePayload(root = ROOT, options: PayloadOptions = {}) 
   }
   run(args, { cwd: root });
 }
-export function payloadComponents(root = ROOT): string[] {
-  const folder = join(root, hostResources),
-    payload = join(folder, "source.payload");
-  if (!existsSync(payload)) return [];
-  const components = JSON.parse(output([buildReleaseTools(root), "source", "components", payload], { cwd: root }));
-  const integrity = json(join(folder, "integrity.json"));
-  return [
-    ...components,
-    ...("android.payload" in integrity ? ["android-runtime"] : []),
-    ...("images.payload" in integrity ? ["container-images"] : []),
-    ...("qemu/manifest.json" in integrity ? ["windows-qemu"] : []),
-  ];
-}
-export function installerMetadata(file: string, host: string) {
-  const format = file.split(".").at(-1)!.toLowerCase(),
-    supported: Record<string, string> = {
-      "macos-arm64": "dmg",
-      "windows-x64": "exe",
-    },
-    info = lstatSync(file);
-  if (supported[host] !== format || !info.isFile() || info.size === 0)
-    throw Error("Unsupported single-file installer");
-  return {
-    file: basename(file),
-    format,
-    size: info.size,
-    single_file: true,
-    user_assembly_required: false,
-    github_asset_eligible: info.size < 2 * 1024 ** 3,
-  };
-}
 export function deliveryMetadata(components: string[], host: string) {
   const known = new Set([
       "native-services",

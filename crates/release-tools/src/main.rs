@@ -2,6 +2,8 @@ mod android_component;
 mod android_package;
 mod assets;
 mod capsule;
+#[cfg(any(target_os = "macos", windows))]
+mod client_installer;
 mod client_payload;
 mod cuttlefish;
 mod dependency_audit;
@@ -32,6 +34,8 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(unix)]
         "windows-release" => windows_release::seal(rest).map(Some),
         "source" => source::run(rest),
+        #[cfg(any(target_os = "macos", windows))]
+        "client-installer" => client_installer::run(rest).map(Some),
         "client-payload" => client_payload::run(rest).map(Some),
         "sign-update" => update_feed::sign(rest).map(|()| None),
         "prepare-ocr-models" => assets::ocr(rest).map(Some),

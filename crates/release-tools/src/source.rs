@@ -576,7 +576,7 @@ pub(super) fn payload(
     Ok(format!("{digest:x}"))
 }
 
-fn payload_components(path: &Path) -> Result<Value> {
+pub(super) fn payload_components(path: &Path) -> Result<Value> {
     let mut archive = tar::Archive::new(xz2::read::XzDecoder::new(File::open(path)?));
     for entry in archive.entries()? {
         let entry = entry?;

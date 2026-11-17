@@ -49,7 +49,12 @@ fn argument(prefix: &str, value: impl AsRef<OsStr>) -> OsString {
     argument
 }
 
-fn unpack(root: &Path, installer: &Path, output: &Path, files: &[OsString]) -> Result<()> {
+pub(super) fn unpack(
+    root: &Path,
+    installer: &Path,
+    output: &Path,
+    files: &[OsString],
+) -> Result<()> {
     checked(
         Command::new(assets::windows_unpacker(root)?)
             .args(["-x", "-b", "-q", "-a", "-c{app}"])
@@ -198,8 +203,12 @@ fn qemu(root: &Path, target: &Path, installer: Option<&OsString>) -> Result<Valu
     Ok(component)
 }
 
-fn assemble(root: &Path, binary: &Path, target: &Path) -> Result<Value> {
-    let resources: BTreeMap<String, String> = serde_json::from_reader(io::stdin().lock())?;
+pub(super) fn assemble(
+    root: &Path,
+    binary: &Path,
+    target: &Path,
+    resources: &BTreeMap<String, String>,
+) -> Result<Value> {
     let folder = root.join(".tools/windows-installer");
     let compiler_folder = folder.join("compiler");
     let compiler = compiler_folder.join("ISCC.exe");
@@ -284,6 +293,7 @@ pub(super) fn run(arguments: &[OsString]) -> Result<Option<Value>> {
             &path::absolute(root)?,
             &path::absolute(binary)?,
             &path::absolute(output)?,
+            &serde_json::from_reader(io::stdin().lock())?,
         )
         .map(Some),
         _ => Err("Expected windows-factory qemu|stage-qemu|unpack|assemble".into()),
