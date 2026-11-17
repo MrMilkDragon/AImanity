@@ -3,6 +3,7 @@ use iced::{Point, Rectangle, Size};
 const PERSPECTIVE: f32 = 1800.;
 const BEZEL: f32 = 5.;
 pub const STAGE_TOP: f32 = 60.;
+pub const SIDE_INSET: f32 = 24.;
 pub const CHAT_PADDING: [f32; 2] = [14., 18.];
 
 #[derive(Clone, Copy, Debug)]
@@ -19,11 +20,9 @@ pub struct Layout {
 impl Layout {
     pub fn target(size: Size, focus: usize, linked: bool, aspects: [f32; 2]) -> Self {
         let wide = linked || focus == 1 || aspects[0] > 1.;
-        let (inset, top, bottom, gap) = if wide {
-            (24., 60., 20., 18.)
-        } else {
-            (24., 66., 20., 24.)
-        };
+        let (top, gap) = if wide { (60., 18.) } else { (66., 24.) };
+        let inset = SIDE_INSET;
+        let bottom = 20.;
         let grid_width = size.width - 2. * inset;
         let grid_height = size.height - top - bottom;
         let stage_width = if wide {
@@ -75,17 +74,24 @@ impl Layout {
             } else {
                 top + header_height + 12.
             };
+            let screen_left = if linked && index == 0 {
+                inset
+            } else if linked {
+                size.width - inset - width
+            } else {
+                pane_center - width * 0.5
+            };
             devices[index] = Rectangle {
-                x: pane_center - width * 0.5,
+                x: screen_left,
                 y: screen_top,
                 width,
                 height,
             };
             let toolbar_width = width.max(236.).min(pane_width).min(760.);
             toolbars[index] = Rectangle {
-                x: pane_center - toolbar_width * 0.5 + 2.,
+                x: screen_left,
                 y: top,
-                width: toolbar_width - 4.,
+                width: toolbar_width,
                 height: header_height,
             };
             if rear {
@@ -118,11 +124,10 @@ impl Layout {
             }
         }
         let chat = if wide {
-            let width = grid_width.min(1100.);
             Rectangle {
-                x: (size.width - width) * 0.5,
+                x: inset,
                 y: top + stage_height + gap,
-                width,
+                width: grid_width,
                 height: grid_height - stage_height - gap,
             }
         } else {

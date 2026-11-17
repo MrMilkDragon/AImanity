@@ -30,10 +30,38 @@ pub const MOTION_DEVICE: f32 = 0.56;
 pub const WINDOW_ENTER: f32 = 0.46;
 pub const WINDOW_EXIT: f32 = 0.24;
 pub const NAV_ICON_WIDTH: f32 = 36.;
-pub const NAVIGATION: [f32; 4] = [24., 11., 5., 38.];
+pub const NAVIGATION: [f32; 3] = [11., 5., 38.];
 pub const NAV_TOOL_GAP: f32 = 3.;
 pub const NAV_SEPARATOR: f32 = 19.;
 pub const REGISTRY_CONTROL: f32 = 44.;
+
+pub fn tool_title(label: &str) -> iced::widget::Text<'_> {
+    heading(label, 15., 22., iced::font::Weight::Semibold)
+}
+
+pub fn section_title(label: &str) -> iced::widget::Text<'_> {
+    heading(label, 14., 20., iced::font::Weight::Medium)
+}
+
+fn heading(
+    label: &str,
+    size: f32,
+    line: f32,
+    weight: iced::font::Weight,
+) -> iced::widget::Text<'_> {
+    let cjk = label.chars().any(|c| {
+        matches!(c,
+        '\u{3000}'..='\u{30ff}' | '\u{3400}'..='\u{9fff}' | '\u{ac00}'..='\u{d7af}')
+    });
+    text(label)
+        .size(size)
+        .line_height(iced::Pixels(line))
+        .font(iced::Font {
+            weight,
+            ..if cjk { CJK_FONT } else { LATIN_FONT }
+        })
+        .wrapping(text::Wrapping::None)
+}
 
 pub fn bezier(progress: f32, [x1, y1, x2, y2]: [f32; 4]) -> f32 {
     if progress <= 0. || progress >= 1. {
@@ -60,16 +88,6 @@ pub fn window_insets(width: f32) -> (f32, f32, f32) {
         (18., 12., 52.)
     } else {
         (24., 16., 56.)
-    }
-}
-
-pub fn registry_insets(width: f32, adding: bool) -> (f32, f32, f32, f32) {
-    if adding {
-        (16., 18., 16., 16.)
-    } else if width <= 540. {
-        (32., 20., 14., 18.)
-    } else {
-        (46., 44., 26., 28.)
     }
 }
 

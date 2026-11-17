@@ -269,10 +269,7 @@ impl Skills {
                     .view()
                     .width(15)
                     .height(15),
-                text(&skill.name).size(14).font(Font {
-                    weight: iced::font::Weight::Medium,
-                    ..Font::DEFAULT
-                }),
+                style::section_title(&skill.name),
             ]
             .spacing(8)
             .height(36)

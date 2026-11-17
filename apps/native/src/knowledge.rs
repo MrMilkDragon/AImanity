@@ -792,7 +792,7 @@ impl Knowledge {
         let mut content = column![
             rule::horizontal(1),
             row![
-                text(locale.tr("关联文档")).size(14),
+                style::section_title(locale.tr("关联文档")),
                 space::horizontal(),
                 icon_button(
                     if self.picking {

@@ -1093,7 +1093,7 @@ impl Chat {
         column![
             container(
                 row![
-                    text(device_name).size(13),
+                    style::section_title(device_name),
                     text(agent_name).size(12).style(style::muted_text)
                 ]
                 .spacing(8)

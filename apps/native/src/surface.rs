@@ -10,8 +10,8 @@ use iced::advanced::{
     widget::{Tree, tree},
 };
 use iced::{
-    Element, Event, Font, Length, Point, Rectangle, Renderer, Size, Theme, font, keyboard, mouse,
-    widget::{Shader, container, row, scrollable, shader, text},
+    Element, Event, Length, Point, Rectangle, Renderer, Size, Theme, keyboard, mouse,
+    widget::{Shader, container, row, scrollable, shader},
 };
 
 pub fn tool_rect(view: Size, anchor: Rectangle, preferred: Size, beside: bool) -> Rectangle {
@@ -63,18 +63,7 @@ pub fn tool_header<'a, M: 'a>(
     actions: impl Into<Element<'a, M>>,
 ) -> Element<'a, M> {
     let (inset, trailing, height) = style::window_insets(viewport_width);
-    let label = text(title)
-        .size(14)
-        .line_height(iced::Pixels(20.))
-        .font(Font {
-            weight: font::Weight::Medium,
-            ..if title.is_ascii() {
-                style::LATIN_FONT
-            } else {
-                style::CJK_FONT
-            }
-        })
-        .wrapping(text::Wrapping::None);
+    let label = style::tool_title(title);
     container(
         row![
             container(label).width(Length::Fill).clip(true),

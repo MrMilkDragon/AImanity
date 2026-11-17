@@ -1424,7 +1424,8 @@ impl App {
                 Size::new(32., 34.),
             );
         }
-        let [inset, top, gap, height] = style::NAVIGATION;
+        let [top, gap, height] = style::NAVIGATION;
+        let inset = layout::SIDE_INSET;
         let trailing = Self::NAV_PANELS
             .iter()
             .position(|&entry| entry == panel)
@@ -1536,11 +1537,12 @@ impl App {
                 surface::tool_rect(WORKBENCH, anchor, Size::new(620., 600.), true)
             }
             Panel::Agent if self.agents.adding() && !self.show_devices => {
-                let (top, inset, _, _) = style::registry_insets(WORKBENCH.width, false);
-                let control = style::REGISTRY_CONTROL;
                 let anchor = Rectangle::new(
-                    iced::Point::new(parent.x + parent.width - inset - control, parent.y + top),
-                    Size::new(control, control),
+                    iced::Point::new(
+                        parent.x + parent.width - trailing - 32.,
+                        parent.y + (header - 32.) / 2.,
+                    ),
+                    Size::new(32., 32.),
                 );
                 surface::tool_rect(
                     WORKBENCH,
@@ -1624,6 +1626,8 @@ impl App {
             - style::window_insets(width).2
             - padding.top
             - padding.bottom;
+        let language_row_inset = 12.;
+        let language_border_inset = 1.;
         let content = match self.panel {
             Panel::Agent => unreachable!(),
             Panel::Skills => self.skills.view(locale).map(Message::Skills),
@@ -1643,6 +1647,7 @@ impl App {
                 .view(locale, self.reduced_motion)
                 .map(Message::Update),
             Panel::Language => column(locale::Locale::all().map(|l| {
+                let rtl = l.code() == "ar";
                 let glyph = container(
                     text(l.glyph())
                         .size(13)
@@ -1652,7 +1657,8 @@ impl App {
                             ..l.font()
                         }),
                 )
-                .center_x(24);
+                .width(24)
+                .align_x(if rtl { iced::Right } else { iced::Left });
                 let name = text(l.name())
                     .size(14)
                     .line_height(iced::Pixels(22.))
@@ -1662,14 +1668,14 @@ impl App {
                     .width(16)
                     .height(16)
                     .opacity(if locale == l { 1. } else { 0. });
-                let option = if l.code() == "ar" {
+                let option = if rtl {
                     row![check, space::horizontal(), name, glyph]
                 } else {
                     row![glyph, name, space::horizontal(), check]
                 };
                 button(option.height(42).spacing(12).align_y(iced::Center))
                     .on_press(Message::SetLocale(l))
-                    .padding([0, 12])
+                    .padding([0., language_row_inset])
                     .width(Length::Fill)
                     .style(move |theme, status| {
                         let mut appearance = style::quiet(theme, status);
@@ -1710,25 +1716,28 @@ impl App {
                                     .padding([10, 0])
                                     .on_press(Message::SaveCapture)
                                     .style(style::quiet),
-                                button(text(locale.tr("附到对话")).size(14))
-                                    .height(style::CONTROL_HEIGHT)
-                                    .padding([0, 16])
-                                    .on_press(Message::AttachCapture)
-                                    .style(|theme, status| {
-                                        let mut appearance = style::quiet(theme, status);
-                                        let fill = if matches!(
-                                            status,
-                                            iced::widget::button::Status::Hovered
-                                                | iced::widget::button::Status::Pressed
-                                        ) || style::dark(theme)
-                                        {
-                                            style::accent(theme)
-                                        } else {
-                                            iced::Color::from_rgb8(0xf2, 0xf2, 0xf2)
-                                        };
-                                        appearance.background = Some(fill.into());
-                                        appearance
-                                    })
+                                button(
+                                    container(text(locale.tr("附到对话")).size(14))
+                                        .center_y(Length::Fill)
+                                )
+                                .height(style::CONTROL_HEIGHT)
+                                .padding([0, 16])
+                                .on_press(Message::AttachCapture)
+                                .style(|theme, status| {
+                                    let mut appearance = style::quiet(theme, status);
+                                    let fill = if matches!(
+                                        status,
+                                        iced::widget::button::Status::Hovered
+                                            | iced::widget::button::Status::Pressed
+                                    ) || style::dark(theme)
+                                    {
+                                        style::accent(theme)
+                                    } else {
+                                        iced::Color::from_rgb8(0xf2, 0xf2, 0xf2)
+                                    };
+                                    appearance.background = Some(fill.into());
+                                    appearance
+                                })
                             ]
                             .spacing(18)
                             .align_y(iced::Center),
@@ -1746,31 +1755,37 @@ impl App {
         let body: Element<'_, Message> = match self.panel {
             Panel::Knowledge => padded.height(Length::Fill).into(),
             Panel::Language => container(
-                scrollable(padded)
-                    .direction(surface::tool_scroll())
-                    .style(|theme, status| {
-                        let mut appearance = scrollable::default(theme, status);
-                        let rail_engaged = matches!(
-                            status,
-                            scrollable::Status::Hovered {
-                                is_vertical_scrollbar_hovered: true,
-                                ..
-                            } | scrollable::Status::Dragged {
-                                is_vertical_scrollbar_dragged: true,
-                                ..
-                            }
-                        );
-                        appearance.vertical_rail.background = None;
-                        appearance.vertical_rail.scroller.background = theme
-                            .palette()
-                            .text
-                            .scale_alpha(if rail_engaged { 0.32 } else { 0. })
-                            .into();
-                        appearance
-                    })
-                    .height(Length::Fill),
+                scrollable(
+                    padded.padding(
+                        padding
+                            .left(padding.left - language_row_inset - language_border_inset)
+                            .right(padding.right - language_row_inset - language_border_inset),
+                    ),
+                )
+                .direction(surface::tool_scroll())
+                .style(|theme, status| {
+                    let mut appearance = scrollable::default(theme, status);
+                    let rail_engaged = matches!(
+                        status,
+                        scrollable::Status::Hovered {
+                            is_vertical_scrollbar_hovered: true,
+                            ..
+                        } | scrollable::Status::Dragged {
+                            is_vertical_scrollbar_dragged: true,
+                            ..
+                        }
+                    );
+                    appearance.vertical_rail.background = None;
+                    appearance.vertical_rail.scroller.background = theme
+                        .palette()
+                        .text
+                        .scale_alpha(if rail_engaged { 0.32 } else { 0. })
+                        .into();
+                    appearance
+                })
+                .height(Length::Fill),
             )
-            .padding(1)
+            .padding(language_border_inset)
             .height(Length::Fill)
             .into(),
             Panel::Files => scrollable(padded)
@@ -1866,7 +1881,8 @@ impl App {
                 .color(style::ERROR)
                 .wrapping(iced::widget::text::Wrapping::None)
         };
-        let [inset, nav_top, nav_gap, nav_height] = style::NAVIGATION;
+        let [nav_top, nav_gap, nav_height] = style::NAVIGATION;
+        let inset = layout::SIDE_INSET;
         let linked = self.linked;
         let cable = Icon::Cable
             .view()
@@ -1989,7 +2005,7 @@ impl App {
                 .as_ref()
                 .map(|d| d.name.as_str())
                 .unwrap_or(tr(if index == 0 { "手机" } else { "电脑" }));
-            let name = text(name).size(13);
+            let name = style::section_title(name);
             let mut tools = row![
                 self.audio[index]
                     .view(self.connection.is_some(), self.reduced_motion)

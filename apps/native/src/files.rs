@@ -5,7 +5,7 @@ use crate::{
 };
 use ai_phone_api::wire::{self, FileLocation, FileOperation};
 use iced::{
-    Color, Element, Font, Length, Padding, Task, font,
+    Color, Element, Length, Padding, Task,
     widget::{
         button, checkbox, column, container, mouse_area, row, rule, scrollable, space, text,
         text_input,
@@ -555,20 +555,11 @@ impl Files {
         let selected = !pane.selected.is_empty();
         let control = |icon, message| sized_icon_button(icon, message, 36., 36.);
         let op = |icon, message| control(icon, enabled.then_some(message));
-        let heading_font = Font {
-            weight: font::Weight::Medium,
-            ..Font::DEFAULT
-        };
         let device_icon = [Icon::Folder, Icon::PhonePortrait, Icon::Screen][i];
         let header = row![
             device_icon.view().width(16).height(16),
-            container(
-                text(locale.tr(&pane.name))
-                    .size(14)
-                    .font(heading_font)
-                    .wrapping(text::Wrapping::None)
-            )
-            .clip(true),
+            container(style::section_title(locale.tr(&pane.name)).wrapping(text::Wrapping::None))
+                .clip(true),
             space::horizontal(),
             op(Icon::Refresh, Message::Go(i, pane.path.clone())),
             op(Icon::Upload, Message::Pick(i)),
@@ -635,15 +626,9 @@ impl Files {
                     )
             )
             .center_x(CHECK_COLUMN),
-            table_cell(text(locale.tr("名称")).font(heading_font), Length::Fill),
-            table_cell(
-                text(locale.tr("大小")).font(heading_font),
-                Length::Fixed(SIZE_COLUMN)
-            ),
-            table_cell(
-                text(locale.tr("修改时间")).font(heading_font),
-                Length::Fixed(MODIFIED_COLUMN)
-            ),
+            table_cell(text(locale.tr("名称")), Length::Fill),
+            table_cell(text(locale.tr("大小")), Length::Fixed(SIZE_COLUMN)),
+            table_cell(text(locale.tr("修改时间")), Length::Fixed(MODIFIED_COLUMN)),
             space::horizontal().width(GRIP_COLUMN + SCROLLBAR_WIDTH + SCROLLBAR_GAP)
         ]
         .align_y(iced::Center);

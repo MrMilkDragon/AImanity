@@ -2,11 +2,11 @@ use crate::{
     connection::Connection,
     controls::{Icon, action_button, sized_icon_button, tab_button},
     style,
-    surface::tool_scroll,
+    surface::{tool_action, tool_header, tool_padding, tool_scroll},
 };
 use ai_phone_api::wire;
 use iced::{
-    Border, Element, Font, Length, Padding, Size, Task, font,
+    Border, Element, Length, Size, Task,
     widget::{
         button, column, container, pick_list, row, rule, scrollable, sensor, space, text,
         text_input,
@@ -397,14 +397,25 @@ impl Agents {
     ) -> Element<'a, Message> {
         let adding = editing && self.adding();
         let control = style::REGISTRY_CONTROL;
-        let (top, inset, bottom, gap) = style::registry_insets(width, adding);
-        let semibold = Font {
-            weight: font::Weight::Semibold,
-            ..Font::DEFAULT
+        let (_, _, header_height) = style::window_insets(width);
+        let padding = tool_padding(width);
+        let title = if adding {
+            locale.tr("添加 Agent")
+        } else if editing {
+            locale.tr("编辑 Agent")
+        } else {
+            "Agent"
         };
-        let title_size = if adding { 18. } else { 34. };
-        let title_line = if adding { 22. } else { 41. };
-        let mut heading = column![].spacing(16);
+        let actions = if editing {
+            row![]
+        } else {
+            let open = self.adding();
+            row![tool_action(
+                if open { Icon::Close } else { Icon::Plus },
+                (!self.busy).then_some(if open { Message::Back } else { Message::New }),
+            )]
+        };
+        let mut heading = column![tool_header(title, width, actions)];
         let mut body = column![].spacing(if editing { 8 } else { 0 });
         let mut footer = row![].spacing(10).align_y(iced::Center);
         let model_field = |label: &'a str, value: &'a str, field| {
@@ -427,33 +438,26 @@ impl Agents {
             .filter(|_| editing)
             .and_then(|id| self.editors.get(id))
         {
-            heading = heading.push(
-                text(locale.tr(if adding {
-                    "添加 Agent"
-                } else {
-                    "编辑 Agent"
-                }))
-                .size(title_size)
-                .font(semibold)
-                .line_height(iced::Pixels(title_line)),
-            );
             if editor.agent.revision > 0 {
                 heading = heading.push(
-                    row([
-                        (Tab::Model, locale.tr("配置")),
-                        (Tab::Connections, locale.tr("连接应用")),
-                        (Tab::Memory, locale.tr("记忆")),
-                        (Tab::Voice, locale.tr("语音")),
-                    ]
-                    .into_iter()
-                    .map(|(tab, label)| {
-                        tab_button(
-                            label,
-                            editor.tab == tab,
-                            (!self.busy).then_some(Message::Tab(tab)),
-                        )
-                    }))
-                    .spacing(6),
+                    container(
+                        row([
+                            (Tab::Model, locale.tr("配置")),
+                            (Tab::Connections, locale.tr("连接应用")),
+                            (Tab::Memory, locale.tr("记忆")),
+                            (Tab::Voice, locale.tr("语音")),
+                        ]
+                        .into_iter()
+                        .map(|(tab, label)| {
+                            tab_button(
+                                label,
+                                editor.tab == tab,
+                                (!self.busy).then_some(Message::Tab(tab)),
+                            )
+                        }))
+                        .spacing(6),
+                    )
+                    .padding(padding.top(0).bottom(0)),
                 );
             }
             if !self.error.is_empty() {
@@ -467,7 +471,7 @@ impl Agents {
                         .map(|m| Message::Detail(editor.agent.id.clone(), m)),
                 );
                 footer = footer.push(space::horizontal()).push(
-                    button(locale.tr("返回"))
+                    button(container(text(locale.tr("返回")).size(14)).center_y(Length::Fill))
                         .height(control)
                         .padding([0, 17])
                         .style(style::quiet)
@@ -588,23 +592,26 @@ impl Agents {
                 footer = footer
                     .push(space::horizontal())
                     .push(
-                        button(locale.tr("取消"))
+                        button(container(text(locale.tr("取消")).size(14)).center_y(Length::Fill))
                             .height(control)
                             .padding([0, 17])
                             .style(style::quiet)
                             .on_press_maybe((!self.busy).then_some(Message::Back)),
                     )
                     .push(
-                        button(crate::loading::label(
-                            if self.busy {
-                                locale.tr("正在保存…")
-                            } else {
-                                locale.tr("保存")
-                            },
-                            14,
-                            self.busy,
-                            reduced_motion,
-                        ))
+                        button(
+                            container(crate::loading::label(
+                                if self.busy {
+                                    locale.tr("正在保存…")
+                                } else {
+                                    locale.tr("保存")
+                                },
+                                14,
+                                self.busy,
+                                reduced_motion,
+                            ))
+                            .center_y(Length::Fill),
+                        )
                         .height(control)
                         .padding([0, 17])
                         .style(style::primary)
@@ -612,33 +619,6 @@ impl Agents {
                     );
             }
         } else {
-            heading = heading.push(
-                row![
-                    text("Agent")
-                        .size(title_size)
-                        .font(semibold)
-                        .line_height(iced::Pixels(title_line)),
-                    space::horizontal(),
-                    button(container(Icon::Plus.view()).center(Length::Fill))
-                        .width(control)
-                        .height(control)
-                        .style(|theme, status| {
-                            let mut appearance = style::quiet(theme, status);
-                            appearance.border = Border {
-                                radius: style::CONTROL_RADIUS.into(),
-                                width: 1.,
-                                color: theme.palette().text.scale_alpha(0.16),
-                            };
-                            appearance
-                        })
-                        .on_press_maybe((!self.busy).then_some(if self.adding() {
-                            Message::Back
-                        } else {
-                            Message::New
-                        })),
-                ]
-                .align_y(iced::Alignment::Center),
-            );
             if !self.error.is_empty() && !self.adding() {
                 body = body.push(text(&self.error).size(14).style(style::error_text));
             }
@@ -663,7 +643,7 @@ impl Agents {
                     .map(|p| format!("{} · {}", p.provider, p.model))
                     .unwrap_or_default();
                 let label = column![
-                    text(&agent.name).size(14).font(semibold),
+                    style::section_title(&agent.name),
                     text(subtitle).size(12).style(style::muted_text)
                 ]
                 .spacing(3);
@@ -753,29 +733,26 @@ impl Agents {
             }
         }
         if !editing {
-            footer = footer.push(text("Agent").size(12).font(semibold)).push(
-                button(text(locale.tr("设备")).size(13))
+            footer = footer.push(
+                button(container(text(locale.tr("设备")).size(13)).center_y(Length::Fill))
                     .style(style::quiet)
                     .height(control)
+                    .padding([0, 0])
                     .on_press(Message::Devices),
             );
         }
-        let sides = Padding::ZERO.left(inset).right(inset);
-        let heading = container(heading)
-            .padding(sides.top(top).bottom(gap))
-            .width(Length::Fill);
         let footer = container(column![rule::horizontal(1), footer].spacing(13))
-            .padding(sides.bottom(bottom))
+            .padding(padding.top(0))
             .width(Length::Fill);
         let padded = container(body)
-            .padding(sides.bottom(16))
+            .padding(padding.bottom(16))
             .width(Length::Fill);
         let content: Element<'a, Message> = if adding {
             sensor(padded)
                 .on_resize(move |size| {
                     Message::Measured(Size::new(
                         size.width,
-                        size.height + top + title_line + gap + 14. + control + bottom,
+                        size.height + header_height + 14. + control + padding.bottom,
                     ))
                 })
                 .into()

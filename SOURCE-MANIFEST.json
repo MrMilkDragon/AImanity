@@ -308,8 +308,8 @@
     },
     {
       "path": "apps/native/src/agents.rs",
-      "size": 33250,
-      "sha256": "e80e055a554b21af6afdb4896bd04c241f1f25a8df2d11cfa1058d284191aea2"
+      "size": 32292,
+      "sha256": "eef8676a8520afa4d755b0c4ad81c5cab950947d0a89f90deedb563d9b091fa2"
     },
     {
       "path": "apps/native/src/audio.rs",
@@ -318,8 +318,8 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 51413,
-      "sha256": "b58fbdbb4b84e8eb815819620f84133fe7f31cc6237103e3dd5f124d655b92ca"
+      "size": 51420,
+      "sha256": "7f7d756365c26d21b734c2b417b92a85a670eaa171c65f4a805fcd760075dc79"
     },
     {
       "path": "apps/native/src/connection.rs",
@@ -333,8 +333,8 @@
     },
     {
       "path": "apps/native/src/deployment.rs",
-      "size": 29327,
-      "sha256": "f448b481f8a79f41d82f99a5dd4fa4f7f12cf27db08bfb36a845cb49f82cac9c"
+      "size": 29395,
+      "sha256": "7677397b89944a0412a0f8a5ade3f0993b145038fec49aec7affc9cc62833552"
     },
     {
       "path": "apps/native/src/devices.rs",
@@ -343,8 +343,8 @@
     },
     {
       "path": "apps/native/src/files.rs",
-      "size": 31738,
-      "sha256": "5cd5359d8e82c5f73bcb9c55986d4809317133a28451d46835916e5fecc88712"
+      "size": 31361,
+      "sha256": "efae63e04e151ee99c0b3e32c5d43834e0b2f8cc0e67055b27330146a86d9139"
     },
     {
       "path": "apps/native/src/host.rs",
@@ -363,13 +363,13 @@
     },
     {
       "path": "apps/native/src/knowledge.rs",
-      "size": 37069,
-      "sha256": "2b3a569932f079861d7bf647b49163ef9a5a1de5b70ec4c381a2822616db0b2b"
+      "size": 37076,
+      "sha256": "59585b83ad90ce40d8a3a46aa829e4a108d1ac065596e29587256d59a0cc0247"
     },
     {
       "path": "apps/native/src/layout.rs",
-      "size": 7160,
-      "sha256": "ccce34a2c96f6c9d4f217191b636d4f6e276f1bc32d447d96b4c62dd599558aa"
+      "size": 7304,
+      "sha256": "0e8a2340b5e351f2423815198c38bf83d7b5dd72c36d7f77b30a90a5bfe28bf1"
     },
     {
       "path": "apps/native/src/loading.rs",
@@ -388,8 +388,8 @@
     },
     {
       "path": "apps/native/src/main.rs",
-      "size": 90515,
-      "sha256": "927fbaccbd0199b84fdbde15c53b69ac733b76b5e915959b33bf09a811d837f1"
+      "size": 91010,
+      "sha256": "a3f21b662f085fbc78a849da1a8eb15ac0e83476e2705f3abd1ef7b5e1804282"
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
@@ -443,8 +443,8 @@
     },
     {
       "path": "apps/native/src/skills.rs",
-      "size": 12884,
-      "sha256": "6e1014ec7ee099d41ddbb40663e2f266c386fcc6e80edddfa03808a5c6622d82"
+      "size": 12768,
+      "sha256": "f4735ae97b969d85b63e2457906e012ec9c0a5697fc696c0105593eb8bcd24d9"
     },
     {
       "path": "apps/native/src/spring_slider.rs",
@@ -453,13 +453,13 @@
     },
     {
       "path": "apps/native/src/style.rs",
-      "size": 7061,
-      "sha256": "9fc789628d761338d08a1334166d183224d0564d5d177037476dd7dcf7242ede"
+      "size": 7573,
+      "sha256": "f618b5faf95adbdd44507002d3059960d69a614adc75b24959321776779ed033"
     },
     {
       "path": "apps/native/src/surface.rs",
-      "size": 7819,
-      "sha256": "5e2186c199e76078c539518207556fe7e40070999064fef33be841b9fdde8c32"
+      "size": 7505,
+      "sha256": "e30a0ab0f99d6ca01d05a4289235282ed6b40b412b0787d76e66c6863915c263"
     },
     {
       "path": "apps/native/src/uninstall.rs",

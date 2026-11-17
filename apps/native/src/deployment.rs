@@ -475,8 +475,8 @@ impl Setup {
                     line(),
                     row![
                         space::horizontal(),
-                        button(text(locale.tr(label)).size(14))
-                            .padding([7, 13])
+                        button(container(text(locale.tr(label)).size(14)).center_y(Length::Fill))
+                            .padding([0, 13])
                             .height(SETUP_CONTROL)
                             .style(if can_stop {
                                 style::quiet
@@ -564,9 +564,9 @@ impl Setup {
                     ]
                     .spacing(2)
                     .width(Length::Fill),
-                    button(text(tr("开始安装")).size(14))
+                    button(container(text(tr("开始安装")).size(14)).center_y(Length::Fill))
                         .height(SETUP_CONTROL)
-                        .padding([8, 17])
+                        .padding([0, 17])
                         .style(style::primary)
                         .on_press_maybe(eligible.then_some(Message::Start))
                 ]
