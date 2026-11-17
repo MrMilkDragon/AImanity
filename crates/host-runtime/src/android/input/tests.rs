@@ -19,6 +19,7 @@ struct Phone {
     registration_output: Option<String>,
     ignore: Option<Vec<String>>,
     pending_at_install: Option<std::path::PathBuf>,
+    attention_readback_misses: usize,
 }
 impl Phone {
     fn new(installed: bool) -> Self {
@@ -29,11 +30,7 @@ impl Phone {
                 ("enabled_input_methods".into(), "other/.Keyboard;7".into()),
                 ("default_input_method".into(), "other/.Keyboard".into()),
                 ("show_ime_with_hard_keyboard".into(), "0".into()),
-                (
-                    "enabled_accessibility_services".into(),
-                    "other/.Reader".into(),
-                ),
-                ("accessibility_enabled".into(), "0".into()),
+                (ACCESSIBILITY_SERVICES.into(), "other/.Reader".into()),
             ]),
             granted: false,
             register_after: 1,
@@ -49,6 +46,7 @@ impl Phone {
             registration_output: None,
             ignore: None,
             pending_at_install: None,
+            attention_readback_misses: 0,
         }
     }
     fn ready() -> Self {
@@ -65,12 +63,9 @@ impl Phone {
             .settings
             .insert("show_ime_with_hard_keyboard".into(), "1".into());
         phone.settings.insert(
-            "enabled_accessibility_services".into(),
+            ACCESSIBILITY_SERVICES.into(),
             format!("other/.Reader:{ATTENTION}"),
         );
-        phone
-            .settings
-            .insert("accessibility_enabled".into(), "1".into());
         phone
     }
     fn count(&self, command: &[&str]) -> usize {
@@ -161,10 +156,25 @@ impl Device for Phone {
                 .insert("default_input_method".into(), IME.into());
             String::new()
         } else if args.starts_with(&["shell", "settings", "--user", "0", "get", "secure"]) {
-            self.settings.get(args[6]).cloned().unwrap_or("null".into())
+            let value = self.settings.get(args[6]).cloned().unwrap_or("null".into());
+            if args[6] == ACCESSIBILITY_SERVICES
+                && value.contains(ATTENTION)
+                && self.attention_readback_misses > 0
+            {
+                self.attention_readback_misses -= 1;
+                "other/.Reader".into()
+            } else {
+                value
+            }
         } else if args.starts_with(&["shell", "settings", "--user", "0", "put", "secure"]) {
             self.settings.insert(args[6].into(), args[7].into());
             String::new()
+        } else if args
+            == [
+                "shell", "dumpsys", "-t", "2", "activity", "services", ATTENTION,
+            ]
+        {
+            "      requested=true received=true hasBound=true doRebind=false".into()
         } else if args
             == [
                 "shell",
@@ -219,13 +229,26 @@ async fn installed_package_repairs_missing_capabilities_without_reinstalling_or_
  {
     let f = Fixture::new();
     let mut phone = Phone::new(true);
+    phone.attention_readback_misses = 1;
     assert!(f.run(&mut phone, false).await.unwrap());
     assert!(phone.granted);
     assert_eq!(phone.settings["default_input_method"], IME);
     assert!(phone.settings["enabled_input_methods"].starts_with("other/.Keyboard;7:"));
+    let selector = format!("other/.Reader:{ATTENTION}");
+    assert_eq!(phone.settings[ACCESSIBILITY_SERVICES], selector);
+    assert_eq!(phone.attention_readback_misses, 0);
     assert_eq!(
-        phone.settings["enabled_accessibility_services"],
-        format!("other/.Reader:{ATTENTION}")
+        phone.count(&[
+            "shell",
+            "settings",
+            "--user",
+            "0",
+            "put",
+            "secure",
+            ACCESSIBILITY_SERVICES,
+            &selector
+        ]),
+        1
     );
     assert!(!phone.calls.iter().any(|a| a[0] == "install"));
     assert!(f.state().load().unwrap().is_none());
@@ -301,7 +324,8 @@ async fn unknown_setting_write_is_observed_on_resume_instead_of_repeated() {
     let mut phone = Phone::ready();
     phone
         .settings
-        .insert("accessibility_enabled".into(), "0".into());
+        .insert(ACCESSIBILITY_SERVICES.into(), "other/.Reader".into());
+    let selector = format!("other/.Reader:{ATTENTION}");
     let command = [
         "shell",
         "settings",
@@ -309,8 +333,8 @@ async fn unknown_setting_write_is_observed_on_resume_instead_of_repeated() {
         "0",
         "put",
         "secure",
-        "accessibility_enabled",
-        "1",
+        ACCESSIBILITY_SERVICES,
+        &selector,
     ];
     phone.fail = Some(command.iter().map(|s| s.to_string()).collect());
     phone.after_apply = true;
@@ -401,8 +425,7 @@ async fn malformed_settings_never_authorize_a_destructive_rewrite() {
         "enabled_input_methods",
         "default_input_method",
         "show_ime_with_hard_keyboard",
-        "enabled_accessibility_services",
-        "accessibility_enabled",
+        ACCESSIBILITY_SERVICES,
     ] {
         let f = Fixture::new();
         let mut phone = Phone::ready();
@@ -420,14 +443,14 @@ async fn expanded_components_are_recognized_without_duplicate_writes() {
         "dev.aiphone.input/dev.aiphone.input.UnicodeIme".into(),
     );
     phone.settings.insert(
-        "enabled_accessibility_services".into(),
+        ACCESSIBILITY_SERVICES.into(),
         "dev.aiphone.input/dev.aiphone.input.PhoneAttention".into(),
     );
     f.run(&mut phone, false).await.unwrap();
     assert_eq!(phone.count(&["shell", "ime", "set", "--user", "0", IME]), 0);
-    assert!(!phone.calls.iter().any(|a| a.get(6)
-        == Some(&"enabled_accessibility_services".into())
-        && a.get(4) == Some(&"put".into())));
+    assert!(!phone.calls.iter().any(
+        |a| a.get(6) == Some(&ACCESSIBILITY_SERVICES.into()) && a.get(4) == Some(&"put".into())
+    ));
 }
 #[test]
 fn conflicting_lock_and_corrupt_foreign_or_wrong_serial_journals_are_preserved() {
@@ -507,7 +530,7 @@ async fn unconfirmed_setting_never_finishes_and_reopen_observes_before_writing()
     let mut phone = Phone::ready();
     phone
         .settings
-        .insert("accessibility_enabled".into(), "0".into());
+        .insert("show_ime_with_hard_keyboard".into(), "0".into());
     let command = [
         "shell",
         "settings",
@@ -515,7 +538,7 @@ async fn unconfirmed_setting_never_finishes_and_reopen_observes_before_writing()
         "0",
         "put",
         "secure",
-        "accessibility_enabled",
+        "show_ime_with_hard_keyboard",
         "1",
     ];
     phone.ignore = Some(command.iter().map(|s| s.to_string()).collect());
@@ -526,7 +549,7 @@ async fn unconfirmed_setting_never_finishes_and_reopen_observes_before_writing()
     assert!(f.state().load().unwrap() == Some(Stage::Configure));
     phone
         .settings
-        .insert("accessibility_enabled".into(), "1".into());
+        .insert("show_ime_with_hard_keyboard".into(), "1".into());
     f.run(&mut phone, false).await.unwrap();
     assert_eq!(phone.count(&command), 1);
 }

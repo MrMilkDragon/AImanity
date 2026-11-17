@@ -13,6 +13,7 @@ use tokio::sync::watch;
 const PACKAGE: &str = "dev.aiphone.input";
 const IME: &str = "dev.aiphone.input/.UnicodeIme";
 const ATTENTION: &str = "dev.aiphone.input/.PhoneAttention";
+const ACCESSIBILITY_SERVICES: &str = "enabled_accessibility_services";
 const NOTIFICATION: &str = "dev.aiphone.input/.PhoneNotifications";
 const REMOTE_PROBE: &str = "/data/local/tmp/ai-phone-input-notification-probe.jar";
 pub const CONTRACT: &str = "ai-phone-input-setup-v2";
@@ -221,6 +222,52 @@ async fn notification(adb: &mut impl Device) -> Result<bool> {
         _ => Err(Error::Invalid("phone_input_notification_unknown")),
     }
 }
+async fn attention_bound(adb: &mut impl Device) -> Result<bool> {
+    let state = adb
+        .execute(
+            &[
+                "shell", "dumpsys", "-t", "2", "activity", "services", ATTENTION,
+            ],
+            3,
+        )
+        .await?;
+    Ok(state.lines().any(|line| {
+        line.trim_start()
+            .starts_with("requested=true received=true hasBound=true ")
+    }))
+}
+async fn attention(adb: &mut impl Device, observe: bool) -> Result<bool> {
+    let value = setting(adb, ACCESSIBILITY_SERVICES).await?;
+    let mut rows = policy::components(&value, false)?;
+    let changed = !policy::contains(&rows, ATTENTION);
+    if observe {
+        return if !changed && attention_bound(adb).await? {
+            Ok(false)
+        } else {
+            Err(Error::Invalid("phone_input_not_ready"))
+        };
+    }
+    if changed {
+        rows.push(ATTENTION);
+        write_setting(adb, ACCESSIBILITY_SERVICES, &rows.join(":")).await?;
+    }
+    // AccessibilityManager observes the setting and binds the component asynchronously.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        let mut listed = !changed;
+        loop {
+            if !listed {
+                let value = setting(adb, ACCESSIBILITY_SERVICES).await?;
+                listed = policy::contains(&policy::components(&value, false)?, ATTENTION);
+            }
+            if listed && attention_bound(adb).await? {
+                return Ok(changed);
+            }
+            tokio::time::sleep(Duration::from_millis(150)).await;
+        }
+    })
+    .await
+    .map_err(|_| Error::Invalid("phone_input_accessibility_unknown"))?
+}
 async fn services(adb: &mut impl Device, observe: bool) -> Result<bool> {
     let mut changed = enabled(adb, "show_ime_with_hard_keyboard", observe).await?;
     if !notification(adb).await? {
@@ -244,26 +291,7 @@ async fn services(adb: &mut impl Device, observe: bool) -> Result<bool> {
             return Err(Error::Invalid("phone_input_notification_unknown"));
         }
     }
-    let value = setting(adb, "enabled_accessibility_services").await?;
-    let mut rows = policy::components(&value, false)?;
-    if !policy::contains(&rows, ATTENTION) {
-        if observe {
-            return Err(Error::Invalid("phone_input_not_ready"));
-        }
-        rows.push(ATTENTION);
-        write_setting(adb, "enabled_accessibility_services", &rows.join(":")).await?;
-        changed = true;
-        if !policy::contains(
-            &policy::components(
-                &setting(adb, "enabled_accessibility_services").await?,
-                false,
-            )?,
-            ATTENTION,
-        ) {
-            return Err(Error::Invalid("phone_input_accessibility_unknown"));
-        }
-    }
-    changed |= enabled(adb, "accessibility_enabled", observe).await?;
+    changed |= attention(adb, observe).await?;
     Ok(changed)
 }
 async fn configure(
