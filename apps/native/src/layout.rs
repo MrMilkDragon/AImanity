@@ -2,7 +2,6 @@ use iced::{Point, Rectangle, Size};
 
 const PERSPECTIVE: f32 = 1800.;
 const BEZEL: f32 = 5.;
-const LINKED_GAP: f32 = 64.;
 pub const STAGE_TOP: f32 = 60.;
 pub const SIDE_INSET: f32 = 24.;
 pub const CHAT_PADDING: [f32; 2] = [14., 18.];
@@ -44,6 +43,7 @@ impl Layout {
             grid_height
         };
         let stage_center = inset + stage_width * 0.5;
+        let linked_column = size.width / 3.;
         let mut devices = [Rectangle::default(); 2];
         let mut toolbars = [Rectangle::default(); 2];
         let mut angles = [0.; 2];
@@ -52,7 +52,7 @@ impl Layout {
             let rear = !linked && index != focus;
             let rear_phone = wide && rear && index == 0;
             let pane_width = if linked {
-                ((stage_width - LINKED_GAP) * 0.5).min(900.)
+                linked_column - inset
             } else if rear_phone {
                 (stage_width * 0.32).min(1000.)
             } else if wide {
@@ -70,7 +70,12 @@ impl Layout {
             } else {
                 top + header_height + 12.
             };
-            let screen_left = stage_center - width * 0.5;
+            let screen_center = if linked {
+                stage_center + (index as f32 - 0.5) * linked_column
+            } else {
+                stage_center
+            };
+            let screen_left = screen_center - width * 0.5;
             devices[index] = Rectangle {
                 x: screen_left,
                 y: screen_top,
@@ -79,7 +84,11 @@ impl Layout {
             };
             let toolbar_width = width.max(236.).min(pane_width).min(760.);
             toolbars[index] = Rectangle {
-                x: screen_left,
+                x: if linked {
+                    screen_left - (toolbar_width - width).max(0.) * 0.5
+                } else {
+                    screen_left
+                },
                 y: top,
                 width: toolbar_width,
                 height: header_height,
@@ -112,13 +121,6 @@ impl Layout {
                 angles[index] = -side * 10_f32.to_radians();
                 device_scale[index] = scale;
             }
-        }
-        if linked {
-            let [phone, desktop] = &mut devices;
-            phone.x = stage_center - (phone.width + LINKED_GAP + desktop.width) * 0.5;
-            desktop.x = phone.x + phone.width + LINKED_GAP;
-            toolbars[0].x = phone.x - (toolbars[0].width - phone.width).max(0.);
-            toolbars[1].x = desktop.x;
         }
         let chat = if wide {
             Rectangle {
