@@ -19,60 +19,14 @@ import {
 } from "./inventory";
 import { extractTar, writeTar } from "./archive";
 
-export type DependencyProfile = {
+type DependencyProfile = {
   config: string;
   source: string[];
   roots: string[];
   required: string[];
-  installFiles: [string, string, number][];
   prefix: string;
 };
-export const profiles: Record<string, DependencyProfile> = {
-  "linux-host": {
-    config: "config/linux-host-runtime.json",
-    source: [
-      "config/linux-host-runtime.json",
-      "config/linux-factory.json",
-      "scripts/tooling/factory-inputs.ts",
-      "scripts/tooling/linux-dependencies.ts",
-      "scripts/linux-host/Dockerfile",
-      "scripts/linux-host/collect.ts",
-      "scripts/linux-host/launch.sh",
-      "scripts/linux-host/lima.sh",
-    ],
-    roots: [
-      "bin",
-      "lib",
-      "modules",
-      "share",
-      "licenses",
-      "source-records.json",
-    ],
-    required: [
-      "bin/qemu-system-x86_64",
-      "bin/qemu-img",
-      "bin/ssh",
-      "bin/ssh-keygen",
-      "bin/scp",
-      "lib/ld-linux-x86-64.so.2",
-      "share/qemu/edk2-x86_64-code.fd",
-      "share/qemu/bios-256k.bin",
-      "source-records.json",
-      "licenses/qemu-system-x86.copyright",
-    ],
-    installFiles: [
-      "qemu-system-x86_64",
-      "qemu-img",
-      "ssh",
-      "ssh-keygen",
-      "scp",
-    ].map((name) => [
-      "launchers/" + name,
-      "scripts/linux-host/launch.sh",
-      0o755,
-    ]),
-    prefix: "runtime/container-host/native/",
-  },
+const profiles: Record<string, DependencyProfile> = {
   "linux-ocr": {
     config: "config/linux-ocr.json",
     source: [
@@ -94,7 +48,6 @@ export const profiles: Record<string, DependencyProfile> = {
       "source-records.json",
       "licenses/tesseract-ocr.copyright",
     ],
-    installFiles: [],
     prefix: "runtime/services/ocr/",
   },
 };
@@ -158,12 +111,7 @@ export async function buildDependency(
       [...names].some((name) => !profile.roots.includes(name.split("/")[0]!))
     )
       throw Error("Linux dependency closure incomplete");
-    for (const [target, source, mode] of profile.installFiles) {
-      mkdirSync(dirname(join(work, target)), { recursive: true });
-      copyFileSync(join(root, source), join(work, target));
-      chmodSync(join(work, target), mode);
-    }
-    const inventory = collect(work, "").files.map((f) => ({
+    const inventory = files.map((f) => ({
       ...f,
       path: f.path.slice(1),
     }));
@@ -192,12 +140,10 @@ export async function prepareDependency(
 export function nativeClosure(
   root: string,
   programs: Record<string, string>,
-  modules: string[] = [],
 ) {
   const files: Record<string, { target: string; sha256: string }> = {};
-  const explicit = new Set(Object.values(programs)),
-    plugins = new Set(modules);
-  for (const name of [...explicit, ...plugins]) {
+  const explicit = new Set(Object.values(programs));
+  for (const name of explicit) {
     const shared = output(["ldd", name])
       .split("\n")
       .flatMap((line) => {
@@ -205,11 +151,7 @@ export function nativeClosure(
         return match ? [match[1]!] : [];
       });
     for (const file of [name, ...shared]) {
-      const group = explicit.has(file)
-          ? "bin"
-          : plugins.has(file)
-            ? "modules"
-            : "lib",
+      const group = explicit.has(file) ? "bin" : "lib",
         target = group + "/" + basename(file),
         data = readFileSync(file),
         identity = hash(data),

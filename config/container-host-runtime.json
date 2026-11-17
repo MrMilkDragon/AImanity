@@ -214,18 +214,9 @@
       }
     },
     "linux-x64": {
-      "engine": "lima-qemu",
-      "arch": "x86_64",
-      "lima": "2.2.1",
-      "alpine": "3.24.1",
       "docker": "29.9.3",
       "compose": "5.6.1",
       "builder_image": "alpine@sha256:79ff19e9084a00eece421b2523fb93e22d730e2c0e525905de047e848e56d95f",
-      "image": {
-        "url": "https://github.com/lima-vm/alpine-lima/releases/download/v0.2.50/alpine-lima-std-3.24.1-x86_64.iso",
-        "sha256": "4fb4d142b9c3e35aa9dcdd517828a2a45cec992151d6fbaa77baa1dbc0c1aa8e",
-        "size_bytes": 84934656
-      },
       "packages": [
         {
           "file": "busybox-1.37.0-r31.apk",

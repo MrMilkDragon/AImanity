@@ -6,17 +6,14 @@ import {
   mkdirSync,
   copyFileSync,
   cpSync,
-  chmodSync,
   mkdtempSync,
   renameSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { ROOT, hash, hostKey, output, run, digest } from "./process";
 import { json, save, collect, records, verifyFiles } from "./inventory";
 import { extractTar } from "./archive";
-import { prepareDependency } from "./linux-dependencies";
 
 export function minimumMac(root = ROOT) {
   return json(join(root, "config/native-client.json")).minimum_macos as string;
@@ -49,8 +46,9 @@ export function checkMacTargets(
   );
 }
 export function containerPolicy(root = ROOT) {
+  const host = hostKey();
+  if (host !== "macos-arm64") throw Error("Container host bundle requires Apple Silicon");
   const value = json(join(root, "config/container-host-runtime.json")),
-    host = hostKey(),
     runtime = value.hosts[host],
     bootstrap = json(join(root, "config/host-bootstrap.json"));
   if (value.format !== 1 || !runtime) throw Error("Unsupported container host");
@@ -58,7 +56,7 @@ export function containerPolicy(root = ROOT) {
     host,
     runtime,
     lima: bootstrap.lima_hosts[host],
-    ...(host === "macos-arm64" ? { minimum_macos: minimumMac(root) } : {}),
+    minimum_macos: minimumMac(root),
   };
 }
 function sorted(value: any): any {
@@ -127,27 +125,7 @@ export async function buildContainerHost(
       await verifyLima(root, native);
       copyFileSync(join(native, "limactl"), join(work, "lima/bin/limactl"));
     }
-    let targets: Record<string, string>;
-    if (value.host === "linux-x64") {
-      for (const file of await prepareDependency(
-        root,
-        join(root, ".tools/linux-host-runtime"),
-        "linux-host",
-      )) {
-        const name = file.path.slice("runtime/container-host/native/".length),
-          target = join(work, "native", name);
-        mkdirSync(dirname(target), { recursive: true });
-        writeFileSync(target, file.data, { mode: file.mode });
-      }
-      mkdirSync(join(work, "bin"));
-      copyFileSync(
-        join(root, "scripts/linux-host/lima.sh"),
-        join(work, "bin/limactl"),
-      );
-      chmodSync(join(work, "bin/limactl"), 0o755);
-      targets = { lima: "linux-x64" };
-    } else
-      targets = checkMacTargets(root, { lima: join(work, "lima/bin/limactl") });
+    const targets = checkMacTargets(root, { lima: join(work, "lima/bin/limactl") });
     copyFileSync(image, join(work, "image.iso"));
     cpSync(packages, join(work, "packages"), { recursive: true });
     const files = collect(work, "").files.map((f) => ({
@@ -174,8 +152,6 @@ export async function prepareContainerHost(root = ROOT) {
   return collect(folder, "runtime/container-host").files;
 }
 function limaPolicy(root: string) {
-  if (hostKey() !== "macos-arm64")
-    throw Error("Native Lima requires Apple Silicon");
   const value = containerPolicy(root);
   return {
     ...value.runtime.lima_build,

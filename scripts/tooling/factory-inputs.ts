@@ -27,7 +27,7 @@ export async function dependencyContext(
       policy.snapshot +
       "\nSuites: noble noble-updates noble-security\nComponents: main universe\nArchitectures: amd64\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nSnapshot: no\n",
   );
-  for (const name of ["tooling", "linux-ocr", "linux-host"]) {
+  for (const name of ["tooling", "linux-ocr"]) {
     cpSync(join(root, "scripts", name), join(folder, "scripts", name), {
       recursive: true,
     });

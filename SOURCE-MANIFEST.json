@@ -528,8 +528,8 @@
     },
     {
       "path": "config/container-host-runtime.json",
-      "size": 19309,
-      "sha256": "1e87e383f20fda650d406a1d48dba1daf9148872166e44ae908c71317598a6a3"
+      "size": 18947,
+      "sha256": "748c50c30cca83ffa7a8c5cd77c017c622726d9f5334b5ffa48a4e2c034c9d4d"
     },
     {
       "path": "config/device-presets.json",
@@ -545,11 +545,6 @@
       "path": "config/linux-factory.json",
       "size": 340,
       "sha256": "c0f74260a62e34bb351a6acf5e9d8121d2e44743407e62729bb954dfac46be11"
-    },
-    {
-      "path": "config/linux-host-runtime.json",
-      "size": 316,
-      "sha256": "8b4edc41786b42a63dc03b8dd9ea71efc02c03ac05661d8151b6e224128f1773"
     },
     {
       "path": "config/linux-ocr.json",
@@ -3058,8 +3053,8 @@
     },
     {
       "path": "docs/public/runtime-bundles.md",
-      "size": 7854,
-      "sha256": "b5e4e0e6947583afb67be03df376d56b7e46260106f3388a60af63cadc102131"
+      "size": 7757,
+      "sha256": "8d871af4403ebeb2616b71660b6edfc0e68219ed4baa7fc7d1b1c6d746f47f10"
     },
     {
       "path": "docs/public/simulated-location.md",
@@ -3392,26 +3387,6 @@
       "sha256": "4cf49fbc8790116299486df3eb9cd94b5f0a3db31d0e8dd264f3deb9db542315"
     },
     {
-      "path": "scripts/linux-host/Dockerfile",
-      "size": 903,
-      "sha256": "205e6edb70b95e9eb20c442cb37d286d035f216ff45b17ef75162e5e80c51dfc"
-    },
-    {
-      "path": "scripts/linux-host/collect.ts",
-      "size": 1272,
-      "sha256": "f19be0b2c319d81625433354bf066574488a52414795134ee859ab59149b90fa"
-    },
-    {
-      "path": "scripts/linux-host/launch.sh",
-      "size": 389,
-      "sha256": "72ed57de71e746c6cc4cd5f60d2772f8a3fd2ea027fb7080ef63683eef44f44f"
-    },
-    {
-      "path": "scripts/linux-host/lima.sh",
-      "size": 170,
-      "sha256": "c462738e3915cb9ab2bf9d2ffc2154968af2a46e0641d27ad8089fa2b729aa9d"
-    },
-    {
       "path": "scripts/linux-ocr/Dockerfile",
       "size": 951,
       "sha256": "d712e32a750045db9631dcd8367996ac020faa0e69d7c765ab1498f653a82c5b"
@@ -3488,8 +3463,8 @@
     },
     {
       "path": "scripts/tooling/container-host.ts",
-      "size": 9772,
-      "sha256": "05c29d3858c5a3ea9dfec8d2614638ceeb5960bcce42e62c23863cb79ffcc2d5"
+      "size": 8924,
+      "sha256": "d98a959d43fcd0d27830352a9b044a6c3c74f5054381fc38c691df1a2a4476a3"
     },
     {
       "path": "scripts/tooling/dependency-inventory.ts",
@@ -3498,8 +3473,8 @@
     },
     {
       "path": "scripts/tooling/factory-inputs.ts",
-      "size": 1857,
-      "sha256": "f314fb22230e893d757fb4b90d76875f08d08844c1ab364d0bba1ac054db458f"
+      "size": 1843,
+      "sha256": "acce5e732e4602d0e6558171a734d194530ab152fcf0d23f4f06bf6681017142"
     },
     {
       "path": "scripts/tooling/factory.ts",
@@ -3538,8 +3513,8 @@
     },
     {
       "path": "scripts/tooling/linux-dependencies.ts",
-      "size": 7303,
-      "sha256": "647d967356f2306ea4390758189c99f9b3bdaf4596b5196db1a27c0a44a54078"
+      "size": 5699,
+      "sha256": "11184187db3ec29922fbc48e1d5bdbca232225231ba639bbc9a55d9cb56ce93c"
     },
     {
       "path": "scripts/tooling/macos-factory.ts",
