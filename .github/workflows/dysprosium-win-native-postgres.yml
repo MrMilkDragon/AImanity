@@ -1,19 +1,19 @@
-name: Dysprosium Windows native Redis and legacy QCOW2
+name: Dysprosium Windows native PostgreSQL and Redis
 on:
   push:
-    branches: [codex/dysprosium-win-native-redis-qa]
+    branches: [codex/dysprosium-win-native-postgres-qa]
     paths:
-      - .github/workflows/dysprosium-win-native-redis.yml
+      - .github/workflows/dysprosium-win-native-postgres.yml
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: dysprosium-win-native-redis-qa
+  group: dysprosium-win-native-postgres-qa
   cancel-in-progress: false
 env:
-  PRODUCT_SOURCE: cf4bbf371d4d3272627f802698a6d4aff22ffa23
-  QA_PREVIOUS_SOURCE: fb7230e3fff2ac7743b5c4de42cedc02b659fc81
-  QA_LINUX_ARTIFACT: native-redis-linux-qa-layer
+  PRODUCT_SOURCE: 95e722cd18d3d116d2570be6175e5fd2aedfaff7
+  QA_PREVIOUS_SOURCE: cf4bbf371d4d3272627f802698a6d4aff22ffa23
+  QA_LINUX_ARTIFACT: native-postgres-linux-qa-layer
   CALCIUM_BASE_SHA: 1184c13114500f919b6bcc738d9af7e1f872ff192aef624e67aa87a6f9b7446f
   CALCIUM_ANDROID_SHA: 23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce
   CARGO_BUILD_JOBS: '2'
@@ -36,9 +36,9 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          run-id: 44011004022
+          run-id: 44027285557
           github-token: ${{ github.token }}
-          artifact-ids: 14296663469
+          artifact-ids: 14304292451
           path: ${{ runner.temp }}/prior-guest
       - name: Prepare the exact Linux workload and native archive tool
         working-directory: exact
@@ -54,21 +54,30 @@ jobs:
           sudo apt-get install -y --no-install-recommends qemu-utils e2fsprogs cpio tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0'
           ./scripts/bootstrap.sh
           cargo build --locked -p ai-phone-release-tools --bin release-tools
           ./target/debug/release-tools source check --repository --manifest
-          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/ocr-models"
+          ./target/debug/release-tools prepare-ocr-models --destination "$RUNNER_TEMP/ocr-models"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
           echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/ocr-models" >> "$GITHUB_ENV"
           echo "QA_LAYER=$RUNNER_TEMP/linux-layer" >> "$GITHUB_ENV"
           echo "QA_PREVIOUS_LAYER=$RUNNER_TEMP/prior-guest" >> "$GITHUB_ENV"
-      - name: Compile the exact Rust guest services with preserved phone inputs
+      - name: Compile exact-source Rust guest services and Android inputs
         working-directory: exact
         timeout-minutes: 20
-        run: ./scripts/bun ../qa/windows-native-dev/build-linux-redis-layer.ts services
-      - name: Stage the pinned native Redis and preserved Calcium QCOW2
+        run: ./scripts/bun ../qa/windows-native-dev/build-linux-postgres-layer.ts services
+      - uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
+        with:
+          version: v29.9.2
+          context: aimanity-postgres-qa
+          set-host: true
+          daemon-config: '{"features":{"containerd-snapshotter":true}}'
+      - name: Stage PostgreSQL and Redis with a database-free guest overlay
         working-directory: exact
-        timeout-minutes: 10
-        run: ./scripts/bun ../qa/windows-native-dev/build-linux-redis-layer.ts layer
+        timeout-minutes: 18
+        run: ./scripts/bun ../qa/windows-native-dev/build-linux-postgres-layer.ts layer
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ env.QA_LINUX_ARTIFACT }}

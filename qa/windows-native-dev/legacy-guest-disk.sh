@@ -9,6 +9,9 @@ raw="$work/guest.ext4"
 marker=/var/lib/aiphone/installation/user/data/desktop/home/Files/calcium-user-file.txt
 printf 'Calcium 0.0.3 disk %s · 已保留\n' "${GITHUB_RUN_ID:?}" > "$out/marker.txt"
 qemu-img convert -f qcow2 -O raw -S 4096 "$base" "$raw"
+for pg in /var/lib/aiphone/docker/volumes/ai-phone_postgres_data/_data/PG_VERSION /var/lib/aiphone-postgres/data/PG_VERSION; do
+  LC_ALL=C debugfs -R "stat $pg" "$raw" 2>&1 | grep -F "$pg: File not found"
+done
 cat > "$work/seed.debugfs" <<EOF
 mkdir /var/lib/aiphone
 mkdir /var/lib/aiphone/installation

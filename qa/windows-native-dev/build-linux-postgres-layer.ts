@@ -1,12 +1,13 @@
 import { copyFileSync, mkdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, digest, output, run } from "../../exact/scripts/tooling/process";
-import { collect, json, records, save } from "../../exact/scripts/tooling/inventory";
-import { phoneFingerprint } from "../../exact/scripts/tooling/phone-apps";
+import { json, save } from "../../exact/scripts/tooling/inventory";
+import { buildPhone } from "../../exact/scripts/tooling/phone-apps";
 import { verifyDependency } from "../../exact/scripts/tooling/linux-dependencies";
 import { preparePayload } from "../../exact/scripts/tooling/client-payload";
 import { buildNative } from "../../exact/scripts/tooling/native-build";
-import { wslPlan } from "../../exact/scripts/tooling/wsl-factory";
+import { stageWindowsServices } from "../../exact/scripts/tooling/wsl-factory";
+import { buildImages, imageManifest } from "../../exact/scripts/tooling/image-capsule";
 
 const { QA_PREVIOUS_LAYER: prior, QA_LAYER: destination, PRODUCT_SOURCE: source,
   CALCIUM_BASE_SHA: baseHash, QA_PREVIOUS_SOURCE: previousSource } = process.env;
@@ -16,12 +17,12 @@ if (!prior || !destination || !previousSource || process.env.RUNNER_ENVIRONMENT 
 const work = join(ROOT, ".tools", "windows-native-dev"), compiled = join(work, "compiled");
 const previousGuest = join(prior, "guest"), previousDisk = join(previousGuest, "release.ext4");
 const manifest = json(join(prior, "manifest.json"));
-const unchanged = ["apps/android-input", "apps/android-home", "scripts/android-input-probe", "scripts/tooling/android-apk.ts",
-  "config/phone-browser.json", "config/linux-ocr.json", "config/ocr-models.json", "infra/desktop", "infra/workspace",
+const unchanged = ["config/linux-ocr.json", "config/ocr-models.json", "infra/desktop", "infra/workspace",
+  "crates/guest-runtime",
   "infra/network", "compose.yaml", "compose.dev.yaml", "compose.desktop.yaml"];
 const changes = output(["git", "diff", "--name-only", previousSource, source!, "--", ...unchanged], {cwd:ROOT});
 if (manifest.source_commit !== previousSource || manifest.guest.disk.sha256 !== baseHash ||
-    changes) throw Error("The previous OCI and Android app inputs do not cover these changes: " + changes);
+    changes) throw Error("The previous desktop or OCR inputs do not cover these changes: " + changes);
 const diskRecord = manifest.files.find((row: {path:string}) => row.path === "guest/release.ext4");
 if (process.argv[2] === "services") {
   if (statSync(previousDisk).size !== diskRecord.size || await digest(previousDisk) !== diskRecord.sha256)
@@ -32,12 +33,8 @@ if (process.argv[2] === "services") {
   run(["debugfs", "-R", `dump /source.payload ${priorPayload}`, previousDisk]);
   if (await digest(priorPayload) !== manifest.release_sha256) throw Error("Prior Linux source bytes differ");
   run(["tar", "-x", "-f", priorPayload, "--strip-components=3", "-C", ocr, "--wildcards", "runtime/services/ocr/*"]);
-  const phone = join(ROOT, ".tools/phone-apps");
-  mkdirSync(phone);
-  run(["tar", "-x", "-f", priorPayload, "--strip-components=2", "-C", phone, "--wildcards", "runtime/phone-apps/*"]);
-  const phoneManifest = join(phone, "manifest.json"), staged = json(phoneManifest);
-  rmSync(phoneManifest);
-  save(phoneManifest, {...staged, source_sha256:await phoneFingerprint(ROOT), files:records(collect(phone, "runtime/phone-apps").files)});
+  rmSync(priorPayload);
+  await buildPhone(ROOT);
   await verifyDependency(ROOT, ocr, "linux-ocr");
   await buildNative(ROOT);
   await preparePayload(ROOT, { nativeServices: true, phoneApps: true, linuxOcr: ocr });
@@ -68,48 +65,35 @@ for (const name of immutableNames) {
 
 const layerSource = join(compiled, "source.payload");
 const sourceManifest = await digest(join(ROOT, "SOURCE-MANIFEST.json"));
-const images = join(work, "reused-images.payload");
-run(["debugfs", "-R", `dump /images.payload ${images}`, previousDisk]);
-if (await digest(images) !== manifest.release_images_sha256) throw Error("Prior Windows OCI bytes differ");
+const priorImages = join(work, "reused-images.payload");
+run(["debugfs", "-R", `dump /images.payload ${priorImages}`, previousDisk]);
+if (await digest(priorImages) !== manifest.release_images_sha256) throw Error("Prior Windows OCI bytes differ");
+const priorCatalogue = await imageManifest(priorImages, ROOT);
+run(["bash", "-c", 'set -o pipefail; tar -xOf "$1" images.tar.xz | docker image load', "load", priorImages], { cwd: ROOT });
+rmSync(priorImages);
+const { workspace, desktop } = priorCatalogue.images;
+const { images, archive_sha256 } = await buildImages(
+  ROOT, { workspace: workspace.ref, desktop: desktop.ref }, join(compiled, "images.payload"),
+);
+if (Object.keys(images).sort().join(",") !== "desktop,workspace")
+  throw Error("Native databases require exactly the desktop and workspace images");
 const base = join(work, "reused-base");
 const baseDirectory = join(base, "host/qemu");
 mkdirSync(baseDirectory, {recursive:true});
 symlinkSync(previousGuest, join(baseDirectory, "guest"));
-const redisImage = wslPlan(ROOT).redis_image;
-const staging = join(work, "redis-context");
-const redisPath = join(compiled, "redis");
-const redisTag = "aimanity-redis-qa:" + process.env.GITHUB_RUN_ID;
-mkdirSync(staging);
-writeFileSync(join(staging, "Dockerfile"), `FROM ${redisImage}
-USER root
-RUN mkdir -p /native-redis/lib /native-redis/bin && \\
-    cp -L /lib/ld-musl-x86_64.so.1 /native-redis/lib/ && \\
-    for command in redis-server redis-cli; do \\
-        binary="/usr/local/bin/$command"; \\
-        cp -L "$binary" /native-redis/bin/; \\
-        libraries="$(ldd "$binary")" || exit 1; \\
-        for library in $(printf '%s\\n' "$libraries" | awk '$2 == "=>" && substr($3, 1, 1) == "/" {print $3}'); do \\
-            cp -L "$library" /native-redis/lib/ || exit 1; \\
-        done; \\
-    done
-`);
-run(["docker", "build", "--platform", "linux/amd64", "--network", "none", "-t", redisTag, staging]);
-const redis = output(["docker", "create", "--network", "none", redisTag]);
-try {
-  run(["docker", "cp", `${redis}:/native-redis`, redisPath]);
-} finally {
-  run(["docker", "rm", redis]);
-}
-const version = output([join(redisPath, "lib", "ld-musl-x86_64.so.1"), "--library-path", join(redisPath, "lib"),
-  join(redisPath, "bin", "redis-server"), "--version"]);
-if (!version.startsWith("Redis server v=8.")) throw Error("Pinned Redis native closure cannot execute: " + version);
-console.log(JSON.stringify({ redisImage, version }));
+stageWindowsServices(ROOT, compiled);
+console.log(JSON.stringify({ imageRoles: Object.keys(images).sort(), nativePostgres: true, nativeRedis: true }));
+
 run(["bash", join(import.meta.dir, "legacy-guest-disk.sh"), join(guest, "guest.qcow2"), join(destination, "qa-disk")], {cwd: ROOT});
-run(["bash", join(ROOT, "scripts/windows-release-layer.sh"), compiled, base, guest, images], { cwd: ROOT });
+const releaseSha = await digest(layerSource);
+run(["bash", join(ROOT, "scripts/windows-release-layer.sh"), compiled, base, guest, releaseSha], { cwd: ROOT });
+
 
 manifest.source_commit = source;
 manifest.source_manifest_sha256 = sourceManifest;
-manifest.release_sha256 = await digest(layerSource);
+manifest.release_sha256 = releaseSha;
+manifest.release_images_sha256 = archive_sha256;
+manifest.release_image_roles = Object.keys(images).sort();
 manifest.windows_boot_verified = false;
 for (const name of ["release-init.cpio.gz", "release.ext4"]) {
   const path = "guest/" + name;
@@ -120,4 +104,4 @@ for (const name of ["release-init.cpio.gz", "release.ext4"]) {
 }
 save(join(destination, "manifest.json"), manifest);
 console.log(JSON.stringify({ source, baseHash, sourceManifest, release: manifest.release_sha256,
-  images: manifest.release_images_sha256, reusedImagesFrom: previousSource }));
+  images: manifest.release_images_sha256, imageRoles: manifest.release_image_roles, reusedDesktopFrom: previousSource }));

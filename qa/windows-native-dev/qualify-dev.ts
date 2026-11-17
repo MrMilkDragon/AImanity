@@ -23,6 +23,7 @@ ok(!existsSync(home) && existsSync(join(dev, "aimanity-native.exe")), "fresh iso
 const integrity = await Bun.file(join(dev, "host", "integrity.json")).json();
 const manifest = await Bun.file(join(dev, "host", "qemu", "manifest.json")).json();
 equal(manifest.source_commit, process.env.QA_GUEST_SOURCE ?? source);
+deepEqual(manifest.release_image_roles, ["desktop", "workspace"]);
 const payload = { sha256: integrity["source.payload"] };
 ok(/^[0-9a-f]{64}$/.test(payload.sha256), "exact product source payload");
 const env = { ...process.env, AIMANITY_DATA_DIR: guestProfile, AIMANITY_QA_HOST: home,
@@ -398,9 +399,10 @@ try {
   console.log(JSON.stringify({ nativeBootAndTransportMs: Math.round(performance.now() - started), source }));
   await verify("ACL, manual device receipts and Linux observation", () => probe("devices"));
   await verify("Linux XTerm CJK and PCM at the Windows relay", () => probe("desktop-cjk-audio"));
-  await verify("Calcium disk retention and native Redis startup", async () => {
+  await verify("Calcium disk retention and native PostgreSQL and Redis startup", async () => {
     const boot = readFileSync(join(home, "user", "qemu", "boot.log"), "utf8");
     match(boot, /AI_PHONE_INITIALIZE redis_start/);
+    match(boot, /AI_PHONE_INITIALIZE database_start/);
     match(boot, /AI_PHONE_INITIALIZE database_prepare/);
     await probe("legacy-disk");
   });
