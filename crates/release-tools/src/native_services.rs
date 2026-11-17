@@ -1,14 +1,19 @@
-use crate::{Result, source};
+use crate::{
+    Result, assets, linux_ocr,
+    source::{self, Entry},
+};
+use flate2::read::GzDecoder;
 use regex::bytes::Regex;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     ffi::OsString,
     fs::{self, File},
-    io,
+    io::{self, Read},
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::LazyLock,
     time::Duration,
 };
 
@@ -29,6 +34,24 @@ const CONTRACTS: [(&str, &str); 8] = [
 ];
 const FIXTURE: &str = "crates/phone-runner/fixtures/ocr-probe.png";
 const RECEIPT: &str = "target/release/native-service-build.json";
+
+fn check_public(bytes: &[u8], role: &str, home: &str) -> Result<()> {
+    static SECRET: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r"(?-u)(^|[^A-Za-z0-9_-])(?:sk-[A-Za-z0-9_-]{24,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,})",
+        ).expect("valid credential expression")
+    });
+    let filtered: Vec<_> = bytes.iter().copied().filter(|byte| *byte != 0).collect();
+    if SECRET.is_match(bytes)
+        || SECRET.is_match(&filtered)
+        || bytes
+            .windows(home.len() + 1)
+            .any(|window| window.starts_with(home.as_bytes()) && window.ends_with(b"/"))
+    {
+        return Err(format!("Private material in native artifact: {role}").into());
+    }
+    Ok(())
+}
 
 fn host() -> Result<&'static str> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
@@ -227,24 +250,13 @@ async fn build() -> Result<Value> {
     let probe = Probe {
         home: tempfile::tempdir()?,
     };
-    let secret = Regex::new(
-        r"(?-u)(^|[^A-Za-z0-9_-])(?:sk-[A-Za-z0-9_-]{24,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,})",
-    )?;
     let mut checks = Map::new();
     let mut artifacts = Map::new();
     for (role, package) in ROLES {
         let path = Path::new("target/release").join(package);
         checks.insert(role.into(), probe.version(&path, package).await?);
         let bytes = fs::read(&path)?;
-        let filtered: Vec<_> = bytes.iter().copied().filter(|byte| *byte != 0).collect();
-        if secret.is_match(&bytes)
-            || secret.is_match(&filtered)
-            || bytes
-                .windows(home.len() + 1)
-                .any(|window| window.starts_with(home.as_bytes()) && window.ends_with(b"/"))
-        {
-            return Err(format!("Private material in native artifact: {role}").into());
-        }
+        check_public(&bytes, role, &home)?;
         artifacts.insert(
             role.into(),
             json!({"path":path,"size":bytes.len(),"sha256":format!("{:x}",Sha256::digest(&bytes))}),
@@ -283,6 +295,104 @@ async fn build() -> Result<Value> {
     serde_json::to_writer(&mut pending, &receipt)?;
     pending.persist(RECEIPT)?;
     Ok(receipt)
+}
+
+pub(super) fn package(linux_ocr: Option<&Path>) -> Result<Vec<Entry>> {
+    let host = host()?;
+    let receipt = cached(&fingerprint()?)?.ok_or("Build source-matched native services first")?;
+    let mut files = Vec::new();
+    for (role, program) in ROLES {
+        files.push(Entry::new(
+            format!("runtime/services/bin/{role}"),
+            fs::read(Path::new("target/release").join(program))?,
+            0o755,
+        ));
+    }
+    let config: Value = serde_json::from_reader(File::open("config/mihomo-release.json")?)?;
+    let core = &config["assets"][host];
+    let license = &config["verification_download"];
+    let cache = Path::new(".tools/mihomo-harness");
+    let url = core["url"].as_str().ok_or("Missing Mihomo URL")?;
+    let archive = cache.join(url.rsplit('/').next().ok_or("Missing Mihomo asset name")?);
+    let license_path = cache.join("LICENSE");
+    assets::stage_pin::<Sha256>(
+        url,
+        &archive,
+        core["size_bytes"].as_u64(),
+        core["sha256"].as_str().ok_or("Missing Mihomo digest")?,
+    )?;
+    assets::stage_pin::<Sha256>(
+        license["url"]
+            .as_str()
+            .ok_or("Missing Mihomo license URL")?,
+        &license_path,
+        license["size_bytes"].as_u64(),
+        license["sha256"]
+            .as_str()
+            .ok_or("Missing Mihomo license digest")?,
+    )?;
+    let mut bytes = Vec::new();
+    GzDecoder::new(File::open(archive)?).read_to_end(&mut bytes)?;
+    let entry = Entry::new("runtime/services/bin/mihomo".into(), bytes, 0o755);
+    if !entry.matches_digest(
+        core["binary_sha256"]
+            .as_str()
+            .ok_or("Missing Mihomo executable digest")?,
+    ) {
+        return Err("Mihomo build differs from its pin".into());
+    }
+    files.push(entry);
+    files.push(Entry::new(
+        "runtime/services/licenses/mihomo-LICENSE.txt".into(),
+        fs::read(license_path)?,
+        0o644,
+    ));
+    if let Some(bridge) = std::env::var_os("AI_PHONE_RELEASE_DESKTOP_BRIDGE") {
+        let bytes = fs::read(bridge)?;
+        check_public(&bytes, "desktop-bridge", &std::env::var("HOME")?)?;
+        let architecture = if host == "macos-arm64" { 183u16 } else { 62 };
+        if bytes.len() < 64
+            || !bytes.starts_with(b"\x7fELF\x02\x01")
+            || bytes[18..20] != architecture.to_le_bytes()
+        {
+            return Err("Desktop bridge must be a matching Linux ELF".into());
+        }
+        files.push(Entry::new(
+            "runtime/services/bin/desktop-bridge".into(),
+            bytes,
+            0o755,
+        ));
+    }
+    files.push(Entry::new(
+        "runtime/services/fixtures/ocr.png".into(),
+        fs::read(FIXTURE)?,
+        0o644,
+    ));
+    let vision = if let Some(directory) = linux_ocr {
+        let manifest = linux_ocr::run(&["verify".into(), directory.as_os_str().into()])?;
+        files.extend(source::component(
+            directory,
+            "runtime/services/ocr",
+            &manifest,
+        )?);
+        "linux-tesseract-bundled"
+    } else {
+        "container-tesseract"
+    };
+    let mut manifest = json!({
+        "format": 1, "host": host, "source_sha256": receipt["source_sha256"], "compiler": receipt["compiler"],
+        "versions": {"assistant":receipt["checks"]["assistant"]["version"],"runner":receipt["checks"]["runner"]["version"]},
+        "vision": vision, "files": files.iter().map(Entry::inventory).collect::<Vec<_>>(),
+    });
+    for (name, contract) in CONTRACTS {
+        manifest[name] = json!(contract);
+    }
+    files.push(Entry::new(
+        "runtime/services/manifest.json".into(),
+        serde_json::to_vec(&manifest)?,
+        0o644,
+    ));
+    Ok(files)
 }
 
 async fn verify(path: &Path) -> Result<Value> {

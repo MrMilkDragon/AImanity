@@ -49,12 +49,13 @@ const CURL_FETCH: [&str; 5] = ["-fsSL", "--proto", "=https", "--proto-redir", "=
 pub(super) fn verify_stream<D: Digest>(
     mut stream: impl Read,
     mut output: impl Write,
-    size: u64,
+    size: impl Into<Option<u64>>,
     digest: &str,
 ) -> io::Result<bool>
 where
     sha2::digest::Output<D>: std::fmt::LowerHex,
 {
+    let size = size.into();
     let mut hash = D::new();
     let mut buffer = [0; 128 * 1024];
     let mut received = 0;
@@ -64,24 +65,30 @@ where
             break;
         }
         received += length as u64;
-        if received > size {
+        if size.is_some_and(|size| received > size) {
             return Ok(false);
         }
         let chunk = &buffer[..length];
         hash.update(chunk);
         output.write_all(chunk)?;
     }
-    Ok(received == size && format!("{:x}", hash.finalize()) == digest)
+    Ok(size.is_none_or(|size| received == size) && format!("{:x}", hash.finalize()) == digest)
 }
 
-pub(super) fn stage_pin<D: Digest>(url: &str, path: &Path, size: u64, digest: &str) -> Result<()>
+pub(super) fn stage_pin<D: Digest>(
+    url: &str,
+    path: &Path,
+    size: impl Into<Option<u64>>,
+    digest: &str,
+) -> Result<()>
 where
     sha2::digest::Output<D>: std::fmt::LowerHex,
 {
+    let size = size.into();
     let mismatch = || format!("Pinned download mismatch: {}", path.display());
     if path.exists() {
         let file = File::open(path)?;
-        if file.metadata()?.len() != size || !verify_stream::<D>(file, io::sink(), size, digest)? {
+        if !verify_stream::<D>(file, io::sink(), size, digest)? {
             return Err(mismatch().into());
         }
         return Ok(());

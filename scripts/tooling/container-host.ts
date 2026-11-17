@@ -146,11 +146,6 @@ export async function buildContainerHost(
     rmSync(temporary, { recursive: true, force: true });
   }
 }
-export async function prepareContainerHost(root = ROOT) {
-  const folder = join(root, ".tools/container-host");
-  await verifyContainerHost(root, folder);
-  return collect(folder, "runtime/container-host");
-}
 function limaPolicy(root: string) {
   const value = containerPolicy(root);
   return {

@@ -4,7 +4,7 @@ AI Phone separates versioned application code, clean device baselines and persis
 
 ## Package format
 
-`scripts/prepare-client.ts` creates a deterministic `source.payload` archive and an integrity record. The client runs its native Rust initializer. Format 1 contains reviewed source. Format 2 declares a nonempty subset in this order: `native-services`, `phone-apps`, `container-host`.
+`release-tools client-payload` creates a deterministic `source.payload` archive and an integrity record. The client runs its native Rust initializer. Format 1 contains reviewed source. Format 2 declares a nonempty subset in this order: `native-services`, `phone-apps`, `container-host`.
 
 | Component | Contents | Launch requirement |
 |---|---|---|
@@ -40,7 +40,7 @@ These commands are for maintainers building components. Native OCR qualification
 ```sh
 ./scripts/bootstrap.sh
 cargo run --quiet --locked -p ai-phone-release-tools -- native-services build
-./scripts/bun scripts/prepare-client.ts --with-service-runtime  --verify-service-runtime
+cargo run --locked -p ai-phone-release-tools -- client-payload --with-service-runtime
 ./scripts/bun scripts/build-client.ts --platform macos --with-service-runtime
 ```
 

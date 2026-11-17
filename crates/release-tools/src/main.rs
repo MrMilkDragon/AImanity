@@ -1,6 +1,7 @@
 mod android_package;
 mod assets;
 mod capsule;
+mod client_payload;
 mod dependency_audit;
 #[cfg(unix)]
 mod linux_ocr;
@@ -29,6 +30,7 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(unix)]
         "windows-release" => windows_release::seal(rest).map(Some),
         "source" => source::run(rest),
+        "client-payload" => client_payload::run(rest).map(Some),
         "sign-update" => update_feed::sign(rest).map(|()| None),
         "prepare-ocr-models" => assets::ocr(rest).map(Some),
         "prepare-speech-model" => assets::speech(rest).map(Some),

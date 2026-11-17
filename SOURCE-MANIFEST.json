@@ -58,8 +58,8 @@
     },
     {
       "path": ".github/workflows/source.yml",
-      "size": 5623,
-      "sha256": "4f1759c66c535c76e62a362ebf42bad27d4bc045ca90cc63dae225e39c288e1a"
+      "size": 5755,
+      "sha256": "5a3c3f09f4e3a807f69764b1b5a6733a0d161cd606777fd8ed3d3e486f562c86"
     },
     {
       "path": ".github/workflows/windows-aosp-qualification.yml",
@@ -2213,13 +2213,18 @@
     },
     {
       "path": "crates/release-tools/src/assets.rs",
-      "size": 12664,
-      "sha256": "e43b4012baef3a2040b49764da5a64a9912479b0875a4758635c4ee401340010"
+      "size": 12792,
+      "sha256": "370bbceca5c9be6784fbebc0d9dfc820a6fa58c499fb63e03f4c42253a6bbb5b"
     },
     {
       "path": "crates/release-tools/src/capsule.rs",
       "size": 2567,
       "sha256": "1b83ed8b584c99f0168a36ecd07ff27249c063901d1e6cdc19a9be520d770f07"
+    },
+    {
+      "path": "crates/release-tools/src/client_payload.rs",
+      "size": 5671,
+      "sha256": "deaa68dac979aae133cd17825ca6f045d2147e1ad32c152e4eba73bc8df92c7b"
     },
     {
       "path": "crates/release-tools/src/dependency_audit.rs",
@@ -2233,13 +2238,13 @@
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 4267,
-      "sha256": "30e9bcbaeef3ad28c2c7198b3a90a596310d09a11d0c9dce4648aaee39d0e43c"
+      "size": 4352,
+      "sha256": "3ec9ab5a526c9dbc00758dad7fe019bb86740a0d30b5420bc8ef97bbaff3e1f6"
     },
     {
       "path": "crates/release-tools/src/native_services.rs",
-      "size": 12278,
-      "sha256": "66b2cd12a3b039656154f4f4f58cc6754742bc47653b573c3234ecbb98262fe4"
+      "size": 16257,
+      "sha256": "2aa3c3af533998f825bfab4e62d68f073bedba7360cad4fb295121347243316d"
     },
     {
       "path": "crates/release-tools/src/phone_apps.rs",
@@ -2248,8 +2253,8 @@
     },
     {
       "path": "crates/release-tools/src/source.rs",
-      "size": 23376,
-      "sha256": "166311090073810bbe9a4bd96211295b1b831177bd8dcaaadbdfae9a3c4a8794"
+      "size": 23076,
+      "sha256": "12a4c1ff1ed39967596b19f740d709d9b8da17c1096dc69641380721df8c2f0f"
     },
     {
       "path": "crates/release-tools/src/update_feed.rs",
@@ -3069,7 +3074,7 @@
     {
       "path": "docs/public/runtime-bundles.md",
       "size": 7413,
-      "sha256": "adfb7bd0b0bda66d5299ab4a27a70b6921c2025c56b55700fe67d416c4549675"
+      "sha256": "18801dfc3ad9e7a4ed394bfc4a05262bb7fda5894ccdfd342cd48ff54cc7b753"
     },
     {
       "path": "docs/public/simulated-location.md",
@@ -3417,11 +3422,6 @@
       "sha256": "eac07a45f93381040f1fc445281ef52ef7b465e69f19c47e79a5c32be2ce7b8e"
     },
     {
-      "path": "scripts/prepare-client.ts",
-      "size": 1658,
-      "sha256": "b25474eaf6d91f843df3f734d28f6284141ffa4a318971eb4c1a760294127c76"
-    },
-    {
       "path": "scripts/qualify-windows-window.ps1",
       "size": 4446,
       "sha256": "24965a046cad942a3571cd3fa01e860dd0d8f890092747af35cf67e497fd43ca"
@@ -3448,13 +3448,13 @@
     },
     {
       "path": "scripts/tooling/client-payload.ts",
-      "size": 5772,
-      "sha256": "2e69097f08c97901067738535c4405c1022c71db4304c556dba19065b512627c"
+      "size": 3857,
+      "sha256": "4db021caabc2ca95a0e249bf4de113fa5b199d160771a1c36250e5e1081fb5fb"
     },
     {
       "path": "scripts/tooling/container-host.ts",
-      "size": 8912,
-      "sha256": "f1a6d822f50174ea1ca07e0fb95b09722c03d581fc16be7f5caafc1d44435478"
+      "size": 8703,
+      "sha256": "41aa0f2218c7a8f8db6a48216cd4af6f183052eeddfa999f54f18467f3fff485"
     },
     {
       "path": "scripts/tooling/dependency-inventory.ts",
@@ -3488,8 +3488,8 @@
     },
     {
       "path": "scripts/tooling/inventory.ts",
-      "size": 3609,
-      "sha256": "60d7199b1ceeb48a5b0cc9c1603d8cec9ad3606200d6992ea0ab6bb4171886bb"
+      "size": 3284,
+      "sha256": "b0b8a587163a79a692603aabf58e43fc4bdfcb9b5d7c1c2e21e92e7f9ce379f6"
     },
     {
       "path": "scripts/tooling/isolated-env.ts",
@@ -3502,14 +3502,9 @@
       "sha256": "9bd19f109290b37d854cd9a891473d69f81ff7cd8ef941b922c4a52d7b176cb5"
     },
     {
-      "path": "scripts/tooling/native-build.ts",
-      "size": 3070,
-      "sha256": "9eecfe74c64ca5f61b8c208cff0dfbad0d5de182ca5602b1095f3d23a6673741"
-    },
-    {
       "path": "scripts/tooling/native-check.ts",
-      "size": 3869,
-      "sha256": "84a0affd7c799f8ca0fd1b4d5c7d6f6b8bb6538d011f7971f2d92666c2095d92"
+      "size": 4678,
+      "sha256": "2cef399d5941d866bb555ad1623dd2cb53d3809334277bb66df15620cb117642"
     },
     {
       "path": "scripts/tooling/process.ts",

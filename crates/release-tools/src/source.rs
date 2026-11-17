@@ -1,13 +1,13 @@
 use crate::Result;
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     ffi::OsString,
     fs::{self, File},
-    io::{self, Read, Write},
+    io::{self, Write},
     path::{Component, Path, PathBuf},
     process::Command,
 };
@@ -106,17 +106,79 @@ const REQUIRED: &[&str] = &[
     ".github/workflows/source.yml",
 ];
 
-struct Entry {
+pub(super) struct Entry {
     path: String,
     data: Vec<u8>,
     mode: u32,
+    sha256: String,
+}
+
+impl Entry {
+    pub(super) fn new(path: String, data: Vec<u8>, mode: u32) -> Self {
+        let sha256 = format!("{:x}", Sha256::digest(&data));
+        Self {
+            path,
+            data,
+            mode,
+            sha256,
+        }
+    }
+
+    pub(super) fn inventory(&self) -> Value {
+        json!({"path":self.path,"size":self.data.len(),"sha256":self.sha256,"mode":self.mode})
+    }
+
+    pub(super) fn matches_digest(&self, digest: &str) -> bool {
+        self.sha256 == digest
+    }
 }
 
 #[derive(Serialize)]
 struct Record<'a> {
     path: &'a str,
     size: usize,
+    sha256: &'a str,
+}
+
+#[derive(Deserialize)]
+struct FileRecord {
+    path: String,
+    size: usize,
     sha256: String,
+    mode: u32,
+}
+
+pub(super) fn component(folder: &Path, prefix: &str, manifest: &Value) -> Result<Vec<Entry>> {
+    let files: Vec<FileRecord> = serde_json::from_value(manifest["files"].clone())?;
+    let owner = format!("{prefix}/");
+    let mut entries = Vec::with_capacity(files.len() + 1);
+    for row in files {
+        let relative = row.path.strip_prefix(&owner).unwrap_or(&row.path);
+        if relative.contains(['\\', ':'])
+            || relative
+                .split('/')
+                .any(|part| matches!(part, "" | "." | ".."))
+            || !matches!(row.mode, 0o644 | 0o755)
+        {
+            return Err(format!("Invalid component entry: {}", row.path).into());
+        }
+        let file = folder.join(relative);
+        let metadata = file.symlink_metadata()?;
+        if !metadata.is_file() || metadata.len() != row.size as u64 {
+            return Err(format!("Component file changed: {}", file.display()).into());
+        }
+        let entry = Entry::new(format!("{owner}{relative}"), fs::read(&file)?, row.mode);
+        if !entry.matches_digest(&row.sha256) {
+            return Err(format!("Component file changed: {}", file.display()).into());
+        }
+        entries.push(entry);
+    }
+    entries.push(Entry::new(
+        format!("{owner}manifest.json"),
+        fs::read(folder.join("manifest.json"))?,
+        0o644,
+    ));
+    Ok(entries)
 }
 
 fn omitted(path: &str, name: &str) -> bool {
@@ -225,7 +287,7 @@ fn scan(root: &Path) -> Result<Vec<Entry>> {
             };
             #[cfg(not(unix))]
             let mode = 0o644;
-            Ok(Entry { path, data, mode })
+            Ok(Entry::new(path, data, mode))
         })
         .collect()
 }
@@ -236,7 +298,7 @@ fn records(entries: &[Entry]) -> Vec<Record<'_>> {
         .map(|entry| Record {
             path: &entry.path,
             size: entry.data.len(),
-            sha256: format!("{:x}", Sha256::digest(&entry.data)),
+            sha256: &entry.sha256,
         })
         .collect()
 }
@@ -246,10 +308,7 @@ fn read_json(path: &Path) -> Result<Value> {
 }
 
 fn verify(root: &Path, entries: &[Entry], records: &[Record<'_>], draft: bool) -> Result<()> {
-    let indexed: BTreeMap<_, _> = records
-        .iter()
-        .map(|r| (r.path, r.sha256.as_str()))
-        .collect();
+    let indexed: BTreeMap<_, _> = records.iter().map(|r| (r.path, r.sha256)).collect();
     let provenance = root.join("config/source-assets.json");
     if provenance.try_exists()? {
         let value = read_json(&provenance)?;
@@ -444,45 +503,21 @@ fn append_file<W: Write>(
     data: &[u8],
     mode: u32,
 ) -> Result<()> {
-    append_entry(archive, path, data.len() as u64, mode, data)
-}
-
-fn append_entry(
-    archive: &mut tar::Builder<impl Write>,
-    path: impl AsRef<Path>,
-    size: u64,
-    mode: u32,
-    contents: impl Read,
-) -> Result<()> {
     let mut header = tar::Header::new_ustar();
     header.set_mode(mode);
-    header.set_size(size);
+    header.set_size(data.len() as u64);
     header.set_uid(0);
     header.set_gid(0);
     header.set_mtime(0);
     header.set_entry_type(tar::EntryType::Regular);
-    archive.append_data(&mut header, path, contents)?;
+    archive.append_data(&mut header, path, data)?;
     Ok(())
 }
 
 const HOST_MANIFEST: &str = "HOST-MANIFEST.json";
-const COMPONENTS: [(&str, &str); 3] = [
-    ("native-services", "runtime/services/manifest.json"),
-    ("phone-apps", "runtime/phone-apps/manifest.json"),
-    ("container-host", "runtime/container-host/manifest.json"),
-];
-
 struct Hashed<T> {
     stream: T,
     digest: Sha256,
-}
-
-impl<R: Read> Read for Hashed<R> {
-    fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
-        let count = self.stream.read(bytes)?;
-        self.digest.update(&bytes[..count]);
-        Ok(count)
-    }
 }
 
 impl<W: Write> Write for Hashed<W> {
@@ -497,11 +532,14 @@ impl<W: Write> Write for Hashed<W> {
     }
 }
 
-fn payload(destination: &Path, entries: &[Entry], records: &[Record<'_>]) -> Result<Value> {
-    let folder = destination
-        .parent()
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
+pub(super) fn payload(
+    root: &Path,
+    folder: &Path,
+    runtime: Vec<Entry>,
+    components: Vec<&str>,
+) -> Result<String> {
+    let mut entries = scan(root)?;
+    entries.extend(runtime);
     let mut temporary = tempfile::NamedTempFile::new_in(folder)?;
     let mut encoded = Hashed {
         stream: temporary.as_file_mut(),
@@ -509,36 +547,10 @@ fn payload(destination: &Path, entries: &[Entry], records: &[Record<'_>]) -> Res
     };
     crate::capsule::write_encoded(&mut encoded, "amd64", 6, folder, |writer| {
         let mut output = tar::Builder::new(writer);
-        let mut files = Vec::with_capacity(entries.len());
-        for (entry, record) in entries.iter().zip(records) {
+        for entry in &entries {
             append_file(&mut output, &entry.path, &entry.data, entry.mode)?;
-            files.push(json!({"path":record.path,"size":record.size,"sha256":record.sha256,"mode":entry.mode}));
         }
-        let mut present = [false; COMPONENTS.len()];
-        for entry in tar::Archive::new(io::stdin().lock()).entries()? {
-            let entry = entry?;
-            let path = String::from_utf8(entry.path_bytes().into_owned())?;
-            let size = entry.size();
-            let mode = entry.header().mode()?;
-            if !entry.header().entry_type().is_file() || ![0o644, 0o755].contains(&mode) {
-                return Err(format!("Invalid runtime file: {path}").into());
-            }
-            if let Some(index) = COMPONENTS.iter().position(|(_, name)| *name == path) {
-                present[index] = true;
-            }
-            let mut reader = Hashed {
-                stream: entry,
-                digest: Sha256::new(),
-            };
-            append_entry(&mut output, &path, size, mode, &mut reader)?;
-            let hash = format!("{:x}", reader.digest.finalize());
-            files.push(json!({"path":path,"size":size,"sha256":hash,"mode":mode}));
-        }
-        let components: Vec<_> = COMPONENTS
-            .iter()
-            .zip(present)
-            .filter_map(|((name, _), found)| found.then_some(name))
-            .collect();
+        let files: Vec<_> = entries.iter().map(Entry::inventory).collect();
         let manifest = json!({"format": if components.is_empty() { 1 } else { 2 }, "components":components, "files":files});
         append_file(
             &mut output,
@@ -550,8 +562,8 @@ fn payload(destination: &Path, entries: &[Entry], records: &[Record<'_>]) -> Res
         Ok(())
     })?;
     let digest = encoded.digest.finalize();
-    temporary.persist(destination)?;
-    Ok(json!({"sha256":format!("{digest:x}")}))
+    temporary.persist(folder.join("source.payload"))?;
+    Ok(format!("{digest:x}"))
 }
 
 fn payload_components(path: &Path) -> Result<Value> {
@@ -693,7 +705,7 @@ fn export(
 pub(super) fn run(args: &[OsString]) -> Result<Option<Value>> {
     let root = std::env::current_dir()?;
     let [operation, rest @ ..] = args else {
-        return Err("Expected source check|manifest|package|export|list|payload|components".into());
+        return Err("Expected source check|manifest|package|export|list|components".into());
     };
     if let [path] = rest
         && operation == "components"
@@ -708,12 +720,6 @@ pub(super) fn run(args: &[OsString]) -> Result<Option<Value>> {
         }).collect())));
     }
     let result = match operation.to_str() {
-        Some("payload") => {
-            let [path] = rest else {
-                return Err("Source payload destination required".into());
-            };
-            payload(Path::new(path), &entries, &records)?
-        }
         Some("check") => check(&root, &entries, &records, rest)?,
         Some("manifest") => {
             let path = root.join("SOURCE-MANIFEST.json");
@@ -736,9 +742,7 @@ pub(super) fn run(args: &[OsString]) -> Result<Option<Value>> {
             export(&root, destination, &entries, &records, flags)?
         }
         _ => {
-            return Err(
-                "Expected source check|manifest|package|export|list|payload|components".into(),
-            );
+            return Err("Expected source check|manifest|package|export|list|components".into());
         }
     };
     Ok(Some(result))

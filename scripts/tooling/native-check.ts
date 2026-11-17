@@ -6,9 +6,27 @@ import {
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { run, output } from "./process";
+import { ROOT, run, output, nativeProgram } from "./process";
+import { buildReleaseTools } from "./archive";
+import { hostResources } from "./resources";
 import { json } from "./inventory";
 import { isolatedEnvironment } from "./isolated-env";
+
+export async function verifyPackagedServices(container: string, port: number) {
+  const home = mkdtempSync(join(tmpdir(), "aiphone-payload-check-"));
+  try {
+    const folder = join(ROOT, hostResources);
+    const receipt = json(join(folder, "integrity.json"));
+    const result = output([
+      nativeProgram(ROOT), "--stage-source", join(folder, "source.payload"), home, receipt["source.payload"],
+    ]);
+    const staged = result.slice(result.indexOf(" ") + 1);
+    console.log(output([buildReleaseTools(ROOT), "native-services", "verify", staged]));
+    console.log(JSON.stringify(nativeDatabaseReceipt(staged, container, port)));
+  } finally {
+    rmSync(home, { recursive: true });
+  }
+}
 
 export function requireNativeDatabase(container: string, port: number) {
   if (

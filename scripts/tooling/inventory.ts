@@ -17,7 +17,6 @@ import {
   isAbsolute,
   sep,
 } from "node:path";
-import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { hash } from "./process";
 import type { SourceFile } from "./source";
@@ -109,13 +108,4 @@ export function collect(folder: string, prefix: string): SourceFile[] {
   }
   walk(folder);
   return files;
-}
-export function publicBytes(bytes: Buffer, name: string) {
-  if (
-    secret.test(bytes.toString()) ||
-    secret.test(bytes.toString().replaceAll("\0", "")) ||
-    bytes.includes(Buffer.from(homedir() + "/"))
-  )
-    throw Error("Private material in artifact: " + name);
-  return bytes;
 }

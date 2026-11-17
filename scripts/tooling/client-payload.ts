@@ -1,20 +1,8 @@
-import {
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  constants,
-  copyFileSync,
-  rmSync,
-} from "node:fs";
+import { existsSync, lstatSync, mkdirSync } from "node:fs";
 import { join, basename } from "node:path";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
-import { text } from "node:stream/consumers";
-import { ROOT, digest, output, nativeProgram } from "./process";
-import { collect, json, save } from "./inventory";
-import { buildReleaseTools, writeTarStream } from "./archive";
-import { prepareServices } from "./native-build";
-import { prepareContainerHost } from "./container-host";
+import { ROOT, output, run } from "./process";
+import { json } from "./inventory";
+import { buildReleaseTools } from "./archive";
 import { hostResources } from "./resources";
 import { stageWindowsVm, type WindowsVmInputs } from "./windows-vm-payload";
 
@@ -27,56 +15,21 @@ export type PayloadOptions = {
   linuxOcr?: string;
   windowsVm?: WindowsVmInputs;
 };
-export async function preparePayload(
-  root = ROOT,
-  options: PayloadOptions = {},
-) {
-  const folder = join(root, hostResources);
-  mkdirSync(folder, { recursive: true });
-  const releaseTools = buildReleaseTools(root);
-  const speech = JSON.parse(output(
-    [releaseTools, "prepare-speech-model", join(root, ".tools/speech"), folder],
-    { cwd: root },
-  ));
-  const selected = options.nativeServices ? await prepareServices(root, options.linuxOcr) : [];
-  if (options.phoneApps) {
-    output([releaseTools, "phone-apps", "verify", root], { cwd: root });
-    selected.push(...collect(join(root, ".tools/phone-apps"), "runtime/phone-apps"));
+export async function preparePayload(root = ROOT, options: PayloadOptions = {}) {
+  const args = [buildReleaseTools(root), "client-payload"];
+  if (options.nativeServices) args.push("--with-service-runtime");
+  if (options.phoneApps) args.push("--with-phone-apps");
+  if (options.containerHost) args.push("--with-container-host");
+  if (options.androidRuntime) args.push("--android-runtime", options.androidRuntime);
+  if (options.imageRuntime) args.push("--images-runtime", options.imageRuntime);
+  if (options.linuxOcr) args.push("--linux-ocr", options.linuxOcr);
+  if (options.windowsVm) {
+    const folder = join(root, hostResources);
+    mkdirSync(folder, { recursive: true });
+    const digest = await stageWindowsVm(root, join(folder, "qemu"), options.windowsVm);
+    args.push("--qemu-manifest", digest);
   }
-  if (options.containerHost) selected.push(...await prepareContainerHost(root));
-  const child = spawn(releaseTools, ["source", "payload", join(folder, "source.payload")], {
-    cwd: root, stdio: ["pipe", "pipe", "inherit"],
-  });
-  const complete = once(child, "close"),
-    receipt = text(child.stdout);
-  const [[status], report] = await Promise.all([
-    complete, receipt, writeTarStream(child.stdin, selected),
-  ]).finally(() => {
-    if (child.exitCode === null) child.kill();
-  });
-  if (status !== 0) throw Error("Source payload compilation failed");
-  const integrity: Record<string, string> = {
-    "source.payload": JSON.parse(report).sha256,
-    [speech.resource]: speech.sha256,
-  };
-  for (const [name, source] of [
-    ["android.payload", options.androidRuntime],
-    ["images.payload", options.imageRuntime],
-  ] as const) {
-    const target = join(folder, name);
-    if (!source) {
-      rmSync(target, { force: true });
-      continue;
-    }
-    if (source !== target) copyFileSync(source, target, constants.COPYFILE_FICLONE);
-    integrity[name] = await digest(target);
-  }
-  const windowsVm = join(folder, "qemu");
-  if (options.windowsVm)
-    integrity["qemu/manifest.json"] = await stageWindowsVm(root, windowsVm, options.windowsVm);
-  else rmSync(windowsVm, { recursive: true, force: true });
-  save(join(folder, "integrity.json"), integrity);
-  return integrity;
+  run(args, { cwd: root });
 }
 export function payloadComponents(root = ROOT): string[] {
   const folder = join(root, hostResources),
@@ -90,21 +43,6 @@ export function payloadComponents(root = ROOT): string[] {
     ...("images.payload" in integrity ? ["container-images"] : []),
     ...("qemu/manifest.json" in integrity ? ["windows-qemu"] : []),
   ];
-}
-export async function stageSource(archive: string, home: string, root = ROOT) {
-  const result = output(
-    [
-      nativeProgram(root),
-      "--stage-source",
-      archive,
-      home,
-      await digest(archive),
-    ],
-    { cwd: root },
-  );
-  const offset = result.indexOf(" ");
-  if (offset !== 64) throw Error("Invalid source staging receipt");
-  return result.slice(offset + 1);
 }
 export function installerMetadata(file: string, host: string) {
   const format = file.split(".").at(-1)!.toLowerCase(),

@@ -77,7 +77,9 @@ jobs:
           docker run -d --name aiphone-native-ci --label dev.aiphone.test=native-runtime --memory 256m -p 127.0.0.1:55512:5432 -e POSTGRES_USER=ai_phone -e POSTGRES_DB=ai_phone -e POSTGRES_PASSWORD=isolated-native-fixture-password postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
           ./scripts/bun -e 'import {waitDatabase} from "./scripts/tooling/native-check.ts"; await waitDatabase("aiphone-native-ci")'
       - name: Isolated payload, cold start and prebuilt database roles
-        run: ./scripts/bun scripts/prepare-client.ts --with-service-runtime --verify-service-runtime --pg-container aiphone-native-ci --pg-port 55512
+        run: |
+          cargo run --quiet --locked -p ai-phone-release-tools -- client-payload --with-service-runtime
+          ./scripts/bun -e 'import { verifyPackagedServices } from "./scripts/tooling/native-check.ts"; await verifyPackagedServices("aiphone-native-ci", 55512);'
       - name: Remove native-runtime fixture
         if: always()
         run: |
