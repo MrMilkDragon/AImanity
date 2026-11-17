@@ -180,6 +180,7 @@ async function vmCredentials() {
   }
 }
 
+async function qualify() {
 try {
   equal(await gui("fresh"), 0, "advancing the unpackaged native language and device setup");
   const request = join(home, "request.json");
@@ -217,6 +218,10 @@ try {
   const status = JSON.parse(readFileSync(checkpoint, "utf8"));
   equal(status.progress.state, "ready");
   equal(status.installed_payload, payload.sha256);
+  if (process.env.AIMANITY_QA_ONLY_LINUX_INPUT === "1") {
+    await probe("desktop-cjk-audio");
+    return;
+  }
   const components = join(home, "components", "android");
   const [identity] = readdirSync(components);
   ok(identity, "installed Android capsule");
@@ -437,3 +442,5 @@ try {
   await observation;
   await stopApp();
 }
+}
+await qualify();

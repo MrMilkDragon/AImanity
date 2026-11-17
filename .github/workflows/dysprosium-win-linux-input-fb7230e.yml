@@ -1,14 +1,14 @@
-name: Dysprosium Windows repaired native device QA
+name: Dysprosium Windows XTerm and Linux audio
 on:
   push:
-    branches: [codex/dysprosium-win-live-fb7230e]
+    branches: [codex/dysprosium-win-linux-input-fb7230e]
     paths:
-      - .github/workflows/dysprosium-win-live-fb7230e.yml
+      - .github/workflows/dysprosium-win-linux-input-fb7230e.yml
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: dysprosium-win-live-fb7230e
+  group: dysprosium-win-linux-input-fb7230e
   cancel-in-progress: false
 env:
   PRODUCT_SOURCE: fb7230e3fff2ac7743b5c4de42cedc02b659fc81
@@ -88,11 +88,11 @@ jobs:
           export AIMANITY_BUNDLE_INTEGRITY="$(cygpath -am "$PWD/apps/native/gen/host/integrity.json")"
           cargo build --locked --manifest-path apps/native/Cargo.toml
           ./scripts/bun ../qa/windows-native-dev/prepare-windows.ts launch-layout
-      - name: Verify foreground device frames, independent receipts and restart on WHPX
+      - name: Verify XTerm Unicode input and real Linux PCM on WHPX
         working-directory: exact
         shell: pwsh
         env:
-          AIMANITY_QA_ANDROID_AUDIO: '1'
+          AIMANITY_QA_ONLY_LINUX_INPUT: '1'
         run: |
           Copy-Item ../qa/windows-native-dev/native-probe.ts scripts/windows-device-qa-probe.ts
           Copy-Item ../qa/windows-native-dev/qualify-dev.ts scripts/windows-device-qa.ts

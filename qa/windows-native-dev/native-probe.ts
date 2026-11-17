@@ -10,7 +10,8 @@ import { AgentConfigurationSaveRequestSchema, ConnectionTestRequestSchema, Regis
 import { DesktopRequestSchema, DesktopObservationSchema, DesktopActionRequestSchema } from "../packages/protocol/src/gen/ai_phone/v1/desktop_pb";
 import { ControlStateSchema, DeviceActionRequestSchema, DeviceActionResponseSchema, DeviceObservationSchema, DeviceRequestSchema, TakeControlRequestSchema } from "../packages/protocol/src/gen/ai_phone/v1/phone_runtime_pb";
 import { GoalUpdateRequestSchema, ProactiveRequestSchema, ProactiveStateSchema, ProactiveUpdateRequestSchema } from "../packages/protocol/src/gen/ai_phone/v1/proactive_pb";
-import { FileListingSchema, FileLocationSchema, HarnessEventListSchema, HarnessEventRequestSchema } from "../packages/protocol/src/gen/ai_phone/v1/workbench_pb";
+import { FileListingSchema, FileLocationSchema, FileManageRequestSchema, FileManageResultSchema, FileOperation, HarnessEventListSchema, HarnessEventRequestSchema } from "../packages/protocol/src/gen/ai_phone/v1/workbench_pb";
+import { ApiErrorSchema } from "../packages/protocol/src/gen/ai_phone/v1/system_pb";
 import { ModelTestResultSchema } from "../packages/protocol/src/gen/ai_phone/v1/settings_pb";
 import type { DescMessage, MessageInitShape } from "@bufbuild/protobuf";
 
@@ -89,8 +90,12 @@ async function rpc<I extends DescMessage, O extends DescMessage>(path: string, r
     method: "POST", headers: { "content-type": "application/x-protobuf", authorization: device ? phoneToken : assistant },
     body: toBinary(req, create(req, args)), signal: AbortSignal.timeout(15000),
   });
-  ok(response.ok, path + " returned status " + response.status);
-  return fromBinary(res, new Uint8Array(await response.arrayBuffer()));
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!response.ok) {
+    const reason = fromBinary(ApiErrorSchema, bytes);
+    throw Error(`${path} returned HTTP ${response.status} (${reason.code}): ${reason.message}`);
+  }
+  return fromBinary(res, bytes);
 }
 const registry = await rpc("registry/state", RegistryRequestSchema, {}, RegistryStateSchema);
 const phone = registry.devices.find(device => device.kind === "phone" && device.runtimeState === "managed");
@@ -356,14 +361,16 @@ if (command === "acl") {
 }
 if (command === "desktop-cjk-audio") {
   const deviceId = desktop.id;
-  let view = await rpc("desktop/control", DesktopRequestSchema, {deviceId}, DesktopObservationSchema);
+  const epoch = (await rpc("desktop/control", DesktopRequestSchema, {deviceId}, DesktopObservationSchema)).epoch;
   async function act(input: MessageInitShape<typeof DesktopActionRequestSchema>) {
+    const view = await rpc("desktop/observe", DesktopRequestSchema, {deviceId}, DesktopObservationSchema);
+    equal(view.epoch, epoch, "same manual desktop control");
+    console.log(JSON.stringify({ desktopAction:input.kind, key:input.key, application:view.applicationId, observation:view.observationId }));
     const receipt = await rpc("desktop/action", DesktopActionRequestSchema, {
-      deviceId, actionId:randomUUID(), epoch:view.epoch, observationId:view.observationId, ...input,
+      deviceId, actionId:randomUUID(), epoch, observationId:view.observationId, ...input,
     }, DesktopObservationSchema);
     equal(receipt.deviceId, deviceId);
-    equal(receipt.epoch, view.epoch);
-    if (receipt.observationId) view = receipt;
+    equal(receipt.epoch, epoch);
   }
   const key = (key: string) => act({kind:"key", key});
   // The packaged Openbox desktop menu begins Browser, Files, Terminal.
@@ -372,7 +379,7 @@ if (command === "desktop-cjk-audio") {
   await key("Down");
   await key("Down");
   await key("Return");
-  view = await until(async () => {
+  await until(async () => {
     const current = await rpc("desktop/observe", DesktopRequestSchema, {deviceId}, DesktopObservationSchema);
     return /xterm/i.test(current.applicationId) ? current : undefined;
   }, "desktop Openbox did not open its terminal", 6000);
@@ -387,7 +394,18 @@ if (command === "desktop-cjk-audio") {
     return list.entries.find(file => file.name === `${unique}.txt`);
   }, "Windows-relayed Linux desktop did not create the expected UTF-8 filename", 6000);
   equal(Number(saved.sizeBytes), Buffer.byteLength(unique), "Linux terminal pasted the full UTF-8 text");
-  console.log(JSON.stringify({linuxCjkInput:true,pasteMs,bytes:Number(saved.sizeBytes)}));
+  const copied = await rpc("files/manage", FileManageRequestSchema, {
+    operation:FileOperation.COPY, sources:[{deviceId,path:saved.path}], target:{path:"/"},
+  }, FileManageResultSchema);
+  const [file] = copied.results;
+  ok(file?.target?.path && !file.error, "the Linux result was copied into the isolated workspace");
+  const query = new URLSearchParams({path:file.target.path.replace(/^\/+/, "")});
+  const downloaded = await fetch(`http://127.0.0.1:17863/v1/workbench/file?${query}`, {
+    headers:{authorization:assistant}, signal:AbortSignal.timeout(8000),
+  });
+  equal(downloaded.status, 200);
+  equal(await downloaded.text(), unique, "actual XTerm Unicode input bytes persisted in the Linux file");
+  console.log(JSON.stringify({linuxCjkInput:true,pasteMs,bytes:Number(saved.sizeBytes),exactFileReadback:true}));
 
   const audio = await fetch("http://127.0.0.1:17865/desktop/audio", {
     headers:{authorization:phoneToken}, signal:AbortSignal.timeout(16000),
