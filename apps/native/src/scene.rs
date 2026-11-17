@@ -22,6 +22,7 @@ pub struct Scene {
     pub popup_opacity: f32,
     pub child_popup: Rectangle,
     pub mode_effects: [f32; 4],
+    pub mode_motion: [f32; 4],
     pub keyboard_target: Option<usize>,
     pub agent_pointers: [[[f32; 4]; 5]; 2],
 }
@@ -113,7 +114,8 @@ struct PointerPress {
 
 impl Scene {
     fn occludes_device(&self, point: Point) -> bool {
-        self.layout.chat.contains(point)
+        point.y < self.layout.stage_top
+            || self.layout.chat.contains(point)
             || self.popup.contains(point)
             || self.child_popup.contains(point)
     }
@@ -124,21 +126,17 @@ impl Scene {
         position: Point,
         source: PointerSource,
     ) -> Option<shader::Action<Message>> {
-        for device in [self.focus, 1 - self.focus] {
-            if let Some(from) = self.layout.local(device, position) {
-                state.anchor = position;
-                state.pressed = Some(PointerPress {
-                    device,
-                    from,
-                    source,
-                    started: Instant::now(),
-                    moved: None,
-                    focused: device == self.focus || self.linked,
-                });
-                return Some(shader::Action::publish(Message::Focus(device)).and_capture());
-            }
-        }
-        None
+        let (device, from) = self.layout.device_at(self.focus, true, position)?;
+        state.anchor = position;
+        state.pressed = Some(PointerPress {
+            device,
+            from,
+            source,
+            started: Instant::now(),
+            moved: None,
+            focused: device == self.focus || self.linked,
+        });
+        Some(shader::Action::publish(Message::Focus(device)).and_capture())
     }
 
     fn release_press(
@@ -286,15 +284,9 @@ impl shader::Program<Message> for Scene {
                 return Some(shader::Action::capture());
             }
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
-                let position = cursor.position()?;
-                let (device, p) = match self.layout.local(self.focus, position) {
-                    Some(point) => (self.focus, point),
-                    None if self.linked => {
-                        let other = 1 - self.focus;
-                        (other, self.layout.local(other, position)?)
-                    }
-                    None => return None,
-                };
+                let (device, p) =
+                    self.layout
+                        .device_at(self.focus, self.linked, cursor.position()?)?;
                 let frame = self.frames[device].as_ref()?;
                 let amount = match delta {
                     mouse::ScrollDelta::Lines { y, .. } => y * 96.,
@@ -434,7 +426,7 @@ impl shader::Program<Message> for Scene {
                 device_scale: [
                     self.layout.device_scale[0],
                     self.layout.device_scale[1],
-                    0.,
+                    self.layout.stage_top,
                     0.,
                 ],
                 material: [
@@ -445,6 +437,7 @@ impl shader::Program<Message> for Scene {
                 ],
                 background: style::BACKGROUND.into_linear(),
                 mode_effects: self.mode_effects,
+                mode_motion: self.mode_motion,
                 agent_pointers: self.agent_pointers,
             },
             frames: self.frames.clone(),
@@ -479,6 +472,7 @@ pub struct Uniforms {
     material: [f32; 4],
     background: [f32; 4],
     mode_effects: [f32; 4],
+    mode_motion: [f32; 4],
     agent_pointers: [[[f32; 4]; 5]; 2],
 }
 #[derive(Debug)]
@@ -486,6 +480,8 @@ pub struct Primitive {
     uniforms: Uniforms,
     frames: [Option<Arc<Frame>>; 2],
 }
+mod copilot;
+
 pub struct Pipeline {
     render: wgpu::RenderPipeline,
     backdrop: wgpu::RenderPipeline,
@@ -494,6 +490,9 @@ pub struct Pipeline {
     glass_layout: wgpu::BindGroupLayout,
     glass_textures: [wgpu::Texture; 2],
     glass_groups: [wgpu::BindGroup; 2],
+    shader: wgpu::ShaderModule,
+    copilot: Option<copilot::Draw>,
+    copilot_mask: wgpu::Texture,
     layout: wgpu::BindGroupLayout,
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,
@@ -549,6 +548,7 @@ impl Pipeline {
         layout: &wgpu::BindGroupLayout,
         uniform: &wgpu::Buffer,
         textures: &[wgpu::Texture; 2],
+        copilot_mask: &wgpu::Texture,
         sampler: &wgpu::Sampler,
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -574,6 +574,12 @@ impl Pipeline {
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: wgpu::BindingResource::Sampler(sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(
+                        &copilot_mask.create_view(&Default::default()),
+                    ),
                 },
             ],
         })
@@ -627,6 +633,14 @@ impl shader::Pipeline for Pipeline {
                 binding(
                     3,
                     wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                ),
+                binding(
+                    4,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
                 ),
             ],
         });
@@ -704,7 +718,15 @@ impl shader::Pipeline for Pipeline {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let group = Self::group(device, &layout, &uniform, &textures, &sampler);
+        let copilot_mask = copilot::mask(device, 1, 1);
+        let group = Self::group(
+            device,
+            &layout,
+            &uniform,
+            &textures,
+            &copilot_mask,
+            &sampler,
+        );
         Self {
             render,
             backdrop,
@@ -713,6 +735,9 @@ impl shader::Pipeline for Pipeline {
             glass_layout,
             glass_textures,
             glass_groups,
+            shader,
+            copilot: None,
+            copilot_mask,
             layout,
             group,
             uniform,
@@ -770,12 +795,22 @@ impl shader::Primitive for Primitive {
                 }
             }
         }
+        let copilot_active = self.uniforms.mode_effects[3] > 0.;
+        if copilot_active {
+            let width = self.uniforms.size[0].ceil() as u32;
+            let height = self.uniforms.size[1].ceil() as u32;
+            if pipeline.copilot_mask.width() != width || pipeline.copilot_mask.height() != height {
+                pipeline.copilot_mask = copilot::mask(device, width, height);
+                resized = true;
+            }
+        }
         if resized {
             pipeline.group = Pipeline::group(
                 device,
                 &pipeline.layout,
                 &pipeline.uniform,
                 &pipeline.textures,
+                &pipeline.copilot_mask,
                 &pipeline.sampler,
             );
         }
@@ -790,6 +825,14 @@ impl shader::Primitive for Primitive {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("glass-backdrop"),
         });
+        if copilot_active {
+            pipeline
+                .copilot
+                .get_or_insert_with(|| {
+                    copilot::Draw::new(device, &pipeline.shader, &pipeline.uniform)
+                })
+                .render(&pipeline.copilot_mask, &mut encoder);
+        }
         for (index, render) in [&pipeline.backdrop, &pipeline.horizontal, &pipeline.vertical]
             .into_iter()
             .enumerate()

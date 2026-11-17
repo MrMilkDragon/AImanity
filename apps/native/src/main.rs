@@ -13,6 +13,7 @@ mod files;
 mod host;
 mod knowledge;
 mod layout;
+mod loading;
 mod locale;
 mod location;
 mod modes;
@@ -21,6 +22,7 @@ mod platform;
 mod proxy;
 mod scene;
 mod skills;
+mod spring_slider;
 mod style;
 mod surface;
 #[cfg(target_os = "macos")]
@@ -77,6 +79,7 @@ enum Message {
     InputDone(usize, Result<(), String>, Instant),
     Retry,
     Tick(Instant),
+    StageScrolled(f32),
     Event(Event),
     OpenPanel(Panel, bool),
     PanelHovered(Panel),
@@ -148,10 +151,11 @@ struct App {
     location: location::Location,
     proxy: proxy::Proxy,
     modes: modes::Modes,
+    reduced_motion: bool,
     locale: locale::Locale,
     capture: Option<Capture>,
     cursor: iced::Point,
-    panel_cursor: iced::Point,
+    capture_offset: f32,
     error: String,
     root: String,
     focus: usize,
@@ -164,6 +168,7 @@ struct App {
     streams: Option<iced::task::Handle>,
     size: Size,
     layout: Layout,
+    stage_offset: f32,
     from: Layout,
     target: Layout,
     transition: Option<Instant>,
@@ -210,10 +215,11 @@ impl App {
             location: Default::default(),
             proxy: Default::default(),
             modes: Default::default(),
+            reduced_motion: platform::reduced_motion(),
             locale: Default::default(),
             capture: None,
             cursor: iced::Point::ORIGIN,
-            panel_cursor: iced::Point::ORIGIN,
+            capture_offset: 0.,
             error: String::new(),
             root: String::new(),
             focus: 0,
@@ -226,6 +232,7 @@ impl App {
             streams: None,
             size,
             layout,
+            stage_offset: 0.,
             from: layout,
             target: layout,
             transition: None,
@@ -312,7 +319,12 @@ impl App {
     fn rearrange(&mut self) {
         self.from = self.layout;
         self.target = Layout::target(self.size, self.focus, self.linked, self.aspects());
-        self.transition = Some(Instant::now());
+        self.transition = if self.reduced_motion {
+            self.layout = self.target;
+            None
+        } else {
+            Some(Instant::now())
+        };
     }
     fn accept_link(&mut self, state: wire::DeviceLinkState) {
         if let [Some(phone), Some(pc)] = &self.devices
@@ -332,8 +344,17 @@ impl App {
     fn set_popup(&mut self, open: bool) {
         if self.popup != open {
             self.popup = open;
-            self.from_popup = self.popup_amount;
+            self.reflow_popup();
+        }
+    }
+    fn reflow_popup(&mut self) {
+        if self.reduced_motion {
+            self.popup_amount = f32::from(self.popup);
+            self.panel_size = self.panel_target();
+            self.popup_transition = None;
+        } else {
             self.from_panel = self.panel_size;
+            self.from_popup = self.popup_amount;
             self.popup_transition = Some(Instant::now());
         }
     }
@@ -729,6 +750,7 @@ impl App {
                 if matches!(message, chat::Message::Attachment(_)) {
                     self.set_popup(false);
                     self.pinned = false;
+                    self.keyboard_target = None;
                 }
                 if let Some(client) = &self.connection {
                     let device_id = self.devices[self.focus]
@@ -864,16 +886,12 @@ impl App {
                 let height = (size.height + header).ceil();
                 if self.panel_content_height != height {
                     self.panel_content_height = height;
-                    self.from_panel = self.panel_size;
-                    self.from_popup = self.popup_amount;
-                    self.popup_transition = Some(Instant::now());
+                    self.reflow_popup();
                 }
             }
             Message::Agents(agents::Message::Devices) => {
                 self.show_devices = true;
-                self.from_panel = self.panel_size;
-                self.from_popup = self.popup_amount;
-                self.popup_transition = Some(Instant::now());
+                self.reflow_popup();
                 if let Some(device) = &self.devices[self.focus] {
                     return self.update(Message::Devices(devices::Message::Choose(
                         device.id.clone(),
@@ -882,9 +900,7 @@ impl App {
             }
             Message::CloseDevices => {
                 self.show_devices = false;
-                self.from_panel = self.panel_size;
-                self.from_popup = self.popup_amount;
-                self.popup_transition = Some(Instant::now());
+                self.reflow_popup();
             }
             Message::Devices(message) => {
                 if let Some(client) = &self.connection {
@@ -943,13 +959,11 @@ impl App {
                     let changed = matches!(&message, agents::Message::Registry(Ok(_)));
                     let before = self.panel_target();
                     let task = self.agents.update(message, client).map(Message::Agents);
+                    let reload = changed.then(|| client.clone());
                     if self.panel_target() != before {
-                        self.from_panel = self.panel_size;
-                        self.from_popup = self.popup_amount;
-                        self.popup_transition = Some(Instant::now());
+                        self.reflow_popup();
                     }
-                    if changed {
-                        let client = client.clone();
+                    if let Some(client) = reload {
                         return Task::batch([
                             task,
                             Task::perform(async move { client.history().await }, Message::Chat),
@@ -1051,6 +1065,10 @@ impl App {
                 self.layout = Layout::target(size, self.focus, self.linked, self.aspects());
                 self.transition = None;
             }
+            Message::Event(Event::Window(window::Event::Focused)) => {
+                self.reduced_motion = platform::reduced_motion();
+            }
+            Message::StageScrolled(offset) => self.stage_offset = offset,
             Message::Event(Event::Window(window::Event::CloseRequested)) => {
                 if self.after_stop == Some(AfterStop::Exit) {
                     return Task::none();
@@ -1075,6 +1093,17 @@ impl App {
                         Message::Host(host::Event::Stopped(r))
                     });
                 }
+            }
+            Message::Event(Event::Keyboard(keyboard::Event::KeyPressed {
+                key: keyboard::Key::Named(keyboard::key::Named::Tab),
+                modifiers,
+                ..
+            })) if self.keyboard_target.is_none() => {
+                return if modifiers.shift() {
+                    iced::widget::operation::focus_previous()
+                } else {
+                    iced::widget::operation::focus_next()
+                };
             }
             Message::Event(Event::Keyboard(keyboard::Event::KeyPressed {
                 key: keyboard::Key::Named(keyboard::key::Named::Escape),
@@ -1156,12 +1185,12 @@ impl App {
                     let _ = self.update(Message::Agents(agents::Message::Back));
                 }
                 self.panel = panel;
-                self.panel_cursor = self.cursor;
+                if let Panel::Capture(index) = panel {
+                    self.capture_offset = self.cursor.x - self.layout.toolbars[index].x;
+                }
                 self.pinned = click;
-                self.from_panel = self.panel_size;
-                self.from_popup = self.popup_amount;
-                self.popup_transition = Some(Instant::now());
-                self.set_popup(true);
+                self.popup = true;
+                self.reflow_popup();
                 self.keyboard_target = None;
                 return self.load_panel();
             }
@@ -1233,13 +1262,14 @@ impl App {
             Event::Window(
                 window::Event::Opened { .. }
                 | window::Event::Resized(_)
+                | window::Event::Focused
                 | window::Event::CloseRequested,
             )
             | Event::Window(window::Event::FileDropped(_))
             | Event::Mouse(iced::mouse::Event::CursorMoved { .. })
             | Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => Some(Message::Event(event)),
             Event::Keyboard(keyboard::Event::KeyPressed {
-                key: keyboard::Key::Named(keyboard::key::Named::Escape),
+                key: keyboard::Key::Named(keyboard::key::Named::Escape | keyboard::key::Named::Tab),
                 ..
             }) if status == iced::event::Status::Ignored => Some(Message::Event(event)),
             Event::Mouse(iced::mouse::Event::ButtonReleased(_))
@@ -1252,8 +1282,7 @@ impl App {
         if self.transition.is_some()
             || self.popup_transition.is_some()
             || self.input_started.is_some()
-            || self.modes.animating()
-            || (self.connection.is_none() && !self.phase.is_empty())
+            || (!self.reduced_motion && self.modes.animating())
         {
             subscriptions.push(window::frames().map(Message::Tick));
         }
@@ -1297,13 +1326,8 @@ impl App {
         Subscription::batch(subscriptions)
     }
     fn popup_rect(&self) -> Rectangle {
-        if self.chat.preview.is_some() {
-            return Rectangle {
-                x: 32.,
-                y: 64.,
-                width: (self.size.width - 64.).min(720.),
-                height: self.size.height - 96.,
-            };
+        if let Some(preview) = self.chat.preview_bounds(self.size) {
+            return preview;
         }
         if self.popup_amount > 0. {
             let anchor = self.panel_anchor(self.panel);
@@ -1352,11 +1376,11 @@ impl App {
     ];
     fn panel_anchor(&self, panel: Panel) -> Rectangle {
         if let Panel::Capture(index) = panel {
-            let toolbar = self.layout.toolbars[index];
+            let toolbar = self.layout.scrolled(self.stage_offset).toolbars[index];
             let row_offset = if toolbar.height > 56. { 10. } else { 0. };
             return Rectangle::new(
                 iced::Point::new(
-                    self.panel_cursor.x - 16.,
+                    toolbar.x + self.capture_offset - 16.,
                     toolbar.center_y() - 17. + row_offset,
                 ),
                 Size::new(32., 34.),
@@ -1503,6 +1527,7 @@ impl App {
                         locale,
                         !self.agents.adding() && self.agents.is_editing(),
                         width,
+                        self.reduced_motion,
                     )
                     .map(Message::Agents);
             }
@@ -1567,7 +1592,10 @@ impl App {
         let content = match self.panel {
             Panel::Agent => unreachable!(),
             Panel::Skills => self.skills.view(locale).map(Message::Skills),
-            Panel::Knowledge => self.knowledge.view(locale).map(Message::Knowledge),
+            Panel::Knowledge => self
+                .knowledge
+                .view(locale, self.reduced_motion)
+                .map(Message::Knowledge),
             Panel::Files => self
                 .files
                 .view(body_height, locale)
@@ -1575,7 +1603,10 @@ impl App {
             Panel::Location => self.location.view(locale).map(Message::Location),
             Panel::Proxy => self.proxy.view(locale).map(Message::Proxy),
             Panel::Goal => self.modes.goal_view().map(Message::Modes),
-            Panel::Update => self.updates.view(locale).map(Message::Update),
+            Panel::Update => self
+                .updates
+                .view(locale, self.reduced_motion)
+                .map(Message::Update),
             Panel::Language => column(locale::Locale::all().map(|l| {
                 button(
                     row![
@@ -1625,19 +1656,38 @@ impl App {
                         .push(
                             row![
                                 space::horizontal(),
-                                button(locale.tr("保存图片"))
+                                button(text(locale.tr("保存图片")).size(14))
+                                    .padding([10, 0])
                                     .on_press(Message::SaveCapture)
                                     .style(style::quiet),
-                                button(locale.tr("附到对话"))
+                                button(text(locale.tr("附到对话")).size(14))
                                     .height(style::CONTROL_HEIGHT)
+                                    .padding([0, 16])
                                     .on_press(Message::AttachCapture)
-                                    .style(style::quiet)
+                                    .style(|theme, status| {
+                                        let mut appearance = style::quiet(theme, status);
+                                        let fill = if matches!(
+                                            status,
+                                            iced::widget::button::Status::Hovered
+                                                | iced::widget::button::Status::Pressed
+                                        ) || style::dark(theme)
+                                        {
+                                            style::accent(theme)
+                                        } else {
+                                            iced::Color::from_rgb8(0xf2, 0xf2, 0xf2)
+                                        };
+                                        appearance.background = Some(fill.into());
+                                        appearance
+                                    })
                             ]
                             .spacing(18)
                             .align_y(iced::Center),
                         );
                 } else {
-                    body = body.push(text(locale.tr("正在截图")).size(13));
+                    body = body.push(
+                        container(crate::loading::orb(20., self.reduced_motion))
+                            .center_x(Length::Fill),
+                    );
                 }
                 body.into()
             }
@@ -1666,18 +1716,20 @@ impl App {
                         &self.phase,
                         &self.error,
                         can_stop,
-                        self.started.elapsed(),
+                        self.reduced_motion,
                     )
                     .map(Message::Setup)
             } else {
-                setup.view(&self.error).map(Message::Setup)
+                setup
+                    .view(&self.error, self.reduced_motion)
+                    .map(Message::Setup)
             });
         }
         if self.connection.is_none() && !self.phase.is_empty() {
             return deployment::glass_background(
                 container(
                     column![
-                        deployment::loading(self.started.elapsed()),
+                        loading::orb(180., self.reduced_motion),
                         text(self.locale.tr(&self.phase)).size(14)
                     ]
                     .spacing(16)
@@ -1691,20 +1743,23 @@ impl App {
         let tr = |key: &'static str| self.locale.tr(key);
         let popup = self.popup_rect();
         let child_popup = self.child_rect();
+        let (mode_effects, mode_motion) = self.modes.effects(self.reduced_motion);
+        let visible_layout = self.layout.scrolled(self.stage_offset);
         let scene = scene::Scene {
-            layout: self.layout,
+            layout: visible_layout,
             size: self.size,
             frames: self.frames.clone(),
             focus: self.focus,
             linked: self.linked,
             popup,
             popup_opacity: if self.chat.preview.is_some() {
-                1.
+                0.
             } else {
                 self.popup_amount
             },
             child_popup,
-            mode_effects: self.modes.effects(),
+            mode_effects,
+            mode_motion,
             keyboard_target: self.keyboard_target,
             agent_pointers: std::array::from_fn(|i| {
                 self.agent_traces[i]
@@ -1847,6 +1902,14 @@ impl App {
             .y(nav_top)
             .into(),
         );
+        let stage_top = self.layout.stage_top;
+        let viewport_height = self.size.height - stage_top;
+        let mut stage = vec![
+            space::Space::new()
+                .width(self.size.width)
+                .height(viewport_height + self.layout.overflow)
+                .into(),
+        ];
         for index in 0..2 {
             if self.focus != index && !self.linked {
                 continue;
@@ -1859,7 +1922,12 @@ impl App {
             let name = text(name).size(13);
             let mut tools = row![
                 self.audio[index]
-                    .view(self.connection.is_some(), index, self.locale)
+                    .view(
+                        self.connection.is_some(),
+                        index,
+                        self.locale,
+                        self.reduced_motion
+                    )
                     .map(move |m| Message::Audio(index, m))
             ]
             .align_y(iced::Center);
@@ -1890,22 +1958,19 @@ impl App {
                 32.,
                 34.,
             ));
-            let toolbar = if rect.height > 56. {
+            let toolbar: Element<'_, Message> = if rect.height > 56. {
                 column![name, tools].spacing(4).into()
             } else {
                 row![name, tools].spacing(8).align_y(iced::Center).into()
             };
-            layers.push(
-                pin(container(occlude::behind(
-                    occlude::behind(toolbar, popup),
-                    child_popup,
-                ))
-                .width(rect.width)
-                .height(rect.height)
-                .align_y(iced::Center)
-                .clip(true))
+            stage.push(
+                pin(container(toolbar)
+                    .width(rect.width)
+                    .height(rect.height)
+                    .align_y(iced::Center)
+                    .clip(true))
                 .x(rect.x)
-                .y(rect.y)
+                .y(rect.y - stage_top)
                 .into(),
             );
         }
@@ -1914,39 +1979,66 @@ impl App {
             .as_ref()
             .map(|device| device.name.as_str())
             .unwrap_or(tr(if self.focus == 0 { "手机" } else { "电脑" }));
-        layers.push(
-            pin(container(occlude::behind(
-                occlude::behind(
-                    self.chat
-                        .view(
-                            &self.modes,
-                            self.locale,
-                            device_name,
-                            r.width - 2. * self.layout.chat_padding[1],
-                        )
-                        .map(Message::Conversation),
-                    popup,
-                ),
-                child_popup,
-            ))
+        stage.push(
+            pin(container(
+                self.chat
+                    .view(
+                        &self.modes,
+                        self.locale,
+                        device_name,
+                        r.width - 2. * self.layout.chat_padding[1],
+                        self.size.width <= 760.,
+                        self.reduced_motion,
+                    )
+                    .map(Message::Conversation),
+            )
             .padding(self.layout.chat_padding)
             .width(r.width)
             .height(r.height))
             .x(r.x)
-            .y(r.y)
+            .y(r.y - stage_top)
             .into(),
+        );
+        let stage = scrollable(stack(stage))
+            .width(self.size.width)
+            .height(viewport_height)
+            .direction(surface::tool_scroll())
+            .on_scroll(|viewport| Message::StageScrolled(viewport.absolute_offset().y));
+        let stage =
+            occlude::scroll_around_devices(stage.into(), visible_layout, self.focus, self.linked);
+        layers.push(
+            pin(occlude::behind(occlude::behind(stage, popup), child_popup))
+                .y(stage_top)
+                .into(),
         );
         let p = self.popup_rect();
         if self.chat.preview.is_some() {
             layers.push(
-                pin(container(
-                    self.chat
-                        .preview_view(self.locale)
-                        .map(Message::Conversation),
+                mouse_area(
+                    container(space())
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .style(|_| {
+                            container::Style::default()
+                                .background(iced::Color::BLACK.scale_alpha(0.5))
+                        }),
                 )
-                .width(p.width)
-                .height(p.height)
-                .clip(true))
+                .on_press(Message::Conversation(chat::Message::ClosePreview))
+                .into(),
+            );
+            layers.push(
+                pin(mouse_area(
+                    container(iced::widget::themer(
+                        Some(style::theme()),
+                        self.chat
+                            .preview_view(self.locale, p)
+                            .map(Message::Conversation),
+                    ))
+                    .width(p.width)
+                    .height(p.height)
+                    .clip(true),
+                )
+                .on_press(Message::PanelFocus))
                 .x(p.x)
                 .y(p.y)
                 .into(),
@@ -1955,9 +2047,12 @@ impl App {
             layers.push(
                 pin(mouse_area(
                     container(
-                        container(occlude::behind(self.panel_body(), child_popup))
-                            .width(self.panel_target().width)
-                            .height(p.height),
+                        container(iced::widget::themer(
+                            Some(style::theme()),
+                            occlude::behind(self.panel_body(), child_popup),
+                        ))
+                        .width(self.panel_target().width)
+                        .height(p.height),
                     )
                     .width(p.width)
                     .height(p.height)
@@ -1974,7 +2069,7 @@ impl App {
         } else if self.panel == Panel::Agent {
             Some(
                 self.agents
-                    .view(self.locale, true, self.size.width)
+                    .view(self.locale, true, self.size.width, self.reduced_motion)
                     .map(Message::Agents),
             )
         } else {
@@ -1984,7 +2079,7 @@ impl App {
         };
         if let Some(child) = child {
             layers.push(
-                pin(container(child)
+                pin(container(iced::widget::themer(Some(style::theme()), child))
                     .width(child_popup.width)
                     .height(child_popup.height)
                     .clip(true))

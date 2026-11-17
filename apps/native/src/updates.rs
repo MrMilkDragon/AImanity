@@ -1,8 +1,8 @@
-use crate::{client_update, controls::action_button, locale::Locale, style};
+use crate::{client_update, locale::Locale, style};
 use futures_util::SinkExt;
 use iced::{
-    Element, Font, Task, font,
-    widget::{column, row, text},
+    Element, Font, Length, Task, font,
+    widget::{button, column, container, row, text},
 };
 use semver::Version;
 use std::path::PathBuf;
@@ -95,7 +95,7 @@ impl State {
         )
     }
 
-    pub fn view(&self, locale: Locale) -> Element<'_, Message> {
+    pub fn view(&self, locale: Locale, reduced_motion: bool) -> Element<'_, Message> {
         let Some(offer) = self.offer.as_ref() else {
             return column![].into();
         };
@@ -118,14 +118,24 @@ impl State {
         if !self.error.is_empty() {
             body = body.push(text(&self.error).size(12).color(style::ERROR));
         }
-        body.push(action_button(
-            locale.tr(if self.progress.is_some() {
+        let busy = self.progress.is_some();
+        let action = crate::loading::label(
+            locale.tr(if busy {
                 "正在更新…"
             } else {
                 "确认更新"
             }),
-            self.progress.is_none().then_some(Message::Install),
-        ))
+            13,
+            busy,
+            reduced_motion,
+        );
+        body.push(
+            button(container(action).center_x(Length::Fill))
+                .width(Length::Fill)
+                .height(style::CONTROL_HEIGHT)
+                .style(style::primary)
+                .on_press_maybe((!busy).then_some(Message::Install)),
+        )
         .into()
     }
 }

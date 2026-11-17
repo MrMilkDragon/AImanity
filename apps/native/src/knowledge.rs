@@ -588,7 +588,7 @@ impl Knowledge {
         )
     }
 
-    pub fn view(&self, locale: Locale) -> Element<'_, Message> {
+    pub fn view(&self, locale: Locale, reduced_motion: bool) -> Element<'_, Message> {
         let search = row![
             Icon::Search.view(),
             text_input(locale.tr("搜索"), &self.query)
@@ -607,7 +607,7 @@ impl Knowledge {
         .spacing(8)
         .align_y(iced::Alignment::Center);
         let graph: Element<'_, Message> = if !self.loaded {
-            container(text(locale.tr("读取中…")).size(13).style(style::muted_text))
+            container(crate::loading::orb(22., reduced_motion))
                 .center(Length::Fill)
                 .into()
         } else if self.documents.is_empty() {

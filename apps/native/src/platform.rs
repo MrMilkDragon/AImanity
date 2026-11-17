@@ -4,6 +4,33 @@ pub enum ClipboardContent {
     Png(Vec<u8>),
 }
 
+#[cfg(target_os = "macos")]
+pub fn reduced_motion() -> bool {
+    objc2_app_kit::NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion()
+}
+
+#[cfg(windows)]
+pub fn reduced_motion() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SPI_GETCLIENTAREAANIMATION, SystemParametersInfoW,
+    };
+    let mut animation = 1_i32;
+    let ok = unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            (&mut animation as *mut i32).cast(),
+            0,
+        )
+    };
+    ok != 0 && animation == 0
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn reduced_motion() -> bool {
+    false
+}
+
 pub async fn read_clipboard() -> Result<Option<ClipboardContent>, String> {
     tokio::task::spawn_blocking(|| {
         let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;

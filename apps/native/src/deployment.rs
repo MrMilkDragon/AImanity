@@ -2,11 +2,12 @@ use crate::{
     controls::{Icon, action_button},
     host::Host,
     locale::Locale,
+    spring_slider::SpringSlider,
     style,
 };
 use iced::{
     Element, Length,
-    widget::{button, column, container, image, radio, row, rule, slider, space, stack, text},
+    widget::{button, column, container, image, radio, row, rule, space, stack, text},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -29,6 +30,15 @@ const SETUP_TITLE: iced::Font = iced::Font {
     weight: iced::font::Weight::Semibold,
     ..iced::Font::DEFAULT
 };
+
+fn line() -> rule::Rule<'static> {
+    rule::horizontal(1).style(|_| rule::Style {
+        color: SETUP_LINE,
+        radius: 0.into(),
+        fill_mode: rule::FillMode::Full,
+        snap: true,
+    })
+}
 
 pub fn glass_background<'a, M: 'a>(content: Element<'a, M>) -> Element<'a, M> {
     static BACKDROP: LazyLock<image::Handle> = LazyLock::new(|| {
@@ -401,7 +411,7 @@ impl Setup {
         phase: &'a str,
         error: &'a str,
         can_stop: bool,
-        elapsed: std::time::Duration,
+        reduced_motion: bool,
     ) -> Element<'a, Message> {
         let title = locale.tr(if phase.is_empty() {
             if error.is_empty() {
@@ -414,25 +424,22 @@ impl Setup {
         });
         let mut content = column![].spacing(20).align_x(iced::Center);
         if !phase.is_empty() {
-            content = content.push(loading(elapsed));
+            content = content.push(crate::loading::orb(180., reduced_motion));
         }
         content = content.push(text(title).size(22).font(SETUP_TITLE));
         if !error.is_empty() {
             content = content.push(text(error).size(13).style(style::error_text));
         }
-        if phase.is_empty() {
-            let button = if error.is_empty() {
-                "继续安装"
-            } else {
-                "重试"
-            };
-            content = content.push(action_button(locale.tr(button), Some(Message::Start)));
-        } else if can_stop {
-            content = content.push(action_button(locale.tr("停止安装"), Some(Message::Stop)));
+        let centered = container(content).center(Length::Fill);
+        let mut page = column![].spacing(28);
+        if !self.installed {
+            page = page.push(text(locale.tr("安装")).size(34).font(SETUP_TITLE));
         }
-        let centered = container(container(content).max_width(592)).center(Length::Fill);
+        let details = column![centered].spacing(12);
         #[cfg(target_os = "macos")]
-        if !self.activities.is_empty() {
+        let details = if self.activities.is_empty() {
+            details
+        } else {
             use crate::host::ActivityState::{Completed, Failed, Running};
             let activity = column(self.activities.iter().map(|entry| {
                 let label = match entry.state {
@@ -448,30 +455,48 @@ impl Setup {
                 .into()
             }))
             .spacing(6);
-            return iced::widget::stack![
-                centered,
-                container(activity)
-                    .padding([26, 44])
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .align_y(iced::alignment::Vertical::Bottom)
-            ]
-            .into();
+            details.push(activity)
+        };
+        page = page.push(details.height(Length::Fill));
+        if phase.is_empty() || can_stop {
+            let (label, message) = if can_stop {
+                ("停止", Message::Stop)
+            } else if error.is_empty() {
+                ("继续安装", Message::Start)
+            } else {
+                ("重试", Message::Start)
+            };
+            page = page.push(
+                column![
+                    line(),
+                    row![
+                        space::horizontal(),
+                        button(text(locale.tr(label)).size(14))
+                            .padding([7, 13])
+                            .height(SETUP_CONTROL)
+                            .style(if can_stop {
+                                style::quiet
+                            } else {
+                                style::primary
+                            })
+                            .on_press(message)
+                    ]
+                ]
+                .spacing(14),
+            );
         }
-        centered.into()
+        page.padding(iced::Padding {
+            top: 46.,
+            right: 44.,
+            bottom: 26.,
+            left: 44.,
+        })
+        .into()
     }
 
-    pub fn view<'a>(&'a self, error: &'a str) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, error: &'a str, reduced_motion: bool) -> Element<'a, Message> {
         if let Some(locale) = self.locale {
             let tr = |key: &'static str| locale.tr(key);
-            let line = || {
-                rule::horizontal(1).style(|_| rule::Style {
-                    color: SETUP_LINE,
-                    radius: 0.into(),
-                    fill_mode: rule::FillMode::Full,
-                    snap: true,
-                })
-            };
             let mut content = column![text(tr("配置设备")).size(34).font(SETUP_TITLE)].spacing(28);
             let capacity_error = match (&self.capacity, error) {
                 (_, error) if !error.is_empty() => error,
@@ -485,9 +510,9 @@ impl Setup {
             }
             content = content.push(column![
                 line(),
-                Self::guest(false, self.request.phone, locale),
+                Self::guest(false, self.request.phone, locale, reduced_motion),
                 line(),
-                Self::guest(true, self.request.desktop, locale),
+                Self::guest(true, self.request.desktop, locale, reduced_motion),
                 line(),
             ]);
             let (checks, eligible): (Element<'_, Message>, _) = match &self.capacity {
@@ -649,7 +674,12 @@ impl Setup {
             .into()
         }
     }
-    fn guest(desktop: bool, guest: Guest, locale: Locale) -> Element<'static, Message> {
+    fn guest(
+        desktop: bool,
+        guest: Guest,
+        locale: Locale,
+        reduced_motion: bool,
+    ) -> Element<'static, Message> {
         let tr = |key: &'static str| locale.tr(key);
         let specs: [(&str, Field, &'static [u16], u16); 3] = [
             (tr("处理器"), Field::Cpu, &[1, 2, 4], guest.cpus.into()),
@@ -698,15 +728,10 @@ impl Setup {
                 )
                 .height(21)
                 .align_y(iced::Center),
-                container(
-                    slider(0..=values.len() as u8 - 1, selected as u8, move |index| {
-                        Message::Set(desktop, field, values[usize::from(index)])
-                    })
-                    .height(16)
-                    .style(style::range)
-                )
-                .height(44)
-                .align_y(iced::Center),
+                SpringSlider::new(values.len() as u8 - 1, selected as u8, move |index| {
+                    Message::Set(desktop, field, values[usize::from(index)])
+                })
+                .reduce_motion(reduced_motion),
             ]
             .into()
         }))
@@ -731,82 +756,5 @@ impl Setup {
         .padding([21, 0])
         .align_y(iced::Center)
         .into()
-    }
-}
-pub fn loading<M: 'static>(elapsed: std::time::Duration) -> iced::widget::canvas::Canvas<Orb, M> {
-    iced::widget::canvas::Canvas::new(Orb(elapsed.as_secs_f32()))
-        .width(180)
-        .height(180)
-}
-pub struct Orb(f32);
-impl<M> iced::widget::canvas::Program<M> for Orb {
-    type State = ();
-    fn draw(
-        &self,
-        _: &(),
-        renderer: &iced::Renderer,
-        _: &iced::Theme,
-        bounds: iced::Rectangle,
-        _: iced::mouse::Cursor,
-    ) -> Vec<iced::widget::canvas::Geometry> {
-        use iced::{
-            Color, Point, Vector,
-            widget::canvas::{Frame, Path},
-        };
-        let mut frame = Frame::new(renderer, bounds.size());
-        let size = bounds.width;
-        let unit = size * 0.235;
-        frame.with_save(|frame| {
-            frame.translate(Vector::new(size * 0.5, size * 0.875));
-            frame.scale_nonuniform(Vector::new(1., 0.25));
-            for ring in (1_u8..=16).rev() {
-                frame.fill(
-                    &Path::circle(Point::ORIGIN, unit * 1.51 * f32::from(ring) / 16.),
-                    Color::BLACK.scale_alpha(0.01),
-                );
-            }
-        });
-        let (sin_elevation, cos_elevation) = 0.49_f32.sin_cos();
-        let yaw = -0.44 + self.0 * 0.91;
-        let pulse = (self.0 * 3.7 - 1.95).cos();
-        let return_fold = ((1. - pulse) / 2.).powi(7);
-        let torsion = 0.43 * ((1. + pulse) / 2.).powi(6) - 0.29 * return_fold;
-        let seam = -0.06 + 0.4 * return_fold;
-        let coordinate = |index: u8| f32::from(index) / 4. - 1.;
-        let normal = |index: u8| match index {
-            0 => -1.,
-            8 => 1.,
-            _ => 0.,
-        };
-        for layer in 0..=8 {
-            let y = coordinate(layer);
-            let (s, c) = (yaw + torsion * ((y - seam) * 4.).tanh()).sin_cos();
-            let facing_y = normal(layer) * sin_elevation;
-            for column in 0..=8 {
-                let x = coordinate(column);
-                let facing_x = -normal(column) * s * cos_elevation;
-                for row in 0..=8 {
-                    let facing = (normal(row) * c * cos_elevation)
-                        .max(facing_x)
-                        .max(facing_y);
-                    if facing <= 0. {
-                        continue;
-                    }
-                    let z = coordinate(row);
-                    let depth = z * c - x * s;
-                    let light = 0.66 + (depth * cos_elevation + y * sin_elevation) * 0.17;
-                    let point = Point::new(
-                        size * 0.5 + unit * (x * c + z * s),
-                        size * 0.455 + unit * (depth * sin_elevation - y * cos_elevation),
-                    );
-                    frame.fill(
-                        &Path::circle(point, size * (0.0051 + 0.0043 * light)),
-                        style::FOREGROUND
-                            .scale_alpha((0.35 + 0.65 * light) * (facing * 3.15).min(1.)),
-                    );
-                }
-            }
-        }
-        vec![frame.into_geometry()]
     }
 }

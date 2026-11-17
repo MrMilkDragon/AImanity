@@ -7,9 +7,10 @@ use crate::{
 };
 use ai_phone_api::wire;
 use iced::{
-    Element, Length, Subscription, Task, keyboard,
+    Border, Element, Font, Length, Point, Rectangle, Size, Subscription, Task, font, keyboard,
     widget::{
-        button, column, container, image, markdown, row, scrollable, space, text, text_editor,
+        button, column, container, image, markdown, pin, row, scrollable, space, stack, text,
+        text_editor,
     },
 };
 use prost::Message as _;
@@ -866,6 +867,8 @@ impl Chat {
         locale: crate::locale::Locale,
         device_name: &'a str,
         width: f32,
+        compact: bool,
+        reduced_motion: bool,
     ) -> Element<'a, Message> {
         let copilot = modes.copilot_active();
         let theme = if copilot {
@@ -901,14 +904,12 @@ impl Chat {
         let mut messages = column![].spacing(22);
         if self.has_older {
             messages = messages.push(
-                button(
-                    text(if self.loading_older {
-                        locale.tr("读取中…")
-                    } else {
-                        locale.tr("较早消息")
-                    })
-                    .size(12),
-                )
+                button(crate::loading::label(
+                    locale.tr("较早消息"),
+                    12,
+                    self.loading_older,
+                    reduced_motion,
+                ))
                 .style(style::quiet)
                 .on_press_maybe((!self.loading_older).then_some(Message::Older)),
             );
@@ -967,9 +968,10 @@ impl Chat {
         }
         let editor = text_editor(&self.draft)
             .placeholder(locale.tr("发送消息…"))
-            .height(84)
+            .height(if compact { 76.8 } else { 72. })
             .padding([0, 4])
-            .size(14)
+            .size(if compact { 16 } else { 15 })
+            .line_height(iced::widget::text::LineHeight::Relative(1.6))
             .on_action(Message::Edit)
             .key_binding(|press| {
                 if press.key == keyboard::Key::Named(keyboard::key::Named::Enter)
@@ -1000,6 +1002,18 @@ impl Chat {
                 .map(Message::Mode),
         ]
         .spacing(4);
+        if matches!(self.state.run_status.as_str(), "queued" | "running") {
+            actions = actions.push(crate::loading::label(
+                locale.tr(if self.state.run_status == "queued" {
+                    "待继续"
+                } else {
+                    "正在处理"
+                }),
+                12,
+                true,
+                reduced_motion,
+            ));
+        }
         if self.state.run_status == "paused" {
             actions = actions.push(icon_button(
                 Icon::Play,
@@ -1111,33 +1125,81 @@ impl Chat {
         ]
         .into()
     }
-    pub fn preview_view(&self, locale: crate::locale::Locale) -> Element<'_, Message> {
+    pub fn preview_bounds(&self, viewport: Size) -> Option<Rectangle> {
+        let file = self.preview.as_ref()?;
+        let width = (viewport.width * 0.9).min(960.);
+        let image_height = match self.previews.get(&file.id) {
+            Some(Some(image::Handle::Rgba {
+                width: native_width,
+                height,
+                ..
+            })) => {
+                ((width - 48.) * *height as f32 / *native_width as f32).min(viewport.height * 0.75)
+            }
+            _ => 0.,
+        };
+        let height = 82. + image_height;
+        Some(Rectangle::new(
+            Point::new(
+                (viewport.width - width) * 0.5,
+                (viewport.height - height) * 0.5,
+            ),
+            Size::new(width, height),
+        ))
+    }
+
+    pub fn preview_view(
+        &self,
+        locale: crate::locale::Locale,
+        bounds: Rectangle,
+    ) -> Element<'_, Message> {
         let Some(file) = &self.preview else {
             return space().into();
         };
         let mut content = column![
-            row![
-                icon_button(Icon::Back, locale.tr("返回"), Some(Message::ClosePreview)),
-                text(&file.name).size(14),
-                space::horizontal(),
-                icon_button(
-                    Icon::Download,
-                    locale.tr("保存图片"),
-                    Some(Message::Download(file.clone()))
-                )
-            ]
-            .align_y(iced::Alignment::Center)
+            container(
+                text(&file.name)
+                    .size(18)
+                    .font(Font {
+                        weight: font::Weight::Semibold,
+                        ..Font::DEFAULT
+                    })
+                    .line_height(iced::Pixels(18.))
+                    .wrapping(text::Wrapping::None)
+            )
+            .width(bounds.width - 72.)
+            .clip(true),
         ]
-        .spacing(12);
+        .spacing(16);
         if let Some(Some(handle)) = self.previews.get(&file.id) {
             content = content.push(
                 image(handle.clone())
                     .content_fit(iced::ContentFit::Contain)
                     .width(Length::Fill)
-                    .height(Length::Fill),
+                    .height(bounds.height - 82.),
             );
         }
-        container(content).padding(20).height(Length::Fill).into()
+        let close = crate::surface::tool_action(
+            Icon::Close,
+            locale.tr("关闭"),
+            Some(Message::ClosePreview),
+        );
+        container(stack![
+            container(content).padding(24),
+            pin(close).x(bounds.width - 48.).y(8.)
+        ])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|theme| {
+            container::Style::default()
+                .background(theme.palette().background)
+                .border(Border {
+                    width: 1.,
+                    radius: style::PANEL_RADIUS.into(),
+                    color: theme.palette().text.scale_alpha(0.14),
+                })
+        })
+        .into()
     }
 }
 fn image_decode(bytes: &[u8]) -> Result<image::Handle, String> {

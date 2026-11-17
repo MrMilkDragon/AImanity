@@ -12,6 +12,8 @@ pub struct Layout {
     pub device_scale: [f32; 2],
     pub chat_padding: [f32; 2],
     pub cable: f32,
+    pub stage_top: f32,
+    pub overflow: f32,
 }
 
 impl Layout {
@@ -20,6 +22,7 @@ impl Layout {
         let compact = size.width <= 1000.;
         let wide = linked || focus == 1 || aspects[0] > 1.;
         let stacked = wide || narrow;
+        let stage_top = if narrow { 54. } else { 60. };
         let (inset, top, bottom, gap) = if narrow {
             (14., 62., 18., 18.)
         } else {
@@ -43,14 +46,13 @@ impl Layout {
             }
         };
         let stage_height = if narrow {
-            let preferred = if linked {
+            if linked {
                 (size.height * 0.34).clamp(210., 340.)
             } else if wide {
                 (size.height * 0.32).clamp(190., 320.)
             } else {
                 430.
-            };
-            preferred.min(grid_height - gap - 200.)
+            }
         } else if wide {
             let share = if !linked {
                 0.4
@@ -85,11 +87,12 @@ impl Layout {
             } else {
                 stage_center
             };
+            let regular_header = if rear { 40. } else { 44. };
             let (header_height, header_space) = match (pane_width <= 380., linked) {
                 (true, false) => (72., 84.),
                 (true, true) => (72., 96.),
-                (false, false) => (40., 56.),
-                (false, true) => (40., 64.),
+                (false, false) => (regular_header, 56.),
+                (false, true) => (regular_header, 64.),
             };
             let aspect = aspects[index];
             let width = pane_width.min((stage_height - header_space) * aspect);
@@ -97,7 +100,7 @@ impl Layout {
             let screen_top = if index == 1 {
                 top + (stage_height + header_height + 12. - height) * 0.5
             } else {
-                top + (header_height + 12.).max(header_space.min(56.))
+                top + header_height + 12.
             };
             devices[index] = Rectangle {
                 x: pane_center - width * 0.5,
@@ -105,7 +108,11 @@ impl Layout {
                 width,
                 height,
             };
-            let toolbar_width = width.max(236.).min(pane_width).min(760.);
+            let toolbar_width = if narrow && linked {
+                pane_width
+            } else {
+                width.max(236.).min(pane_width).min(760.)
+            };
             toolbars[index] = Rectangle {
                 x: pane_center - toolbar_width * 0.5 + 2.,
                 y: top,
@@ -153,21 +160,35 @@ impl Layout {
                 device_scale[index] = scale;
             }
         }
-        let chat = if stacked {
+        let (chat, document_bottom) = if stacked {
             let width = grid_width.min(1100.);
-            Rectangle {
+            let minimum_track = if narrow {
+                if wide { 360. } else { 400. }
+            } else {
+                (size.height - 380.).clamp(280., 340.)
+            };
+            let track = (grid_height - stage_height - gap).max(minimum_track);
+            let chat = Rectangle {
                 x: (size.width - width) * 0.5,
                 y: top + stage_height + gap,
                 width,
-                height: grid_height - stage_height - gap,
-            }
+                height: if narrow && !linked {
+                    track.max(400.)
+                } else {
+                    track
+                },
+            };
+            (chat, chat.y + chat.height.max(track + bottom))
         } else {
-            Rectangle {
-                x: inset + stage_width + gap,
-                y: top,
-                width: grid_width - stage_width - gap,
-                height: grid_height,
-            }
+            (
+                Rectangle {
+                    x: inset + stage_width + gap,
+                    y: top,
+                    width: grid_width - stage_width - gap,
+                    height: grid_height,
+                },
+                size.height,
+            )
         };
         Self {
             devices,
@@ -177,6 +198,8 @@ impl Layout {
             device_scale,
             chat_padding: if narrow { [12., 12.] } else { [14., 18.] },
             cable: if linked { 1. } else { 0. },
+            stage_top,
+            overflow: (document_bottom - size.height).max(0.),
         }
     }
 
@@ -200,6 +223,33 @@ impl Layout {
                 mix(self.chat_padding[i], target.chat_padding[i])
             }),
             cable: mix(self.cable, target.cable),
+            stage_top: mix(self.stage_top, target.stage_top),
+            overflow: mix(self.overflow, target.overflow),
+        }
+    }
+
+    pub fn scrolled(mut self, offset: f32) -> Self {
+        let offset = offset.min(self.overflow);
+        for rect in self.devices.iter_mut().chain(&mut self.toolbars) {
+            rect.y -= offset;
+        }
+        self.chat.y -= offset;
+        self
+    }
+
+    pub fn device_at(
+        &self,
+        focus: usize,
+        include_rear: bool,
+        point: Point,
+    ) -> Option<(usize, Point)> {
+        if self.chat.contains(point) || point.y < self.stage_top {
+            return None;
+        }
+        match self.local(focus, point) {
+            Some(point) => Some((focus, point)),
+            None if include_rear => self.local(1 - focus, point).map(|point| (1 - focus, point)),
+            None => None,
         }
     }
 

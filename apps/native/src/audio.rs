@@ -2,11 +2,11 @@ use crate::{
     connection::Connection,
     controls::{Icon, sized_icon_button},
     locale::Locale,
-    style,
+    spring_slider::SpringSlider,
 };
 use iced::{
     Element, Task,
-    widget::{row, slider, text, tooltip},
+    widget::{row, text, tooltip},
 };
 use rodio::{OutputStreamBuilder, Source};
 use std::{
@@ -175,7 +175,13 @@ impl Playback {
         task
     }
 
-    pub fn view(&self, enabled: bool, index: usize, locale: Locale) -> Element<'_, Message> {
+    pub fn view(
+        &self,
+        enabled: bool,
+        index: usize,
+        locale: Locale,
+        reduced_motion: bool,
+    ) -> Element<'_, Message> {
         let volume = if self.active.is_some() {
             self.volume
         } else {
@@ -190,10 +196,10 @@ impl Playback {
             34.,
         );
         let range = tooltip(
-            slider(0..=100, volume, Message::Volume)
+            SpringSlider::new(100, volume, Message::Volume)
                 .width(60)
-                .height(16)
-                .style(style::range),
+                .active(enabled)
+                .reduce_motion(reduced_motion),
             text(format!(
                 "{} {volume}%",
                 locale.tr(if index == 0 {

@@ -393,6 +393,7 @@ impl Agents {
         locale: crate::locale::Locale,
         editing: bool,
         width: f32,
+        reduced_motion: bool,
     ) -> Element<'a, Message> {
         let adding = editing && self.adding();
         let control = style::REGISTRY_CONTROL;
@@ -595,14 +596,16 @@ impl Agents {
                             .on_press_maybe((!self.busy).then_some(Message::Back)),
                     )
                     .push(
-                        button(
-                            text(if self.busy {
+                        button(crate::loading::label(
+                            if self.busy {
                                 locale.tr("正在保存…")
                             } else {
                                 locale.tr("保存")
-                            })
-                            .size(14),
-                        )
+                            },
+                            14,
+                            self.busy,
+                            reduced_motion,
+                        ))
                         .height(control)
                         .padding([0, 17])
                         .style(style::primary)

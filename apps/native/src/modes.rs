@@ -43,12 +43,14 @@ pub struct Modes {
     speech: speech::Copilot,
     model: PathBuf,
     locale: Locale,
-    mode_started: Option<Instant>,
-    mode_time: f32,
+    speech_time: f32,
+    speech_strength: f32,
     goal_time: f32,
     last_tick: Option<Instant>,
     edge: f32,
     edge_changed: Option<(Instant, f32)>,
+    edge_started: Option<Instant>,
+    edge_time: f32,
     last_edge: bool,
 }
 
@@ -177,6 +179,8 @@ impl Modes {
                 if self.speech.active() {
                     self.speech.stop();
                 } else if !chat.conversation_id.is_empty() && !device_id.is_empty() {
+                    self.speech_time = 0.28;
+                    self.speech_strength = 0.7;
                     return self
                         .speech
                         .start(self.model.clone(), self.locale.code(), chat);
@@ -208,7 +212,12 @@ impl Modes {
         }
         let edge_enabled = next.exploring && !next.goal_active;
         if self.last_edge != edge_enabled {
-            self.edge_changed = Some((Instant::now(), self.edge));
+            let now = Instant::now();
+            if edge_enabled && self.edge == 0. {
+                self.edge_started = Some(now);
+                self.edge_time = 0.;
+            }
+            self.edge_changed = Some((now, self.edge));
             self.last_edge = edge_enabled;
         }
         if !next.goal_active {
@@ -265,33 +274,72 @@ impl Modes {
         self.last_edge || self.edge_changed.is_some() || self.speech.active() || self.goal_moving()
     }
     pub fn animate(&mut self, now: Instant) {
-        let start = self.mode_started.get_or_insert(now);
-        self.mode_time = now.saturating_duration_since(*start).as_secs_f32();
-        if let Some(previous) = self.last_tick.replace(now)
-            && self.goal_moving()
-        {
-            self.goal_time += now
+        if let Some(previous) = self.last_tick.replace(now) {
+            let delta = now
                 .saturating_duration_since(previous)
                 .as_secs_f32()
                 .min(0.09);
+            if self.goal_moving() {
+                self.goal_time += delta;
+            }
+            if self.speech.active() {
+                self.speech_time += delta;
+                let target = match self.speech.visual() {
+                    3. => 1.,
+                    2. => 0.82,
+                    _ => 0.68,
+                };
+                self.speech_strength +=
+                    (target - self.speech_strength) * (1. - (-8.3 * delta).exp());
+            }
+        }
+        if let Some(started) = self.edge_started {
+            self.edge_time = now.saturating_duration_since(started).as_secs_f32();
         }
         if let Some((since, from)) = self.edge_changed {
             let duration = if self.last_edge { 1.4 } else { 0.7 };
             let fraction = (now.saturating_duration_since(since).as_secs_f32() / duration).min(1.);
             let target = if self.last_edge { 1. } else { 0. };
-            self.edge = from + (target - from) * fraction;
+            self.edge = from + (target - from) * fraction * fraction * (3. - 2. * fraction);
             if fraction == 1. {
                 self.edge_changed = None;
+                if !self.last_edge {
+                    self.edge_started = None;
+                }
             }
         }
     }
-    pub fn effects(&self) -> [f32; 4] {
+    pub fn effects(&self, reduced_motion: bool) -> ([f32; 4], [f32; 4]) {
         let goal = if self.goal_active() {
-            self.goal_time + 1.
+            if reduced_motion {
+                1.
+            } else {
+                self.goal_time + 1.
+            }
         } else {
             0.
         };
-        [self.mode_time, self.edge, goal, self.speech.visual()]
+        let speech = self.speech.visual();
+        let time = if reduced_motion {
+            0.28
+        } else {
+            self.speech_time
+        };
+        let edge = if reduced_motion {
+            f32::from(self.last_edge)
+        } else {
+            self.edge
+        };
+        let reveal = if reduced_motion {
+            1.1
+        } else {
+            (1. - (1. - (self.edge_time / 1.8).min(1.)).powi(3)) * 1.1
+        };
+        let orbit = if reduced_motion { 0. } else { self.edge_time };
+        (
+            [time, edge, goal, speech],
+            [orbit, reveal, self.speech_strength, 0.],
+        )
     }
     pub fn liberty_button(&self) -> Element<'_, Message> {
         let liberty = self.state.as_ref().is_some_and(|state| state.exploring);
@@ -367,9 +415,10 @@ impl Modes {
                 });
         let editor = text_editor(&self.goal)
             .placeholder(self.locale.tr("填入你的目标与要求"))
-            .height(140)
+            .height(222)
             .padding([14, 16])
             .size(15)
+            .line_height(iced::Pixels(24.))
             .on_action(Message::GoalEdit)
             .style(|theme, status| {
                 let mut s = text_editor::default(theme, status);
@@ -433,6 +482,7 @@ fn mode_button(
     active: bool,
     action: Option<Message>,
 ) -> Element<'static, Message> {
+    let liberty = label == "Liberty";
     button(
         container(
             row![
@@ -451,8 +501,25 @@ fn mode_button(
     .padding([0, 10])
     .style(move |theme, status| {
         let mut s = style::quiet(theme, status);
-        if active {
-            s.background = Some(Color::from_rgba(0.49, 0.46, 0.79, 0.13).into());
+        s.text_color = if liberty && !style::dark(theme) {
+            Color::from_rgb8(0x65, 0x6a, 0x78)
+        } else {
+            style::muted_color(theme)
+        };
+        if active && liberty {
+            s.text_color = Color::from_rgb8(0x51, 0x4b, 0x8a);
+            s.background = Some(
+                iced::gradient::Linear::new(iced::Degrees(115.))
+                    .add_stop(0., Color::from_rgba8(0xb0, 0xdf, 0xfb, 0.188235))
+                    .add_stop(0.5, Color::from_rgba8(0xe2, 0xbf, 0xfb, 0.188235))
+                    .add_stop(1., Color::from_rgba8(0xff, 0xd4, 0xbb, 0.188235))
+                    .into(),
+            );
+        } else if active {
+            s.text_color = theme.palette().text;
+            s.background = Some(theme.palette().background.scale_alpha(0.65).into());
+            s.border.width = 1.;
+            s.border.color = Color::from_rgb8(0x66, 0x66, 0x66);
         }
         if matches!(status, button::Status::Disabled) {
             s.text_color = s.text_color.scale_alpha(0.45);

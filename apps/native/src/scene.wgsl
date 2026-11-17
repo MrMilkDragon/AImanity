@@ -1,10 +1,17 @@
-struct Scene { size:vec4<f32>, phone:vec4<f32>, desktop:vec4<f32>, chat:vec4<f32>, popup:vec4<f32>, child_popup:vec4<f32>, state:vec4<f32>, device_scale:vec4<f32>, material:vec4<f32>, background:vec4<f32>, mode_effects:vec4<f32>, agent_pointers:array<array<vec4<f32>,5>,2> }
+struct Scene { size:vec4<f32>, phone:vec4<f32>, desktop:vec4<f32>, chat:vec4<f32>, popup:vec4<f32>, child_popup:vec4<f32>, state:vec4<f32>, device_scale:vec4<f32>, material:vec4<f32>, background:vec4<f32>, mode_effects:vec4<f32>, mode_motion:vec4<f32>, agent_pointers:array<array<vec4<f32>,5>,2> }
 @group(0) @binding(0) var<uniform> scene:Scene;
 @group(0) @binding(1) var phone:texture_2d<f32>;
 @group(0) @binding(2) var desktop:texture_2d<f32>;
 @group(0) @binding(3) var linear_sampler:sampler;
+@group(0) @binding(4) var copilot_ink:texture_2d<f32>;
 @group(1) @binding(0) var glass_source:texture_2d<f32>;
 struct Vertex { @builtin(position) position:vec4<f32>, @location(0) uv:vec2<f32> }
+struct CopilotMark {
+ @builtin(position) position:vec4<f32>,
+ @location(0) distance:vec2<f32>,
+ @location(1) radius:f32,
+ @location(2) tone:f32
+}
 @vertex fn vertex(@builtin(vertex_index) index:u32)->Vertex {
  let v=array<vec2<f32>,3>(vec2(-1.,-1.),vec2(3.,-1.),vec2(-1.,3.));
  var out:Vertex;out.position=vec4(v[index],0.,1.);out.uv=vec2((v[index].x+1.)*.5,(1.-v[index].y)*.5);return out;
@@ -48,51 +55,166 @@ fn device(p:vec2<f32>,rect:vec4<f32>,angle:f32,index:u32,under:vec3<f32>)->vec3<
  }
  return color;
 }
-fn orbit(p:vec2<f32>,origin:vec2<f32>,radius:f32,phase:f32)->f32 {
- let pos=p-origin;
- let dist=length(pos);
- let turn=atan2(pos.y,pos.x)/6.283185;
- let guide=1.-smoothstep(.35,1.05,abs(dist-radius));
- let tick=(1.-smoothstep(.08,.23,abs(fract((turn+phase)*76.)-.5)))*(1.-smoothstep(1.,2.5,abs(dist-radius+11.)));
- let sweep=smoothstep(.06,.10,fract(turn+phase))*(1.-smoothstep(.28,.33,fract(turn+phase)))*(1.-smoothstep(.4,1.6,abs(dist-radius+22.)));
- let node=1.-smoothstep(2.,3.4,length(pos-(radius-22.)*vec2(cos(phase*(-6.283185)),sin(phase*(-6.283185)))));
- return guide*.19+tick*.33+sweep*.62+node*.78;
+fn line_alpha(distance:f32,width:f32,pixel:f32)->f32 {
+ return 1.-smoothstep(max(0.,(width-pixel)*.5),(width+pixel)*.5,distance);
+}
+fn line_distance(p:vec2<f32>,a:vec2<f32>,b:vec2<f32>)->f32 {
+ let d=b-a;
+ return length(p-a-d*clamp(dot(p-a,d)/dot(d,d),0.,1.));
+}
+fn engraving(p:vec2<f32>,pixel:f32)->f32 {
+ let points=array<vec2<f32>,20>(
+  vec2(-40.,610.),vec2(193.,610.),vec2(557.,303.),vec2(955.,303.),vec2(1094.,203.),vec2(1480.,203.),
+  vec2(-40.,704.),vec2(181.,704.),vec2(521.,421.),vec2(1014.,421.),vec2(1190.,562.),vec2(1485.,562.),
+  vec2(-20.,564.),vec2(155.,564.),vec2(532.,233.),vec2(862.,233.),
+  vec2(1447.,619.),vec2(1198.,619.),vec2(1070.,513.),vec2(920.,513.));
+ var distance=1e4;
+ for(var i=1u;i<20u;i+=1u) {
+  if i!=6u && i!=12u && i!=16u {
+   let a=points[i-1u];
+   let b=points[i];
+   if all(p>=min(a,b)-vec2(pixel)) && all(p<=max(a,b)+vec2(pixel)) {
+    distance=min(distance,line_distance(p,a,b));
+   }
+  }
+ }
+ return line_alpha(distance,.85,pixel)*.29;
+}
+fn guide(distance:f32,radii:vec3<f32>,pixel:f32)->f32 {
+ let d=abs(vec3(distance)-radii);
+ return line_alpha(min(d.x,min(d.y,d.z)),.8,pixel)*.29;
+}
+fn orbit(p:vec2<f32>,radii:vec3<f32>,phase:f32,node:vec2<f32>,node_radius:f32,pixel:f32)->f32 {
+ let distance=length(p);
+ if distance>radii.x+4. || distance<min(radii.y,radii.z)-4. {return 0.;}
+ let angle=fract(atan2(p.y,p.x)/6.283185-phase)*360.;
+ let tick=select(0.,line_alpha(abs(distance-radii.x),4.,pixel),fract(angle/5.)<.2);
+ let swept=angle<69. || (angle>=87. && angle<98.) || (angle>=196. && angle<232.);
+ let sweep=select(0.,line_alpha(abs(distance-radii.y),1.8,pixel),swept);
+ let dash=fract(angle/20.)*20.;
+ let thread=select(0.,line_alpha(abs(distance-radii.z),1.,pixel),radii.y!=radii.z && (dash<6. || (dash>=8. && dash<10.)));
+ let turn=phase*6.283185;
+ let rotated=vec2(node.x*cos(turn)-node.y*sin(turn),node.x*sin(turn)+node.y*cos(turn));
+ let point=1.-smoothstep(node_radius-pixel*.5,node_radius+pixel*.5,length(p-rotated));
+ return max(max(tick*.54,sweep*.61),max(thread*.36,point*.8));
 }
 fn goal_background(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
  let size=scene.size.xy;
  let uv=p/size;
- let wash=exp(-length((uv-vec2(.22,.46))*vec2(3.,2.5))*.94);
- let rose=exp(-length((uv-vec2(.82,.71))*vec2(2.8,3.0)));
- let c=mix(mix(under,vec3(.66,.58,.8),wash*.23),vec3(.84,.65,.49),rose*.16);
- let scale=min(size.x,size.y)/800.;
+ let lavender=1.-clamp(length((uv-vec2(.28,.46))/vec2(1.018,.764))/.57,0.,1.);
+ let sand=1.-clamp(length((uv-vec2(.78,.76))/vec2(1.103,1.075))/.48,0.,1.);
+ let c=mix(mix(under,vec3(.79130,.59720,.46778),sand*.286),vec3(.74540,.68669,.85499),lavender*.431);
+ let scale=max(size.x/1440.,size.y/900.);
+ let q=(p-size*.5)/scale+vec2(720.,450.);
  let t=scene.mode_effects.z-1.;
- let left=vec2(.18,.54)*size;
- let right=vec2(.96,.67)*size;
- let ring=orbit(p,left,306.*scale,t/48.)+orbit(p,left,191.*scale,-t/33.)+orbit(p,right,210.*scale,.196-t/56.);
- let diameter=length((p-left)/scale);
- let outer=1.-smoothstep(.25,1.25,abs(diameter-336.));
- return mix(c,mix(vec3(.43,.34,.64),vec3(.73,.43,.22),uv.x),min(1.,ring*.52+outer*.13));
+ let left=(q-vec2(291.,485.))/1.29;
+ let right=(q-vec2(1370.,544.))/1.18;
+ let left_pixel=1./(scale*1.29);
+ let right_pixel=1./(scale*1.18);
+ let guides=max(guide(length(left),vec3(326.,294.,160.),left_pixel),guide(length(right),vec3(218.,137.,137.),right_pixel));
+ let rings=max(max(orbit(left,vec3(294.,272.,260.),t/48.,vec2(272.,0.),3.,left_pixel),
+  orbit(left,vec3(195.,171.,171.),-t/33.,vec2(0.,-171.),3.5,left_pixel)),
+  orbit(right,vec3(218.,207.,189.),(t+11.)/56.,vec2(-207.,0.),3.,right_pixel));
+ let position=clamp((q.x/1440.+1.-q.y/900.)*.5,0.,1.);
+ let purple=vec3(.24228,.13843,.44520);
+ let steel=vec3(.21586,.31399,.49102);
+ let copper=vec3(.53328,.26225,.10946);
+ let gold=vec3(.89627,.46778,.22323);
+ let metal=select(mix(purple,steel,position/.42),
+  select(mix(steel,copper,(position-.42)/.38),mix(copper,gold,(position-.8)/.2),position>=.8),position>=.42);
+ return mix(c,metal,max(max(guides,rings),engraving(q,1./scale)));
+}
+fn mark_position(p:vec2<f32>)->vec4<f32> {
+ return vec4(p.x/scene.size.x*2.-1.,1.-p.y/scene.size.y*2.,0.,1.);
+}
+@vertex fn copilot_particle(@builtin(vertex_index) vertex_index:u32,@builtin(instance_index) point:u32)->CopilotMark {
+ let quad=array<vec2<f32>,6>(vec2(-1.,-1.),vec2(1.,-1.),vec2(1.,1.),vec2(-1.,-1.),vec2(1.,1.),vec2(-1.,1.));
+ let size=scene.size.xy;
+ let scale=min(size.x,size.y);
+ let time=scene.mode_effects.x;
+ let x=2.*f32(point%52u)/51.-1.;
+ let z=2.*f32(point/52u)/17.-1.;
+ let phase=time*2.75;
+ let yaw=-.18+.10*sin(time*1.35);
+ let depth=scale*.057;
+ let crest=pow(1.-.78*abs(x),1.2);
+ let seed=f32(point)*2.399963;
+ let wave=cos(phase-x*2.5+z*.36)*crest*.58;
+ let ripple=sin(phase*2.1+x*18.+z*6.)*.128;
+ let scatter=sin(seed+phase*2.6)*.107;
+ let near=(z+1.)*.5;
+ let perspective=.87+near*.13;
+ let position=vec2(
+  size.x*.5+(x*cos(yaw)+z*sin(yaw)*.16)*size.x*.465*perspective,
+  size.y*.49+z*depth+x*depth*yaw-(wave+ripple+scatter)*scale*.108*scene.mode_motion.z);
+ let sparkle=.5+.5*cos(seed+phase*1.74);
+ let radius=clamp(scale/435.,.58,2.3)*(.55+near*.38+sparkle*.44);
+ let shades=array<f32,5>(.18,.32,.51,.72,.94);
+ var mark:CopilotMark;
+ mark.distance=quad[vertex_index]*(radius+.5);
+ mark.position=mark_position(position+mark.distance);
+ mark.radius=radius;
+ mark.tone=shades[min(4u,u32((near*.52+sparkle*.47)*5.))];
+ return mark;
+}
+const WAVE_POINTS=array<vec2<f32>,56>(
+ vec2(-70.,240.),vec2(34.,236.),vec2(99.,263.),vec2(147.,235.),vec2(212.,159.),vec2(250.,202.),vec2(309.,401.),vec2(355.,308.),vec2(398.,55.),vec2(444.,149.),vec2(513.,323.),vec2(565.,254.),vec2(672.,220.),vec2(795.,240.),
+ vec2(-70.,240.),vec2(18.,244.),vec2(86.,216.),vec2(145.,244.),vec2(198.,305.),vec2(246.,274.),vec2(309.,79.),vec2(350.,171.),vec2(410.,408.),vec2(452.,319.),vec2(511.,188.),vec2(564.,223.),vec2(664.,264.),vec2(795.,240.),
+ vec2(-70.,240.),vec2(43.,238.),vec2(91.,263.),vec2(148.,237.),vec2(211.,194.),vec2(250.,221.),vec2(307.,349.),vec2(352.,289.),vec2(410.,109.),vec2(452.,191.),vec2(520.,286.),vec2(563.,255.),vec2(656.,227.),vec2(795.,240.),
+ vec2(-70.,240.),vec2(33.,241.),vec2(90.,225.),vec2(154.,243.),vec2(216.,274.),vec2(251.,257.),vec2(310.,150.),vec2(350.,199.),vec2(412.,356.),vec2(449.,294.),vec2(513.,206.),vec2(563.,230.),vec2(661.,247.),vec2(795.,240.));
+@vertex fn copilot_wave(@builtin(vertex_index) vertex_index:u32,@builtin(instance_index) wave:u32)->CopilotMark {
+ let step=vertex_index/2u;
+ let segment=min(step/24u,5u);
+ let t=f32(step-segment*24u)/24.;
+ let u=1.-t;
+ let base=wave*14u;
+ let end=base+segment*2u+3u;
+ var a=WAVE_POINTS[base];
+ var b=WAVE_POINTS[base+1u];
+ if segment>0u {
+  a=WAVE_POINTS[end-2u];
+  b=2.*a-WAVE_POINTS[end-3u];
+ }
+ let c=WAVE_POINTS[end-1u];
+ let d=WAVE_POINTS[end];
+ let activity=u32(scene.mode_effects.w)-1u;
+ let duration=array<f32,3>(7.,2.7,2.2)[activity];
+ let delay=array<f32,4>(0.,.8,1.6,1.1)[wave];
+ let traversal=1.-abs(2.*fract((scene.mode_effects.x+delay)/(2.*duration))-1.);
+ let drift=.5-.5*cos(select(traversal,1.-traversal,wave%2u==1u)*3.141593);
+ let height=array<f32,3>(.5,1.28,1.65)[activity]*mix(.69,1.14,drift);
+ let tone=array<f32,3>(.28,.43,.48)[activity]*array<f32,4>(1.,.7,.5,.45)[wave];
+ let scale=scene.chat.zw/vec2(720.,480.)*vec2(1.,height);
+ let xyz=a*u*u*u+3.*b*u*u*t+3.*c*u*t*t+d*t*t*t;
+ let center=(xyz-vec2(0.,240.))*scale+scene.chat.xy+vec2(mix(-.04,.04,drift)*scene.chat.z,scene.chat.w*.5);
+ let slope=(3.*u*u*(b-a)+6.*u*t*(c-b)+3.*t*t*(d-c))*scale;
+ let normal=normalize(vec2(-slope.y,slope.x));
+ let side=select(-1.,1.,vertex_index%2u==1u);
+ var mark:CopilotMark;
+ mark.position=mark_position(center+side*normal);
+ mark.distance=vec2(side,0.);
+ mark.radius=.5;
+ mark.tone=tone;
+ return mark;
+}
+@fragment fn copilot_stroke(mark:CopilotMark)->@location(0) vec4<f32> {
+ let coverage=clamp(mark.radius+.5-length(mark.distance),0.,1.);
+ return vec4(1.,1.,1.,mark.tone*coverage);
 }
 fn copilot_background(p:vec2<f32>)->vec3<f32> {
  let size=scene.size.xy;
  let uv=p/size;
- let time=scene.mode_effects.x;
- let tilt=(uv.x-.5)*.028*cos(time*.73);
- let phase=time*2.75-(uv.x-.5)*5.;
- let rise=(1.-abs(uv.x-.5)*1.52)*.072;
- let amplitude=.61+scene.mode_effects.w*.13;
- let crest=cos(phase)*rise*amplitude+sin(phase*1.89)*.011;
- let row=(uv.y-.49+crest-tilt)*size.y/min(size.x,size.y)*127.;
- let col=(uv.x-.5)*56.+floor(row+.5)*.12;
- let dot_distance=length(vec2((fract(col+.5)-.5)*size.x/56.,(fract(row+.5)-.5)*min(size.x,size.y)/127.));
- let dot=(1.-smoothstep(.65,1.7,dot_distance))*(1.-smoothstep(7.4,9.2,abs(row)))*smoothstep(.025,.08,min(uv.x,1.-uv.x));
- let sparkle=.62+sin(floor(col+.5)*2.399+floor(row+.5)*.57+time*4.1)*.27;
- let top=exp(-length((uv-vec2(.48,.02))*vec2(1.7,1.4))*3.);
- let floor_grid_a=fract((uv.x+(uv.y-.58)*1.72)*18.);
- let floor_grid_b=fract((uv.x-(uv.y-.58)*1.72)*18.);
- let grid=max(1.-smoothstep(.016,.033,min(floor_grid_a,1.-floor_grid_a)),1.-smoothstep(.016,.033,min(floor_grid_b,1.-floor_grid_b)));
- let plane=smoothstep(.58,.70,uv.y)*(1.-smoothstep(.72,.90,uv.y));
- return vec3(.013+.022*top+grid*plane*.019)+vec3(dot*sparkle*.64);
+ let radial=1.-clamp(length((uv-vec2(.48,.02))/vec2(.735,1.386))/.74,0.,1.);
+ let gradient=mix(mix(.02624,.01229,uv.y),.03689,radial);
+ let y=(uv.y-.58)/.32;
+ let directions=abs(fract((vec2(uv.x)+vec2(2.,-2.)*y)*16.+.5)-vec2(.5));
+ let distance=min(directions.x,directions.y)/length(vec2(16./size.x,100./size.y));
+ let intensity=select(0.,min(y/.4,(1.-y)/.6)*.141,y>0.&&y<1.);
+ let grid=line_alpha(distance,.8,1.)*intensity;
+ let stretch=vec2(size.x*.46,min(size.x,size.y)*.046);
+ let shadow=1.-clamp((length((p-vec2(.5,.71)*size)/stretch)-.08)/.92,0.,1.);
+ let points=textureSampleLevel(copilot_ink,linear_sampler,uv,0.).r;
+ return vec3(mix(mix(gradient,.46208,grid)*(1.-shadow*.667),.93869,points));
 }
 fn cable(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
  let a=vec2(scene.phone.x+scene.phone.z*.5,scene.phone.y+scene.phone.w);
@@ -118,8 +240,9 @@ fn cable(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
 }
 fn base(p:vec2<f32>)->vec3<f32>{
  var c=scene.background.rgb;
- if scene.mode_effects.w>0. {c=copilot_background(p);}
  if scene.mode_effects.z>0. {c=goal_background(p,c);}
+ if scene.mode_effects.w>0. {c=copilot_background(p);}
+ if p.y<scene.device_scale.z {return c;}
  if scene.state.z<.5 {
   c=device(p,scene.desktop,scene.state.y,1u,c);c=device(p,scene.phone,scene.state.x,0u,c);
  }else{
@@ -151,8 +274,8 @@ fn glass(p:vec2<f32>,r:vec4<f32>,under:vec3<f32>)->vec3<f32>{
  let dist=sdf(p,r,scene.material.x);
  if dist>1. {return under*(1.-exp(-max(dist,0.)*.1)*.018);}
  let copilot=scene.mode_effects.w>0.;
- let backdrop=textureSampleLevel(glass_source,linear_sampler,p/scene.size.xy,0.).rgb;
- var c=mix(backdrop,vec3(select(1.,.022,copilot)),scene.material.y);
+ let backdrop=select(textureSampleLevel(glass_source,linear_sampler,p/scene.size.xy,0.).rgb,under,copilot);
+ var c=mix(backdrop,vec3(select(1.,.015,copilot)),scene.material.y);
  let edge=smoothstep(-scene.material.w-.5,-.5,dist)*(1.-smoothstep(-.5,.5,dist));
  c=mix(c,select(vec3(.1384,.1812,.2462),vec3(.14),copilot),edge*select(.42,1.,copilot));
  return mix(c,under,smoothstep(0.,1.,dist));
@@ -166,40 +289,58 @@ fn tool_glass(p:vec2<f32>,r:vec4<f32>,under:vec3<f32>)->vec3<f32>{
   let d2=max(sdf(p-vec2(0.,2.),r,radius),0.)/4.;
   return under*(1.-exp(-d1*d1)*.14-exp(-d2*d2)*.039);
  }
- let copilot=scene.mode_effects.w>0.;
  let backdrop=textureSampleLevel(glass_source,linear_sampler,p/scene.size.xy,0.).rgb;
  let luminance=dot(backdrop,vec3(.2126,.7152,.0722));
  let saturated=mix(vec3(luminance),backdrop,1.05);
- var glass=mix(saturated,vec3(select(1.,.015,copilot)),scene.material.y);
+ var glass=mix(saturated,vec3(1.),scene.material.y);
  let edge=1.-smoothstep(0.,scene.material.w+.5,abs(dist+scene.material.w*.5));
- glass=mix(glass,vec3(select(.7305,.1329,copilot)),edge);
+ glass=mix(glass,vec3(.7305),edge);
  return mix(glass,under,smoothstep(0.,1.,dist));
+}
+fn liberty_falloff(point:f32)->f32 {
+ if point<=16. {return mix(1.,.466667,point/16.);}
+ if point<=40. {return mix(.466667,.133333,(point-16.)/24.);}
+ return .133333*(1.-clamp((point-40.)/36.,0.,1.));
+}
+fn liberty_color(turn:f32)->vec3<f32> {
+ let palette=array<vec3<f32>,7>(
+  vec3(.12477,.69387,.83880),vec3(.18447,.22697,.91310),vec3(.43415,.18782,.81485),
+  vec3(.84687,.31399,.52100),vec3(1.,.53948,.29177),vec3(.16513,.72306,.61721),vec3(.12477,.69387,.83880));
+ let stops=array<f32,7>(0.,.18,.35,.52,.68,.84,1.);
+ for(var i=1u;i<6u;i+=1u) {
+  if turn<stops[i] {return mix(palette[i-1u],palette[i],(turn-stops[i-1u])/(stops[i]-stops[i-1u]));}
+ }
+ return mix(palette[5u],palette[6u],(turn-.84)/.16);
+}
+fn liberty_glow(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
+ let axes=min(p,scene.size.xy-p);
+ let edge=min(axes.x,axes.y);
+ if edge>=76. {return under;}
+ let distance=length(p-scene.size.xy)/length(scene.size.xy);
+ let reveal=scene.mode_motion.y;
+ let opacity=scene.mode_effects.y*(1.-smoothstep(max(0.,reveal-.1),reveal,distance));
+ let offset=p-scene.size.xy*.5;
+ let turn=fract(atan2(offset.x,-offset.y)/6.283185-1./12.-scene.mode_motion.x/14.);
+ let palette=liberty_color(turn);
+ let horizontal=liberty_falloff(axes.x);
+ let vertical=liberty_falloff(axes.y);
+ let halo=(1.-(1.-vertical)*(1.-horizontal))*.6*opacity;
+ let rim=(1.-smoothstep(1.,2.,edge))*.85*opacity;
+ let reflection=max(0.,max(1.-turn/.16,(turn-.82)/.18))*.65;
+ return mix(mix(under,palette,halo),mix(palette,vec3(1.),reflection),rim);
 }
 @fragment fn fragment(v:Vertex)->@location(0) vec4<f32>{
  let p=v.uv*scene.size.xy;
  var c=base(p);
- c=glass(p,scene.chat,c);
- if scene.mode_effects.w>0. && sdf(p,scene.chat,scene.material.x)<0. {
-  let uv=(p-scene.chat.xy)/scene.chat.zw;
-  let t=scene.mode_effects.x;
-  let envelope=sin(uv.x*3.14159)*sin(uv.x*3.14159);
-  let amplitude=.035+.033*scene.mode_effects.w;
-  var waves=0.;
-  for(var i=0.;i<4.;i+=1.) {
-   let y=.52+sin(uv.x*(11.+i*.8)+i*.72+t*(.54+scene.mode_effects.w*.2))*amplitude*envelope;
-   waves+=1.-smoothstep(.3,1.5,abs(uv.y-y)*scene.chat.w);
-  }
-  c+=vec3(waves*envelope*.16);
+ if p.y>=scene.device_scale.z {c=glass(p,scene.chat,c);}
+ if p.y>=scene.device_scale.z && scene.mode_effects.w>0. && sdf(p,scene.chat,scene.material.x)<0. {
+  let x=(p.x-scene.chat.x)/scene.chat.z;
+  let mask=clamp(min(x,1.-x)/.1,0.,1.);
+  let ink=textureSampleLevel(copilot_ink,linear_sampler,p/scene.size.xy,0.).g;
+  c=mix(c,vec3(.90466),ink*mask);
  }
- if scene.popup.z>0. {c=mix(c,tool_glass(p,scene.popup,c),scene.size.w);}
+ if scene.popup.z>0. && scene.size.w>0. {c=mix(c,tool_glass(p,scene.popup,c),scene.size.w);}
  if scene.child_popup.z>0. {c=tool_glass(p,scene.child_popup,c);}
- if scene.mode_effects.y>0. {
-  let uv=p/scene.size.xy;
-  let edge=min(min(p.x,scene.size.x-p.x),min(p.y,scene.size.y-p.y));
-  let phase=(atan2(uv.y-.5,uv.x-.5)/6.283185-scene.mode_effects.x/14.)*6.283185;
-  let palette=.55+.42*cos(vec3(phase-.2,phase-2.3,phase-4.4));
-  let width=(1.-smoothstep(0.,1.5,edge))*.74+exp(-edge*.044)*.30;
-  c=mix(c,palette,clamp(scene.mode_effects.y*width,0.,1.));
- }
+ if scene.mode_effects.y>0. {c=liberty_glow(p,c);}
  return vec4(c,1.);
 }

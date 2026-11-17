@@ -6,11 +6,39 @@ use iced::advanced::{
 use iced::{Element, Event, Length, Rectangle, Renderer, Size, Theme, mouse};
 
 pub fn behind<'a, M: 'a>(content: Element<'a, M>, panel: Rectangle) -> Element<'a, M> {
-    Element::new(Behind { content, panel })
+    Element::new(Behind {
+        content,
+        occlusion: Occlusion::Panel(panel),
+    })
+}
+
+pub fn scroll_around_devices<'a, M: 'a>(
+    content: Element<'a, M>,
+    layout: crate::layout::Layout,
+    focus: usize,
+    linked: bool,
+) -> Element<'a, M> {
+    Element::new(Behind {
+        content,
+        occlusion: Occlusion::DeviceInput {
+            layout,
+            focus,
+            linked,
+        },
+    })
+}
+
+enum Occlusion {
+    Panel(Rectangle),
+    DeviceInput {
+        layout: crate::layout::Layout,
+        focus: usize,
+        linked: bool,
+    },
 }
 struct Behind<'a, M> {
     content: Element<'a, M>,
-    panel: Rectangle,
+    occlusion: Occlusion,
 }
 impl<M> Widget<M, Theme, Renderer> for Behind<'_, M> {
     fn tag(&self) -> tree::Tag {
@@ -58,9 +86,27 @@ impl<M> Widget<M, Theme, Renderer> for Behind<'_, M> {
         shell: &mut Shell<'_, M>,
         viewport: &Rectangle,
     ) {
-        if matches!(event, Event::Mouse(_))
-            && cursor.position().is_some_and(|p| self.panel.contains(p))
-        {
+        let blocked = match (&self.occlusion, event) {
+            (Occlusion::Panel(panel), Event::Mouse(_)) => {
+                cursor.position().is_some_and(|p| panel.contains(p))
+            }
+            (
+                Occlusion::DeviceInput {
+                    layout,
+                    focus,
+                    linked,
+                },
+                Event::Mouse(mouse::Event::WheelScrolled { .. }),
+            ) => cursor
+                .position()
+                .is_some_and(|point| layout.device_at(*focus, *linked, point).is_some()),
+            (
+                Occlusion::DeviceInput { layout, focus, .. },
+                Event::Touch(iced::touch::Event::FingerPressed { position, .. }),
+            ) => layout.device_at(*focus, true, *position).is_some(),
+            _ => false,
+        };
+        if blocked {
             return;
         }
         self.content.as_widget_mut().update(
@@ -81,7 +127,11 @@ impl<M> Widget<M, Theme, Renderer> for Behind<'_, M> {
             return;
         };
         let viewport = &bounds;
-        let Some(hole) = viewport.intersection(&self.panel) else {
+        let hole = match self.occlusion {
+            Occlusion::Panel(panel) => viewport.intersection(&panel),
+            Occlusion::DeviceInput { .. } => None,
+        };
+        let Some(hole) = hole else {
             self.content
                 .as_widget()
                 .draw(tree, renderer, theme, style, layout, cursor, viewport);
@@ -132,7 +182,8 @@ impl<M> Widget<M, Theme, Renderer> for Behind<'_, M> {
         viewport: &Rectangle,
         renderer: &Renderer,
     ) -> mouse::Interaction {
-        if cursor.position().is_some_and(|p| self.panel.contains(p)) {
+        if matches!(self.occlusion, Occlusion::Panel(panel) if cursor.position().is_some_and(|p| panel.contains(p)))
+        {
             return mouse::Interaction::None;
         }
         self.content

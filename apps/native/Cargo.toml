@@ -51,7 +51,7 @@ strip = "debuginfo"
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "=0.2.191"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSMenu", "NSMenuItem"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSAccessibility", "NSApplication", "NSMenu", "NSMenuItem", "NSWorkspace"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSString", "NSThread"] }
 
 [target.'cfg(windows)'.dependencies]

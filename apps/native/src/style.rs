@@ -1,7 +1,7 @@
 use iced::{
     Color, Size, Theme,
     theme::Palette,
-    widget::{button, slider, text},
+    widget::{button, text},
 };
 use std::sync::OnceLock;
 
@@ -94,11 +94,14 @@ pub fn copilot_theme() -> Theme {
 
 pub fn muted_text(theme: &Theme) -> text::Style {
     text::Style {
-        color: Some(if dark(theme) {
-            Color::from_rgb8(188, 188, 188)
-        } else {
-            MUTED
-        }),
+        color: Some(muted_color(theme)),
+    }
+}
+pub fn muted_color(theme: &Theme) -> Color {
+    if dark(theme) {
+        Color::from_rgb8(188, 188, 188)
+    } else {
+        MUTED
     }
 }
 
@@ -108,7 +111,7 @@ pub fn error_text(theme: &Theme) -> text::Style {
     }
 }
 
-fn dark(theme: &Theme) -> bool {
+pub fn dark(theme: &Theme) -> bool {
     theme.palette().background == COPILOT_BACKGROUND
 }
 
@@ -136,30 +139,6 @@ pub fn quiet(theme: &Theme, status: button::Status) -> button::Style {
         let ink = if dark(theme) { 1. } else { 0. };
         style.background = Some(Color::from_rgba(ink, ink, ink, 0.055).into());
     }
-    style
-}
-
-pub fn range(theme: &Theme, status: slider::Status) -> slider::Style {
-    let mut style = slider::default(theme, status);
-    let ink = theme.palette().text;
-    let rail = if dark(theme) {
-        ink.scale_alpha(0.24)
-    } else {
-        Color::from_rgb8(222, 222, 222)
-    };
-    style.rail.width = 4.;
-    style.rail.backgrounds = (rail.into(), rail.into());
-    style.rail.border.radius = 1.into();
-    style.handle.shape = slider::HandleShape::Rectangle {
-        width: match status {
-            slider::Status::Active => 12,
-            slider::Status::Hovered => 13,
-            slider::Status::Dragged => 15,
-        },
-        border_radius: 4.into(),
-    };
-    style.handle.background = ink.into();
-    style.handle.border_width = 0.;
     style
 }
 
