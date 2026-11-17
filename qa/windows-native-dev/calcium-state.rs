@@ -34,7 +34,9 @@ struct State {
     request: String,
     sent: String,
     reply: String,
-    file: String,
+    android_file: String,
+    workspace_path: String,
+    linux_path: String,
     file_content: String,
     disk: String,
 }
@@ -130,6 +132,26 @@ impl Workbench {
                 .bytes()
                 .await?,
         )?)
+    }
+
+    async fn file(&self, path: &str) -> Result<Vec<u8>> {
+        let prefix = if self.base == OLD { "/api" } else { "/v1" };
+        let request = self
+            .http
+            .get(format!("{}{prefix}/workbench/file", self.base))
+            .query(&[("path", path.trim_start_matches('/'))]);
+        let request = if self.base == OLD {
+            request.header("cookie", &self.token)
+        } else {
+            request.bearer_auth(self.token.trim())
+        };
+        Ok(request
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?
+            .to_vec())
     }
 }
 
@@ -404,6 +426,7 @@ async fn seed(workbench: &Workbench, home: &Path) -> Result<State> {
         )
         .await?;
     let location = FileLocation::decode(uploaded.bytes().await?)?;
+    let workspace_path = location.path.clone();
     let copied: FileManageResult = workbench
         .rpc(
             "files/manage",
@@ -420,6 +443,12 @@ async fn seed(workbench: &Workbench, home: &Path) -> Result<State> {
         .await?;
     assert_eq!(copied.results.len(), 1);
     assert_eq!(copied.results[0].error, "");
+    let linux_path = copied.results[0]
+        .target
+        .as_ref()
+        .ok_or("Linux copy omitted its destination")?
+        .path
+        .clone();
     android_file(&format!(
         "printf '%s' '{file_content}' > '/sdcard/Download/{file}'"
     ))
@@ -437,7 +466,9 @@ async fn seed(workbench: &Workbench, home: &Path) -> Result<State> {
         request,
         sent,
         reply,
-        file,
+        android_file: file,
+        workspace_path,
+        linux_path,
         file_content,
         disk,
     };
@@ -503,7 +534,10 @@ async fn verify(workbench: &Workbench, home: &Path, state: &State) -> Result<()>
             && row.role == "assistant"
             && row.text.contains(ANSWER))
     );
-    for (id, path) in [("", "/"), (state.linux.as_str(), "/home/ai/Files")] {
+    for (id, path, expected) in [
+        ("", "/", &state.workspace_path),
+        (state.linux.as_str(), "/home/ai/Files", &state.linux_path),
+    ] {
         let listing: FileListing = workbench
             .rpc(
                 "files/list",
@@ -514,33 +548,49 @@ async fn verify(workbench: &Workbench, home: &Path, state: &State) -> Result<()>
             )
             .await?;
         assert!(
-            listing.entries.iter().any(|entry| entry.name == state.file
+            listing.entries.iter().any(|entry| &entry.path == expected
                 && entry.size_bytes == state.file_content.len() as u64),
             "persisted file absent from {path}"
         );
     }
-    let prefix = if workbench.base == OLD { "/api" } else { "/v1" };
-    let download = workbench
-        .http
-        .get(format!("{}{prefix}/workbench/file", workbench.base))
-        .query(&[("path", &state.file)]);
-    let download = if workbench.base == OLD {
-        download.header("cookie", &workbench.token)
-    } else {
-        download.bearer_auth(workbench.token.trim())
-    };
     assert_eq!(
-        download
-            .send()
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?
-            .as_ref(),
+        workbench.file(&state.workspace_path).await?,
+        state.file_content.as_bytes()
+    );
+    let runtime = if workbench.base == OLD {
+        "calcium"
+    } else {
+        "native"
+    };
+    let readback: FileManageResult = workbench
+        .rpc(
+            "files/manage",
+            FileManageRequest {
+                operation: FileOperation::Copy.into(),
+                sources: vec![FileLocation {
+                    device_id: state.linux.clone(),
+                    path: state.linux_path.clone(),
+                }],
+                target: Some(FileLocation {
+                    device_id: String::new(),
+                    path: "/".into(),
+                }),
+                name: format!("{runtime}-readback-{}.txt", state.request),
+            },
+        )
+        .await?;
+    assert_eq!(readback.results.len(), 1);
+    assert_eq!(readback.results[0].error, "");
+    let readback = readback.results[0]
+        .target
+        .as_ref()
+        .ok_or("Linux read-back omitted its destination")?;
+    assert_eq!(
+        workbench.file(&readback.path).await?,
         state.file_content.as_bytes()
     );
     assert_eq!(
-        android_file(&format!("cat '/sdcard/Download/{}'", state.file)).await?,
+        android_file(&format!("cat '/sdcard/Download/{}'", state.android_file)).await?,
         state.file_content
     );
     assert_eq!(
