@@ -1,0 +1,169 @@
+name: Dysprosium Windows native Redis and legacy QCOW2
+on:
+  push:
+    branches: [codex/dysprosium-win-native-redis-qa]
+    paths:
+      - .github/workflows/dysprosium-win-native-redis.yml
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: dysprosium-win-native-redis-qa
+  cancel-in-progress: false
+env:
+  PRODUCT_SOURCE: cf4bbf371d4d3272627f802698a6d4aff22ffa23
+  QA_PREVIOUS_SOURCE: fb7230e3fff2ac7743b5c4de42cedc02b659fc81
+  QA_LINUX_ARTIFACT: native-redis-linux-qa-layer
+  CALCIUM_BASE_SHA: 1184c13114500f919b6bcc738d9af7e1f872ff192aef624e67aa87a6f9b7446f
+  CALCIUM_ANDROID_SHA: 23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+jobs:
+  linux-final:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AI_PHONE_TEST_TESSERACT: /usr/bin/tesseract
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.PRODUCT_SOURCE }}
+          path: exact
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: 44011004022
+          github-token: ${{ github.token }}
+          artifact-ids: 14296663469
+          path: ${{ runner.temp }}/prior-guest
+      - name: Prepare the exact Linux workload and native archive tool
+        working-directory: exact
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = x86_64
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SOURCE"
+          git fetch --no-tags --depth=1 origin "$QA_PREVIOUS_SOURCE"
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "${ANDROID_HOME:?}/ndk"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-utils e2fsprogs cpio tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+          ./target/debug/release-tools source check --repository --manifest
+          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/ocr-models"
+          echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/ocr-models" >> "$GITHUB_ENV"
+          echo "QA_LAYER=$RUNNER_TEMP/linux-layer" >> "$GITHUB_ENV"
+          echo "QA_PREVIOUS_LAYER=$RUNNER_TEMP/prior-guest" >> "$GITHUB_ENV"
+      - name: Compile the exact Rust guest services with preserved phone inputs
+        working-directory: exact
+        timeout-minutes: 20
+        run: ./scripts/bun ../qa/windows-native-dev/build-linux-redis-layer.ts services
+      - name: Stage the pinned native Redis and preserved Calcium QCOW2
+        working-directory: exact
+        timeout-minutes: 10
+        run: ./scripts/bun ../qa/windows-native-dev/build-linux-redis-layer.ts layer
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ${{ env.QA_LINUX_ARTIFACT }}
+          path: ${{ runner.temp }}/linux-layer/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+  windows-dev:
+    runs-on: windows-2025
+    timeout-minutes: 85
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CARGO_HTTP_MULTIPLEXING: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.PRODUCT_SOURCE }}
+          path: exact
+          persist-credentials: false
+      - name: Select a disposable Windows program and device data volume
+        shell: pwsh
+        run: |
+          $drive = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match '^[A-Z]:\\$' } | Sort-Object Free -Descending | Select-Object -First 1
+          $os = Get-CimInstance Win32_OperatingSystem
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $drive.Free -lt 40GB -or $os.TotalVisibleMemorySize -lt 12MB) {
+            throw 'This Windows QA runner cannot provision the isolated WHPX guests.'
+          }
+          $root = Join-Path $drive.Root "Dysprosium-QA-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory -Path $root | Out-Null
+          "AIMANITY_QA_ROOT=$root" >> $env:GITHUB_ENV
+          'Windows {0} build {1}; RAM {2:N1} GiB; QA volume free {3:N1} GiB' -f $os.Caption,$os.BuildNumber,($os.TotalVisibleMemorySize/1MB),($drive.Free/1GB)
+      - name: Compile the exact Rust Windows executable with no installer
+        working-directory: exact
+        timeout-minutes: 22
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SOURCE"
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          ./scripts/bootstrap.sh
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+          ./target/debug/release-tools.exe source check --repository --manifest
+          cargo build --locked --manifest-path apps/native/Cargo.toml
+      - name: Wait for the exact-source Linux device artifact
+        shell: bash
+        timeout-minutes: 45
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 140); do
+            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --jq '.jobs[] | select(.name == "linux-final") | .conclusion // empty')
+            if [ "$status" = success ]; then exit 0; fi
+            if [ -n "$status" ]; then echo "Linux device build: $status"; exit 1; fi
+            sleep 15
+          done
+          echo "Linux device artifact did not complete within the Windows development gate."
+          exit 1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: ${{ env.QA_LINUX_ARTIFACT }}
+          path: ${{ env.AIMANITY_QA_ROOT }}/layer
+      - name: Bind the isolated offline components to the same development executable
+        working-directory: exact
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/bun ../qa/windows-native-dev/prepare-windows.ts dev
+          export AIMANITY_BUNDLE_INTEGRITY="$(cygpath -am "$PWD/apps/native/gen/host/integrity.json")"
+          cargo build --locked --manifest-path apps/native/Cargo.toml
+          ./scripts/bun ../qa/windows-native-dev/prepare-windows.ts launch-layout
+      - name: Exercise the actual native workbench and both WHPX devices
+        working-directory: exact
+        shell: pwsh
+        env:
+          AIMANITY_QA_ANDROID_AUDIO: '1'
+        run: |
+          & ./.tools/bin/bun.exe install --cwd .. --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item ../qa/windows-native-dev/native-probe.ts ../scripts/windows-device-qa-probe.ts
+          Copy-Item ../qa/windows-native-dev/qualify-dev.ts ../scripts/windows-device-qa.ts
+          & ./.tools/bin/bun.exe ../scripts/windows-device-qa.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: isolated-native-window
+          path: |
+            ${{ env.AIMANITY_QA_ROOT }}/native-language.png
+            ${{ env.AIMANITY_QA_ROOT }}/native-devices.png
+            ${{ env.AIMANITY_QA_ROOT }}/native-installation-post-click.png
+            ${{ env.AIMANITY_QA_ROOT }}/native-installation-terminal.png
+            ${{ env.AIMANITY_QA_ROOT }}/native-workbench.png
+            ${{ env.AIMANITY_QA_ROOT }}/native-workbench-input.png
+          if-no-files-found: ignore
+          retention-days: 1

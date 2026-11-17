@@ -1,7 +1,7 @@
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { deepEqual, equal, match, ok } from "node:assert/strict";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { join } from "node:path";
@@ -31,6 +31,20 @@ const program = join(dev, "aimanity-native.exe");
 const log = join(root, "native.log");
 const prepare = Bun.spawn([program, "--prepare-windows-host"], {cwd:dev, env, stdout:"inherit", stderr:"inherit"});
 equal(await prepare.exited, 0, "WHPX available on this disposable QA runner without pending restart");
+const oldDisk = join(root, "layer", "qa-disk", "user.qcow2");
+const disk = join(home, "user", "qemu", "disk");
+mkdirSync(disk, { recursive: true });
+const overlay = join(disk, "user.qcow2");
+copyFileSync(oldDisk, overlay);
+const qemu = join(dev, "host", "qemu");
+const base = join(qemu, "guest", "guest.qcow2");
+const qemuImg = join(qemu, "runtime", "qemu-img.exe");
+for (const args of [["rebase", "-u", "-f", "qcow2", "-F", "qcow2", "-b", base, overlay],
+                    ["check", "-f", "qcow2", overlay]]) {
+  const result = Bun.spawnSync([qemuImg, ...args], { cwd:dev, env, stdout:"inherit", stderr:"inherit" });
+  equal(result.exitCode, 0, "move the previous writable overlay to the exact preserved Windows backing path");
+}
+writeFileSync(join(disk, "base.sha256"), manifest.guest.disk.sha256);
 const launch = (file: string) => Bun.spawn([program], { cwd: dev, env, stdout: "ignore", stderr: Bun.file(file) });
 let app = launch(log);
 function gui(action: "fresh" | "capture" | "capture-updated" | "diagnostic" | "keyboard" | "close") {
@@ -46,7 +60,7 @@ async function stopApp() {
   }
 }
 async function probe(command: string, argument?: string) {
-  const args = [process.execPath, "scripts/windows-device-qa-probe.ts", command];
+  const args = [process.execPath, join(import.meta.dir, "windows-device-qa-probe.ts"), command];
   if (argument) args.push(argument);
   const process_ = Bun.spawn(args, { env, stdout: "inherit", stderr: "inherit" });
   equal(await process_.exited, 0, command);
@@ -384,6 +398,12 @@ try {
   console.log(JSON.stringify({ nativeBootAndTransportMs: Math.round(performance.now() - started), source }));
   await verify("ACL, manual device receipts and Linux observation", () => probe("devices"));
   await verify("Linux XTerm CJK and PCM at the Windows relay", () => probe("desktop-cjk-audio"));
+  await verify("Calcium disk retention and native Redis startup", async () => {
+    const boot = readFileSync(join(home, "user", "qemu", "boot.log"), "utf8");
+    match(boot, /AI_PHONE_INITIALIZE redis_start/);
+    match(boot, /AI_PHONE_INITIALIZE database_prepare/);
+    await probe("legacy-disk");
+  });
   const manualControlReleasedAt = performance.now() + 15_500;
   const model = Bun.spawn([process.execPath, "../qa/windows-native-dev/qualified-model.ts"],
     { env, stdout:"inherit", stderr:"inherit" });

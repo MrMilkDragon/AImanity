@@ -54,7 +54,9 @@ if (phase === "base") {
   const integrity = await preparePayload(ROOT, { androidRuntime: android });
   if (integrity["android.payload"] !== androidHash) throw Error("Calcium Android image changed");
   const targetQemu = join(storage, "qemu");
-  cpSync(layer, targetQemu, { recursive: true });
+  mkdirSync(targetQemu);
+  copyFileSync(join(layer, "manifest.json"), join(targetQemu, "manifest.json"));
+  cpSync(join(layer, "guest"), join(targetQemu, "guest"), { recursive: true });
   for (const dir of ["runtime", "licenses"]) cpSync(join(qemu, dir), join(targetQemu, dir), { recursive: true });
   const manifestPath = join(targetQemu, "manifest.json"), manifest = json(manifestPath);
   const guestManifest = run(["git", "show", `${guestSource}:SOURCE-MANIFEST.json`], {cwd:ROOT, stdio:["ignore","pipe","pipe"]}).stdout;

@@ -21,7 +21,7 @@ const part = relative(root, home);
 ok(/^(Dysprosium-QA-|aimanity-dysprosium-qa-)/i.test(root.split(sep).at(-1)!), "Use only a disposable Dysprosium QA directory");
 ok(part && !isAbsolute(part) && !part.startsWith(".."), "The host folder must be contained in the disposable root");
 const command = process.argv[2] ?? "devices";
-ok(["devices", "acl", "desktop-cjk-audio", "quiet", "state", "run", "cancel-run", "snapshot", "retention", "model-configure", "model-action", "liberty", "goal-begin", "goal-resumed"].includes(command), "Unknown probe command");
+ok(["devices", "acl", "desktop-cjk-audio", "legacy-disk", "quiet", "state", "run", "cancel-run", "snapshot", "retention", "model-configure", "model-action", "liberty", "goal-begin", "goal-resumed"].includes(command), "Unknown probe command");
 
 const checkpoint = JSON.parse(await readFile(join(home, "deployment.json"), "utf8"));
 if (process.env.AIMANITY_QA_SOURCE_PAYLOAD)
@@ -276,6 +276,26 @@ if (["model-action", "liberty", "goal-begin", "goal-resumed"].includes(command))
       newObservationAtMs:Number(events.find(e => e.title.startsWith("观察") && e.kind==="tool" && e.status==="completed" && Number(e.finishedAtMs)>=checkpoint.nextWakeAtMs)!.finishedAtMs)
     }));
   }
+  process.exit(0);
+}
+
+if (command === "legacy-disk") {
+  const name = "calcium-user-file.txt";
+  const location = await rpc("files/list", FileLocationSchema, {deviceId:desktop.id,path:"/home/ai/Files"}, FileListingSchema);
+  const marker = location.entries.find(entry => entry.name === name);
+  ok(marker, "file seeded before native startup exists in the actual Linux desktop");
+  const copied = await rpc("files/manage", FileManageRequestSchema, {
+    operation:FileOperation.COPY, sources:[{deviceId:desktop.id,path:marker.path}], target:{path:"/"},
+  }, FileManageResultSchema);
+  const [file] = copied.results;
+  ok(file?.target?.path && !file.error, "read marker through the authorized guest file bridge");
+  const query = new URLSearchParams({path:file.target.path.replace(/^\/+/, "")});
+  const downloaded = await fetch(`http://127.0.0.1:17863/v1/workbench/file?${query}`, {
+    headers:{authorization:assistant}, signal:AbortSignal.timeout(8000),
+  });
+  equal(downloaded.status, 200);
+  equal(await downloaded.text(), await readFile(join(root, "layer", "qa-disk", "marker.txt"), "utf8"));
+  console.log(JSON.stringify({calciumDiskMarker:true, exactUtf8Bytes:true, nativeRedisReachedDatabasePrepare:true}));
   process.exit(0);
 }
 
