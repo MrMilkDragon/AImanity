@@ -1723,8 +1723,8 @@
     },
     {
       "path": "crates/host-runtime/src/bin/qualify-android-aosp.rs",
-      "size": 13926,
-      "sha256": "0a2bfe8b80d796be9d956141ca216621615e4e592b1379cbf6143e29f2994746"
+      "size": 14405,
+      "sha256": "fda7fba7e5cd8f07b1745a610975c8c74ba2ef33054a92b578e306db73d7050a"
     },
     {
       "path": "crates/host-runtime/src/bin/qualify-windows-installer.rs",

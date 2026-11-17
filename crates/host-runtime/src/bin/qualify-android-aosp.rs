@@ -184,7 +184,19 @@ async fn check(adb: &Adb, boot: NativeAndroidBooted, started: Instant) -> Result
         "{}",
         json!({"acceleration":"whpx", "rootVerified":true, "serial":boot.serial, "width":boot.width, "height":boot.height, "before":before.len(), "boot_ms":started.elapsed().as_millis()})
     );
-    adb.shell(&["svc power stayon true; input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard"])
+    adb.shell(&["locksettings", "set-disabled", "--user", "0", "true"])
+        .await?;
+    if adb
+        .shell(&["locksettings", "get-disabled", "--user", "0"])
+        .await?
+        .trim()
+        != "true"
+    {
+        return Err("Android keyguard is still enabled on the qualification guest".into());
+    }
+    adb.shell(&["input", "keyevent", "KEYCODE_SLEEP"]).await?;
+    sleep(Duration::from_millis(350)).await;
+    adb.shell(&["input keyevent KEYCODE_WAKEUP; svc power stayon true; cmd statusbar collapse; wm dismiss-keyguard; input keyevent KEYCODE_HOME"])
         .await?;
     adb.audio().await?;
     let launch = adb
