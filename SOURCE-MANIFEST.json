@@ -88,8 +88,8 @@
     },
     {
       "path": ".gitignore",
-      "size": 1061,
-      "sha256": "4b14399e8f3d539540e3e40a966fea6502e495d5f983b6d7c7a311a9f48f0d08"
+      "size": 1031,
+      "sha256": "c2eb9e779fea4d364594b99c6d049a072afd5b041bcf7ac72d0c3d48b12a7582"
     },
     {
       "path": "CHANGELOG.md",
@@ -103,8 +103,8 @@
     },
     {
       "path": "Cargo.lock",
-      "size": 119270,
-      "sha256": "54547f07e17b405b1534b25d42ed35c6b1c6ef3e120afce59ed14781ffa3140d"
+      "size": 119292,
+      "sha256": "ff0e1790e23e6315f82417f0e94baca179ba8063dd98a1d8d30232265054ea99"
     },
     {
       "path": "Cargo.toml",
@@ -593,8 +593,8 @@
     },
     {
       "path": "config/native-notice-supplements.json",
-      "size": 83295,
-      "sha256": "71eb50226ce5facf47f30b364ae602fe72ed1807bbf757237b6d672177f580a9"
+      "size": 66297,
+      "sha256": "7387688b4a4b0bd79a8abe7a9f13da4ba5e4722ec71fd5fb18230dbfc067b4c0"
     },
     {
       "path": "config/ocr-models.json",
@@ -673,8 +673,8 @@
     },
     {
       "path": "crates/api/Cargo.toml",
-      "size": 288,
-      "sha256": "69a9ef3e54bbedef1dfcd6b85774fb6a651180d8864e335f8158b0de9a8b8c6f"
+      "size": 451,
+      "sha256": "b09d0430ab7d369e7c6f2e26ff4670494abe51fd3d3b461acfb337cd0ea6394b"
     },
     {
       "path": "crates/api/build.rs",
@@ -685,6 +685,11 @@
       "path": "crates/api/src/lib.rs",
       "size": 226,
       "sha256": "fcaa626cf9cacde8ce67caf116bcd853ce0f1e9337e05970d05d7f80f8b05433"
+    },
+    {
+      "path": "crates/api/tests/smoke_protocol.rs",
+      "size": 2655,
+      "sha256": "209b4c060857f2756e8e6dd1935369e355c405bc80ba1988d1dc0ecc09e417c3"
     },
     {
       "path": "crates/assistant/Cargo.toml",
@@ -1953,8 +1958,8 @@
     },
     {
       "path": "crates/host-runtime/src/supervision/macos.rs",
-      "size": 11849,
-      "sha256": "f8d0139cafa7ac4da23c1d05fccd0a9fabca27cd1b63dadecdee1b046f6d5402"
+      "size": 12004,
+      "sha256": "7796e51e5654127efaacf9547e2baa1d2ffd987b2e12c2da9079155438a6d399"
     },
     {
       "path": "crates/host-runtime/src/supervision/mod.rs",
@@ -2557,11 +2562,6 @@
       "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
     },
     {
-      "path": "docs/public/licenses/native/0dcf41516e608bbc-LICENSE",
-      "size": 1067,
-      "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
-    },
-    {
       "path": "docs/public/licenses/native/10d30a673cd5e934-profiling-LICENSE-APACHE",
       "size": 10818,
       "sha256": "10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551"
@@ -2582,19 +2582,9 @@
       "sha256": "216486f29671a4262efe32af6d84a75bef398127f8c5f369b5c8305983887a06"
     },
     {
-      "path": "docs/public/licenses/native/23f18e03dc49df91-LICENSE-MIT",
-      "size": 1023,
-      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
-    },
-    {
       "path": "docs/public/licenses/native/24df2f33b48c9e75-block-Cargo.toml.txt",
       "size": 531,
       "sha256": "24df2f33b48c9e756a4f864f882c1ab07a159b6c2b790f45af2e8162499b6719"
-    },
-    {
-      "path": "docs/public/licenses/native/39fa265207450e77-LICENSE",
-      "size": 1184,
-      "sha256": "39fa265207450e77c62e90c5594a06c085b655d8374c7ced4bf7894b6bd95dd2"
     },
     {
       "path": "docs/public/licenses/native/3d9796539a28548f-zune-image-LICENSE.md",
@@ -2657,11 +2647,6 @@
       "sha256": "6613c7e94b361fdd87fbfe7f03e0344f926066f51f37936ec09a55dd4328dc23"
     },
     {
-      "path": "docs/public/licenses/native/66a3107d5ad6a058-MPL-2.0.txt",
-      "size": 16727,
-      "sha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172"
-    },
-    {
       "path": "docs/public/licenses/native/6bec8c944a6d4251-gpu-descriptor-APACHE.txt",
       "size": 574,
       "sha256": "6bec8c944a6d4251be50ac86bb4ca360bcce5aea472505dee2800e160bf1cdbf"
@@ -2722,11 +2707,6 @@
       "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
     },
     {
-      "path": "docs/public/licenses/native/a60eea8175145316-LICENSE-APACHE",
-      "size": 10847,
-      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
-    },
-    {
       "path": "docs/public/licenses/native/a88605a11db5def9-winapi-x86_64-pc-windows-gnu-Cargo.toml.txt",
       "size": 952,
       "sha256": "a88605a11db5def9b6cf73398e83b3edb72228cb43ea935729fac5cd33cec22c"
@@ -2750,11 +2730,6 @@
       "path": "docs/public/licenses/native/bcb02973ef6e87ea-lzma-sys-COPYING",
       "size": 2775,
       "sha256": "bcb02973ef6e87ea73d331b3a80df7748407f17efdb784b61b47e0e610d3bb5c"
-    },
-    {
-      "path": "docs/public/licenses/native/c0c56f26d9c051ca-LICENSE",
-      "size": 1483,
-      "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
     },
     {
       "path": "docs/public/licenses/native/c5ffbfeaa501071c-x11rb-protocol-COPYING",
@@ -2807,11 +2782,6 @@
       "sha256": "d3cdb764b98283ee7c3a3cea8d374e2a2957322374378d1f3263f4d512741fc3"
     },
     {
-      "path": "docs/public/licenses/native/d54c6e13e9e952da-selectors-lib.rs.txt",
-      "size": 643,
-      "sha256": "d54c6e13e9e952dac17d209171df8657e3cae93beaddace4906150cdec8d02e9"
-    },
-    {
       "path": "docs/public/licenses/native/d87624d9d117489b-malloc_buf-Cargo.toml.txt",
       "size": 349,
       "sha256": "d87624d9d117489bd49dbaeb70077a0721e00ac2a76eb371faec818a92da5661"
@@ -2830,11 +2800,6 @@
       "path": "docs/public/licenses/native/e353f37b12aefbb9-objc2-LICENSE.txt",
       "size": 1066,
       "sha256": "e353f37b12aefbb9f9b29490e837cfee05d9bda70804b3562839a3285c1df1e5"
-    },
-    {
-      "path": "docs/public/licenses/native/eb227437252b2a7a-libappindicator-LICENSE-MIT",
-      "size": 1109,
-      "sha256": "eb227437252b2a7a9c1fc342c93ade1f3d7ce38cc6dd754f613db07d53ceff0b"
     },
     {
       "path": "docs/public/licenses/native/ed60d479b8fd1f64-valuable-LICENSE",
@@ -3198,8 +3163,8 @@
     },
     {
       "path": "package.json",
-      "size": 653,
-      "sha256": "e11a358eb735bd5cec17790c6c2b1e448356cc7d405dd3ad6ca2366ce1a38ff6"
+      "size": 598,
+      "sha256": "a7a33232fb7fb8ab4b874c2e19c3e28c33a4528c2851758f5d6675d858342c45"
     },
     {
       "path": "packages/protocol/package.json",
@@ -3670,11 +3635,6 @@
       "path": "scripts/sign-client-update.ts",
       "size": 4071,
       "sha256": "4f08065592e31f75e2b913e12204d2d8f7bb7cf24e73e3664daa7735d6ce834d"
-    },
-    {
-      "path": "scripts/smoke-protocol.ts",
-      "size": 2049,
-      "sha256": "978255bc6890789b4293dc4ece56ff0a9c6e22a5568c7641e2fd12530042dff8"
     },
     {
       "path": "scripts/source.ts",

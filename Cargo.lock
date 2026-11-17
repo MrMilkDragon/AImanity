@@ -42,6 +42,8 @@ dependencies = [
  "prost",
  "prost-build",
  "protoc-bin-vendored",
+ "reqwest",
+ "tokio",
 ]
 
 [[package]]

@@ -10,15 +10,20 @@ use std::{
 };
 use tokio::process::Command;
 
-const SERVICES: [(&str, &str); 7] = [
+const SERVICES: [(&str, &str); 5] = [
     ("emulator", "dev.aiphone.emulator.p2"),
     ("runner", "dev.aiphone.runner.p2"),
     ("assistant", "dev.aiphone.assistant"),
     ("channels", "dev.aiphone.channels"),
     ("media", "dev.aiphone.device-stream"),
-    ("web", "dev.aiphone.web.p2"),
-    ("lan", "dev.aiphone.lan"),
 ];
+const LEGACY_FRONTEND: [&str; 2] = ["dev.aiphone.lan", "dev.aiphone.web.p2"];
+
+fn shutdown_labels() -> impl Iterator<Item = &'static str> {
+    LEGACY_FRONTEND
+        .into_iter()
+        .chain(SERVICES.into_iter().rev().map(|(_, label)| label))
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Spec {
@@ -70,7 +75,7 @@ async fn status(root: &Path, label: &str) -> Result<Option<bool>> {
 }
 pub(crate) async fn activate(root: &Path) -> Result<()> {
     let mut previous = Vec::new();
-    for (_, label) in SERVICES.into_iter().rev() {
+    for label in shutdown_labels() {
         if let Some((directory, _)) = job(label).await?
             && !matches_root(root, &directory)
         {
@@ -98,7 +103,7 @@ pub(crate) async fn activate(root: &Path) -> Result<()> {
 pub(crate) async fn deactivate(home: &Path) -> Result<()> {
     let releases = home.join("releases");
     let mut result = Ok(());
-    for (_, label) in SERVICES.into_iter().rev() {
+    for label in shutdown_labels() {
         let stop = async {
             let Some((directory, _)) = job(label).await? else {
                 return Ok(());

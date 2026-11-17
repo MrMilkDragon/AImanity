@@ -3,7 +3,6 @@
 !.env.example
 .tools
 node_modules/
-.next/
 out/
 target/
 dist/
@@ -75,7 +74,6 @@ GEMINI.md
 /docs/design/
 /DESIGN.md
 /apps/android-bridge/
-/apps/web/src/app/lab/
 /scripts/verify-*.ts
 
 .playwright-cli/
