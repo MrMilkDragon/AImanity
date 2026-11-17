@@ -4,12 +4,9 @@ import {
   mkdirSync,
   copyFileSync,
   chmodSync,
-  mkdtempSync,
-  renameSync,
-  rmSync,
 } from "node:fs";
 import { join, basename, dirname } from "node:path";
-import { hash, digest, output } from "./process";
+import { hash, output } from "./process";
 import {
   json,
   save,
@@ -17,10 +14,8 @@ import {
   records,
   verifyFiles,
 } from "./inventory";
-import { extractTar, writeTar } from "./archive";
 
 type DependencyProfile = {
-  config: string;
   source: string[];
   roots: string[];
   required: string[];
@@ -28,7 +23,6 @@ type DependencyProfile = {
 };
 const profiles: Record<string, DependencyProfile> = {
   "linux-ocr": {
-    config: "config/linux-ocr.json",
     source: [
       "config/linux-ocr.json",
       "config/linux-factory.json",
@@ -51,7 +45,7 @@ const profiles: Record<string, DependencyProfile> = {
     prefix: "runtime/services/ocr/",
   },
 };
-export function dependencyFingerprint(
+function dependencyFingerprint(
   root: string,
   profile: DependencyProfile,
 ) {
@@ -63,12 +57,6 @@ export function dependencyFingerprint(
       ]),
     ),
   );
-}
-export function dependencyArchive(root: string, role: string): string {
-  const value = json(join(root, profiles[role]!.config));
-  if (value.format !== 1 || value.host !== "linux-x64")
-    throw Error("Unsupported Linux dependency");
-  return value.archive.file;
 }
 export async function verifyDependency(
   root: string,
@@ -86,48 +74,29 @@ export async function verifyDependency(
   await verifyFiles(folder, value.files);
   return value;
 }
-export async function buildDependency(
+export function sealDependency(
   root: string,
-  archive: string,
-  destination: string,
+  directory: string,
   role: string,
 ) {
-  const archiveSha256 = await digest(archive);
-  if (existsSync(destination)) {
-    const component = await verifyDependency(root, destination, role);
-    if (component.archive_sha256 !== archiveSha256)
-      throw Error("Linux dependency archive changed");
-    return component;
-  }
   const profile = profiles[role]!;
-  mkdirSync(dirname(destination), { recursive: true });
-  const work = mkdtempSync(join(dirname(destination), ".dependency-"));
-  try {
-    await extractTar(archive, work, "gzip", root);
-    const files = collect(work, "").files;
-    const names = new Set(files.map((f) => f.path.slice(1)));
-    if (
-      profile.required.some((name) => !names.has(name)) ||
-      [...names].some((name) => !profile.roots.includes(name.split("/")[0]!))
-    )
-      throw Error("Linux dependency closure incomplete");
-    const inventory = files.map((f) => ({
-      ...f,
-      path: f.path.slice(1),
-    }));
-    const value = {
-      format: 1,
-      host: "linux-x64",
-      source_sha256: dependencyFingerprint(root, profile),
-      archive_sha256: archiveSha256,
-      files: records(inventory),
-    };
-    save(join(work, "manifest.json"), value);
-    renameSync(work, destination);
-    return value;
-  } finally {
-    rmSync(work, { recursive: true, force: true });
-  }
+  const closure = collect(directory, "");
+  const files = closure.files.map((file) => ({ ...file, path: file.path.slice(1) }));
+  const names = new Set(files.map((file) => file.path));
+  if (
+    closure.links.length ||
+    profile.required.some((name) => !names.has(name)) ||
+    [...names].some((name) => !profile.roots.includes(name.split("/")[0]!))
+  )
+    throw Error("Linux dependency closure incomplete");
+  const value = {
+    format: 1,
+    host: "linux-x64",
+    source_sha256: dependencyFingerprint(root, profile),
+    files: records(files),
+  };
+  save(join(directory, "manifest.json"), value);
+  return value;
 }
 export async function prepareDependency(
   root: string,
@@ -183,11 +152,4 @@ export function packageRecords(root: string, files: unknown) {
       copyFileSync(source, join(root, "licenses", name + ".copyright"));
   }
   save(join(root, "source-records.json"), { native_files: files, packages });
-}
-export async function archiveDependency(folder: string, destination: string) {
-  const files = collect(folder, "").files.map((f) => ({
-    ...f,
-    path: f.path.slice(1),
-  }));
-  await writeTar(destination, files, { codec: "gzip" });
 }

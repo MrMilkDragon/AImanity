@@ -9,4 +9,4 @@ COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 COPY scripts/ /tmp/scripts/
 RUN bun /tmp/scripts/linux-ocr/collect.ts
 FROM scratch AS export
-COPY --from=factory /export/ /
+COPY --from=factory /out/ /

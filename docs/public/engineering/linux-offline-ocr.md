@@ -6,7 +6,7 @@ The Linux x64 OCR component provides Tesseract, its ELF dependency closure, Engl
 
 The phone and desktop use the same Rust PNG-to-regions pipeline. Rust owns image bounds, screen signatures, TSV parsing and confidence filtering. The native helper selects the included ELF loader, Tesseract libraries and language data for that process only. No global library-path change is required.
 
-The component manifest records the factory recipe, archive digest, file hashes and permissions. The archive includes `tessdata/configs/tsv`. The Rust helper selects TSV output with `tessedit_create_tsv=1` and checks its header.
+The component manifest records the factory recipe, file hashes and permissions. The closure includes `tessdata/configs/tsv`. The Rust helper selects TSV output with `tessedit_create_tsv=1` and checks its header.
 
 The [native OCR fixture](../../../crates/phone-runner/fixtures/ocr-probe.png) renders `7319`. The [source asset inventory](../../../config/source-assets.json) records its font and provenance. The separate [provider fixture](../../../crates/assistant/fixtures/vision-probe.png) exercises model image input.
 
