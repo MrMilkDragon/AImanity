@@ -1,10 +1,6 @@
 import { ROOT } from "./tooling/process";
 import { buildNative } from "./tooling/native-build";
-import {
-  buildPhone,
-  installerApk,
-  notificationHelper,
-} from "./tooling/phone-apps";
+import { buildPhone, installerApk } from "./tooling/phone-apps";
 const [operation, ...args] = process.argv.slice(2);
 const root = args.includes("--root") ? args[args.indexOf("--root") + 1]! : ROOT;
 switch (operation) {
@@ -14,8 +10,6 @@ switch (operation) {
   case "phone":
     if (args.includes("--build"))
       console.log(JSON.stringify(await buildPhone(root)));
-    else if (args.includes("--notification-probe"))
-      console.log(notificationHelper(root));
     else
       console.log(
         installerApk(root, args[args.indexOf("--app") + 1] as "home" | "input"),

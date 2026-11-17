@@ -21,7 +21,7 @@ const packages = {
   input: "dev.aiphone.input",
   home: "dev.aiphone.home",
 } as const;
-export const probeSource =
+const probeSource =
   "scripts/android-input-probe/NotificationAccess.java";
 export function phoneFingerprint(root = ROOT) {
   return hash(
@@ -62,15 +62,14 @@ export function checkApk(file: string, packageName: string, signer?: string) {
     throw Error("APK package mismatch");
   return { package: packageName, signer_sha256: certs[0] };
 }
-export function compileProbe(root = ROOT, work = join(root, "data/android")) {
-  const folder = join(work, "notification-probe"),
+function compileProbe(root: string) {
+  const folder = join(root, "data/android/notification-probe"),
     classes = join(folder, "classes"),
-    dex = join(folder, "dex"),
+    file = join(folder, "notification-access.jar"),
     sdk = process.env.ANDROID_HOME!,
     jdk = join(process.env.JAVA_HOME!, "bin"),
     platform = join(sdk, "platforms/android-35/android.jar");
   mkdirSync(classes, { recursive: true });
-  mkdirSync(dex, { recursive: true });
   run([
     join(jdk, "javac"),
     "--release",
@@ -88,11 +87,9 @@ export function compileProbe(root = ROOT, work = join(root, "data/android")) {
     "--min-api",
     "26",
     "--output",
-    dex,
+    file,
     join(classes, "dev/aiphone/input/probe/NotificationAccess.class"),
   ]);
-  const file = join(folder, "notification-access.jar");
-  run([join(jdk, "jar"), "cMf", file, "-C", dex, "classes.dex"]);
   return file;
 }
 export async function verifyPhone(root: string, folder: string) {
@@ -157,8 +154,4 @@ export function installerApk(root: string, role: keyof typeof packages) {
   return existsSync(bundled)
     ? bundled
     : buildApk(join(root, "apps", "android-" + role), role);
-}
-export function notificationHelper(root = ROOT) {
-  const bundled = join(root, "runtime/phone-apps/notification-access.jar");
-  return existsSync(bundled) ? bundled : compileProbe(root);
 }

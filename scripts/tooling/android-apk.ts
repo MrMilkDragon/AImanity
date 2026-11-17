@@ -61,14 +61,9 @@ export function buildApk(source: string, name: string) {
     join(out, "dex"),
     ...files(join(out, "classes"), ".class"),
   ]);
-  run([
-    join(jdk, "jar"),
-    "uf",
-    join(out, "base.apk"),
-    "-C",
-    join(out, "dex"),
-    "classes.dex",
-  ]);
+  run([join(tools, "aapt"), "add", join(out, "base.apk"), "classes.dex"], {
+    cwd: join(out, "dex"),
+  });
   run([
     join(tools, "zipalign"),
     "-f",

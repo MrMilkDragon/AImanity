@@ -60,7 +60,7 @@ jobs:
       - name: Native OCR qualification tools
         run: |
           brew install --force-bottle tesseract
-          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/aiphone-ocr-models"
+          cargo run --quiet --locked -p ai-phone-release-tools -- prepare-ocr-models --destination "$RUNNER_TEMP/aiphone-ocr-models"
           echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
           echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aiphone-ocr-models" >> "$GITHUB_ENV"
       - name: Qualify native services and dependency advisories
@@ -73,7 +73,10 @@ jobs:
             curl -fsSL "https://github.com/RustSec/rustsec/releases/download/cargo-audit/v0.22.2/$archive" -o "$audit_dir/$archive"
             printf '%s  %s\n' ec7ca4263769593df4d909be85b94a6b79efa2897be5d2bb8ebd516e823175af "$audit_dir/$archive" | shasum -a 256 -c -
             tar -xzf "$audit_dir/$archive" -C "$audit_dir" --strip-components 1 "${archive%.tgz}/cargo-audit"
-            PATH="$audit_dir:$PATH" ./scripts/bun scripts/audit-dependencies.ts --target aarch64-apple-darwin --output audit.json
+            rust_audit=0
+            PATH="$audit_dir:$PATH" cargo run --quiet --locked -p ai-phone-release-tools -- audit-dependencies --target aarch64-apple-darwin --output audit.json || rust_audit=$?
+            ./scripts/bun audit --json
+            exit "$rust_audit"
           ) > "$RUNNER_TEMP/aiphone-native-audit.log" 2>&1 &
           audit_pid=$!
           native_result=0

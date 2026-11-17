@@ -34,6 +34,16 @@ fn arguments(values: &[OsString]) -> Result<(PathBuf, PathBuf, String)> {
 
 pub async fn run(values: &[OsString]) -> Result<()> {
     let (payload, home, identity) = arguments(values)?;
+    let source = stage(payload, home, identity).await?;
+    println!("{} {}", source.identity, source.directory.display());
+    Ok(())
+}
+
+pub(crate) async fn stage(
+    payload: PathBuf,
+    home: PathBuf,
+    identity: String,
+) -> Result<crate::StagedSource> {
     let cancel = Arc::new(AtomicBool::new(false));
     let stop = cancel.clone();
     let mut worker = tokio::task::spawn_blocking(move || {
@@ -54,7 +64,5 @@ pub async fn run(values: &[OsString]) -> Result<()> {
             result
         }
     };
-    let source = result.map_err(|_| Error::Invalid("source_staging_worker"))??;
-    println!("{} {}", source.identity, source.directory.display());
-    Ok(())
+    result.map_err(|_| Error::Invalid("source_staging_worker"))?
 }

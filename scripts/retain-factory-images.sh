@@ -55,7 +55,7 @@ gh release upload "$tag" --repo "$GITHUB_REPOSITORY" "${paths[@]}"
 gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" > "$work/remote.json"
 gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" > "$work/assets.json"
 jq -b --slurpfile pages "$work/assets.json" '.assets = ($pages[0] | add)' "$work/remote.json" > "$work/complete.json"
-./scripts/bun scripts/package-delivery.ts verify-upload "$work/plan.json" --release "$work/complete.json"
+cargo run --quiet --locked -p ai-phone-release-tools -- verify-upload "$work/plan.json" "$work/complete.json"
 printf 'Unpublished candidate retained: %s\n' "$tag"
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   printf 'candidate_tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"

@@ -1,4 +1,5 @@
 //! Complete sealed WSL backend initialization; native phone readiness belongs to the host.
+mod postgres;
 pub(crate) mod process;
 use crate::{Error, Result, filesystem, profile};
 use process::{Execute, Process};
@@ -75,6 +76,12 @@ pub(crate) struct Backend<'a, E> {
     pub(crate) env: BTreeMap<String, String>,
     pub(crate) execute: E,
 }
+
+pub(crate) enum Database {
+    Container,
+    Native,
+}
+
 impl<E: Execute> Backend<'_, E> {
     pub(crate) fn command(
         &self,
@@ -239,6 +246,7 @@ impl<E: Execute> Backend<'_, E> {
         images: &Path,
         digest: Option<&str>,
         user: &Path,
+        database: Database,
     ) -> Result<()> {
         phase("container_ownership");
         let existing = self.containers().await?;
@@ -306,21 +314,26 @@ impl<E: Execute> Backend<'_, E> {
         )
         .await?;
         phase("database_start");
-        self.docker(&[
-            "compose",
-            "-f",
-            "compose.yaml",
-            "-f",
-            "compose.dev.yaml",
-            "up",
-            "-d",
-            "--wait",
-            "--no-build",
-            "--pull",
-            "never",
-            "postgres",
-        ])
-        .await?;
+        match database {
+            Database::Native => self.start_postgres().await?,
+            Database::Container => {
+                self.docker(&[
+                    "compose",
+                    "-f",
+                    "compose.yaml",
+                    "-f",
+                    "compose.dev.yaml",
+                    "up",
+                    "-d",
+                    "--wait",
+                    "--no-build",
+                    "--pull",
+                    "never",
+                    "postgres",
+                ])
+                .await?;
+            }
+        }
         self.wait_redis(&redis_port).await?;
         let assistant = text(&self.root.join("runtime/services/bin/assistant"))?;
         phase("database_prepare");
@@ -497,14 +510,14 @@ async fn initialize<E: Execute>(
     home: &Path,
     run: &Path,
     request: &[u8],
-    _qemu: bool,
+    qemu: bool,
     execute: E,
     available: &dyn Fn(&Path) -> Result<u64>,
 ) -> Result<()> {
     let request = profile::parse_request(request)
         .map_err(|_| Error::Invalid("wsl_initialization_request"))?;
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    if _qemu && request.desktop.storage_gb.is_some() {
+    if qemu && request.desktop.storage_gb.is_some() {
         crate::linux_vm::grow_root()?;
     }
     phase("preflight");
@@ -513,6 +526,12 @@ async fn initialize<E: Execute>(
         .ok_or(Error::Invalid("wsl_initializer_path"))?;
     filesystem::directory(parent, true)?;
     let _lock = filesystem::lease(&parent.join("initialize.lock"))?.ok_or(Error::Busy)?;
+    let database = if qemu {
+        postgres::check_guest()?;
+        Database::Native
+    } else {
+        Database::Container
+    };
     if available(parent)? < 4 * 1024 * 1024 * 1024 {
         return Err(Error::LowSpace);
     }
@@ -572,7 +591,12 @@ async fn initialize<E: Execute>(
     )?;
     backend.start_engine(home, run).await?;
     backend
-        .start(&bundle.join("images.payload"), None, Path::new("/root"))
+        .start(
+            &bundle.join("images.payload"),
+            None,
+            Path::new("/root"),
+            database,
+        )
         .await
 }
 

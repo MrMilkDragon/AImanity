@@ -1,5 +1,7 @@
 mod android_package;
+mod assets;
 mod capsule;
+mod dependency_audit;
 mod source;
 mod update_feed;
 #[cfg(unix)]
@@ -26,6 +28,26 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
     {
         update_feed::sign(rest)?;
         return Ok(None);
+    }
+    if let [command, rest @ ..] = arguments.as_slice() {
+        if command == "prepare-ocr-models" {
+            return assets::ocr(rest).map(Some);
+        }
+        if command == "verify-upload" {
+            return assets::verify_upload(rest).map(Some);
+        }
+        if command == "fetch-windows-aosp" {
+            assets::windows_aosp(rest)?;
+            return Ok(None);
+        }
+        if command == "stage-windows-android-audio" {
+            assets::windows_audio(rest)?;
+            return Ok(None);
+        }
+        if command == "audit-dependencies" {
+            dependency_audit::run(rest)?;
+            return Ok(None);
+        }
     }
     if arguments
         .first()

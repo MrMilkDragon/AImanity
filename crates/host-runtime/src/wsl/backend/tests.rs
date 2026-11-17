@@ -356,7 +356,12 @@ async fn malformed_container_receipts_and_failed_listing_stop_before_import() {
         );
         assert_eq!(
             backend
-                .start(Path::new("images.payload"), None, Path::new("/root"))
+                .start(
+                    Path::new("images.payload"),
+                    None,
+                    Path::new("/root"),
+                    Database::Container
+                )
                 .await
                 .unwrap_err()
                 .code(),
@@ -381,7 +386,12 @@ async fn malformed_container_receipts_and_failed_listing_stop_before_import() {
     );
     assert_eq!(
         backend
-            .start(Path::new("images.payload"), None, Path::new("/root"))
+            .start(
+                Path::new("images.payload"),
+                None,
+                Path::new("/root"),
+                Database::Container
+            )
             .await
             .unwrap_err()
             .code(),
@@ -430,7 +440,12 @@ async fn fresh_backend_uses_native_services_and_never_creates_desktop_or_starts_
     let root = folder.path().canonicalize().unwrap();
     let mut backend = fixture(&root, Fixture::default());
     backend
-        .start(Path::new("images.payload"), None, Path::new("/root"))
+        .start(
+            Path::new("images.payload"),
+            None,
+            Path::new("/root"),
+            Database::Container,
+        )
         .await
         .unwrap();
     let calls = &backend.execute.calls;
@@ -507,7 +522,12 @@ async fn resume_retires_only_the_owned_legacy_ocr_and_cache_containers() {
             },
         );
         backend
-            .start(Path::new("images.payload"), None, Path::new("/root"))
+            .start(
+                Path::new("images.payload"),
+                None,
+                Path::new("/root"),
+                Database::Container,
+            )
             .await
             .unwrap();
         let removal: Vec<_> = backend
@@ -556,7 +576,12 @@ async fn resume_keeps_tokens_skips_live_database_and_only_starts_exact_stopped_d
             .unwrap();
         }
         backend
-            .start(Path::new("images.payload"), None, Path::new("/root"))
+            .start(
+                Path::new("images.payload"),
+                None,
+                Path::new("/root"),
+                Database::Container,
+            )
             .await
             .unwrap();
         assert_eq!(
@@ -657,7 +682,12 @@ async fn foreign_container_rejects_before_import_database_or_service_changes() {
     );
     assert_eq!(
         backend
-            .start(Path::new("images.payload"), None, Path::new("/root"))
+            .start(
+                Path::new("images.payload"),
+                None,
+                Path::new("/root"),
+                Database::Container
+            )
             .await
             .unwrap_err()
             .code(),
@@ -685,7 +715,12 @@ async fn unknown_image_import_does_not_run_database_or_services() {
     );
     assert_eq!(
         backend
-            .start(Path::new("images.payload"), None, Path::new("/root"))
+            .start(
+                Path::new("images.payload"),
+                None,
+                Path::new("/root"),
+                Database::Container
+            )
             .await
             .unwrap_err()
             .code(),

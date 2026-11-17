@@ -274,12 +274,22 @@ fn persist(root: &Path, value: &Value) -> Result<()> {
 fn document() -> Result<Value> {
     let value: Value =
         serde_json::from_reader(std::io::stdin()).map_err(|_| Error::Invalid("host_profile"))?;
+    validate_document(&value)?;
+    Ok(value)
+}
+
+fn validate_document(value: &Value) -> Result<()> {
     let template = value
         .pointer("/phone/template")
         .and_then(Value::as_str)
         .ok_or(Error::Invalid("host_profile"))?;
-    validate(&value, template)?;
-    Ok(value)
+    validate(value, template)
+}
+
+#[cfg(unix)]
+pub(crate) fn save_user_profile(root: &Path, value: &Value) -> Result<()> {
+    validate_document(value)?;
+    persist(root, value)
 }
 
 pub(crate) fn check(arguments: &[OsString]) -> Result<()> {

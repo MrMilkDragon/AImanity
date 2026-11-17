@@ -3,7 +3,7 @@ mod engine;
 mod phone;
 mod readiness;
 use crate::wsl::backend::{
-    Backend,
+    Backend, Database,
     process::{Execute, Process},
 };
 use crate::{Error, Installation, Result, filesystem, profile};
@@ -317,6 +317,7 @@ async fn initialize(
                     &args.resource.join("images.payload"),
                     args.images.as_deref(),
                     &user,
+                    Database::Container,
                 )
                 .await
         };

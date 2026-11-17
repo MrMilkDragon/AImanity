@@ -34,6 +34,8 @@ set -eu
 /bin/busybox mount -o bind /newroot/mnt/images.payload /newroot/opt/aiphone/bundle/images.payload
 /bin/busybox mkdir -p /newroot/opt/aiphone/redis
 /bin/busybox mount -o bind /newroot/mnt/redis /newroot/opt/aiphone/redis
+/bin/busybox mkdir -p /newroot/opt/aiphone/postgres
+/bin/busybox mount -o bind /newroot/mnt/postgres /newroot/opt/aiphone/postgres
 /bin/busybox mount -o move /dev /newroot/dev
 read -r release < /newroot/opt/aiphone/bundle/source.sha256
 printf 'AI_PHONE_RELEASE_LAYER %s\n' "$release"
@@ -50,6 +52,7 @@ install -m 0644 "$compiled/source.payload" "$temp/layer/source.payload"
 printf '%s\n' "$release" > "$temp/layer/source.sha256"
 install -m 0644 "$compiled/images.payload" "$temp/layer/images.payload"
 cp -R "$compiled/redis" "$temp/layer/redis"
+cp -R "$compiled/postgres" "$temp/layer/postgres"
 size=$(du -sb "$temp/layer" | cut -f 1)
 block_count=$(((size + 16 * 1024 * 1024 + 4095) / 4096))
 mke2fs -q -F -t ext4 -b 4096 -m 0 -O ^has_journal -d "$temp/layer" "$temp/release.ext4" "$block_count"

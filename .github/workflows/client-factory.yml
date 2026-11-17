@@ -197,7 +197,7 @@ jobs:
           ./scripts/bootstrap.sh
           brew update
           brew install --force-bottle tesseract
-          ./scripts/bun scripts/prepare-ocr-models.ts --destination "$RUNNER_TEMP/aiphone-ocr-models"
+          cargo run --quiet --locked -p ai-phone-release-tools -- prepare-ocr-models --destination "$RUNNER_TEMP/aiphone-ocr-models"
           echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
           echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aiphone-ocr-models" >> "$GITHUB_ENV"
           export JAVA_HOME="$(/usr/libexec/java_home -v 17)"

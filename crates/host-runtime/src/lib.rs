@@ -53,6 +53,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub const DEVICE_SETUP_PENDING: &str = "data/deployment/device-setup.pending";
 
+#[cfg(unix)]
+mod project_command;
+
 #[derive(Debug)]
 pub enum Error {
     Invalid(&'static str),

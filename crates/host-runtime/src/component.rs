@@ -72,6 +72,8 @@ fn contract(arguments: &[OsString], value: &str) -> Result<()> {
 pub fn run(arguments: &[OsString]) -> Option<Result<()>> {
     match arguments.first()?.to_str()? {
         "--stage-source" => Some(start(Service::Source, &arguments[1..])),
+        #[cfg(unix)]
+        "--project-command" => Some(crate::project_command::run(&arguments[1..])),
         "--source-staging-contract" => Some(contract(arguments, crate::source_cli::CONTRACT)),
         "--device-bridge" => Some(start(Service::Bridge, &arguments[1..])),
         "--phone-peer" => Some(start(Service::PhonePeer, &arguments[1..])),

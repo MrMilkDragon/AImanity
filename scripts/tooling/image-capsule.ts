@@ -26,7 +26,7 @@ import {
   type ArchiveFile,
 } from "./archive";
 
-export const imageRoles = ["workspace", "desktop", "postgres", "redis"];
+const imageRoles = ["workspace", "desktop", "postgres", "redis"];
 type Image = {
   ref: string;
   source_digest: string;
@@ -150,7 +150,7 @@ function plan(
         preserve(descriptor);
     if (index.subject) preserve(index.subject);
   }
-  for (const role of imageRoles) {
+  for (const role of Object.keys(records)) {
     const record = records[role]!,
       row = docker.find((row: any) => row.RepoTags?.includes(record.ref));
     if (!row) throw Error("Image export role missing: " + role);
@@ -228,11 +228,10 @@ export async function buildImages(
   sources: Record<string, string>,
   destination: string,
 ) {
-  if (
-    imageRoles.some((role) => !sources[role]) ||
-    Object.keys(sources).length !== 4
-  )
-    throw Error("Exactly four factory image roles required");
+  const roles = imageRoles.filter(role => sources[role]);
+  if (roles.length !== Object.keys(sources).length ||
+      !(roles.length === 4 || (roles.length === 2 && sources.workspace && sources.desktop)))
+    throw Error("The factory requires workspace and desktop, with both hosted databases or neither");
   mkdirSync(dirname(destination), { recursive: true });
   const architecture = JSON.parse(
     output(["docker", "info", "--format", "{{json .}}"]),
@@ -245,8 +244,10 @@ export async function buildImages(
         : architecture;
   if (!["amd64", "arm64"].includes(arch))
     throw Error("Unsupported Docker architecture");
+  if (roles.length === 2 && arch !== "amd64")
+    throw Error("The native database payload targets Windows x64");
   const records: Record<string, Image> = {};
-  for (const role of imageRoles) {
+  for (const role of roles) {
     const record = JSON.parse(
       output(["docker", "image", "inspect", sources[role]!]),
     )[0];

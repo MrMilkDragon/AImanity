@@ -27,7 +27,8 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
           mkdir -p qualification/images qualification/sdk/platform-tools
-          ./scripts/bun scripts/tooling/fetch-windows-aosp.ts qualification/android.zip &
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+          target/debug/release-tools.exe fetch-windows-aosp qualification/android.zip &
           download=$!
           cargo build --locked --release -p ai-phone-host-runtime --bin host-resources &
           build=$!
@@ -44,7 +45,7 @@ jobs:
           unzip -q qualification/android.zip -d qualification/images
           rm qualification/android.zip
           ./scripts/bun scripts/windows-cuttlefish.ts "$(cygpath -am qualification/images)" "$(cygpath -am qualification/sdk/cuttlefish)" "$(cygpath -am /ucrt64/bin/qemu-img.exe)"
-          ./scripts/bun scripts/windows-android-audio.ts qualification/sdk/cuttlefish
+          target/debug/release-tools.exe stage-windows-android-audio qualification/sdk/cuttlefish
           rm -r qualification/images
           sdk=qualification/sdk/cuttlefish
           cp /ucrt64/bin/qemu-system-x86_64.exe /ucrt64/bin/qemu-img.exe "$sdk/"
@@ -52,7 +53,6 @@ jobs:
           for firmware in bios-256k.bin kvmvapic.bin linuxboot_dma.bin; do cp "/ucrt64/share/qemu/$firmware" "$sdk/share/"; done
           /ucrt64/bin/qemu-system-x86_64.exe -accel help | grep -w whpx
           wait "$build"
-          cargo build --locked -p ai-phone-release-tools --bin release-tools
           AIMANITY_FACTORY_XZ="$(cygpath -am /usr/bin/xz.exe)" ./scripts/bun scripts/android-component.ts --sdk-input qualification/sdk --work qualification/payload --compression-preset 3 --receipt qualification/payload/android.receipt.json
           rm -r qualification/sdk
       - name: Boot the bundled Android under WHPX without fetching device assets

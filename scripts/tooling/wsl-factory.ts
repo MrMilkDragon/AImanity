@@ -3,6 +3,7 @@ import {
   existsSync,
   lstatSync,
   readFileSync,
+  renameSync,
   writeFileSync,
   mkdtempSync,
   rmSync,
@@ -256,24 +257,57 @@ RUN chroot /native-redis /lib/ld-musl-x86_64.so.1 --library-path /lib /bin/redis
 `;
 }
 
-export function stageRedis(root: string, destination: string) {
-  const parent = dirname(destination);
-  mkdirSync(parent, { recursive: true });
-  const context = mkdtempSync(join(parent, ".redis-build-"));
+export function stageWindowsServices(root: string, destination: string) {
+  const context = mkdtempSync(join(dirname(destination), ".windows-services-"));
   try {
     writeFileSync(
       join(context, "Dockerfile"),
-      redisStage(databaseImage(root, "redis")) +
-        "FROM scratch\nCOPY --from=redis /native-redis/ /\n",
+      redisStage(databaseImage(root, "redis")) + `FROM postgres:17.11-bookworm@sha256:73bedc9eaa0121b92b9b26bb52e5141b3f6f37479c7ef913c0160455763ca80a AS postgres
+RUN set -eu; \\
+    source=/usr/lib/postgresql/17; \\
+    output=/native-postgres; \\
+    mkdir -p "$output/lib/postgresql/17/bin" "$output/lib/postgresql/17/lib" "$output/share/postgresql" "$output/runtime"; \\
+    for binary in postgres initdb pg_isready psql; do \\
+        cp -L "$source/bin/$binary" "$output/lib/postgresql/17/bin/"; \\
+    done; \\
+    find "$source/lib" -maxdepth 1 -name '*.so' ! -name llvmjit.so -exec cp -L -t "$output/lib/postgresql/17/lib" {} +; \\
+    cp -a /usr/share/postgresql/17 "$output/share/postgresql/"; \\
+    cp --parents -L /usr/share/doc/*/copyright "$output/"; \\
+    for object in "$output"/lib/postgresql/17/bin/* "$output"/lib/postgresql/17/lib/*.so; do \\
+        libraries=$(ldd "$object"); \\
+        if printf '%s\\n' "$libraries" | grep -q 'not found'; then exit 1; fi; \\
+        for library in $(printf '%s\\n' "$libraries" | awk '$2 == "=>" && substr($3, 1, 1) == "/" {print $3}'); do \\
+            case "$library" in \\
+                */libc.so.*|*/libpthread.so.*|*/libm.so.*|*/libdl.so.*|*/librt.so.*|*/libresolv.so.*|*/libutil.so.*) ;; \\
+                *) cp -L "$library" "$output/runtime/" ;; \\
+            esac; \\
+        done; \\
+    done
+FROM ${wslPlan(root).base_image} AS postgres-check
+COPY --from=postgres /native-postgres/ /opt/aiphone/postgres/
+RUN set -eu; \\
+    export LD_LIBRARY_PATH=/opt/aiphone/postgres/runtime; \\
+    bin=/opt/aiphone/postgres/lib/postgresql/17/bin; \\
+    mkdir /tmp/native-postgres; \\
+    chown 65534:65534 /tmp/native-postgres; \\
+    setpriv --reuid=65534 --regid=65534 --clear-groups "$bin/initdb" -D /tmp/native-postgres -U ai_phone --locale-provider=builtin --locale=C.UTF-8; \\
+    "$bin/psql" --version
+FROM scratch
+COPY --from=redis /native-redis/ /redis/
+COPY --from=postgres-check /opt/aiphone/postgres/ /postgres/
+`,
     );
+    const output = join(context, "output");
     run(
       [
         "docker", "buildx", "build", "--platform", "linux/amd64",
         "--network", "none", "--provenance=false",
-        "--output", "type=local,dest=" + destination, context,
+        "--output", "type=local,dest=" + output, context,
       ],
       { cwd: root },
     );
+    for (const service of ["redis", "postgres"])
+      renameSync(join(output, service), join(destination, service));
   } finally {
     rmSync(context, { recursive: true });
   }

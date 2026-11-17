@@ -25,7 +25,7 @@ import {
   preparePhoneTools,
   sourceInput,
   stageBackendSource,
-  stageRedis,
+  stageWindowsServices,
 } from "./wsl-factory";
 import { hostResources } from "./resources";
 
@@ -340,12 +340,14 @@ export async function prepareWindowsReleaseContext(context: string, root = ROOT)
   const source = await prepareBackendSource(root, dirname(context), true);
   const input = await sourceInput(source, root);
   await stageBackendSource(root, context, source, input.sha256);
-  stageRedis(root, join(context, "redis"));
+  stageWindowsServices(root, context);
   await prepareImages(
     root,
     context,
     await digest(join(root, "SOURCE-MANIFEST.json")),
     "amd64",
+    undefined,
+    false,
   );
 }
 export async function buildWslBackend(

@@ -257,20 +257,35 @@ async fn transfer_devices(app: &App) {
     std::fs::create_dir_all(app.root.join("data/desktop/home/Files")).unwrap();
     std::fs::create_dir_all(app.root.join("scripts")).unwrap();
     let adb = app.root.join("scripts/android-adb");
-    let bun = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/bun");
-    let script = app.root.join("scripts/android-adb.ts");
-    std::fs::write(
-        &script,
-        include_str!("../../../scripts/fixtures/mock-adb-transfer.ts"),
-    )
-    .unwrap();
     std::fs::write(
         &adb,
-        format!(
-            "#!/bin/sh\nexec '{}' '{}' \"$@\"\n",
-            bun.display().to_string().replace('\'', "'\\''"),
-            script.display().to_string().replace('\'', "'\\''")
-        ),
+        r#"#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+case "$1" in
+  push) mkdir -p "$(dirname "guest$3")"; cp "$2" "guest$3" ;;
+  exec-out) printf started > copy-started; sleep 0.35; printf 'fixture document' ;;
+  shell)
+    case "$2" in
+      readlink*) printf '%s\n' "$(printf '%s' "$2" | cut -d "'" -f 2)" ;;
+      stat*) printf '16\n' ;;
+      mkdir*) mkdir -p "guest$(printf '%s' "$2" | cut -d "'" -f 2)" ;;
+      sha512sum*) shasum -a 512 "guest$(printf '%s' "$2" | cut -d "'" -f 2)" ;;
+      test*)
+        fields="$2"
+        source=$(printf '%s' "$fields" | awk -F "'" '{print $(NF-3)}')
+        target=$(printf '%s' "$fields" | awk -F "'" '{print $(NF-1)}')
+        test ! -f "guest$target"
+        mv "guest$source" "guest$target"
+        printf 'publish\n' >> published
+        if [ -f slow-publication ]; then sleep 0.35; fi
+        if [ -f fail-after-publish ]; then exit 3; fi ;;
+      am*) ;;
+      *) exit 1 ;;
+    esac ;;
+  *) exit 1 ;;
+esac
+"#,
     )
     .unwrap();
     std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o700)).unwrap();

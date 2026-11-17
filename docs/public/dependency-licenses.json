@@ -3,7 +3,7 @@
   "kind": "dependency-license-metadata",
   "scope": "locked-source-build-dependencies; server and native client installed metadata, not a redistribution clearance",
   "locks": {
-    "Cargo.lock": "d77f4b69ff096fb5124d827f7e6234f2d0f9b2dd5939fd0ce8da9b0bd49cb3e3",
+    "Cargo.lock": "c2fb9560932bb05c4252d0efe8991786942e1e176f44cff0996033713fe95464",
     "bun.lock": "b39304f43ef3c03c789960d5c396329648aeabe45a2b8f87a2e3c0ba1a76ec3c",
     "apps/native/Cargo.lock": "315dfe8e0261adfe5060de26ea1a4c3e6fb6b133720d265b3ae1916d8c04cf9d"
   },

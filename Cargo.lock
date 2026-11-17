@@ -155,6 +155,7 @@ dependencies = [
  "flate2",
  "fs2",
  "image",
+ "md-5",
  "pem-rfc7468",
  "prost",
  "regex",

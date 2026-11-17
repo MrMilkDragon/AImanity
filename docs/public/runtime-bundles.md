@@ -35,7 +35,7 @@ Each platform ships one complete installer under the GitHub asset limit.
 
 ## Component build and verification
 
-These commands are for maintainers building components. Native OCR qualification requires a prepared backend. For a build-only host Tesseract, set `AI_PHONE_TEST_TESSERACT` to its executable and `AI_PHONE_TEST_TESSDATA` to the directory produced by `scripts/prepare-ocr-models.ts`. The pinned English and Simplified Chinese models work without Tesseract configuration files because the Rust helper selects TSV output directly. These qualification variables do not configure the installed client's OCR service.
+These commands are for maintainers building components. Native OCR qualification requires a prepared backend. Set `AI_PHONE_TEST_TESSERACT` to the host Tesseract executable and `AI_PHONE_TEST_TESSDATA` to the directory produced by `cargo run --locked -p ai-phone-release-tools -- prepare-ocr-models --destination <directory>`. The pinned English and Simplified Chinese models work with the Rust helper's TSV output.
 
 ```sh
 ./scripts/bootstrap.sh

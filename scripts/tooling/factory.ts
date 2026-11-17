@@ -105,6 +105,7 @@ export async function prepareImages(
   identity: string,
   architecture: "arm64" | "amd64",
   guest?: string,
+  databaseImages = true,
 ) {
   if (!/^[0-9a-f]{64}$/.test(identity))
     throw Error("Factory source identity missing");
@@ -114,7 +115,8 @@ export async function prepareImages(
     "-" +
     randomUUID().replaceAll("-", "").slice(0, 12);
   const sources: Record<string, string> = {};
-  for (const role of ["postgres", "redis"] as const) {
+  const databaseRoles = ["postgres", "redis"] as const;
+  for (const role of databaseImages ? databaseRoles : []) {
     const reference = databaseImage(root, role);
     const platform = "linux/" + architecture;
     const cached = Bun.spawnSync(["docker", "image", "inspect", "--platform", platform, reference], {

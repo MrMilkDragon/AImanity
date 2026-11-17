@@ -65,11 +65,17 @@ impl Manifest {
             2 => "images.tar.xz",
             _ => return Err(Error::Invalid("image_manifest")),
         };
+        let roles: &[&str] =
+            if value.format == 2 && value.architecture == "amd64" && value.images.len() == 2 {
+                &ROLES[..2]
+            } else {
+                &ROLES
+            };
         if value.os != "linux"
             || !matches!(value.architecture.as_str(), "arm64" | "amd64")
             || value.redistribution != "review-pending"
-            || value.images.len() != ROLES.len()
-            || !ROLES.iter().all(|role| value.images.contains_key(*role))
+            || value.images.len() != roles.len()
+            || !roles.iter().all(|role| value.images.contains_key(*role))
             || value.archive.path != path
             || !(1..=MAX_ARCHIVE).contains(&value.archive.size)
             || !identity(&value.archive.sha256)
@@ -145,6 +151,18 @@ mod tests {
                 assert_eq!(manifest.environment().len(), 5);
             }
         }
+        let mut value = document();
+        value["architecture"] = json!("amd64");
+        value["format"] = json!(2);
+        value["archive"]["path"] = json!("images.tar.xz");
+        value["archive"]["codec"] = json!("xz");
+        let images = value["images"].as_object_mut().unwrap();
+        images.remove("postgres");
+        images.remove("redis");
+        let environment = parse(&value).unwrap().environment();
+        assert_eq!(environment.len(), 3);
+        assert!(environment.contains_key("AI_PHONE_DESKTOP_IMAGE"));
+        assert!(environment.contains_key("AI_PHONE_WORKSPACE_IMAGE"));
     }
     #[test]
     fn malformed_shapes_types_aliases_codecs_and_limits_are_rejected() {
