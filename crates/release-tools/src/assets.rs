@@ -7,7 +7,7 @@ use std::{
     ffi::OsString,
     fs::{self, File},
     io::{self, Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 
@@ -263,6 +263,68 @@ struct UploadedAsset {
     state: String,
     size: u64,
     digest: Option<String>,
+}
+
+pub(super) fn factory_android() -> Result<()> {
+    let repository = std::env::var("GITHUB_REPOSITORY")?;
+    let github_env = std::env::var_os("GITHUB_ENV").ok_or("Missing GITHUB_ENV")?;
+    let folder = PathBuf::from(std::env::var_os("RUNNER_TEMP").ok_or("Missing RUNNER_TEMP")?);
+    let release_id = std::env::var("AIMANITY_ANDROID_DRAFT_ID")?.parse::<u64>()?;
+    let digest = std::env::var("AIMANITY_ANDROID_PAYLOAD_SHA256")?;
+    if release_id == 0 || std::env::var("GH_TOKEN")?.is_empty() {
+        return Err("Missing private Android factory credentials or release ID".into());
+    }
+    let repository = format!("repos/{repository}");
+    let api = |endpoint: &str| -> Result<Value> {
+        let answer = Command::new("gh").args(["api", endpoint]).output()?;
+        if !answer.status.success() {
+            return Err(format!("GitHub rejected {endpoint}").into());
+        }
+        Ok(serde_json::from_slice(&answer.stdout)?)
+    };
+    if api(&repository)?["private"] != true {
+        return Err("Use a private repository for the installer factory".into());
+    }
+    let release = api(&format!("{repository}/releases/{release_id}"))?;
+    if release["draft"] != true || !release.get("published_at").is_some_and(Value::is_null) {
+        return Err("Use an unpublished Android payload".into());
+    }
+    let name = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => "android-macos-arm64.payload",
+        ("windows", "x86_64") => "android-windows-x64.payload",
+        _ => return Err("Unsupported Android factory platform".into()),
+    };
+    let expected = format!("sha256:{digest}");
+    let asset = release["assets"]
+        .as_array()
+        .and_then(|assets| {
+            assets.iter().find(|asset| {
+                asset["name"] == name && asset["state"] == "uploaded" && asset["digest"] == expected
+            })
+        })
+        .and_then(|asset| asset["id"].as_u64())
+        .ok_or("Missing pinned Android draft asset")?;
+    let file = tempfile::NamedTempFile::new_in(&folder)?;
+    let status = Command::new("gh")
+        .args([
+            "api",
+            &format!("{repository}/releases/assets/{asset}"),
+            "-H",
+            "Accept: application/octet-stream",
+        ])
+        .stdout(file.reopen()?)
+        .status()?;
+    if !status.success() {
+        return Err(format!("Could not download {name}").into());
+    }
+    let destination = folder.join(name);
+    file.persist_noclobber(&destination)?;
+    writeln!(
+        File::options().append(true).open(github_env)?,
+        "AIMANITY_ANDROID_PAYLOAD={}",
+        destination.display()
+    )?;
+    Ok(())
 }
 
 pub(super) fn verify_upload(arguments: &[OsString]) -> Result<Value> {

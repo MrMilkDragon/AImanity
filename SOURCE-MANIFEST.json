@@ -48,8 +48,8 @@
     },
     {
       "path": ".github/workflows/client-factory.yml",
-      "size": 10266,
-      "sha256": "46cf799dd8b64304c77a8986837a7e6f0636acb5319ccfce0e6f55438f9374df"
+      "size": 10321,
+      "sha256": "99013b5ab55c7aa73d9fc9b681851b31ffe1159d7e010489a3846561cee2f70d"
     },
     {
       "path": ".github/workflows/client.yml",
@@ -2213,13 +2213,13 @@
     },
     {
       "path": "crates/release-tools/src/assets.rs",
-      "size": 9854,
-      "sha256": "1f50a6bf2474c211d55e9969c330b27327f56d970c85a66526869ae6917c4ae1"
+      "size": 12522,
+      "sha256": "3ff5fd6f5f43f1e814d126e6d5fecba311383d5c911d54539e6dd52516120d75"
     },
     {
       "path": "crates/release-tools/src/capsule.rs",
-      "size": 2246,
-      "sha256": "cd9092d6bcb2d04a854cb13ac4e5fb4f697977aad50deb9c3456e5e92e552572"
+      "size": 2567,
+      "sha256": "1b83ed8b584c99f0168a36ecd07ff27249c063901d1e6cdc19a9be520d770f07"
     },
     {
       "path": "crates/release-tools/src/dependency_audit.rs",
@@ -2233,8 +2233,8 @@
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 4028,
-      "sha256": "174a3f54cee6f44cd41513d12c75242e62bf4fd43f5c560c7234eee32a156d2b"
+      "size": 4099,
+      "sha256": "6a01ab62001cc573058aee584e677c859d1075b008e5883b07f0668c53517483"
     },
     {
       "path": "crates/release-tools/src/phone_apps.rs",
@@ -2243,8 +2243,8 @@
     },
     {
       "path": "crates/release-tools/src/source.rs",
-      "size": 19177,
-      "sha256": "3fcc55acb8ebfd3418583f1fed9070f4eb447223f5a8d317317fb0a5fcb9a860"
+      "size": 23376,
+      "sha256": "166311090073810bbe9a4bd96211295b1b831177bd8dcaaadbdfae9a3c4a8794"
     },
     {
       "path": "crates/release-tools/src/update_feed.rs",
@@ -3372,11 +3372,6 @@
       "sha256": "e2b79fa9ecbdf2a80e96c3acb9e311b1ad97e945460e075c667322b56dc8d950"
     },
     {
-      "path": "scripts/factory-android.ts",
-      "size": 2015,
-      "sha256": "61abbde0ce564d3c4ec675ae955125b9b6511f7f376eea98d99a7adca2f5b02f"
-    },
-    {
       "path": "scripts/factory-image-candidate.ts",
       "size": 1179,
       "sha256": "abd2415af74f9628e453fd03581682c80e3caddb2aeec200c06e50deb16f571f"
@@ -3443,13 +3438,13 @@
     },
     {
       "path": "scripts/tooling/client-build.ts",
-      "size": 16841,
-      "sha256": "af5f1dae2fe6b6b2004b75a7839ba4cb4c955bb387be792021bd697d2dee0a95"
+      "size": 16835,
+      "sha256": "0e784805a0c75121d3769a9bf51cee7a42cab73e9a8151cd5e0ad5570b37a232"
     },
     {
       "path": "scripts/tooling/client-payload.ts",
-      "size": 6436,
-      "sha256": "e4216108ce93af2aa3864136a5f6b172f955f7258735a934c4728d82cd078b9a"
+      "size": 5778,
+      "sha256": "19e0e6a4c1b1d2917effd841145a5dc4f488b18eaf4cfecce9ba7887b8e4ec82"
     },
     {
       "path": "scripts/tooling/container-host.ts",
@@ -3523,8 +3518,8 @@
     },
     {
       "path": "scripts/tooling/source.ts",
-      "size": 1383,
-      "sha256": "a9b42b4e0292afddb6d89d4d08ddaa475e30dce4e4da823fccde4643cb25975a"
+      "size": 672,
+      "sha256": "596a6064469df93c7ebf64370910b2f4b30826dd81bc067a7e675ecb87b036a9"
     },
     {
       "path": "scripts/tooling/task-recovery.ts",

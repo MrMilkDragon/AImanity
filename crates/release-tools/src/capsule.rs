@@ -40,6 +40,19 @@ pub fn encode(
     preset: u32,
     folder: &Path,
 ) -> crate::Result<()> {
+    write_encoded(output, architecture, preset, folder, |writer| {
+        io::copy(input, writer)?;
+        Ok(())
+    })
+}
+
+pub(super) fn write_encoded(
+    output: impl Write,
+    architecture: &str,
+    preset: u32,
+    folder: &Path,
+    contents: impl FnOnce(&mut dyn Write) -> crate::Result<()>,
+) -> crate::Result<()> {
     let mut filters = Filters::new();
     match architecture {
         "amd64" => {
@@ -56,7 +69,7 @@ pub fn encode(
         since_check: 0,
     };
     let mut encoder = XzEncoder::new_stream(output, stream);
-    io::copy(input, &mut encoder)?;
+    contents(&mut encoder)?;
     encoder.finish()?.flush()?;
     Ok(())
 }

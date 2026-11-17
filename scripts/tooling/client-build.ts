@@ -344,7 +344,7 @@ async function recordInstaller(
     updateHash.update(chunk);
   }
   const host = platform + "-" + arch;
-  const delivery = deliveryMetadata(await payloadComponents(root), host);
+  const delivery = deliveryMetadata(payloadComponents(root), host);
   const manifest = {
     version: json(join(root, "config/release-policy.json")).version,
     kind: "native-client",

@@ -31,6 +31,7 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(unix)]
         "linux-ocr" => linux_ocr::run(rest).map(Some),
         "verify-upload" => assets::verify_upload(rest).map(Some),
+        "factory-android" => assets::factory_android().map(|()| None),
         "fetch-windows-aosp" => assets::windows_aosp(rest).map(|()| None),
         "stage-windows-android-audio" => assets::windows_audio(rest).map(|()| None),
         "windows-unpacker" => assets::windows_unpacker(rest).map(Some),

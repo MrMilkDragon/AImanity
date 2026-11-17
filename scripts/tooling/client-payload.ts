@@ -4,24 +4,20 @@ import {
   mkdirSync,
   constants,
   copyFileSync,
-  renameSync,
   rmSync,
 } from "node:fs";
 import { join, basename } from "node:path";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { text } from "node:stream/consumers";
 import { ROOT, digest, output, nativeProgram } from "./process";
-import { sourceFiles, type SourceFile } from "./source";
-import { collect, json, save, records } from "./inventory";
-import { buildReleaseTools, writeTar, tarEntries, entryBytes } from "./archive";
+import { collect, json, save } from "./inventory";
+import { buildReleaseTools, writeTarStream } from "./archive";
 import { prepareServices } from "./native-build";
 import { prepareContainerHost } from "./container-host";
 import { hostResources } from "./resources";
 import { stageWindowsVm, type WindowsVmInputs } from "./windows-vm-payload";
 
-export const componentManifests = {
-  "native-services": "runtime/services/manifest.json",
-  "phone-apps": "runtime/phone-apps/manifest.json",
-  "container-host": "runtime/container-host/manifest.json",
-};
 export type PayloadOptions = {
   nativeServices?: boolean;
   phoneApps?: boolean;
@@ -37,56 +33,30 @@ export async function preparePayload(
 ) {
   const folder = join(root, hostResources);
   mkdirSync(folder, { recursive: true });
+  const releaseTools = buildReleaseTools(root);
   const speech = JSON.parse(output(
-    [buildReleaseTools(root), "prepare-speech-model", join(root, ".tools/speech"), folder],
+    [releaseTools, "prepare-speech-model", join(root, ".tools/speech"), folder],
     { cwd: root },
   ));
-  const selected: SourceFile[] = await sourceFiles(root),
-    components: string[] = [];
-  const producers: [
-    keyof PayloadOptions,
-    keyof typeof componentManifests,
-    () => SourceFile[] | Promise<SourceFile[]>,
-  ][] = [
-    [
-      "nativeServices",
-      "native-services",
-      () => prepareServices(root, options.linuxOcr),
-    ],
-    ["phoneApps", "phone-apps", () => {
-      output([buildReleaseTools(root), "phone-apps", "verify", root], { cwd: root });
-      return collect(join(root, ".tools/phone-apps"), "runtime/phone-apps").files;
-    }],
-    ["containerHost", "container-host", () => prepareContainerHost(root)],
-  ];
-  for (const [key, name, produce] of producers)
-    if (options[key]) {
-      components.push(name);
-      selected.push(...(await produce()));
-    }
-  const manifest = {
-      format: components.length ? 2 : 1,
-      components,
-      files: records(selected),
-    },
-    payload = join(folder, "source.payload"),
-    temporary = payload + ".tmp";
-  rmSync(temporary, { force: true });
-  await writeTar(
-    temporary,
-    [
-      ...selected,
-      {
-        path: "HOST-MANIFEST.json",
-        mode: 0o644,
-        data: Buffer.from(JSON.stringify(manifest)),
-      },
-    ],
-    { codec: "xz", root },
-  );
-  renameSync(temporary, payload);
+  const selected = options.nativeServices ? await prepareServices(root, options.linuxOcr) : [];
+  if (options.phoneApps) {
+    output([releaseTools, "phone-apps", "verify", root], { cwd: root });
+    selected.push(...collect(join(root, ".tools/phone-apps"), "runtime/phone-apps").files);
+  }
+  if (options.containerHost) selected.push(...await prepareContainerHost(root));
+  const child = spawn(releaseTools, ["source", "payload", join(folder, "source.payload")], {
+    cwd: root, stdio: ["pipe", "pipe", "inherit"],
+  });
+  const complete = once(child, "close"),
+    receipt = text(child.stdout);
+  const [[status], report] = await Promise.all([
+    complete, receipt, writeTarStream(child.stdin, selected),
+  ]).finally(() => {
+    if (child.exitCode === null) child.kill();
+  });
+  if (status !== 0) throw Error("Source payload compilation failed");
   const integrity: Record<string, string> = {
-    "source.payload": await digest(payload),
+    "source.payload": JSON.parse(report).sha256,
     [speech.resource]: speech.sha256,
   };
   for (const [name, source] of [
@@ -108,15 +78,11 @@ export async function preparePayload(
   save(join(folder, "integrity.json"), integrity);
   return integrity;
 }
-export async function payloadComponents(root = ROOT) {
+export function payloadComponents(root = ROOT): string[] {
   const folder = join(root, hostResources),
     payload = join(folder, "source.payload");
   if (!existsSync(payload)) return [];
-  let components: string[] = [];
-  for await (const entry of tarEntries(payload, "xz", root))
-    if (entry.name === "HOST-MANIFEST.json")
-      components =
-        JSON.parse((await entryBytes(entry)).toString()).components || [];
+  const components = JSON.parse(output([buildReleaseTools(root), "source", "components", payload], { cwd: root }));
   const integrity = json(join(folder, "integrity.json"));
   return [
     ...components,
@@ -160,7 +126,9 @@ export function installerMetadata(file: string, host: string) {
 }
 export function deliveryMetadata(components: string[], host: string) {
   const known = new Set([
-      ...Object.keys(componentManifests),
+      "native-services",
+      "phone-apps",
+      "container-host",
       "android-runtime",
       "container-images",
       "windows-qemu",

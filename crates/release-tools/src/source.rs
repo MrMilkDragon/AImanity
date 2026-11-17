@@ -7,7 +7,7 @@ use std::{
     collections::BTreeMap,
     ffi::OsString,
     fs::{self, File},
-    io::Write,
+    io::{self, Read, Write},
     path::{Component, Path, PathBuf},
     process::Command,
 };
@@ -444,15 +444,126 @@ fn append_file<W: Write>(
     data: &[u8],
     mode: u32,
 ) -> Result<()> {
+    append_entry(archive, path, data.len() as u64, mode, data)
+}
+
+fn append_entry(
+    archive: &mut tar::Builder<impl Write>,
+    path: impl AsRef<Path>,
+    size: u64,
+    mode: u32,
+    contents: impl Read,
+) -> Result<()> {
     let mut header = tar::Header::new_ustar();
     header.set_mode(mode);
-    header.set_size(data.len() as u64);
+    header.set_size(size);
     header.set_uid(0);
     header.set_gid(0);
     header.set_mtime(0);
     header.set_entry_type(tar::EntryType::Regular);
-    archive.append_data(&mut header, path, data)?;
+    archive.append_data(&mut header, path, contents)?;
     Ok(())
+}
+
+const HOST_MANIFEST: &str = "HOST-MANIFEST.json";
+const COMPONENTS: [(&str, &str); 3] = [
+    ("native-services", "runtime/services/manifest.json"),
+    ("phone-apps", "runtime/phone-apps/manifest.json"),
+    ("container-host", "runtime/container-host/manifest.json"),
+];
+
+struct Hashed<T> {
+    stream: T,
+    digest: Sha256,
+}
+
+impl<R: Read> Read for Hashed<R> {
+    fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+        let count = self.stream.read(bytes)?;
+        self.digest.update(&bytes[..count]);
+        Ok(count)
+    }
+}
+
+impl<W: Write> Write for Hashed<W> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let count = self.stream.write(bytes)?;
+        self.digest.update(&bytes[..count]);
+        Ok(count)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.stream.flush()
+    }
+}
+
+fn payload(destination: &Path, entries: &[Entry], records: &[Record<'_>]) -> Result<Value> {
+    let folder = destination
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut temporary = tempfile::NamedTempFile::new_in(folder)?;
+    let mut encoded = Hashed {
+        stream: temporary.as_file_mut(),
+        digest: Sha256::new(),
+    };
+    crate::capsule::write_encoded(&mut encoded, "amd64", 6, folder, |writer| {
+        let mut output = tar::Builder::new(writer);
+        let mut files = Vec::with_capacity(entries.len());
+        for (entry, record) in entries.iter().zip(records) {
+            append_file(&mut output, &entry.path, &entry.data, entry.mode)?;
+            files.push(json!({"path":record.path,"size":record.size,"sha256":record.sha256,"mode":entry.mode}));
+        }
+        let mut present = [false; COMPONENTS.len()];
+        for entry in tar::Archive::new(io::stdin().lock()).entries()? {
+            let entry = entry?;
+            let path = String::from_utf8(entry.path_bytes().into_owned())?;
+            let size = entry.size();
+            let mode = entry.header().mode()?;
+            if !entry.header().entry_type().is_file() || ![0o644, 0o755].contains(&mode) {
+                return Err(format!("Invalid runtime file: {path}").into());
+            }
+            if let Some(index) = COMPONENTS.iter().position(|(_, name)| *name == path) {
+                present[index] = true;
+            }
+            let mut reader = Hashed {
+                stream: entry,
+                digest: Sha256::new(),
+            };
+            append_entry(&mut output, &path, size, mode, &mut reader)?;
+            let hash = format!("{:x}", reader.digest.finalize());
+            files.push(json!({"path":path,"size":size,"sha256":hash,"mode":mode}));
+        }
+        let components: Vec<_> = COMPONENTS
+            .iter()
+            .zip(present)
+            .filter_map(|((name, _), found)| found.then_some(name))
+            .collect();
+        let manifest = json!({"format": if components.is_empty() { 1 } else { 2 }, "components":components, "files":files});
+        append_file(
+            &mut output,
+            HOST_MANIFEST,
+            &serde_json::to_vec(&manifest)?,
+            0o644,
+        )?;
+        output.finish()?;
+        Ok(())
+    })?;
+    let digest = encoded.digest.finalize();
+    temporary.persist(destination)?;
+    Ok(json!({"sha256":format!("{digest:x}")}))
+}
+
+fn payload_components(path: &Path) -> Result<Value> {
+    let mut archive = tar::Archive::new(xz2::read::XzDecoder::new(File::open(path)?));
+    for entry in archive.entries()? {
+        let entry = entry?;
+        if entry.path_bytes() == HOST_MANIFEST.as_bytes() {
+            let mut manifest: Value = serde_json::from_reader(entry)?;
+            return Ok(manifest["components"].take());
+        }
+    }
+    Err("Missing source payload manifest".into())
 }
 
 fn package(
@@ -582,17 +693,14 @@ fn export(
 pub(super) fn run(args: &[OsString]) -> Result<Option<Value>> {
     let root = std::env::current_dir()?;
     let [operation, rest @ ..] = args else {
-        return Err("Expected source check|manifest|package|export|list".into());
+        return Err("Expected source check|manifest|package|export|list|payload|components".into());
     };
-    let entries = scan(&root)?;
-    if operation == "files" {
-        let mut archive = tar::Builder::new(std::io::stdout().lock());
-        for entry in &entries {
-            append_file(&mut archive, &entry.path, &entry.data, entry.mode)?;
-        }
-        archive.finish()?;
-        return Ok(None);
+    if let [path] = rest
+        && operation == "components"
+    {
+        return payload_components(Path::new(path)).map(Some);
     }
+    let entries = scan(&root)?;
     let records = records(&entries);
     if operation == "list" {
         return Ok(Some(Value::Array(entries.iter().zip(&records).map(|(entry, record)| {
@@ -600,6 +708,12 @@ pub(super) fn run(args: &[OsString]) -> Result<Option<Value>> {
         }).collect())));
     }
     let result = match operation.to_str() {
+        Some("payload") => {
+            let [path] = rest else {
+                return Err("Source payload destination required".into());
+            };
+            payload(Path::new(path), &entries, &records)?
+        }
         Some("check") => check(&root, &entries, &records, rest)?,
         Some("manifest") => {
             let path = root.join("SOURCE-MANIFEST.json");
@@ -621,7 +735,11 @@ pub(super) fn run(args: &[OsString]) -> Result<Option<Value>> {
             }
             export(&root, destination, &entries, &records, flags)?
         }
-        _ => return Err("Expected source check|manifest|package|export|list".into()),
+        _ => {
+            return Err(
+                "Expected source check|manifest|package|export|list|payload|components".into(),
+            );
+        }
     };
     Ok(Some(result))
 }
