@@ -1,0 +1,46 @@
+name: Offline Linux OCR
+on:
+  push:
+    branches: [codex/dysprosium-cargo-ocr-qa]
+permissions:
+  contents: read
+jobs:
+  ocr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CARGO_BUILD_JOBS: '4'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Build the exact source-bound OCR closure
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = x86_64
+          test "$(git rev-parse HEAD^)" = 5c93eff584ddd13100354a372ed5da402c4cb5b3
+          rustup toolchain install 1.96.0 --profile minimal
+          cargo +1.96.0 build --locked -p ai-phone-release-tools --bin release-tools
+          cargo +1.96.0 check --locked -p ai-phone-host-runtime --lib
+          printf "linux_host_runtime=compiled\n"
+          docker buildx create --name aiphone-ocr --driver docker-container --use
+          started=$(date +%s%3N)
+          target/debug/release-tools linux-ocr build "$RUNNER_TEMP/ocr-context" "$RUNNER_TEMP/ocr" > "$RUNNER_TEMP/ocr-build.log"
+          ready=$(date +%s%3N)
+          printf 'ocr_factory_ms=%s\n' "$((ready-started))"
+          du -sb "$RUNNER_TEMP/ocr"
+          jq '.files | length' "$RUNNER_TEMP/ocr/manifest.json"
+          target/debug/release-tools linux-ocr verify "$RUNNER_TEMP/ocr" > /dev/null
+      - name: Exercise the packaged loader and real OCR fixture
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/ocr"
+          loader="$PWD/lib/ld-linux-x86-64.so.2"
+          binary="$PWD/bin/tesseract"
+          data="$PWD/tessdata"
+          "$loader" --library-path "$PWD/lib" "$binary" --tessdata-dir "$data" --list-langs | grep -Fx chi_sim
+          TESSDATA_PREFIX="$data" OMP_THREAD_LIMIT=1 "$loader" --library-path "$PWD/lib" "$binary" stdin stdout -l chi_sim+eng --psm 11 -c tessedit_create_tsv=1 < "$GITHUB_WORKSPACE/crates/phone-runner/fixtures/ocr-probe.png" > "$RUNNER_TEMP/ocr.tsv"
+          awk -F '\t' '$12 == "7319" {print "ocr_text=" $12; found=1} END {exit !found}' "$RUNNER_TEMP/ocr.tsv"
