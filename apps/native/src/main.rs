@@ -1682,10 +1682,8 @@ impl App {
     fn reflow_child(&mut self) {
         let Some((pane, anchor, bounds)) = self.child_target() else {
             if self.reduced_motion {
-                if let Some(child) = self.child.take()
-                    && matches!(child.pane, ChildPane::Agent(..))
-                {
-                    self.agents.prune_editors(false);
+                if let Some(child) = self.child.take() {
+                    self.finish_child_close(child.pane);
                 }
             } else if let Some(child) = &mut self.child
                 && child.open
@@ -1776,14 +1774,19 @@ impl App {
             if finished {
                 child.animation = None;
                 child.previous = None;
-                if !child.open {
-                    let edited_agent = matches!(child.pane, ChildPane::Agent(..));
-                    self.child = None;
-                    if edited_agent {
-                        self.agents.prune_editors(false);
-                    }
+                if !child.open
+                    && let Some(child) = self.child.take()
+                {
+                    self.finish_child_close(child.pane);
                 }
             }
+        }
+    }
+    fn finish_child_close(&mut self, pane: ChildPane) {
+        match pane {
+            ChildPane::Agent(..) => self.agents.prune_editors(false),
+            ChildPane::Knowledge(_) => self.knowledge.finish_document_close(),
+            _ => {}
         }
     }
     fn child_view<'a>(&'a self, pane: &'a ChildPane, bounds: Rectangle) -> Element<'a, Message> {

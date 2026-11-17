@@ -89,6 +89,7 @@ pub struct Knowledge {
     busy: bool,
     reading: Option<String>,
     drafts: HashMap<String, Draft>,
+    closing_draft: Option<Draft>,
     images: HashMap<String, Option<picture::Handle>>,
     picking: bool,
     relation_query: String,
@@ -286,8 +287,9 @@ impl Knowledge {
                 self.busy = false;
                 match result {
                     Ok(_) => {
-                        self.drafts.remove(&id);
+                        let removed = self.drafts.remove(&id);
                         if self.selected.as_ref() == Some(&id) {
+                            self.closing_draft = removed;
                             self.document_open = false;
                             self.close_picker();
                         }
@@ -434,6 +436,7 @@ impl Knowledge {
     }
 
     fn select(&mut self, id: String, anchor: Option<Point>) {
+        self.closing_draft = None;
         self.selected = Some(id);
         self.anchor = anchor;
         self.document_open = true;
@@ -574,6 +577,9 @@ impl Knowledge {
     pub fn editing(&self) -> bool {
         self.editing
     }
+    pub fn finish_document_close(&mut self) {
+        self.closing_draft = None;
+    }
 
     pub fn escape(&self) -> Option<Message> {
         if self.picking {
@@ -650,7 +656,7 @@ impl Knowledge {
         viewport_width: f32,
         editing: bool,
     ) -> Element<'_, Message> {
-        let draft = self.draft();
+        let draft = self.draft().or(self.closing_draft.as_ref());
         let title = draft
             .map(|d| d.document.title.as_str())
             .filter(|title| !title.is_empty())
