@@ -6,9 +6,8 @@ import {
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { ROOT, run, output, nativeProgram } from "./process";
+import { ROOT, run, output, nativeProgram, hostResources } from "./process";
 import { buildReleaseTools } from "./archive";
-import { hostResources } from "./resources";
 import { json } from "./inventory";
 import { isolatedEnvironment } from "./isolated-env";
 

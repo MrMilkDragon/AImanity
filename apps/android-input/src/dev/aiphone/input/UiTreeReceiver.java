@@ -1,17 +1,35 @@
 package dev.aiphone.input;
 
 import android.app.Activity;
+import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.util.Base64;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityManager;
 import java.nio.charset.StandardCharsets;
 
-/** DUMP-protected, read-only request. No file, cached tree, or input action. */
+/** DUMP-protected observations of the current screen and input services. */
 public final class UiTreeReceiver extends BroadcastReceiver {
     @Override public void onReceive(Context context, Intent intent) {
         setResultCode(Activity.RESULT_CANCELED);
+        if ("dev.aiphone.input.READ_ACCESS".equals(intent.getAction())) {
+            String service = intent.getStringExtra("service");
+            final boolean ready;
+            if ("notification".equals(service)) {
+                ready = context.getSystemService(NotificationManager.class)
+                    .isNotificationListenerAccessGranted(new ComponentName(context, PhoneNotifications.class));
+            } else if ("attention".equals(service)) {
+                ComponentName attention = new ComponentName(context, PhoneAttention.class);
+                ready = context.getSystemService(AccessibilityManager.class).getInstalledAccessibilityServiceList()
+                    .stream().anyMatch(info -> attention.equals(ComponentName.unflattenFromString(info.getId())));
+            } else return;
+            setResultData(service + ":" + ready);
+            setResultCode(Activity.RESULT_OK);
+            return;
+        }
         String request=intent.getStringExtra("request_id");
         if(!"dev.aiphone.input.DUMP_UI".equals(intent.getAction())||request==null||!request.matches("[a-f0-9]{32}"))return;
         AccessibilityNodeInfo root=null;

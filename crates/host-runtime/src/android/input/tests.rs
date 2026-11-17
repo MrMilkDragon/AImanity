@@ -14,7 +14,6 @@ struct Phone {
     install_visible: bool,
     notification_output: Option<String>,
     calls: Vec<Vec<String>>,
-    probe_hash: Option<String>,
     fail_on: usize,
     registration_output: Option<String>,
     ignore: Option<Vec<String>>,
@@ -42,7 +41,6 @@ impl Phone {
             install_visible: true,
             notification_output: None,
             calls: Vec::new(),
-            probe_hash: None,
             fail_on: 1,
             registration_output: None,
             ignore: None,
@@ -125,17 +123,6 @@ impl Device for Phone {
                 self.installed = true;
             }
             "Success".into()
-        } else if args.first() == Some(&"push") {
-            use sha2::Digest;
-            self.probe_hash = Some(hex::encode(sha2::Sha512::digest(
-                std::fs::read(args[1]).unwrap(),
-            )));
-            String::new()
-        } else if args.starts_with(&["shell", "sh", "-c"]) {
-            self.probe_hash
-                .as_ref()
-                .map(|h| format!("{h}  {REMOTE_PROBE}"))
-                .unwrap_or("missing".into())
         } else if args == ["shell", "ime", "list", "-a", "-s", "--user", "0"] {
             self.queries += 1;
             self.registration_output.clone().unwrap_or_else(|| {
@@ -192,15 +179,18 @@ impl Device for Phone {
         {
             self.granted = !self.deny;
             String::new()
-        } else if args.last() == Some(&"attention-installed") {
+        } else if args == service_command("attention") {
             let registered = self.attention_registration_misses == 0;
             self.attention_registration_misses =
                 self.attention_registration_misses.saturating_sub(1);
-            registered.to_string()
-        } else if args.get(1) == Some(&"env") {
-            self.notification_output
-                .clone()
-                .unwrap_or_else(|| self.granted.to_string())
+            format!("Broadcast completed: result=-1, data=\"attention:{registered}\"")
+        } else if args == service_command("notification") {
+            self.notification_output.clone().unwrap_or_else(|| {
+                format!(
+                    "Broadcast completed: result=-1, data=\"notification:{}\"",
+                    self.granted
+                )
+            })
         } else {
             panic!("unexpected fixture command: {args:?}")
         };
@@ -210,19 +200,33 @@ impl Device for Phone {
         Ok(output)
     }
 }
+fn service_command(service: &str) -> [&str; 13] {
+    [
+        "shell",
+        "am",
+        "broadcast",
+        "--receiver-foreground",
+        "--user",
+        "0",
+        "-a",
+        "dev.aiphone.input.READ_ACCESS",
+        "-n",
+        "dev.aiphone.input/.UiTreeReceiver",
+        "--es",
+        "service",
+        service,
+    ]
+}
 struct Fixture {
     root: tempfile::TempDir,
     apk: std::path::PathBuf,
-    probe: std::path::PathBuf,
 }
 impl Fixture {
     fn new() -> Self {
         let root = tempfile::tempdir().unwrap();
         let apk = root.path().join("input.apk");
-        let probe = root.path().join("probe.jar");
         std::fs::write(&apk, b"fixture apk").unwrap();
-        std::fs::write(&probe, b"fixture probe").unwrap();
-        Self { root, apk, probe }
+        Self { root, apk }
     }
     fn state(&self) -> State {
         State::lock(self.root.path(), "emulator-fixture").unwrap()
@@ -230,7 +234,7 @@ impl Fixture {
     async fn run(&self, phone: &mut Phone, observe: bool) -> Result<bool> {
         let state = self.state();
         let pending = state.load()?;
-        configure(&state, phone, pending, &self.apk, &self.probe, observe).await
+        configure(&state, phone, pending, &self.apk, observe).await
     }
 }
 
@@ -247,14 +251,7 @@ async fn installed_package_repairs_missing_capabilities_without_reinstalling_or_
     assert!(phone.settings["enabled_input_methods"].starts_with("other/.Keyboard;7:"));
     let selector = format!("other/.Reader:{ATTENTION}");
     assert_eq!(phone.settings[ACCESSIBILITY_SERVICES], selector);
-    assert_eq!(
-        phone
-            .calls
-            .iter()
-            .filter(|args| args.last().is_some_and(|arg| arg == "attention-installed"))
-            .count(),
-        2
-    );
+    assert_eq!(phone.count(&service_command("attention")), 2);
     assert_eq!(phone.attention_readback_misses, 0);
     assert_eq!(
         phone.count(&[
@@ -277,8 +274,7 @@ async fn observe_only_is_read_only_and_never_claims_missing_permissions_ready() 
     let f = Fixture::new();
     let mut phone = Phone::ready();
     assert!(!f.run(&mut phone, true).await.unwrap());
-    assert!(!phone.calls.iter().any(|a| a[0] == "push"
-        || a[0] == "install"
+    assert!(!phone.calls.iter().any(|a| a[0] == "install"
         || a.get(4) == Some(&"put".into())
         || a.get(2) == Some(&"enable".into())));
     phone.granted = false;
@@ -512,26 +508,6 @@ async fn wrong_user_and_offline_observation_never_install_or_create_pending() {
 }
 
 #[tokio::test]
-async fn ready_device_resume_does_not_transfer_the_same_notification_probe_again() {
-    let f = Fixture::new();
-    let mut phone = Phone::ready();
-    f.run(&mut phone, false).await.unwrap();
-    f.run(&mut phone, false).await.unwrap();
-    assert_eq!(phone.calls.iter().filter(|a| a[0] == "push").count(), 1);
-}
-
-#[tokio::test]
-async fn unavailable_probe_cannot_leave_a_partially_configured_device() {
-    let f = Fixture::new();
-    std::fs::remove_file(&f.probe).unwrap();
-    let mut phone = Phone::new(true);
-    let before = phone.settings.clone();
-    assert!(f.run(&mut phone, false).await.is_err());
-    assert_eq!(phone.settings, before);
-    assert!(f.state().load().unwrap().is_none());
-}
-
-#[tokio::test]
 async fn failed_registration_preserves_intent_and_resume_does_not_reinstall() {
     let f = Fixture::new();
     let mut phone = Phone::new(false);
@@ -578,14 +554,7 @@ async fn unknown_notification_confirmation_resumes_from_authority_without_regran
     let f = Fixture::new();
     let mut phone = Phone::ready();
     phone.granted = false;
-    phone.fail = Some(vec![
-        "shell".into(),
-        "env".into(),
-        format!("CLASSPATH={REMOTE_PROBE}"),
-        "app_process".into(),
-        "/".into(),
-        "dev.aiphone.input.probe.NotificationAccess".into(),
-    ]);
+    phone.fail = Some(service_command("notification").map(str::to_owned).into());
     phone.fail_on = 2;
     assert!(f.run(&mut phone, false).await.is_err());
     assert!(phone.granted);
@@ -601,34 +570,6 @@ async fn unknown_notification_confirmation_resumes_from_authority_without_regran
         ]),
         1
     );
-}
-
-#[tokio::test]
-async fn invalid_remote_probe_observation_never_authorizes_a_push() {
-    let f = Fixture::new();
-    let mut phone = Phone::ready();
-    phone.probe_hash = Some("invalid".into());
-    assert_eq!(
-        f.run(&mut phone, false).await.unwrap_err().code(),
-        "phone_input_probe_unknown"
-    );
-    assert!(!phone.calls.iter().any(|a| a[0] == "push"));
-}
-
-#[tokio::test]
-async fn unknown_probe_transfer_is_observed_on_resume_instead_of_repeated() {
-    let f = Fixture::new();
-    let mut phone = Phone::ready();
-    phone.fail = Some(vec![
-        "push".into(),
-        f.probe.to_str().unwrap().into(),
-        REMOTE_PROBE.into(),
-    ]);
-    phone.after_apply = true;
-    assert!(f.run(&mut phone, false).await.is_err());
-    assert!(f.state().load().unwrap() == Some(Stage::Configure));
-    assert!(!f.run(&mut phone, false).await.unwrap());
-    assert_eq!(phone.calls.iter().filter(|a| a[0] == "push").count(), 1);
 }
 
 #[tokio::test]

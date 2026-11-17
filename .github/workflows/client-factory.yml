@@ -70,7 +70,6 @@ jobs:
           cmake --version
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
-          ./scripts/bootstrap.sh
       - name: Prepare Authenticode tools
         shell: pwsh
         run: |
@@ -97,7 +96,7 @@ jobs:
           QEMU_SHA256: ${{ needs.windows-qemu.outputs.identity }}
           GUEST_SHA256: ${{ needs.windows-guest.outputs.identity }}
         run: |
-          ./.tools/bin/bun.exe scripts/windows-client-factory.ts build-qemu --qemu dist/windows-qemu --qemu-identity $env:QEMU_SHA256 --guest dist/windows-guest/windows-guest.payload --guest-identity $env:GUEST_SHA256
+          cargo run --locked -p ai-phone-release-tools -- windows-factory build dist/windows-qemu $env:QEMU_SHA256 dist/windows-guest/windows-guest.payload $env:GUEST_SHA256
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: complete-windows-installer
@@ -181,9 +180,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
       - name: Disposable Mac factory toolchain
         run: |
           set -euo pipefail
@@ -194,7 +190,6 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
           rustup target add --toolchain 1.96.0 aarch64-unknown-linux-musl
-          ./scripts/bootstrap.sh
           brew update
           brew install --force-bottle tesseract
           cargo run --quiet --locked -p ai-phone-release-tools -- prepare-ocr-models --destination "$RUNNER_TEMP/aiphone-ocr-models"
@@ -208,7 +203,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ./scripts/bun scripts/factory-image-candidate.ts fetch "$AI_PHONE_IMAGE_HANDOFF_TAG" --release-id "$AI_PHONE_IMAGE_HANDOFF_RELEASE_ID" --identity "$AI_PHONE_IMAGE_HANDOFF_IDENTITY" --work "$RUNNER_TEMP/mac-native-images"
+          cargo run --quiet --locked -p ai-phone-release-tools -- fetch-macos-images "$AI_PHONE_IMAGE_HANDOFF_TAG" "$AI_PHONE_IMAGE_HANDOFF_RELEASE_ID" "$AI_PHONE_IMAGE_HANDOFF_IDENTITY" "$RUNNER_TEMP/mac-native-images"
       - name: Fetch the sealed offline Android component
         env:
           GH_TOKEN: ${{ github.token }}
@@ -216,7 +211,7 @@ jobs:
       - name: Build the complete Mac client
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./scripts/bun scripts/macos-client-factory.ts --compiler-sdk "$ANDROID_HOME" --image-candidate "$RUNNER_TEMP/mac-native-images" --image-metadata-sha256 "$AI_PHONE_IMAGE_HANDOFF_IDENTITY"
+        run: cargo run --quiet --locked -p ai-phone-release-tools -- macos-factory --compiler-sdk "$ANDROID_HOME" --image-candidate "$RUNNER_TEMP/mac-native-images" --image-metadata-sha256 "$AI_PHONE_IMAGE_HANDOFF_IDENTITY"
       - name: Retain text qualification receipts
         if: always() && hashFiles('dist/macos-full-factory-report.json') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

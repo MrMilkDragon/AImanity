@@ -273,15 +273,16 @@ pub(super) fn link(source: &Path, target: &Path) -> Result<()> {
 
 #[cfg(windows)]
 pub(super) fn windows_program(folder: &Path) -> Result<std::path::PathBuf> {
-    for entry in fs::read_dir(folder)? {
-        let entry = entry?;
-        if entry.file_name() == "ai-phone-client.exe" {
-            return Ok(entry.path());
-        }
-        if entry.file_type()?.is_dir()
-            && let Ok(path) = windows_program(&entry.path())
-        {
-            return Ok(path);
+    let mut folders = vec![folder.to_owned()];
+    while let Some(folder) = folders.pop() {
+        for entry in fs::read_dir(folder)? {
+            let entry = entry?;
+            if entry.file_name() == "ai-phone-client.exe" && entry.file_type()?.is_file() {
+                return Ok(entry.path());
+            }
+            if entry.file_type()?.is_dir() {
+                folders.push(entry.path());
+            }
         }
     }
     Err("Windows client executable is missing".into())

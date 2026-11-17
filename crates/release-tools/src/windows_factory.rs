@@ -11,6 +11,9 @@ use std::{
     process::{Command, Stdio},
 };
 
+mod guest;
+mod installer;
+
 const BINARIES: [&str; 4] = [
     "runtime/qemu-system-x86_64.exe",
     "runtime/qemu-img.exe",
@@ -266,7 +269,30 @@ pub(super) fn assemble(
 }
 
 pub(super) fn run(arguments: &[OsString]) -> Result<Option<Value>> {
+    let root = std::env::current_dir()?;
     match arguments {
+        [action, qemu, qemu_sha, guest, guest_sha, signing @ ..] if action == "build" => {
+            installer::build(
+                &root,
+                Path::new(qemu),
+                qemu_sha,
+                Path::new(guest),
+                guest_sha,
+                signing,
+            )
+            .map(Some)
+        }
+        [action, root, target, qemu, qemu_sha, guest, guest_sha] if action == "stage-vm" => {
+            guest::stage(
+                Path::new(root),
+                Path::new(target),
+                Path::new(qemu),
+                qemu_sha.to_str().ok_or("Invalid QEMU identity")?,
+                Path::new(guest),
+                guest_sha.to_str().ok_or("Invalid Windows guest identity")?,
+            )
+            .map(|digest| Some(json!(digest)))
+        }
         [action, root, target, installer @ ..] if action == "qemu" && installer.len() <= 1 => qemu(
             &path::absolute(root)?,
             &path::absolute(target)?,
@@ -296,6 +322,6 @@ pub(super) fn run(arguments: &[OsString]) -> Result<Option<Value>> {
             &serde_json::from_reader(io::stdin().lock())?,
         )
         .map(Some),
-        _ => Err("Expected windows-factory qemu|stage-qemu|unpack|assemble".into()),
+        _ => Err("Expected windows-factory build|qemu|stage-qemu|stage-vm|unpack|assemble".into()),
     }
 }

@@ -434,7 +434,7 @@ pub async fn run(arguments: &[OsString]) -> Result<()> {
             (Some("ready"), [flag]) if flag == "--observe-only" => {
                 ready(&phone, true, &mut stop).await
             }
-            (Some("input"), [apk, probe]) => super::input::setup(
+            (Some("input"), [apk]) => super::input::setup(
                 ai_phone_api::wire::NativeAndroidInputSetup {
                     version: 1,
                     project_root: root
@@ -448,10 +448,6 @@ pub async fn run(arguments: &[OsString]) -> Result<()> {
                         .into(),
                     serial: phone.serial.clone(),
                     apk_path: apk
-                        .to_str()
-                        .ok_or(Error::Invalid("android_maintenance_arguments"))?
-                        .into(),
-                    notification_probe_path: probe
                         .to_str()
                         .ok_or(Error::Invalid("android_maintenance_arguments"))?
                         .into(),

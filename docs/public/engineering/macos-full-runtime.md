@@ -24,15 +24,15 @@ Resources are sealed by SHA-256 inventories. Runtime selection checks the host, 
 
 ## Build
 
-The complete factory requires an Apple Silicon build machine, an ARM64 Linux Docker build engine, Java 17 and the Android 35 application compiler SDK. These are maintainer tools; they are separate from the runtimes embedded for end users. Start from a fresh reviewed source checkout:
+The Mac assembly uses an Apple Silicon machine, an ARM64 image handoff, Java 17 and the Android 35 application compiler SDK. The Linux factory produces the desktop and workspace image handoff. Start from a fresh reviewed source checkout.
 
 ```sh
-./scripts/bootstrap.sh
 AIMANITY_ANDROID_SDK_INPUT=/factory/android-sdk \
-./scripts/bun scripts/macos-client-factory.ts --compiler-sdk "$ANDROID_HOME"
+cargo run --locked -p ai-phone-release-tools -- macos-factory --compiler-sdk "$ANDROID_HOME" \
+  --image-candidate /factory/images --image-metadata-sha256 "$IMAGE_IDENTITY"
 ```
 
-The factory seals the staged AOSP, Avo and ADB files, builds the Lima container host, compiles the phone apps and creates the ARM64 desktop and service images. It writes `dist/macos-full-factory-report.json` after checking the DMG contents.
+The Mac job seals the staged AOSP, Avo and ADB files, builds the Lima guest resources, compiles the phone apps and assembles the signed DMG with Cargo. It writes `dist/macos-full-factory-report.json` after checking the DMG contents.
 
 To reuse a sealed Android capsule, set `AIMANITY_ANDROID_PAYLOAD` and `AIMANITY_ANDROID_PAYLOAD_SHA256` in place of `AIMANITY_ANDROID_SDK_INPUT`. In the private **Desktop installer factory** workflow, select `platform=macos` and enter the Android capsule’s `android_draft_id` and `android_payload_sha256`. The ARM64 Linux job builds the image capsule, then the Mac job assembles the DMG.
 

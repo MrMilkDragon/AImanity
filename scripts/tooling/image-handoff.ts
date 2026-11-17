@@ -4,10 +4,8 @@ import {
   mkdtempSync,
   constants,
   copyFileSync,
-  createWriteStream,
 } from "node:fs";
 import { join, resolve, dirname, relative, basename } from "node:path";
-import { pipeline } from "node:stream/promises";
 import { digest, output } from "./process";
 import { json, save } from "./inventory";
 import { imageManifest } from "./image-capsule";
@@ -174,39 +172,6 @@ function remote(
   )
     throw Error("Handoff asset inventory differs");
   return assets;
-}
-export async function fetchImages(
-  root: string,
-  tag: string,
-  identity: string,
-  source: string,
-  folder: string,
-  id: number,
-) {
-  const assets = remote(github("releases/" + id), tag, identity, source, id);
-  mkdirSync(folder, { recursive: true });
-  for (const name of [metadata, body]) {
-    const child = Bun.spawn(
-      [
-        "gh",
-        "api",
-        "repos/" + repository() + "/releases/assets/" + assets.get(name).id,
-        "-H",
-        "Accept: application/octet-stream",
-      ],
-      { stdout: "pipe", stderr: "inherit" },
-    );
-    await pipeline(
-      child.stdout,
-      createWriteStream(join(folder, name), { flags: "wx" }),
-    );
-    if ((await child.exited) !== 0)
-      throw Error("Factory handoff download failed");
-  }
-  const result = await admitImages(root, folder, identity, source);
-  if ("sha256:" + result.sha256 !== assets.get(body).digest)
-    throw Error("Downloaded handoff differs from its asset");
-  return folder;
 }
 export function discardImages(
   tag: string,

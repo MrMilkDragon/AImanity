@@ -332,7 +332,199 @@
           "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/zstd-libs-1.5.7-r2.apk",
           "sha256": "2bb5136c89f5b0bbe1554c8915a3b520d5aa63ae2a51d4d821eb81698db5a818",
           "size_bytes": 365383
-        }
+        },
+          {
+            "file": "brotli-libs-1.2.1-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/brotli-libs-1.2.1-r0.apk",
+            "size_bytes": 424994,
+            "sha256": "f802b9d5a329c216f02e73607cb8f662c434767e41686367ac0afcf6d0d45d64"
+          },
+          {
+            "file": "cairo-1.18.4-r1.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/cairo-1.18.4-r1.apk",
+            "size_bytes": 513204,
+            "sha256": "edb009c2331efe54a895468690c46d528ef2907025fc90ca9329950f41b87e61"
+          },
+          {
+            "file": "fontconfig-2.17.1-r1.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/fontconfig-2.17.1-r1.apk",
+            "size_bytes": 183219,
+            "sha256": "e4fc46de2fa0dc64ef948aab0798500f784eef15d75c9a2e8952a0e3017dacfc"
+          },
+          {
+            "file": "freetype-2.14.3-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/freetype-2.14.3-r0.apk",
+            "size_bytes": 355876,
+            "sha256": "8f36a4b4b6c75574f2f51d62c3df27d23ec7054ae1cae97d54adad72e725e027"
+          },
+          {
+            "file": "fribidi-1.0.16-r3.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/fribidi-1.0.16-r3.apk",
+            "size_bytes": 32400,
+            "sha256": "b4f41c04682487ccc0d5e304a20f1062ddb47907ffa0a414208512e2c946e4d7"
+          },
+          {
+            "file": "giflib-5.2.2-r2.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/giflib-5.2.2-r2.apk",
+            "size_bytes": 16617,
+            "sha256": "1d1c6ec06010019f288223fcddc29c7fe0f7521a0e70fdb1c6131814ebae75fc"
+          },
+          {
+            "file": "graphite2-1.3.14-r6.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/graphite2-1.3.14-r6.apk",
+            "size_bytes": 60154,
+            "sha256": "07ac746525d14925865451eb20d283406b9a907bbe828e818c32d667dabf48d7"
+          },
+          {
+            "file": "harfbuzz-13.2.1-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/harfbuzz-13.2.1-r0.apk",
+            "size_bytes": 766734,
+            "sha256": "0f2f652308dac47cbd2e75e4da9fd8cc3d08c6db562af4a2fbdfe5ebf54ebedd"
+          },
+          {
+            "file": "leptonica-1.87.0-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/aarch64/leptonica-1.87.0-r0.apk",
+            "size_bytes": 1101583,
+            "sha256": "16d786fade0c25ea0bc013ffa6cd0e2e24e73f496b1d51b0f49c97cd06e92cfa"
+          },
+          {
+            "file": "libbsd-0.12.2-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libbsd-0.12.2-r0.apk",
+            "size_bytes": 31282,
+            "sha256": "1c4129bef0862afa2a7414217e8c3a50609abfe2e264b6f7ba6a5452ed6c3b35"
+          },
+          {
+            "file": "libbz2-1.0.8-r6.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libbz2-1.0.8-r6.apk",
+            "size_bytes": 34259,
+            "sha256": "28cb76bb6d11d2a55c3061b5fcb2ab84996412a248b2c9fe52bb710d0a2a84e7"
+          },
+          {
+            "file": "libexpat-2.10.0-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libexpat-2.10.0-r0.apk",
+            "size_bytes": 63387,
+            "sha256": "99144fe0b1bb9316a3bc30c38707996767806661f4a0456fcf4565ac92e79b0f"
+          },
+          {
+            "file": "libgomp-15.2.0-r5.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libgomp-15.2.0-r5.apk",
+            "size_bytes": 146527,
+            "sha256": "90576a8899c560d3983b8ac8442b5b75957a917bc1c4e950e005945080f8682f"
+          },
+          {
+            "file": "libjpeg-turbo-3.1.3-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libjpeg-turbo-3.1.3-r0.apk",
+            "size_bytes": 225383,
+            "sha256": "0e82bb8d0abad143d9a84ee32152707e5a71176bd803b070b6179e85e11bf2be"
+          },
+          {
+            "file": "libmd-1.2.0-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libmd-1.2.0-r0.apk",
+            "size_bytes": 26213,
+            "sha256": "cb94430ebc45dbd5dd6882bfd296bb73ea3c337691f469bd1438e696a6e867eb"
+          },
+          {
+            "file": "libpng-1.6.59-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libpng-1.6.59-r0.apk",
+            "size_bytes": 97458,
+            "sha256": "bccd127f8c42bc5c21c018b6b1dc977128f3bad64c3412e541c09e96e8b227a4"
+          },
+          {
+            "file": "libsharpyuv-1.6.0-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libsharpyuv-1.6.0-r0.apk",
+            "size_bytes": 11311,
+            "sha256": "c21fbafab87b1a5a105f4ede43e2fc78a221cb0a093502b8cb1e1ca55d48ab41"
+          },
+          {
+            "file": "libwebp-1.6.0-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libwebp-1.6.0-r0.apk",
+            "size_bytes": 206319,
+            "sha256": "6bb4ac037094bdd70537fdfa90fc5f71eb4efc0d0b94e392bce7557fb0a6a208"
+          },
+          {
+            "file": "libwebpmux-1.6.0-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libwebpmux-1.6.0-r0.apk",
+            "size_bytes": 20637,
+            "sha256": "3448d2dcad3604dd46299be72ea3fe0b6bba16403fae487ecbf672d71305414c"
+          },
+          {
+            "file": "libx11-1.8.14-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libx11-1.8.14-r0.apk",
+            "size_bytes": 869462,
+            "sha256": "d460c111c1fc40e8f84367907b3e50a58a2b19c3e9d54f7c1f0e4aea7a376e3b"
+          },
+          {
+            "file": "libxau-1.0.12-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libxau-1.0.12-r0.apk",
+            "size_bytes": 6206,
+            "sha256": "179a76248d0eea545f3affafc1275358dc671547a2ab76ff3e93edecb612864b"
+          },
+          {
+            "file": "libxcb-1.17.0-r2.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libxcb-1.17.0-r2.apk",
+            "size_bytes": 261262,
+            "sha256": "21dbe6dfbc477baa1bad13b82b8e61b83e34e1c474d3913f33ad5fc5b890afa0"
+          },
+          {
+            "file": "libxdmcp-1.1.5-r1.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libxdmcp-1.1.5-r1.apk",
+            "size_bytes": 9956,
+            "sha256": "4f6fe6269deadf99d2cd69b0a77cdaae1cab414738edf59df4ae79f4871c7adb"
+          },
+          {
+            "file": "libxext-1.3.7-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libxext-1.3.7-r0.apk",
+            "size_bytes": 26210,
+            "sha256": "06886b15075a537fcd499c243facd0ec8c3e38eddef19be68ef185c079c462e4"
+          },
+          {
+            "file": "libxft-2.3.9-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libxft-2.3.9-r0.apk",
+            "size_bytes": 38248,
+            "sha256": "ec2eabfee31f018976518f95e84e707d4b47d2d4a27180bc171595316c35f385"
+          },
+          {
+            "file": "libxrender-0.9.13-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libxrender-0.9.13-r0.apk",
+            "size_bytes": 17143,
+            "sha256": "02a9ec9c93b6c609f28af28f7a4db0111b8415e973f1a8e1eb31928a3a5a43ab"
+          },
+          {
+            "file": "pango-1.57.1-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/pango-1.57.1-r0.apk",
+            "size_bytes": 269967,
+            "sha256": "59a4be0b15a5dc3cf8bc425c65626a9f8a975a1d1beb5d3645fce34bf578c0a5"
+          },
+          {
+            "file": "pixman-0.46.4-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/pixman-0.46.4-r0.apk",
+            "size_bytes": 180838,
+            "sha256": "022ab7d2b766f3893e6c457a03c723fe3e79e9f009d8a62d06f1692d9f2fc77f"
+          },
+          {
+            "file": "tesseract-ocr-5.5.2-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/aarch64/tesseract-ocr-5.5.2-r0.apk",
+            "size_bytes": 2016028,
+            "sha256": "6bceeabbc4d81b6ca96b2514c8ec8165574118e66ac18cdad4adc37604789f3d"
+          },
+          {
+            "file": "tesseract-ocr-data-chi_sim-5.5.2-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/aarch64/tesseract-ocr-data-chi_sim-5.5.2-r0.apk",
+            "size_bytes": 19905817,
+            "sha256": "269cc1f0387b02950a8b713c37d0d82de0b3164d7c9c1e62c0cbfc037cfba4e2"
+          },
+          {
+            "file": "tesseract-ocr-data-eng-5.5.2-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/aarch64/tesseract-ocr-data-eng-5.5.2-r0.apk",
+            "size_bytes": 10845896,
+            "sha256": "e6a9debbe28f588459e26da12b47fb5437e275c4c3535e12fc09a58200f2b7b0"
+          },
+          {
+            "file": "tiff-4.7.2-r0.apk",
+            "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/tiff-4.7.2-r0.apk",
+            "size_bytes": 167282,
+            "sha256": "606643bc7b0741bc14e325c64640834aa210c74240b4c7595fe8d1d23e77ee5f"
+          }
       ],
       "lima_build": {
         "source_commit": "27bc4c4b101e27994e01e36566a0f2091bbca507",

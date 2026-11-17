@@ -1533,51 +1533,6 @@ async fn install(app: &App, id: Uuid) -> Result<()> {
     {
         return Err("安装至少需要6GiB可用空间".into());
     }
-    let desktop_image = std::env::var("AI_PHONE_DESKTOP_IMAGE")
-        .unwrap_or_else(|_| "ai-phone-desktop:20261028".into());
-    let workspace_image = crate::workbench::workspace_image();
-    let mut inspect = docker();
-    inspect.args(["image", "inspect", &desktop_image, "--format", "{{.Id}}"]);
-    if process(inspect, vec![], 4096, 15).await.is_err() {
-        if std::env::var("AI_PHONE_IMAGE_PULL_POLICY").as_deref() == Ok("never") {
-            return Err("Bundled desktop image is missing; run client initialization again".into());
-        }
-        install_step(app, id, "准备基础镜像").await?;
-        let mut base = docker();
-        base.args(["image", "inspect", &workspace_image, "--format", "{{.Id}}"]);
-        if process(base, vec![], 4096, 15).await.is_err() {
-            let mut build = docker();
-            build.current_dir(&app.root).args([
-                "build",
-                "--build-arg",
-                &format!(
-                    "HTTP_PROXY={}",
-                    std::env::var("AI_PHONE_CONTAINER_PROXY").unwrap_or_default()
-                ),
-                "--build-arg",
-                &format!(
-                    "HTTPS_PROXY={}",
-                    std::env::var("AI_PHONE_CONTAINER_PROXY").unwrap_or_default()
-                ),
-                "-t",
-                &workspace_image,
-                "-f",
-                "infra/workspace/Dockerfile",
-                ".",
-            ]);
-            process(build, vec![], 2 * 1024 * 1024, 1800).await?;
-        }
-        install_step(app, id, "安装Linux桌面和办公软件").await?;
-        let mut build = docker();
-        build.current_dir(&app.root).args([
-            "compose",
-            "-f",
-            "compose.desktop.yaml",
-            "build",
-            "desktop",
-        ]);
-        process(build, vec![], 2 * 1024 * 1024, 1800).await?;
-    }
     install_step(app, id, "启动桌面").await?;
     desktop_directory(&app.root, "observations").await?;
     desktop_directory(&app.root, "home").await?;
@@ -1592,16 +1547,21 @@ async fn install(app: &App, id: Uuid) -> Result<()> {
             "compose.desktop.yaml",
             "up",
             "-d",
+            "--no-build",
+            "--pull",
+            "never",
             "desktop",
         ]);
     process(start, vec![], 16384, 90).await?;
-    if let Some(bridge) = ai_phone_host_runtime::desktop_bridge::DesktopBridge::staged(&app.root)
+    if let Some(bridge) = ai_phone_host_runtime::desktop_bridge::staged(&app.root)
         .await
         .map_err(|e| e.to_string())?
     {
         let mut update = docker();
-        update.args(bridge.install_args(CONTAINER));
-        process(update, bridge.bytes, 4096, 20).await?;
+        update.args(ai_phone_host_runtime::desktop_bridge::install_args(
+            CONTAINER,
+        ));
+        process(update, bridge, 4096, 20).await?;
     }
     install_step(app, id, "验证画面与控制").await?;
     let mut ok = false;

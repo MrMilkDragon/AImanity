@@ -11,13 +11,7 @@ use std::{
 };
 
 const ROLES: [&str; 2] = ["home", "input"];
-const FILES: [&str; 4] = [
-    "browser.apk",
-    "home.apk",
-    "input.apk",
-    "notification-access.jar",
-];
-const PROBE: &str = "scripts/android-input-probe/NotificationAccess.java";
+const FILES: [&str; 3] = ["browser.apk", "home.apk", "input.apk"];
 const BROWSER: &str = "config/phone-browser.json";
 
 #[derive(Deserialize)]
@@ -48,7 +42,6 @@ struct Manifest {
 fn fingerprint(root: &Path) -> Result<String> {
     let mut paths = vec![
         BROWSER.into(),
-        PROBE.into(),
         "crates/release-tools/src/android_package.rs".into(),
         "crates/release-tools/src/phone_apps.rs".into(),
     ];
@@ -108,10 +101,6 @@ fn build(root: &Path, cache: &Path, destination: &Path, identity: String) -> Res
         fs::copy(apk, work.path().join(format!("{role}.apk")))?;
         apps.insert(role.into(), receipt);
     }
-    android_package::notification_probe(
-        root.join(PROBE),
-        &work.path().join("notification-access.jar"),
-    )?;
     let policy: Browser = serde_json::from_reader(File::open(root.join(BROWSER))?)?;
     let abi = if cfg!(target_arch = "aarch64") {
         "arm64-v8a"

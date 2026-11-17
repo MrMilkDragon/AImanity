@@ -8,7 +8,11 @@ mod client_payload;
 mod cuttlefish;
 mod dependency_audit;
 #[cfg(unix)]
+mod linux_backend_capsule;
+#[cfg(unix)]
 mod linux_ocr;
+#[cfg(target_os = "macos")]
+mod macos_factory;
 #[cfg(unix)]
 mod native_services;
 mod phone_apps;
@@ -37,9 +41,15 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(any(target_os = "macos", windows))]
         "client-installer" => client_installer::run(rest).map(Some),
         "client-payload" => client_payload::run(rest).map(Some),
+        #[cfg(target_os = "macos")]
+        "macos-factory" => macos_factory::run(rest).map(Some),
+        #[cfg(target_os = "macos")]
+        "fetch-macos-images" => macos_factory::fetch_images(rest).map(Some),
         "sign-update" => update_feed::sign(rest).map(|()| None),
         "prepare-ocr-models" => assets::ocr(rest).map(Some),
         "prepare-speech-model" => assets::speech(rest).map(Some),
+        #[cfg(unix)]
+        "seal-linux-backend" => linux_backend_capsule::seal(rest).map(Some),
         #[cfg(unix)]
         "linux-ocr" => linux_ocr::run(rest).map(Some),
         #[cfg(unix)]

@@ -377,7 +377,7 @@ pub(super) fn package(linux_ocr: Option<&Path>) -> Result<Vec<Entry>> {
         )?);
         "linux-tesseract-bundled"
     } else {
-        "container-tesseract"
+        "system-tesseract"
     };
     let mut manifest = json!({
         "format": 1, "host": host, "source_sha256": receipt["source_sha256"], "compiler": receipt["compiler"],

@@ -340,9 +340,6 @@ async fn initialize(
                     adb_program: text(&prepared.sdk_root.join("platform-tools/adb"))?,
                     serial: boot.serial,
                     apk_path: text(&root.join("runtime/phone-apps/input.apk"))?,
-                    notification_probe_path: text(
-                        &root.join("runtime/phone-apps/notification-access.jar"),
-                    )?,
                     offline_apps: true,
                     ..Default::default()
                 },

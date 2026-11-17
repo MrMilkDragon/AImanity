@@ -8,7 +8,7 @@ AI Phone separates versioned application code, clean device baselines and persis
 
 | Component | Contents | Launch requirement |
 |---|---|---|
-| Native services | Release Rust assistant and phone runner, matched Rust PNG/OCR helper and generated fixture | Host, hashes, inventory and executable permissions must match; CPU Tesseract runs in the managed OCR service or the verified [Linux offline closure](engineering/linux-offline-ocr.md) |
+| Native services | Release Rust assistant and phone runner, matched Rust PNG/OCR helper and generated fixture | Tesseract runs directly in the macOS Linux guest or the Windows [Linux offline closure](engineering/linux-offline-ocr.md) |
 | Phone applications | Unicode input/notification service and no-drawer launcher APKs | Source fingerprint, complete inventory and APK hashes must match; factory signatures/package IDs are verified |
 | macOS container host | App-owned Lima, clean Alpine ISO and offline Docker/Compose packages | [Host component and ownership](container-host-runtime.md) |
 | Android runtime | Matched emulator, platform tools and clean Android factory image | Host/guest ABI, complete file inventory and archive integrity must match; redistribution qualification is separate |

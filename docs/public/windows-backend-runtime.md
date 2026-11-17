@@ -54,15 +54,11 @@ cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory qemu . b
 
 The factory verifies the signed Calcium installer against its pinned digest, extracts the qualified QEMU 11.1.3 executables, firmware, DLLs and notices, and checks WHPX support. Append the downloaded Calcium installer path to reuse a local copy. The component manifest retains the original source and DLL inventory.
 
-On a disposable Linux builder, build the pinned x86_64 kernel and convert a fresh sealed backend. Linux ARM64 builders use the `x86_64-linux-gnu-` cross toolchain.
+On a disposable Linux x64 builder, the Windows Linux guest workflow stages the current Rust backend and seals its offline layer over the released Calcium backing disk and kernel.
 
 ```sh
-./scripts/bun scripts/windows-guest-disk.ts kernel build/guest-kernel
-./scripts/bun scripts/wsl-backend.ts
-sudo ./scripts/bun scripts/windows-guest-disk.ts \
-  .tools/wsl-backend-qualification/assembled/wsl-backend.payload "$BACKEND_SHA256" build/guest-kernel/bzImage \
-  build/guest-kernel/modules.tar.gz build/guest-kernel/kernel-receipt.json \
-  build/windows-guest.payload
+cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-release \
+  build/windows-qemu/baseline build/windows-release-context build/windows-guest.payload
 ```
 
 The backend factory verifies the QEMU bootstrap command before sealing. The guest capsule contains its kernel, compressed QCOW2 disk, kernel config, license text and manifest. BusyBox starts the Rust bootstrap on the named virtio-serial port `org.aiphone.bootstrap`.

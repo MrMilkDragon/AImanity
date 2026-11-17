@@ -27,8 +27,6 @@ export type FileRecord = {
   sha256: string;
   mode: number;
 };
-export const secret =
-  /(?<![A-Za-z0-9_-])(?:sk-[A-Za-z0-9_-]{24,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,})/;
 export function json<T = any>(file: string): T {
   return JSON.parse(readFileSync(file, "utf8"));
 }

@@ -28,7 +28,7 @@ pub(super) fn execute(command: &mut Command) -> Result<()> {
     }
     Ok(())
 }
-fn output(command: &mut Command) -> Result<String> {
+pub(super) fn output(command: &mut Command) -> Result<String> {
     let result = command.output()?;
     if !result.status.success() {
         return Err(format!(
@@ -40,10 +40,10 @@ fn output(command: &mut Command) -> Result<String> {
     }
     Ok(String::from_utf8(result.stdout)?.trim().to_owned())
 }
-fn json_file(file: impl AsRef<Path>) -> Result<Value> {
+pub(super) fn json_file(file: impl AsRef<Path>) -> Result<Value> {
     Ok(serde_json::from_slice(&fs::read(file)?)?)
 }
-fn file_digest(file: &Path) -> Result<String> {
+pub(super) fn file_digest(file: &Path) -> Result<String> {
     let mut hash = Sha256::new();
     io::copy(&mut File::open(file)?, &mut hash)?;
     Ok(format!("{:x}", hash.finalize()))

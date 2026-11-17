@@ -14,7 +14,6 @@ import { ROOT, hostKey, run, output, digest } from "./process";
 import { json, save } from "./inventory";
 import { releaseTools, buildReleaseTools } from "./archive";
 import { checkDocker, prepareApps, prepareImages, fetchPin } from "./factory";
-import { preparePayload } from "./client-payload";
 import { checkSource } from "./source";
 import {
   buildWsl,
@@ -24,7 +23,7 @@ import {
   stageBackendSource,
   stageWindowsServices,
 } from "./wsl-factory";
-import { hostResources } from "./resources";
+import { hostResources } from "./process";
 
 const label = "dev.aiphone.qualification",
   checks = [
@@ -321,11 +320,9 @@ async function prepareBackendSource(
   if (linuxOcr === undefined)
     run([release, "linux-ocr", "build", join(work, "ocr-context"), ocr], { cwd: root });
   run([release, "native-services", "build"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
-  await preparePayload(root, {
-    nativeServices: true,
-    phoneApps: deviceApps,
-    linuxOcr: ocr,
-  });
+  run([release, "client-payload", "--with-service-runtime", "--linux-ocr", ocr,
+    ...(deviceApps ? ["--with-phone-apps"] : []),
+  ], { cwd: root });
   return join(root, hostResources, "source.payload");
 }
 export async function prepareWindowsReleaseContext(context: string, root = ROOT) {

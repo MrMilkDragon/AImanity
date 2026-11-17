@@ -2,7 +2,6 @@
 mod applications;
 mod device;
 mod policy;
-mod probe;
 mod state;
 use crate::{Error, Result, filesystem, native_ipc};
 use ai_phone_api::wire::{NativeAndroidInputReady, NativeAndroidInputSetup};
@@ -15,7 +14,6 @@ const IME: &str = "dev.aiphone.input/.UnicodeIme";
 const ATTENTION: &str = "dev.aiphone.input/.PhoneAttention";
 const ACCESSIBILITY_SERVICES: &str = "enabled_accessibility_services";
 const NOTIFICATION: &str = "dev.aiphone.input/.PhoneNotifications";
-const REMOTE_PROBE: &str = "/data/local/tmp/ai-phone-input-notification-probe.jar";
 pub const CONTRACT: &str = "ai-phone-input-setup-v2";
 
 pub async fn run(arguments: &[OsString]) -> Result<()> {
@@ -77,7 +75,6 @@ pub async fn setup(request: NativeAndroidInputSetup, stop: watch::Receiver<bool>
         &mut adb,
         pending,
         Path::new(&request.apk_path),
-        Path::new(&request.notification_probe_path),
         request.observe_only,
     )
     .await?;
@@ -201,21 +198,36 @@ async fn enabled(adb: &mut impl Device, key: &str, observe: bool) -> Result<bool
         _ => Err(Error::Invalid("phone_input_observation")),
     }
 }
-async fn probe_service(adb: &mut impl Device, mode: Option<&str>) -> Result<bool> {
-    let classpath = format!("CLASSPATH={REMOTE_PROBE}");
-    let mut args = vec![
-        "shell",
-        "env",
-        &classpath,
-        "app_process",
-        "/",
-        "dev.aiphone.input.probe.NotificationAccess",
-    ];
-    args.extend(mode);
-    match adb.execute(&args, 10).await?.as_str() {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        _ => Err(Error::Invalid("phone_input_probe_unknown")),
+async fn service_access(adb: &mut impl Device, service: &str) -> Result<bool> {
+    let response = adb
+        .execute(
+            &[
+                "shell",
+                "am",
+                "broadcast",
+                "--receiver-foreground",
+                "--user",
+                "0",
+                "-a",
+                "dev.aiphone.input.READ_ACCESS",
+                "-n",
+                "dev.aiphone.input/.UiTreeReceiver",
+                "--es",
+                "service",
+                service,
+            ],
+            10,
+        )
+        .await?;
+    let prefix = format!("Broadcast completed: result=-1, data=\"{service}:");
+    match response
+        .lines()
+        .last()
+        .and_then(|line| line.strip_prefix(&prefix))
+    {
+        Some("true\"") => Ok(true),
+        Some("false\"") => Ok(false),
+        _ => Err(Error::Invalid("phone_input_service_observation")),
     }
 }
 async fn attention_bound(adb: &mut impl Device) -> Result<bool> {
@@ -247,7 +259,7 @@ async fn attention(adb: &mut impl Device, observe: bool) -> Result<bool> {
         let mut changed = false;
         if !listed {
             // Android removes enabled components until its own service registry sees them.
-            while !probe_service(adb, Some("attention-installed")).await? {
+            while !service_access(adb, "attention").await? {
                 tokio::time::sleep(Duration::from_millis(200)).await;
             }
             let value = setting(adb, ACCESSIBILITY_SERVICES).await?;
@@ -275,7 +287,7 @@ async fn attention(adb: &mut impl Device, observe: bool) -> Result<bool> {
 }
 async fn services(adb: &mut impl Device, observe: bool) -> Result<bool> {
     let mut changed = enabled(adb, "show_ime_with_hard_keyboard", observe).await?;
-    if !probe_service(adb, None).await? {
+    if !service_access(adb, "notification").await? {
         if observe {
             return Err(Error::Invalid("phone_input_not_ready"));
         }
@@ -292,7 +304,7 @@ async fn services(adb: &mut impl Device, observe: bool) -> Result<bool> {
         )
         .await?;
         changed = true;
-        if !probe_service(adb, None).await? {
+        if !service_access(adb, "notification").await? {
             return Err(Error::Invalid("phone_input_notification_unknown"));
         }
     }
@@ -304,7 +316,6 @@ async fn configure(
     adb: &mut impl Device,
     pending: Option<Stage>,
     apk: &Path,
-    probe: &Path,
     observe: bool,
 ) -> Result<bool> {
     let present = package(adb).await?;
@@ -318,11 +329,6 @@ async fn configure(
     {
         return Err(Error::Invalid("phone_input_user"));
     }
-    let probe = if observe {
-        None
-    } else {
-        Some(probe::Probe::load(probe)?)
-    };
     let mut changed = false;
     if !present {
         if observe {
@@ -344,9 +350,6 @@ async fn configure(
     }
     if !observe && pending != Some(Stage::Configure) {
         state.save(Stage::Configure)?;
-    }
-    if let Some(probe) = probe {
-        changed |= probe.prepare(adb).await?;
     }
     registration(adb).await?;
     changed |= ime(adb, observe).await?;

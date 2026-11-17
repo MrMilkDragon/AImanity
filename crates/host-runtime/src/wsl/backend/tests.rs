@@ -57,10 +57,9 @@ impl Execute for Fixture {
                 format!("{} {}\n", args[3], root.canonicalize().unwrap().display()).into_bytes()
             }
             Some("container") if args.get(1).map(String::as_str) == Some("ls") => {
-                if args
-                    .iter()
-                    .any(|arg| arg == "name=^/(ai-phone-postgres-1|ai-phone-redis-1|ai-phone-desktop|ai-phone-ocr)$")
-                    && (self.container.is_some() || self.inspection.is_some())
+                if args.iter().any(|arg| {
+                    arg == "name=^/(ai-phone-postgres-1|ai-phone-redis-1|ai-phone-desktop)$"
+                }) && (self.container.is_some() || self.inspection.is_some())
                 {
                     "a".repeat(64).into_bytes()
                 } else {
@@ -531,51 +530,46 @@ async fn fresh_backend_uses_native_services_and_never_creates_desktop_or_starts_
 }
 
 #[tokio::test]
-async fn resume_retires_only_the_owned_legacy_ocr_and_cache_containers() {
+async fn resume_retires_only_the_owned_legacy_cache_container() {
     let id = "a".repeat(64);
-    for (name, expected) in [
-        ("/ai-phone-ocr", vec![vec!["rm", "--force", &id]]),
-        (
-            "/ai-phone-redis-1",
-            vec![vec!["stop", "--time", "10", &id], vec!["rm", &id]],
-        ),
-    ] {
-        let folder = tempfile::tempdir().unwrap();
-        let root = folder.path().canonicalize().unwrap();
-        let mut backend = fixture(
-            &root,
-            Fixture {
-                inspection: Some(json!({
-                    "id": id,
-                    "name": name,
-                    "image": "bundled-image",
-                    "running": true,
-                    "labels": {
-                        "com.docker.compose.project": "ai-phone",
-                        "com.docker.compose.project.working_dir": root,
-                    },
-                })),
-                ..Fixture::default()
-            },
-        );
-        backend
-            .start(
-                Path::new("images.payload"),
-                None,
-                Path::new("/root"),
-                Database::Container,
-            )
-            .await
-            .unwrap();
-        let removal: Vec<_> = backend
-            .execute
-            .calls
-            .iter()
-            .filter(|(_, args, _)| matches!(args[0].as_str(), "stop" | "rm"))
-            .map(|(_, args, _)| args.iter().map(String::as_str).collect::<Vec<_>>())
-            .collect();
-        assert_eq!(removal, expected);
-    }
+    let folder = tempfile::tempdir().unwrap();
+    let root = folder.path().canonicalize().unwrap();
+    let mut backend = fixture(
+        &root,
+        Fixture {
+            inspection: Some(json!({
+                "id": id,
+                "name": "/ai-phone-redis-1",
+                "image": "bundled-image",
+                "running": true,
+                "labels": {
+                    "com.docker.compose.project": "ai-phone",
+                    "com.docker.compose.project.working_dir": root,
+                },
+            })),
+            ..Fixture::default()
+        },
+    );
+    backend
+        .start(
+            Path::new("images.payload"),
+            None,
+            Path::new("/root"),
+            Database::Container,
+        )
+        .await
+        .unwrap();
+    let removal: Vec<_> = backend
+        .execute
+        .calls
+        .iter()
+        .filter(|(_, args, _)| matches!(args[0].as_str(), "stop" | "rm"))
+        .map(|(_, args, _)| args.iter().map(String::as_str).collect::<Vec<_>>())
+        .collect();
+    assert_eq!(
+        removal,
+        [vec!["stop", "--time", "10", &id], vec!["rm", &id]]
+    );
 }
 
 #[tokio::test]

@@ -15,12 +15,15 @@ fn read_json(path: impl AsRef<Path>) -> Result<Value> {
     Ok(serde_json::from_reader(File::open(path)?)?)
 }
 
-fn container_host(root: &Path) -> Result<Vec<Entry>> {
+pub(super) fn container_policy(root: &Path) -> Result<Value> {
     if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         return Err("Container host bundle requires Apple Silicon".into());
     }
     let host = "macos-arm64";
     let policy = read_json(root.join("config/container-host-runtime.json"))?;
+    if policy["format"] != 1 {
+        return Err("Unsupported container host policy".into());
+    }
     let bootstrap = read_json(root.join("config/host-bootstrap.json"))?;
     let client = read_json(root.join("config/native-client.json"))?;
     let mut selected = json!({
@@ -30,12 +33,16 @@ fn container_host(root: &Path) -> Result<Vec<Entry>> {
         "minimum_macos":client["minimum_macos"],
     });
     selected.sort_all_objects();
+    Ok(selected)
+}
+
+fn container_host(root: &Path) -> Result<Vec<Entry>> {
+    let selected = container_policy(root)?;
     let digest = format!("{:x}", Sha256::digest(serde_json::to_vec(&selected)?));
     let folder = root.join(".tools/container-host");
     let manifest = read_json(folder.join("manifest.json"))?;
-    if policy["format"] != 1
-        || manifest["format"] != 1
-        || manifest["host"] != host
+    if manifest["format"] != 1
+        || manifest["host"] != selected["host"]
         || manifest["policy_sha256"] != digest
     {
         return Err("Container host policy changed".into());

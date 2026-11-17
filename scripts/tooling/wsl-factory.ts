@@ -1,5 +1,6 @@
 import {
   mkdirSync,
+  readdirSync,
   existsSync,
   lstatSync,
   readFileSync,
@@ -23,18 +24,16 @@ import { createGzip } from "node:zlib";
 import { Readable } from "node:stream";
 import { digest, run, output } from "./process";
 import { json, save, collect, records } from "./inventory";
-import { tarEntries, entryBytes } from "./archive";
+import { buildReleaseTools, tarEntries, entryBytes } from "./archive";
 import { databaseImage, fetchPin, type prepareImages } from "./factory";
-import { packageInputs } from "./container-host";
-import {
-  publishWsl,
-  phoneSchema,
-  phoneManifest,
-  phoneRequired,
-  qemuBootstrapContract,
-} from "./wsl-capsule";
+const phoneSchema = "emulator/lib/emulator_controller.proto";
+const phoneManifest = "PHONE-TOOLS-MANIFEST.json";
+const phoneRequired = [
+  "platform-tools/adb", "platform-tools/source.properties", "platform-tools/NOTICE.txt",
+  phoneSchema, "provenance.json", "LICENSE",
+];
+const qemuBootstrapContract = "ai-phone-qemu-bootstrap-v2";
 
-export const nativeWindowsBackendComponents = ["native-services", "phone-apps"];
 
 export function wslPlan(root: string) {
   const policy = json(join(root, "config/wsl-backend.json")),
@@ -188,9 +187,7 @@ export async function preparePhoneTools(root: string, work: string) {
       ]),
     );
   if (
-    phoneRequired
-      .filter((name) => name !== phoneManifest)
-      .some((name) => !Object.hasOwn(inventory, name))
+    phoneRequired.some((name) => !Object.hasOwn(inventory, name))
   )
     throw Error("Incomplete native phone bridge");
   save(join(folder, phoneManifest), {
@@ -374,7 +371,15 @@ export async function buildWsl(
   if (existsSync(work)) throw Error("Use a fresh WSL factory workspace");
   const plan = wslPlan(root);
   if (images.receipt.architecture !== "amd64") throw Error("WSL requires amd64 images");
-  await packageInputs(packages, plan.engine_packages);
+  if (readdirSync(packages).length !== plan.engine_packages.length)
+    throw Error("Incomplete offline engine package closure");
+  for (const pin of plan.engine_packages) {
+    const file = join(packages, pin.file);
+    const info = lstatSync(file);
+    if (!info.isFile() || (pin.size_bytes !== undefined && info.size !== pin.size_bytes) ||
+      (await digest(file)) !== pin.sha256)
+      throw Error("Offline engine package changed: " + pin.file);
+  }
   let contextBytes =
     lstatSync(source).size + lstatSync(images.file).size + input.bootstrap.size + 65;
   for (const folder of [packages, phoneTools])
@@ -459,11 +464,9 @@ export async function buildWsl(
     createGzip({ level: 9 }),
     createWriteStream(compressed, { flags: "wx" }),
   );
-  const result = await publishWsl(
-    compressed,
-    join(work, "wsl-backend.payload"),
-    provenance,
-  );
+  const result = JSON.parse(String(run([
+    buildReleaseTools(root), "seal-linux-backend", compressed, join(work, "wsl-backend.payload"),
+  ], { cwd: root, input: JSON.stringify(provenance), stdio: ["pipe", "pipe", "inherit"], encoding: "utf8" }).stdout));
   save(join(work, "receipt.json"), result);
   return result;
 }

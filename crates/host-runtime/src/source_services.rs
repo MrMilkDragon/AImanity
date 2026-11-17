@@ -83,7 +83,6 @@ async fn launch(backend: &mut Backend<'_, Process>, role: &str) -> Result<Value>
                             "--wait",
                             "postgres",
                             "redis",
-                            "ocr",
                         ],
                     ),
                     vec![],

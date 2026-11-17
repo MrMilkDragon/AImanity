@@ -308,6 +308,13 @@ impl Selection {
                     .ok_or(Error::Invalid("managed_engine_path"))?
                     .into(),
             ),
+            (
+                "AI_PHONE_LIMA_COMMAND".into(),
+                self.command
+                    .to_str()
+                    .ok_or(Error::Invalid("managed_engine_path"))?
+                    .into(),
+            ),
         ]))
     }
 }

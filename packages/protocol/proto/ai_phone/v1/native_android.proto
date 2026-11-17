@@ -100,9 +100,9 @@ message NativeAndroidInputSetup {
   string adb_program = 3;
   string serial = 4;
   string apk_path = 5;
-  string notification_probe_path = 6;
+  reserved 6;
   bool observe_only = 7;
-  // Complete offline setup also admits the bundled launcher and guest Clash app.
+  // Complete offline setup also installs the bundled launcher and browser.
   bool offline_apps = 8;
 }
 

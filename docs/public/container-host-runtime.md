@@ -4,7 +4,7 @@ The Apple Silicon client includes Lima with Virtualization.framework, a pinned A
 
 ## Assembly
 
-`scripts/tooling/container-host.ts` assembles the pinned archive, native Lima binary, local system image and packages into a versioned component. The [Mac build guide](engineering/macos-full-runtime.md) describes complete-client assembly. Dependency builds run on disposable Linux workers.
+`release-tools macos-factory` assembles the pinned archive, native Lima binary, local system image and packages into a versioned component. The [Mac build guide](engineering/macos-full-runtime.md) describes complete-client assembly. Dependency builds run on disposable Linux workers.
 
 ## Runtime ownership
 

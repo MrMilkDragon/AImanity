@@ -93,16 +93,6 @@ fn compile(sdk: &Path, sources: Vec<PathBuf>, classes: &Path, dex: &Path) -> Res
         .args(compiled))
 }
 
-pub(super) fn notification_probe(source: PathBuf, destination: &Path) -> Result<()> {
-    let build = tempfile::tempdir()?;
-    compile(
-        &sdk()?,
-        vec![source],
-        &build.path().join("classes"),
-        destination,
-    )
-}
-
 pub fn build(arguments: &[OsString]) -> Result<Value> {
     let [root, role] = arguments else {
         return Err("build-android-apk requires the project root and app role".into());

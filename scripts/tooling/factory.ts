@@ -56,27 +56,6 @@ export function checkDocker() {
   )
     throw Error("Factory requires the platform-aware image store");
 }
-export function compilerEnvironment(sdk: string): NodeJS.ProcessEnv {
-  sdk = resolve(sdk);
-  const java = process.env.JAVA_HOME;
-  if (
-    !java ||
-    ![
-      "platforms/android-35/android.jar",
-      ...["aapt2", "d8"].map(
-        (name) => "build-tools/35.0.0/" + name,
-      ),
-    ].every((name) => existsSync(join(sdk, name))) ||
-    !existsSync(join(java, "bin/javac"))
-  )
-    throw Error("Factory requires Android 35 build tools and Java 17");
-  return {
-    ...process.env,
-    ANDROID_HOME: sdk,
-    ANDROID_SDK_ROOT: sdk,
-    JAVA_HOME: resolve(java),
-  };
-}
 export function prepareApps(root: string, env: NodeJS.ProcessEnv) {
   return JSON.parse(output([buildReleaseTools(root), "phone-apps", "build", root], { cwd: root, env }));
 }

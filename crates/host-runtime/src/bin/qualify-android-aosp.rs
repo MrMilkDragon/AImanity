@@ -184,7 +184,8 @@ async fn check(adb: &Adb, boot: NativeAndroidBooted, started: Instant) -> Result
         "{}",
         json!({"acceleration":"whpx", "rootVerified":true, "serial":boot.serial, "width":boot.width, "height":boot.height, "before":before.len(), "boot_ms":started.elapsed().as_millis()})
     );
-    adb.shell(&["svc power stayon true; input keyevent KEYCODE_WAKEUP; cmd statusbar collapse; wm dismiss-keyguard; input swipe 360 1150 360 360 280"]).await?;
+    adb.shell(&["svc power stayon true; input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard"])
+        .await?;
     adb.audio().await?;
     let launch = adb
         .shell(&[
@@ -204,6 +205,7 @@ async fn check(adb: &Adb, boot: NativeAndroidBooted, started: Instant) -> Result
     if !launch.lines().any(|line| line.trim() == "Status: ok") {
         return Err(format!("Android Dialer did not launch: {}", launch.trim()).into());
     }
+    adb.shell(&["cmd", "statusbar", "collapse"]).await?;
     let (x, y) = adb.ui(dialpad_point).await?;
     let (x, y) = (x.to_string(), y.to_string());
     let tap = ["input", "tap", &x, &y];

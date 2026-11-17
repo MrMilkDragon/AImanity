@@ -17,7 +17,7 @@ use std::{
 };
 use tokio::{process::Command, sync::watch};
 
-const FOREIGN_ENGINE: [&str; 9] = [
+const FOREIGN_ENGINE: [&str; 10] = [
     "DOCKER_HOST",
     "DOCKER_CONFIG",
     "DOCKER_CONTEXT",
@@ -26,13 +26,13 @@ const FOREIGN_ENGINE: [&str; 9] = [
     "DOCKER_CERT_PATH",
     "DOCKER_API_VERSION",
     "LIMA_HOME",
+    "AI_PHONE_LIMA_COMMAND",
     "AI_PHONE_MANAGED_BIN",
 ];
-const NAMES: [&str; 4] = [
+const NAMES: [&str; 3] = [
     "ai-phone-postgres-1",
     "ai-phone-redis-1",
     "ai-phone-desktop",
-    "ai-phone-ocr",
 ];
 const PATH: &str = "/usr/local/bin:/usr/bin:/bin";
 const REDIS: &str = "/opt/aiphone/redis";
@@ -292,9 +292,6 @@ impl<E: Execute> Backend<'_, E> {
         for name in ["assistant", "phone-runner", "channels"] {
             token(self.root, name)?;
         }
-        if let Some(ocr) = existing.get("ai-phone-ocr") {
-            self.docker(&["rm", "--force", &ocr.id]).await?;
-        }
         let lima = matches!(database, Database::MacNative)
             .then(|| text(&self.root.join("runtime/container-host/lima/bin/limactl")))
             .transpose()?;
@@ -348,9 +345,10 @@ impl<E: Execute> Backend<'_, E> {
             if !desktop.running {
                 self.docker(&["start", &desktop.id]).await?;
             }
-            if let Some(bridge) = crate::desktop_bridge::DesktopBridge::staged(self.root).await? {
-                let command = self.command("docker", bridge.install_args(&desktop.id));
-                self.checked(command, bridge.bytes).await?;
+            if let Some(bridge) = crate::desktop_bridge::staged(self.root).await? {
+                let command =
+                    self.command("docker", crate::desktop_bridge::install_args(&desktop.id));
+                self.checked(command, bridge).await?;
             }
         }
         phase("services_start");

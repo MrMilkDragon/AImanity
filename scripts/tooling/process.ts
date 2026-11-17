@@ -11,13 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 export const ROOT = resolve(import.meta.dir, "../..");
-export function bunProgram(root = ROOT) {
-  return resolve(
-    root,
-    ".tools/bin",
-    process.platform === "win32" ? "bun.exe" : "bun",
-  );
-}
+export const hostResources = "apps/native/gen/host";
 export function run(args: readonly string[], options: SpawnSyncOptions = {}) {
   const result = spawnSync(args[0]!, args.slice(1), {
     cwd: ROOT,
@@ -106,7 +100,4 @@ export function nativeProgram(root = ROOT) {
         "release",
         "ai-phone-assistant",
       );
-}
-export function nativeJson(args: string[], root = ROOT) {
-  return JSON.parse(output([nativeProgram(root), ...args], { cwd: root }));
 }
