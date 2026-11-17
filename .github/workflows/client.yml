@@ -80,7 +80,7 @@ jobs:
           ) > "$RUNNER_TEMP/aiphone-native-audit.log" 2>&1 &
           audit_pid=$!
           native_result=0
-          ./scripts/bun scripts/artifacts.ts native || native_result=$?
+          cargo run --quiet --locked -p ai-phone-release-tools -- native-services build || native_result=$?
           audit_result=0
           wait "$audit_pid" || audit_result=$?
           cat "$RUNNER_TEMP/aiphone-native-audit.log"

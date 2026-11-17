@@ -1,8 +1,8 @@
 import { resolve } from "node:path";
-import { ROOT, output } from "./tooling/process";
+import { ROOT, output, run } from "./tooling/process";
 import { checkSource } from "./tooling/source";
 import { preparePayload, type PayloadOptions } from "./tooling/client-payload";
-import { buildNative } from "./tooling/native-build";
+import { buildReleaseTools } from "./tooling/archive";
 import {
   buildClient,
   type Platform,
@@ -40,7 +40,8 @@ const options: PayloadOptions = {
       guestIdentity: option("--guest-identity")!,
     } : undefined,
 };
-if (options.nativeServices) await buildNative(root);
+if (options.nativeServices)
+  run([buildReleaseTools(root), "native-services", "build"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
 await preparePayload(root, options);
 console.log(JSON.stringify(await buildClient(platform, root, {
   temporarySigning,

@@ -1,14 +1,12 @@
 import {
   mkdtempSync,
-  readdirSync,
-  readFileSync,
   writeFileSync,
   rmSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { ROOT, run, output } from "./process";
+import { run, output } from "./process";
 import { json } from "./inventory";
 import { isolatedEnvironment } from "./isolated-env";
 
@@ -54,77 +52,6 @@ export function waitDatabase(container: string) {
     }
     throw Error("Disposable PostgreSQL did not become ready");
   })();
-}
-export function verifyNative(root = ROOT) {
-  const manifest = json(join(root, "runtime/services/manifest.json")),
-    checks: Record<string, unknown> = {};
-  for (const role of ["assistant", "runner"]) {
-    const folder = mkdtempSync(join(tmpdir(), "aiphone-service-version-"));
-    try {
-      const env = {
-          ...isolatedEnvironment(folder),
-          HOME: folder,
-          USERPROFILE: folder,
-        },
-        result = run([join(root, "runtime/services/bin", role), "--version"], {
-          cwd: folder,
-          env,
-          stdio: ["ignore", "pipe", "pipe"],
-          encoding: "utf8",
-          timeout: 10000,
-        });
-      if (
-        String(result.stdout).trim() !==
-          `ai-phone-${role} ${manifest.versions[role]}` ||
-        String(result.stderr).trim() ||
-        readdirSync(folder).length
-      )
-        throw Error("Native version receipt differs");
-      checks[role] = {
-        program: "ai-phone-" + role,
-        version: manifest.versions[role],
-        state_created: false,
-      };
-    } finally {
-      rmSync(folder, { recursive: true });
-    }
-  }
-  const folder = mkdtempSync(join(tmpdir(), "aiphone-service-vision-"));
-  try {
-    const env = isolatedEnvironment(folder);
-    if (manifest.vision !== "linux-tesseract-bundled") {
-      env.AI_PHONE_TESSERACT = process.env.AI_PHONE_TEST_TESSERACT;
-      env.TESSDATA_PREFIX = process.env.AI_PHONE_TEST_TESSDATA;
-    }
-    const png = readFileSync(join(root, "runtime/services/fixtures/ocr.png")),
-      result = run([join(root, "runtime/services/bin/vision")], {
-        cwd: folder,
-        env,
-        input: png,
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: 10000,
-      }),
-      value = JSON.parse(String(result.stdout));
-    if (
-      value.width !== png.readUInt32BE(16) ||
-      value.height !== png.readUInt32BE(20) ||
-      value.grid.length !== 2048 ||
-      !value.regions.some(
-        (row: any) =>
-          row.confidence >= 0.8 && row.text.replace(/\s/g, "") === "7319",
-      )
-    )
-      throw Error("Bundled OCR did not recognize the fixture");
-    checks.vision = {
-      fixture_text: "7319",
-      width: value.width,
-      height: value.height,
-      grid: 2048,
-    };
-  } finally {
-    rmSync(folder, { recursive: true });
-  }
-  return checks;
 }
 export function nativeDatabaseReceipt(
   root: string,

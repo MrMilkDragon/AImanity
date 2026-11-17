@@ -46,13 +46,13 @@ WSL registration follows [Microsoft's import interface](https://learn.microsoft.
 
 ## QEMU build inputs
 
-On Windows x64, prepare the host component with the pinned Bun toolchain:
+Prepare the host component on Windows x64.
 
 ```sh
-./scripts/bun scripts/windows-qemu.ts build/windows-qemu
+cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory qemu . build/windows-qemu
 ```
 
-The factory verifies the signed Calcium installer against its pinned digest, extracts the qualified QEMU 11.1.3 executables, firmware, DLLs and notices, and checks WHPX support. Pass the exact downloaded Calcium installer as the optional second argument to reuse a local copy. The component manifest retains the original source and DLL inventory.
+The factory verifies the signed Calcium installer against its pinned digest, extracts the qualified QEMU 11.1.3 executables, firmware, DLLs and notices, and checks WHPX support. Append the downloaded Calcium installer path to reuse a local copy. The component manifest retains the original source and DLL inventory.
 
 On a disposable Linux builder, build the pinned x86_64 kernel and convert a fresh sealed backend. Linux ARM64 builders use the `x86_64-linux-gnu-` cross toolchain.
 

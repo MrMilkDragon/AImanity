@@ -39,7 +39,7 @@ These commands are for maintainers building components. Native OCR qualification
 
 ```sh
 ./scripts/bootstrap.sh
-./scripts/bun scripts/artifacts.ts native
+cargo run --quiet --locked -p ai-phone-release-tools -- native-services build
 ./scripts/bun scripts/prepare-client.ts --with-service-runtime  --verify-service-runtime
 ./scripts/bun scripts/build-client.ts --platform macos --with-service-runtime
 ```

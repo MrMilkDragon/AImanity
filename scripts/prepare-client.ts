@@ -1,6 +1,7 @@
-import { ROOT } from "./tooling/process";
+import { ROOT, output } from "./tooling/process";
 import { preparePayload, stageSource } from "./tooling/client-payload";
-import { verifyNative, nativeDatabaseReceipt } from "./tooling/native-check";
+import { nativeDatabaseReceipt } from "./tooling/native-check";
+import { buildReleaseTools } from "./tooling/archive";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -35,7 +36,7 @@ if (
       ROOT,
     );
     if (args.includes("--verify-service-runtime"))
-      console.log(JSON.stringify(verifyNative(staged)));
+      console.log(output([buildReleaseTools(ROOT), "native-services", "verify", staged]));
     if (args.includes("--pg-container"))
       console.log(
         JSON.stringify(

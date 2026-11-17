@@ -41,7 +41,7 @@ export async function preparePayload(
   const selected = options.nativeServices ? await prepareServices(root, options.linuxOcr) : [];
   if (options.phoneApps) {
     output([releaseTools, "phone-apps", "verify", root], { cwd: root });
-    selected.push(...collect(join(root, ".tools/phone-apps"), "runtime/phone-apps").files);
+    selected.push(...collect(join(root, ".tools/phone-apps"), "runtime/phone-apps"));
   }
   if (options.containerHost) selected.push(...await prepareContainerHost(root));
   const child = spawn(releaseTools, ["source", "payload", join(folder, "source.payload")], {

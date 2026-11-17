@@ -177,7 +177,7 @@ export async function preparePhoneTools(root: string, work: string) {
     join(folder, "provenance.json"),
   );
   copyFileSync(join(root, "LICENSE"), join(folder, "LICENSE"));
-  const files = records(collect(folder, "").files).map((row) => ({
+  const files = records(collect(folder, "")).map((row) => ({
       ...row,
       path: row.path.replace(/^\//, ""),
     })),
@@ -378,7 +378,7 @@ export async function buildWsl(
   let contextBytes =
     lstatSync(source).size + lstatSync(images.file).size + input.bootstrap.size + 65;
   for (const folder of [packages, phoneTools])
-    for (const file of collect(folder, "").files)
+    for (const file of collect(folder, ""))
       contextBytes += file.data.length;
   const rootfsBudget = contextBytes + 1536 * 1024 ** 2,
     disk = statfsSync(dirname(work));

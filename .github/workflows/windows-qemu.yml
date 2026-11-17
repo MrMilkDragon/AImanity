@@ -34,14 +34,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Fixed Bun tooling
+      - name: Install the pinned Rust toolchain
         shell: bash
-        run: ./scripts/bootstrap.sh
+        run: rustup toolchain install 1.96.0 --profile minimal
       - name: Prepare the qualified Windows x64 QEMU component
         id: build
         shell: pwsh
         run: |
-          ./.tools/bin/bun.exe scripts/windows-qemu.ts dist/windows-qemu
+          cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory qemu . dist/windows-qemu
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $identity = (Get-FileHash dist/windows-qemu/windows-qemu.json -Algorithm SHA256).Hash.ToLowerInvariant()
           "sha256=$identity" >> $env:GITHUB_OUTPUT

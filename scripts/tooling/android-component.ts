@@ -12,7 +12,6 @@ import { join, dirname, resolve } from "node:path";
 import {
   ROOT,
   digest,
-  download,
   hostKey,
   nativeJson,
 } from "./process";
@@ -20,8 +19,6 @@ import { canonical, json, type FileRecord } from "./inventory";
 import {
   writeTar,
   writeTarStream,
-  tarEntries,
-  entryBytes,
   type ArchiveFile,
 } from "./archive";
 import { spawn } from "node:child_process";
@@ -50,19 +47,7 @@ function androidReceipt(manifest: AndroidManifest, archiveIdentity: string) {
     redistribution: "review-pending",
   };
 }
-export async function pinnedDownload(
-  pin: { url: string; sha256: string; size_bytes?: number },
-  file: string,
-) {
-  if (!existsSync(file)) await download(pin.url, file);
-  if (
-    (pin.size_bytes !== undefined && lstatSync(file).size !== pin.size_bytes) ||
-    (await digest(file)) !== pin.sha256
-  )
-    throw Error("Pinned download mismatch: " + file.split(/[\\/]/).at(-1));
-  return file;
-}
-export function nativeArm64(file: string) {
+function nativeArm64(file: string) {
   const fd = openSync(file, "r");
   try {
     const header = Buffer.alloc(8);
@@ -215,12 +200,4 @@ export function prepareAndroid(
   reusedDevice: boolean;
 } {
   return nativeJson(["--prepare-android", home, payload, payloadSha256], root);
-}
-export async function androidManifest(payload: string, root = ROOT) {
-  for await (const entry of tarEntries(payload, "xz", root)) {
-    if (entry.name !== "ANDROID-MANIFEST.json")
-      throw Error("Android capsule manifest must be first");
-    return JSON.parse((await entryBytes(entry)).toString());
-  }
-  throw Error("Android capsule manifest missing");
 }

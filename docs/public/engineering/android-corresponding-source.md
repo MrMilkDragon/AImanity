@@ -21,7 +21,7 @@ Use the packaged platform manifest to check out the pinned AOSP projects and bui
 ## Native engines
 
 - **macOS.** Avo 1.1.0 build 126 uses the BSD-3-Clause `avo-vmm` engine. Build from the pinned `engine/hvf` workspace with `cargo build --locked --release -p avo-vmm` and sign the executable with the workspace’s Hypervisor entitlement. [Immutable release](https://github.com/nizwar/avo/releases/tag/v1.1.0) · [Pinned engine workspace](https://github.com/nizwar/avo/tree/23fbb0d22dec815c84d704d91c76b6a4406d7bbc/engine/hvf) · [Entitlements](https://github.com/nizwar/avo/blob/23fbb0d22dec815c84d704d91c76b6a4406d7bbc/engine/hvf/hypervisor.entitlements)
-- **Windows.** QEMU 11.1.3 uses the Windows Hypervisor Platform. The runtime inventory records the exact DLL versions, source locations and firmware. [QEMU source archive](https://download.qemu.org/qemu-11.1.3.tar.xz) · [SeaBIOS source](https://gitlab.com/qemu-project/seabios/-/tree/b52ca86e094d19b58e2304417787e96b940e39c6) · [AImanity factory](../../../scripts/tooling/windows-qemu.ts)
+- **Windows.** QEMU 11.1.3 uses the Windows Hypervisor Platform. The runtime inventory records the exact DLL versions, source locations and firmware. [QEMU source archive](https://download.qemu.org/qemu-11.1.3.tar.xz) · [SeaBIOS source](https://gitlab.com/qemu-project/seabios/-/tree/b52ca86e094d19b58e2304417787e96b940e39c6) · [AImanity factory](../../../crates/release-tools/src/windows_factory.rs)
 
 ## ADB 36.0.1
 

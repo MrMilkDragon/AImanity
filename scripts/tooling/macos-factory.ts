@@ -9,7 +9,6 @@ import { join } from "node:path";
 import { run, output, digest, bunProgram, hostKey } from "./process";
 import { json, save } from "./inventory";
 import { extractTar, buildReleaseTools } from "./archive";
-import { buildNative } from "./native-build";
 import {
   containerPolicy,
   buildContainerHost,
@@ -121,7 +120,6 @@ export async function macosFactory(
     context = await guest(root, work);
   }
   buildReleaseTools(root);
-  await buildNative(root);
   const engine = await host(root, work),
     android = await prepareFactoryAndroid(androidInput, work, 3, root);
   const apps = prepareApps(root, env),

@@ -128,7 +128,7 @@ export async function buildContainerHost(
     const targets = checkMacTargets(root, { lima: join(work, "lima/bin/limactl") });
     copyFileSync(image, join(work, "image.iso"));
     cpSync(packages, join(work, "packages"), { recursive: true });
-    const files = collect(work, "").files.map((f) => ({
+    const files = collect(work, "").map((f) => ({
         ...f,
         path: f.path.slice(1),
       })),
@@ -149,7 +149,7 @@ export async function buildContainerHost(
 export async function prepareContainerHost(root = ROOT) {
   const folder = join(root, ".tools/container-host");
   await verifyContainerHost(root, folder);
-  return collect(folder, "runtime/container-host").files;
+  return collect(folder, "runtime/container-host");
 }
 function limaPolicy(root: string) {
   const value = containerPolicy(root);

@@ -34,11 +34,19 @@ impl Pin {
         stage_pin::<Sha256>(&self.url, &file, self.size_bytes, &self.sha256)?;
         Ok(file)
     }
+
+    #[cfg(windows)]
+    pub(super) fn verify(&self, file: &Path) -> Result<()> {
+        if !file.symlink_metadata()?.is_file() {
+            return Err("Pinned asset must be a regular file".into());
+        }
+        stage_pin::<Sha256>(&self.url, file, self.size_bytes, &self.sha256)
+    }
 }
 
 const CURL_FETCH: [&str; 5] = ["-fsSL", "--proto", "=https", "--proto-redir", "=https"];
 
-fn verify_stream<D: Digest>(
+pub(super) fn verify_stream<D: Digest>(
     mut stream: impl Read,
     mut output: impl Write,
     size: u64,
@@ -179,11 +187,8 @@ pub(super) fn windows_audio(arguments: &[OsString]) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn windows_unpacker(arguments: &[OsString]) -> Result<Value> {
-    let [root] = arguments else {
-        return Err("windows-unpacker requires the project root".into());
-    };
-    let root = std::path::absolute(root)?;
+#[cfg(windows)]
+pub(super) fn windows_unpacker(root: &Path) -> Result<std::path::PathBuf> {
     let policy: Value =
         serde_json::from_reader(File::open(root.join("config/windows-installer.json"))?)?;
     let pin = &policy["unpacker"];
@@ -233,7 +238,7 @@ pub(super) fn windows_unpacker(arguments: &[OsString]) -> Result<Value> {
         staged.write_all(&bytes)?;
         staged.persist_noclobber(&program)?;
     }
-    Ok(serde_json::to_value(program)?)
+    Ok(program)
 }
 
 #[derive(Deserialize)]

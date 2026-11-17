@@ -5,7 +5,6 @@ import {
   existsSync,
   mkdirSync,
   renameSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
@@ -110,9 +109,4 @@ export function nativeProgram(root = ROOT) {
 }
 export function nativeJson(args: string[], root = ROOT) {
   return JSON.parse(output([nativeProgram(root), ...args], { cwd: root }));
-}
-export function regular(file: string) {
-  const stat = statSync(file);
-  if (!stat.isFile()) throw Error(`Not a regular file: ${file}`);
-  return stat;
 }

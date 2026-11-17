@@ -14,7 +14,6 @@ import { ROOT, hostKey, run, output, digest } from "./process";
 import { json, save } from "./inventory";
 import { releaseTools, buildReleaseTools } from "./archive";
 import { checkDocker, prepareApps, prepareImages, fetchPin } from "./factory";
-import { buildNative } from "./native-build";
 import { preparePayload } from "./client-payload";
 import { checkSource } from "./source";
 import {
@@ -321,7 +320,7 @@ async function prepareBackendSource(
   const release = buildReleaseTools(root);
   if (linuxOcr === undefined)
     run([release, "linux-ocr", "build", join(work, "ocr-context"), ocr], { cwd: root });
-  await buildNative(root);
+  run([release, "native-services", "build"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
   await preparePayload(root, {
     nativeServices: true,
     phoneApps: deviceApps,
