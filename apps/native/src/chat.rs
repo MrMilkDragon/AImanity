@@ -148,7 +148,12 @@ impl Chat {
             Message::Restored,
         )
     }
-    pub fn accept(&mut self, mut next: wire::ChatState, client: &Connection) -> Task<Message> {
+    fn accept(
+        &mut self,
+        mut next: wire::ChatState,
+        client: &Connection,
+        snapshot: bool,
+    ) -> Task<Message> {
         let mut tasks = Vec::new();
         let receipt_ids: HashSet<_> = next
             .messages
@@ -177,8 +182,11 @@ impl Chat {
             self.before = page.next_before_message_id.clone();
             self.has_older = page.has_older;
         }
+        let sorted_len = self.state.messages.len();
         for incoming in next.messages.drain(..) {
-            let old = self.state.messages.iter().position(|m| m.id == incoming.id);
+            let old = self.state.messages[..sorted_len]
+                .binary_search_by_key(&incoming.ordinal, |m| m.ordinal)
+                .ok();
             if old.is_some() && next.revision < self.state.revision {
                 continue;
             }
@@ -227,8 +235,10 @@ impl Chat {
                 None => self.state.messages.push(incoming),
             }
         }
-        self.state.messages.sort_by_key(|m| m.ordinal);
-        if next.revision >= self.state.revision {
+        if self.state.messages.len() != sorted_len {
+            self.state.messages.sort_by_key(|m| m.ordinal);
+        }
+        if snapshot && next.revision >= self.state.revision {
             next.messages = std::mem::take(&mut self.state.messages);
             self.state = next;
             if self.state.notice_kind() == wire::RunNoticeKind::SystemFailure {
@@ -261,7 +271,8 @@ impl Chat {
         };
         let path = self.outbox.join(format!("{id}.pb"));
         let temporary = path.with_extension("tmp");
-        let request = pending.request.clone();
+        let mut request = pending.request.clone();
+        request.receipt_only = true;
         let client = client.clone();
         let id = id.to_string();
         Task::perform(
@@ -378,7 +389,7 @@ impl Chat {
             }
             Message::Retry(id) => return self.send_pending(&id, client),
             Message::Sent(id, result) => match result {
-                Ok(next) => return self.accept(next, client),
+                Ok(receipt) => return self.accept(receipt, client, false),
                 Err(error) => {
                     self.error = error.clone();
                     if let Some(p) = self.pending.iter_mut().find(|p| p.request.request_id == id) {
@@ -390,7 +401,7 @@ impl Chat {
             Message::History(result) => {
                 self.loading_older = false;
                 match result {
-                    Ok(state) => return self.accept(state, client),
+                    Ok(state) => return self.accept(state, client, true),
                     Err(e) => self.error = e,
                 }
             }
@@ -630,7 +641,7 @@ impl Chat {
             Message::Controlled(result) => {
                 self.control_busy = false;
                 match result {
-                    Ok(next) => return self.accept(next, client),
+                    Ok(next) => return self.accept(next, client, true),
                     Err(e) => self.error = e,
                 }
             }
@@ -1257,12 +1268,18 @@ mod tests {
                 ],
             ),
             &client,
+            true,
         );
         let _ = chat.accept(
             state(4, vec![message("current", 2, "stream complete")]),
             &client,
+            true,
         );
-        let _ = chat.accept(state(3, vec![message("current", 2, "stream old")]), &client);
+        let _ = chat.accept(
+            state(3, vec![message("current", 2, "stream old")]),
+            &client,
+            true,
+        );
         assert_eq!(chat.state.messages.len(), 2);
         assert_eq!(chat.state.messages[1].text, "stream complete");
         assert_eq!(chat.state.revision, 4);
@@ -1278,7 +1295,7 @@ mod tests {
         let mut running = state(1, vec![active]);
         running.run_id = "run".into();
         running.run_status = "running".into();
-        let _ = chat.accept(running.clone(), &client);
+        let _ = chat.accept(running.clone(), &client, true);
         assert_eq!(
             iced::advanced::subscription::into_recipes(chat.subscription()).len(),
             1
@@ -1288,7 +1305,7 @@ mod tests {
         trace.loading = false;
         running.revision = 2;
         running.run_status = "canceled".into();
-        let _ = chat.accept(running, &client);
+        let _ = chat.accept(running, &client, true);
         assert!(iced::advanced::subscription::into_recipes(chat.subscription()).is_empty());
         assert!(!chat.is_live(&chat.state.messages[0]));
         assert!(chat.traces["active"].loading);
@@ -1302,15 +1319,20 @@ mod tests {
         let _ = chat.update(Message::Send, &client, "phone");
         let id = chat.pending[0].request.request_id.clone();
         chat.draft = text_editor::Content::with_text("再看一下电脑");
+        chat.state.run_id = "live-run".into();
+        chat.state.run_status = "running".into();
         let mut accepted = message("accepted", 1, "先打开设置");
         accepted.request_id = id.clone();
         let _ = chat.update(
-            Message::Sent(id, Ok(state(1, vec![accepted]))),
+            Message::Sent(id, Ok(state(0, vec![accepted]))),
             &client,
             "desktop",
         );
         assert_eq!(chat.draft.text(), "再看一下电脑");
         assert!(chat.pending.is_empty());
+        assert_eq!(chat.state.run_id, "live-run");
+        assert_eq!(chat.state.run_status, "running");
+        assert_eq!(chat.state.messages[0].id, "accepted");
     }
     #[test]
     fn failed_send_retries_same_request_and_restores_all_pending() {

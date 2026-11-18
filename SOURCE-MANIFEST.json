@@ -318,13 +318,13 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 51354,
-      "sha256": "99e51b732c9e18abb804947d021dd09573a2fbed3ede0d35000014f290112f7e"
+      "size": 52031,
+      "sha256": "a698b2d483fe2b7b4e4207f5bfd275573f0e872d3e38141c51e762c26f51cd7d"
     },
     {
       "path": "apps/native/src/connection.rs",
-      "size": 22873,
-      "sha256": "6738c21cafb804b8b2eee99e85b2df39dd7ea62fce173c9098b54b6ecfcabc93"
+      "size": 23133,
+      "sha256": "0f7e3f25f64571217b8d05f0ab7d9193c8aeb0ec004d83f7de69d17d80877ca7"
     },
     {
       "path": "apps/native/src/controls.rs",
@@ -2278,8 +2278,8 @@
     },
     {
       "path": "crates/release-tools/src/windows_release/assets.rs",
-      "size": 5866,
-      "sha256": "db96689076c6fe2785f43afa3deca92f2f76b589bd0a50b9bc1f316314767947"
+      "size": 6020,
+      "sha256": "dbdb5cbb1841517b3143c09701c8138b370c378741af72f150b3bb7eb1630e8b"
     },
     {
       "path": "crates/release-tools/src/windows_release.rs",
@@ -3003,8 +3003,8 @@
     },
     {
       "path": "docs/public/protocol-boundaries.md",
-      "size": 1790,
-      "sha256": "80ed4c6c4b1dc3b24b1a2750ea8ed269ca52c4bbcb74012b06d9f31cfdbaac41"
+      "size": 967,
+      "sha256": "0c4de991ae4bfc5f236d934622062e1f086e480abf10199ae287a36bf7fe3604"
     },
     {
       "path": "docs/public/readme.ar.md",
@@ -3373,8 +3373,8 @@
     },
     {
       "path": "scripts/windows-release-layer.sh",
-      "size": 3258,
-      "sha256": "b2b467e9ac6f11ba0ff0d90184869237892fdd79df4d9d2c974ce2195392b055"
+      "size": 3369,
+      "sha256": "ab29b847fb73fa59a4f9f710c7e03867c5c80da73c2017fe1cc019a4f7dab838"
     },
     {
       "path": "skills/builtin/autonomous-learning/SKILL.md",

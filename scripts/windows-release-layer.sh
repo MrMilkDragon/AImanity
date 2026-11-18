@@ -36,8 +36,9 @@ set -eu
 /bin/busybox mount -o bind /newroot/mnt/redis /newroot/opt/aiphone/redis
 /bin/busybox mkdir -p /newroot/opt/aiphone/postgres
 /bin/busybox mount -o bind /newroot/mnt/postgres /newroot/opt/aiphone/postgres
-/bin/busybox mkdir -p /newroot/opt/aiphone/linux
+/bin/busybox mkdir -p /newroot/opt/aiphone/linux /newroot/usr/share/zoneinfo
 /bin/busybox mount -o bind /newroot/mnt/linux /newroot/opt/aiphone/linux
+/bin/busybox mount -o bind /newroot/mnt/linux/zoneinfo /newroot/usr/share/zoneinfo
 /bin/busybox mount -o move /dev /newroot/dev
 read -r release < /newroot/opt/aiphone/bundle/source.sha256
 printf 'AI_PHONE_RELEASE_LAYER %s\n' "$release"

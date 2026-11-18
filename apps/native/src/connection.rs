@@ -307,7 +307,7 @@ impl Connection {
                     request
                         .headers_mut()
                         .insert("authorization", self.assistant.clone());
-                    let (mut socket, _) = tokio_tungstenite::connect_async(request)
+                    let (socket, _) = tokio_tungstenite::connect_async(request)
                         .await
                         .map_err(|e| e.to_string())?;
                     // The subscription must be live before reading its initial snapshot.
@@ -316,17 +316,23 @@ impl Connection {
                         .await
                         .map_err(|e| e.to_string())?;
                     reconnecting = false;
-                    while let Some(event) = socket.next().await {
-                        match event.map_err(|e| e.to_string())? {
-                            tokio_tungstenite::tungstenite::Message::Binary(bytes) => {
+                    use tokio_tungstenite::tungstenite::Message as Ws;
+                    let mut batches = socket
+                        .take_while(|event| std::future::ready(!matches!(event, Ok(Ws::Close(_)))))
+                        .ready_chunks(32);
+                    while let Some(events) = batches.next().await {
+                        let mut changed = false;
+                        for event in events {
+                            if let Ws::Binary(bytes) = event.map_err(|e| e.to_string())? {
                                 wire::ChatChanged::decode(bytes).map_err(|e| e.to_string())?;
-                                output
-                                    .send(self.history().await)
-                                    .await
-                                    .map_err(|e| e.to_string())?;
+                                changed = true;
                             }
-                            tokio_tungstenite::tungstenite::Message::Close(_) => break,
-                            _ => {}
+                        }
+                        if changed {
+                            output
+                                .send(self.history().await)
+                                .await
+                                .map_err(|e| e.to_string())?;
                         }
                     }
                     Err("对话连接已关闭".into())

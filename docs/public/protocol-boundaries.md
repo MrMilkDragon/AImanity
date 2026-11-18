@@ -1,11 +1,7 @@
 # Protocol boundaries
 
-Self-owned browser business requests use `application/x-protobuf`; streaming run events use protobuf WebSocket frames. New location configuration, state, guest commands and receipts share `packages/protocol/proto/ai_phone/v1/location.proto`, generated for Rust. PostgreSQL stores location state as binary protobuf. Media bytes and health responses retain their documented exceptions.
+The native client sends local service requests as `application/x-protobuf`. Cargo compiles the schemas in `packages/protocol/proto` with Prost. The host and its Linux guest exchange length-prefixed protobuf messages during startup.
 
-Live Copilot input uses binary protobuf WebSocket messages from `voice.proto` at `/api/voice/stream`. The initial frame pins device, Agent, voice configuration revision and capture session; subsequent frames carry bounded PCM or a turn commit. Incremental/final transcript events return over that connection. Provider JSON/base64 is confined to the outbound realtime adapter; accepted text still enters the existing protobuf chat/Outbox contract. Audio frames stay in the live session.
+The shared chat subscribes to protobuf changes at `/v1/chat/events` before reading its first history page. A page contains up to 80 messages plus selected run heads. Queued changes share one refresh per batch. Typing and Copilot use the same send endpoint, which returns the committed message. Reconnection reads the current page. Older pages use a conversation-scoped cursor.
 
-Conversation history uses an explicit protobuf message window. The browser requests 40 messages per page; the server accepts at most 80 page rows, four run heads, eight watched messages and 32 exact input receipts. The browser merges each page into the device transcript by message ID. Older pages use a conversation-scoped exclusive anchor. Visible older ranges can be revalidated. Legacy full responses remain for existing clients and send/cancel/resume receipts until those consumers have compatible bounded representations.
-
-External model adapters, Chromium CDP, network location, manifests and configuration use JSON. PostgreSQL stores conversation and model context as JSONB. The desktop process bridge and device-network stdin bridge still use JSON; guest location commands and receipts use protobuf.
-
-Cargo builds the Rust services and client. CI verifies the protobuf schema with Buf.
+The media service streams JPEG frames and PCM audio. The Linux desktop bridge accepts JSON commands and returns protobuf observations with PNG evidence. Model adapters use each provider’s JSON and streaming protocol. The optional speech service transports PCM and transcript events over a protobuf WebSocket at `/v1/voice/stream`.

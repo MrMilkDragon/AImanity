@@ -6,12 +6,13 @@ const ROOT: &str = "/opt/aiphone";
 const LIB: &str = "/opt/aiphone/linux/lib";
 const LOADER: &str = "/opt/aiphone/linux/lib/ld-linux-x86-64.so.2";
 const POSTGRES: &str = "lib/postgresql/17";
-const PACKAGES: [&str; 9] = [
+const PACKAGES: [&str; 10] = [
     "bubblewrap",
     "slirp4netns",
     "zstd",
     "patchelf",
     "postgresql-17",
+    "tzdata",
     "redis-server",
     "tesseract-ocr",
     "tesseract-ocr-chi-sim",
@@ -96,6 +97,11 @@ fn collect() -> Result<()> {
         Command::new("cp")
             .args(["-aL", "/usr/share/postgresql/17"])
             .arg(pg.join("share/postgresql")),
+    )?;
+    execute(
+        Command::new("cp")
+            .args(["-a", "/usr/share/zoneinfo"])
+            .arg(tools.join("zoneinfo")),
     )?;
     let installed = linux_ocr::output("dpkg-query", &["-W", "-f=${Package} ${Version}\n"])?;
     fs::write(notices.join("packages.tsv"), &installed)?;
