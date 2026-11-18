@@ -1,0 +1,160 @@
+---
+name: Dysprosium real WHPX native Linux qualification
+'on':
+  push:
+    branches:
+    - codex/dysprosium-windows-startup-diagnostic
+    paths:
+    - ".github/workflows/dysprosium-win-rootfs-qa.yml"
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: dysprosium-win-rootfs-qa
+  cancel-in-progress: false
+env:
+  PRODUCT_SOURCE: 1e9c3531046d122d97fee45a4c23c3eb3fa632b5
+jobs:
+  windows-dev:
+    runs-on: windows-2025
+    timeout-minutes: 55
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+        ref: "${{ env.PRODUCT_SOURCE }}"
+    - name: Prepare acceptance tools
+      shell: pwsh
+      run: |
+        rustup toolchain install 1.96.0 --profile minimal
+        rustup default 1.96.0
+    - name: Choose a fresh installation volume
+      shell: pwsh
+      run: |
+        $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match '^[A-Z]:\\$' } | Sort-Object Free -Descending
+        $drives | ForEach-Object { 'Free on {0}: {1:N1} GiB' -f $_.Root, ($_.Free / 1GB) }
+        $os = Get-CimInstance Win32_OperatingSystem
+        '{0} build {1}, RAM {2:N1} GiB' -f $os.Caption, $os.BuildNumber, ($os.TotalVisibleMemorySize / 1MB)
+        $root = Join-Path $drives[0].Root "Dysprosium-QA-$env:GITHUB_RUN_ID"
+        $profile = Join-Path $root 'profile'
+        New-Item -ItemType Directory -Path $profile -Force | Out-Null
+        Add-Type -Name ShellFolders -Namespace Acceptance -MemberDefinition @'
+        [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, ExactSpelling = true)]
+        public static extern int SHSetKnownFolderPath(ref System.Guid folder, uint flags, System.IntPtr token, string path);
+        '@
+        $roaming = [Guid]'3eb685db-65f9-4cf6-a03a-e3ef65729f3d'
+        $redirect = [Acceptance.ShellFolders]::SHSetKnownFolderPath([ref] $roaming, 0, [IntPtr]::Zero, $profile)
+        if ($redirect -ne 0) { throw "Cannot redirect the runner's RoamingAppData: $redirect" }
+        if ([Environment]::GetFolderPath('ApplicationData') -ne $profile) {
+          throw 'The isolated Windows profile did not become the RoamingAppData known folder.'
+        }
+        "AIMANITY_QA_ROOT=$root" >> $env:GITHUB_ENV
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: '14348475837'
+        path: "${{ env.AIMANITY_QA_ROOT }}/qemu"
+        run-id: '44126511584'
+        github-token: "${{ github.token }}"
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: '14355019573'
+        path: "${{ env.AIMANITY_QA_ROOT }}/guest"
+        run-id: '44142257126'
+        github-token: "${{ github.token }}"
+    - name: Build the reviewed Rust workbench with the exact offline device inputs
+      shell: pwsh
+      env:
+        QEMU_ID: 6922ed48a5a895e09fbfd5c2d20236b137a8d07ea312bb4b55439ba8733020e8
+        GUEST_ID: 0206bb1ff9110406e1e76624e1f7a262ea0acb6b21adf8c31b8895232b0501d9
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
+        $root = $env:AIMANITY_QA_ROOT
+        if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or (git rev-parse HEAD) -ne $env:PRODUCT_SOURCE) { throw 'Expected the disposable reviewed Windows source' }
+        cargo build --quiet --locked -p ai-phone-release-tools --bin release-tools
+        $tool = Join-Path $PWD 'target/debug/release-tools.exe'
+        & $tool source check --repository --manifest
+        $resource = Join-Path $PWD 'apps/native/gen/host'
+        $guest = Join-Path $root 'guest/windows-guest.payload'
+        $qemu = Join-Path $root 'qemu'
+        $qemuManifest = & $tool windows-factory stage-vm . (Join-Path $resource 'qemu') $qemu $env:QEMU_ID $guest $env:GUEST_ID | ConvertFrom-Json
+        $calcium = (Get-Content 'config/windows-qemu.json' -Raw | ConvertFrom-Json).calcium_installer
+        $download = Join-Path $root $calcium.file
+        curl.exe -fsSL -o $download $calcium.url
+        if ((Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant() -ne $calcium.sha256) { throw 'Published Calcium input changed' }
+        $android = Join-Path $root 'android'
+        & $tool windows-factory unpack . $download $android '{app}\host\android.payload'
+        $androidBundle = Join-Path $android 'host/android.payload'
+        if ((Get-FileHash $androidBundle -Algorithm SHA256).Hash.ToLowerInvariant() -ne '23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce') { throw 'The published AOSP system asset changed' }
+        Remove-Item -LiteralPath $download
+        & $tool client-payload --android-runtime $androidBundle --qemu-manifest $qemuManifest
+        Remove-Item -LiteralPath $android -Recurse
+        $env:AIMANITY_BUNDLE_INTEGRITY = Join-Path $resource 'integrity.json'
+        $env:RUSTFLAGS = '-C target-feature=+crt-static'
+        cargo build --release --locked --manifest-path apps/native/Cargo.toml
+        $stage = Join-Path $root 'staged'
+        New-Item -ItemType Directory -Path $stage | Out-Null
+        Copy-Item 'apps/native/target/release/aimanity-native.exe' (Join-Path $stage 'ai-phone-client.exe')
+        Copy-Item -LiteralPath $resource -Destination (Join-Path $stage 'host') -Recurse
+    - name: Drive the staged native workbench and both WHPX devices
+      shell: pwsh
+      env:
+        AIMANITY_QA_SOURCE: "${{ env.PRODUCT_SOURCE }}"
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
+        $driver = Join-Path $PWD 'crates/host-runtime/src/bin/qualify-windows-installer.rs'
+        $rust = Get-Content -Raw $driver
+        $start = $rust.IndexOf('    let started = Instant::now();', $rust.IndexOf('async fn main()'))
+        $end = $rust.IndexOf('    let log = root.join("native.log");', $start)
+        if ($start -lt 0 -or $end -lt $start) { throw 'The exact Rust workbench qualification entry changed' }
+        $staged = @'
+            let root = PathBuf::from(root);
+            let install = root.join("staged");
+            let profile = root.join("profile");
+            let home = profile.join("dev.aimanity.native/host");
+            check(!home.exists(), "fresh isolated Windows runtime")?;
+            let integrity: Value = serde_json::from_reader(File::open(install.join("host/integrity.json"))?)?;
+            let payload = integrity["source.payload"].as_str().ok_or("Missing staged source receipt")?;
+
+        '@
+        $rust = ($rust.Substring(0, $start) + $staged + $rust.Substring($end)).Replace('&payload.sha256).await', 'payload).await')
+        $rust = $rust.Replace('diagnostic_logs(&home);', 'diagnostic_logs(&home); if let Some(pid) = app.id() { let _ = gui(&profile, pid, "diagnostic").await; }')
+        $gui = Join-Path $PWD 'scripts/qualify-windows-window.ps1'
+        $press = @'
+          Start-Sleep -Milliseconds 200
+          if ([NativeQaInput]::GetForegroundWindow() -ne $handle) { throw "Foreground changed before the click." }
+          [NativeQaInput]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero)
+          try { Start-Sleep -Milliseconds 190 } finally { [NativeQaInput]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero) }
+        '@
+        $receipt = @'
+          Start-Sleep -Milliseconds 1300
+          (Capture "native-installation-post-click.png").Dispose()
+          $request = Join-Path $env:AIMANITY_QA_ROOT 'profile/dev.aimanity.native/host/request.json'
+          $acknowledged = [DateTime]::UtcNow.AddSeconds(15)
+          while (!(Test-Path -LiteralPath $request) -and [DateTime]::UtcNow -lt $acknowledged) { Start-Sleep -Milliseconds 250 }
+          if (!(Test-Path -LiteralPath $request)) { throw "Install click did not produce the isolated request.json. See the post-click screenshot." }
+          Write-Host "Native install request was committed."
+        '@
+        $windowScript = (Get-Content -Raw $gui).Replace('"fresh", "capture", "close"', '"fresh", "capture", "close", "diagnostic"').Replace('if ($Action -eq "capture") {', 'if ($Action -in @("capture", "diagnostic")) {').Replace('Capture "native-workbench.png"', 'Capture "native-$Action.png"')
+        $windowScript = $windowScript -replace '(?m)^  \[NativeQaInput\]::mouse_event\(2, 0, 0, 0, \[IntPtr\]::Zero\)\r?\n  Start-Sleep -Milliseconds 70\r?\n  \[NativeQaInput\]::mouse_event\(4, 0, 0, 0, \[IntPtr\]::Zero\)', $press
+        $windowScript = $windowScript.Replace('  Write-Host "Native GUI selected English and activated the visually verified install button."', $receipt)
+        Set-Content -LiteralPath $gui -Value $windowScript -Encoding utf8
+        Set-Content -LiteralPath $driver -Value $rust -Encoding utf8
+        try {
+          cargo run --release --locked -p ai-phone-host-runtime --bin qualify-windows-installer
+        } finally {
+          $log = Join-Path $env:AIMANITY_QA_ROOT 'native.log'
+          if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 100 }
+        }
+    - name: Retain isolated startup screenshots
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: native-startup-screenshot
+        path: "${{ env.AIMANITY_QA_ROOT }}/native-*.png"
+        if-no-files-found: warn
+        retention-days: 2
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
