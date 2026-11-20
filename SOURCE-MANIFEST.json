@@ -398,8 +398,8 @@
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
-      "size": 9537,
-      "sha256": "fd205e104de8d4ce084fa99ca7b341325293e58a202e961386980d595197d57d"
+      "size": 9720,
+      "sha256": "658eac444934dc24f3dc746d04f44b3cb019774b75b882fc62008fd16e7e121f"
     },
     {
       "path": "apps/native/src/modes/speech/speaker.rs",
@@ -589,7 +589,7 @@
     {
       "path": "config/windows-installer.json",
       "size": 697,
-      "sha256": "05d010915520439fe636db1e809fb45d60f5d1fb861fc7846d314e9e9afe5b87"
+      "sha256": "d10fdc0b6cd7c62f0be19a41fb4a2f82d5439b20938ed901986adf1ed901fc4c"
     },
     {
       "path": "config/windows-qemu.json",
@@ -1633,8 +1633,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/session/avo.rs",
-      "size": 6732,
-      "sha256": "1be15f001ddd430ab5c7ae2527b83fa8eff89f1b41c758627e8a0efd8df84862"
+      "size": 6643,
+      "sha256": "104cb61d49c8f855b722c6793fc5e65d8aa9961b755e9bd3c135bbaaee430e07"
     },
     {
       "path": "crates/host-runtime/src/android/session/cli.rs",
@@ -2033,8 +2033,8 @@
     },
     {
       "path": "crates/local-speech/src/lib.rs",
-      "size": 2646,
-      "sha256": "bf8115d9c15e54b2690e971dc1b904c126c5c8872069e3dbd88504c6ee94811c"
+      "size": 2824,
+      "sha256": "340e8edd8701fd3390fb24f64fcfc9aa6b754cddc767b4a1e084a7526a5e7d8a"
     },
     {
       "path": "crates/phone-runner/Cargo.toml",

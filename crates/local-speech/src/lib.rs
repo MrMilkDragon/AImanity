@@ -50,7 +50,7 @@ impl LocalSpeech {
     }
 
     /// Accepts 16 kHz mono signed PCM16. The loaded model and state are reused.
-    pub fn transcribe(&mut self, samples: &[i16]) -> Result<String, Error> {
+    pub fn transcribe(&mut self, samples: &[i16], final_text: bool) -> Result<String, Error> {
         let audio: Vec<f32> = samples
             .iter()
             .map(|sample| f32::from(*sample) / 32768.0)
@@ -65,11 +65,15 @@ impl LocalSpeech {
         parameters.set_print_progress(false);
         parameters.set_print_realtime(false);
         parameters.set_print_timestamps(false);
-        self.state.full(parameters, &audio)?;
-        let mut transcript = String::new();
-        for segment in self.state.as_iter() {
-            transcript.push_str(&segment.to_str_lossy()?);
+        if !final_text {
+            parameters.set_temperature_inc(0.0);
+            parameters.set_single_segment(true);
         }
-        Ok(transcript.trim().to_owned())
+        self.state.full(parameters, &audio)?;
+        let mut transcript = Vec::new();
+        for segment in self.state.as_iter() {
+            transcript.extend_from_slice(segment.to_bytes()?);
+        }
+        Ok(String::from_utf8_lossy(&transcript).trim().to_owned())
     }
 }

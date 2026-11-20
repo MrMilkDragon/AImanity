@@ -91,7 +91,6 @@ fn capture(
     })?;
     let format = supported.sample_format();
     let config = supported.config();
-    let mut decoder = LocalSpeech::new(model, language).map_err(|e| e.to_string())?;
     if cancel.load(Ordering::Acquire) {
         return Ok(());
     }
@@ -114,6 +113,7 @@ fn capture(
         eprintln!("native microphone start: {error}");
         "麦克风开启失败"
     })?;
+    let mut decoder = LocalSpeech::new(model, language).map_err(|e| e.to_string())?;
     events
         .blocking_send(Event::Ready)
         .map_err(|e| e.to_string())?;
@@ -246,11 +246,19 @@ impl Segment {
         }
         let final_text = self.quiet >= rate / 2 || self.samples.len() >= rate * 28;
         let heard = self.samples.len() - self.quiet;
-        if !final_text && heard < self.decoded + rate / 2 {
+        let next_draft = if self.decoded == 0 {
+            rate * 2 / 5
+        } else {
+            self.decoded + rate / 2
+        };
+        if !final_text && heard < next_draft {
             return Ok(None);
         }
         let text = decoder
-            .transcribe(&self.samples[..self.samples.len().min(heard + rate * 15 / 100)])
+            .transcribe(
+                &self.samples[..self.samples.len().min(heard + rate * 15 / 100)],
+                final_text,
+            )
             .map_err(|error| error.to_string())?;
         self.decoded = heard;
         self.revision += 1;
