@@ -45,11 +45,14 @@ jobs:
         for executable in zstd tar unshare mount nsenter bwrap slirp4netns; do command -v "$executable"; done
         "$bb" cat /sys/fs/cgroup/cgroup.controllers
         ls -l /dev/net/tun /sbin/init /bin/mount /usr/bin/unshare /usr/bin/nsenter
-        root=/var/lib/aiphone-qa-source
+        release=$(cat /opt/aiphone/bundle/source.sha256)
+        home=/var/lib/aiphone-qa
+        mkdir -p "$home"
+        chmod 700 "$home"
+        /usr/local/libexec/aiphone-bootstrap --stage-source /opt/aiphone/bundle/source.payload "$home" "$release" || finish 2
+        root="$home/releases/$release"
         mkdir -p "$root/data/desktop/home"
         cd "$root" || finish 1
-        "$bb" ls -l /opt/aiphone/bundle
-        "$bb" xz -dc /opt/aiphone/bundle/source.payload | "$bb" tar xf - || finish 2
         bridge="$root/runtime/services/bin/desktop-bridge"
         ls -l "$bridge"
         "$bridge" native-linux "$root" stage || finish 3
