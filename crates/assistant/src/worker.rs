@@ -1624,18 +1624,19 @@ fn successful_call(call: &Value, context: &[Value]) -> bool {
         })
 }
 
+fn file_delivery_input(current: &[Value]) -> bool {
+    current
+        .first()
+        .and_then(|item| item["content"][0]["text"].as_str())
+        .is_some_and(|request| work_intent::file_delivery_request(&request.to_lowercase()))
+}
+
 fn confirmed_file_delivery(context: &[Value], files: &Value) -> bool {
     let Some(files) = files.as_array().filter(|v| !v.is_empty()) else {
         return false;
     };
     let current = &context[evidence_start(context)..];
-    let Some(request) = current
-        .first()
-        .and_then(|v| v["content"][0]["text"].as_str())
-    else {
-        return false;
-    };
-    if !work_intent::file_delivery_request(&request.to_lowercase()) {
+    if !file_delivery_input(current) {
         return false;
     }
     let mut destinations = Vec::new();
@@ -2599,7 +2600,10 @@ async fn execute(
             .unwrap_or("");
         let grant = app.run_signals.host.session(id);
         let host_session = grant.is_some();
-        let prerequisite = if host_session
+        let direct_files = !notification_run
+            && !host_session
+            && file_delivery_input(&context[evidence_start(&context)..]);
+        let prerequisite = if (host_session || direct_files)
             && !next_tool.starts_with("phone_")
             && !next_tool.starts_with("computer_")
         {
@@ -2661,6 +2665,7 @@ async fn execute(
         if pending.is_empty()
             && !screen_attention
             && !host_session
+            && !direct_files
             && let Some(call) = experience_call(app, &context, &mut state).await
         {
             context.push(call.clone());
@@ -2668,6 +2673,7 @@ async fn execute(
             checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
         }
         if pending.is_empty()
+            && !direct_files
             && let Some((name, arguments)) = (if host_session {
                 (!context.iter().skip(evidence_start(&context)).any(|call| {
                     call["name"] == "host_desktop"
@@ -2701,6 +2707,7 @@ async fn execute(
             && !host_session
             && !task_goal
             && !handoffs_pending
+            && !direct_files
             && let Some(finish) = hinted_device_completion(&context)
         {
             context.push(finish.clone());

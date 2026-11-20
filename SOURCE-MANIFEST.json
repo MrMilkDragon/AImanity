@@ -1468,8 +1468,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 251167,
-      "sha256": "4e2cd167b2368c0c3c18871f06cb0c00de8e388fbd13c9ecd6e37c05d3ee40e9"
+      "size": 251482,
+      "sha256": "881db70d1a3bed00b1df69d2917456b45968d19f57cf6a31a1ff6ccbb66f2acd"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -2523,8 +2523,8 @@
     },
     {
       "path": "docs/public/engineering/europium-scenarios.zh-CN.md",
-      "size": 5746,
-      "sha256": "46ffa3cddc76fd4a6f01decef3720c0a74be27e2d24b81d80271dfaa509c3b4c"
+      "size": 6111,
+      "sha256": "4562200392fc39019e4e24cd04985e1ffa55c5d8ceaa776df0d5b33073c0aca5"
     },
     {
       "path": "docs/public/engineering/index.md",
