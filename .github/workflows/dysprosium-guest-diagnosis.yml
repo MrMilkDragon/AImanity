@@ -1,0 +1,76 @@
+---
+name: Diagnose the Dysprosium desktop first frame
+'on':
+  push:
+    branches:
+    - codex/dysprosium-guest-diagnosis
+    paths:
+    - ".github/workflows/dysprosium-guest-diagnosis.yml"
+permissions:
+  contents: read
+  actions: read
+jobs:
+  guest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: '14619677066'
+        path: "${{ runner.temp }}/guest"
+        github-token: "${{ github.token }}"
+        run-id: '44713087613'
+    - name: Run the packaged desktop in its Linux guest
+      run: |
+        set -euo pipefail
+        sudo apt-get -qq update
+        sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cpio zstd
+        cd "$RUNNER_TEMP/guest"
+        tar -xf windows-guest.payload
+        mkdir -p unpack
+        (cd unpack && gzip -dc ../release-init.cpio.gz | cpio -idmu --quiet)
+        cat > unpack/qa-init <<'INNER'
+        #!/bin/sh
+        exec </dev/console >/dev/console 2>&1
+        set -ux
+        export PATH=/opt/aiphone/linux/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        bb=/opt/aiphone/engine/bin/busybox
+        finish() { echo "QA_DESKTOP_EXIT $1"; sync; "$bb" poweroff -f; }
+        "$bb" mount -t proc proc /proc
+        "$bb" mount -t sysfs sysfs /sys
+        "$bb" mount -t tmpfs tmpfs /run
+        "$bb" mount -t cgroup2 cgroup2 /sys/fs/cgroup
+        /sbin/modprobe tun || true
+        "$bb" ip link set lo up || true
+        for executable in zstd tar unshare mount nsenter bwrap slirp4netns; do command -v "$executable"; done
+        "$bb" cat /sys/fs/cgroup/cgroup.controllers
+        ls -l /dev/net/tun /sbin/init /bin/mount /usr/bin/unshare /usr/bin/nsenter
+        root=/var/lib/aiphone-qa-source
+        mkdir -p "$root/data/desktop/home"
+        cd "$root" || finish 1
+        "$bb" ls -l /opt/aiphone/bundle
+        "$bb" xz -dc /opt/aiphone/bundle/source.payload | "$bb" tar xf - || finish 2
+        bridge="$root/runtime/services/bin/desktop-bridge"
+        ls -l "$bridge"
+        "$bridge" native-linux "$root" stage || finish 3
+        "$bridge" native-linux "$root" desktop 2 2560 '' > /qa-desktop.log 2>&1 &
+        pid=$!
+        for it in $(seq 1 60); do
+         if ! kill -0 "$pid" 2>/dev/null; then cat /qa-desktop.log; finish 4; fi
+         if "$bridge" native-linux "$root" exec observe </qa-request.json >/qa-response.pb 2>/qa-error.log && [ -s /qa-response.pb ]; then cat /qa-desktop.log; wc -c /qa-response.pb; finish 0; fi
+         sleep 1
+        done
+        cat /qa-desktop.log /qa-error.log
+        finish 5
+        INNER
+        chmod +x unpack/qa-init
+        sed -i '/^exec .*switch_root/i /bin/busybox cp /qa-init /newroot/qa-init\n/bin/busybox chmod 755 /newroot/qa-init\necho "{}" > /newroot/qa-request.json' unpack/init
+        sed -i 's@switch_root /newroot /sbin/init@switch_root /newroot /qa-init@' unpack/init
+        (cd unpack && find . -print0 | cpio --null --quiet -o -H newc --owner=0:0 | gzip -1 > ../qa.cpio.gz)
+        qemu-img create -q -f qcow2 -F qcow2 -b "$PWD/guest.qcow2" scratch.qcow2
+        mode=tcg
+        if test -c /dev/kvm; then mode=kvm; fi
+        echo "Linux guest accelerator $mode"
+        sudo timeout 480 qemu-system-x86_64 -accel "$mode" -machine q35 -m 4096 -smp 2 -display none -no-reboot -serial file:"$PWD/qa-console.log" -monitor none -kernel bzImage -initrd qa.cpio.gz -append 'console=ttyS0 rdinit=/init panic=1' -drive file=scratch.qcow2,if=virtio -drive file=release.ext4,format=raw,readonly=on,if=virtio || true
+        tail -130 qa-console.log
+        grep -q 'QA_DESKTOP_EXIT 0' qa-console.log
