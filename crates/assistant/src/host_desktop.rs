@@ -30,11 +30,14 @@ pub fn receipt_in_session(output: &Value, session: Option<&str>) -> bool {
 }
 
 impl DesktopSession {
-    pub fn bind(&self, request: Uuid, run: Uuid) {
-        if let Some(grant) = self.0.lock().unwrap().as_mut()
-            && grant.request == request
-        {
-            grant.run = Some(run);
+    pub fn bind(&self, request: Uuid, run: Uuid, requested: bool) {
+        let mut active = self.0.lock().unwrap();
+        if let Some(grant) = active.as_mut() {
+            if requested && grant.request == request {
+                grant.run = Some(run);
+            } else if grant.run == Some(run) || grant.request == request {
+                active.take();
+            }
         }
     }
 
@@ -91,6 +94,15 @@ impl DesktopSession {
             .map_err(|_| "本机桌面授权已结束")?;
         drop(sender);
         let receipt = reply.await.map_err(|_| "本机连接已关闭，操作结果未知")?;
+        if !self
+            .0
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|g| g.key == session && g.run == Some(run))
+        {
+            return Err("本机授权已结束".into());
+        }
         if receipt.action_id != id {
             return Err("本机操作回执不匹配".into());
         }
@@ -213,12 +225,12 @@ mod tests {
             run: None,
             calls,
         })));
-        relay.bind(Uuid::now_v7(), background);
+        relay.bind(Uuid::now_v7(), background, true);
         assert!(relay.sender(background).is_none());
-        relay.bind(request, task);
+        relay.bind(request, task, true);
         relay.revoke(background);
         assert_eq!(relay.session(task), Some(key.to_string()));
-        relay.revoke(task);
+        relay.bind(Uuid::now_v7(), task, false);
         assert!(relay.sender(task).is_none());
         assert!(matches!(
             receiver.try_recv(),

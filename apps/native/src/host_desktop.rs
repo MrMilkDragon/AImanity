@@ -3,16 +3,17 @@ use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use futures_util::{SinkExt, StreamExt};
 use image::{DynamicImage, codecs::jpeg::JpegEncoder};
 use prost::Message;
-use std::{error::Error, time::Instant};
+use std::{error::Error, fs, io, path::Path, time::Instant};
 use tokio::sync::{oneshot, watch};
 use tokio_tungstenite::tungstenite::{
     Message as Frame, client::IntoClientRequest, http::HeaderValue,
 };
-use xcap::{Monitor, Window};
+use xcap::Monitor;
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
 pub enum Permission {
+    Disabled,
     Off,
     Confirm,
     Armed,
@@ -23,6 +24,41 @@ pub enum Permission {
 }
 
 impl Permission {
+    const SETTING: &str = "user/host-desktop.enabled";
+
+    pub fn load(home: &Path) -> Self {
+        if home.join(Self::SETTING).is_file() {
+            Self::Off
+        } else {
+            Self::Disabled
+        }
+    }
+
+    pub fn enabled(&self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+
+    pub fn configure(&mut self, home: &Path, enabled: bool) -> io::Result<()> {
+        let path = home.join(Self::SETTING);
+        if enabled {
+            fs::write(path, [])?;
+            *self = Self::Off;
+        } else {
+            *self = Self::Disabled;
+            match fs::remove_file(path) {
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                result => result?,
+            }
+        }
+        Ok(())
+    }
+
+    pub fn close(&mut self) {
+        if self.enabled() {
+            *self = Self::Off;
+        }
+    }
+
     pub fn end(&mut self, request: &str) -> bool {
         if matches!(self, Self::Active { request: id, .. } if id == request) {
             *self = Self::Off;
@@ -38,17 +74,25 @@ struct View {
     origin: (i32, i32),
     size: (u32, u32),
     image: (u32, u32),
-    focus: Option<u32>,
+    focus: Option<usize>,
     at: Instant,
 }
 
-fn focused_window() -> Option<u32> {
-    Window::all()
+#[cfg(target_os = "macos")]
+fn focused_window() -> Option<usize> {
+    xcap::Window::all()
         .ok()?
         .into_iter()
         .find(|w| w.is_focused().unwrap_or(false))?
         .id()
         .ok()
+        .map(|id| id as usize)
+}
+
+#[cfg(windows)]
+fn focused_window() -> Option<usize> {
+    let window = unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
+    (!window.is_null()).then_some(window as usize)
 }
 
 fn observe(display: &str) -> Result<(View, HostDesktopReply)> {
@@ -345,4 +389,91 @@ pub async fn serve(
     }
     .await;
     result.map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktop_access_is_local_and_grants_expire() {
+        let home = tempfile::tempdir().unwrap();
+        fs::create_dir(home.path().join("user")).unwrap();
+        let mut access = Permission::load(home.path());
+        assert!(!access.enabled());
+        access.configure(home.path(), true).unwrap();
+        assert!(matches!(Permission::load(home.path()), Permission::Off));
+        let (stop, closed) = watch::channel(());
+        access = Permission::Active {
+            request: "local task".into(),
+            _stop: stop,
+        };
+        access.configure(home.path(), false).unwrap();
+        assert!(closed.has_changed().is_err());
+        access.close();
+        assert!(!access.enabled());
+        assert!(!Permission::load(home.path()).enabled());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "opens Notepad on an isolated Windows desktop"]
+    fn windows_notepad_receives_host_input() -> Result<()> {
+        use std::{process::Command, thread, time::Duration};
+        use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+
+        let dir = tempfile::tempdir()?;
+        let file = dir.path().join("Europium desktop QA.txt");
+        fs::write(&file, [])?;
+        let mut editor = Command::new("notepad.exe").arg(&file).spawn()?;
+        let result = (|| -> Result<()> {
+            let start = Instant::now();
+            let window = loop {
+                if let Some(window) = xcap::Window::all()?
+                    .into_iter()
+                    .find(|w| w.pid().ok() == Some(editor.id()))
+                {
+                    break window;
+                }
+                if start.elapsed() > Duration::from_secs(12) {
+                    return Err("Notepad did not open".into());
+                }
+                thread::sleep(Duration::from_millis(100));
+            };
+            let id = window.id()? as usize;
+            unsafe {
+                SetForegroundWindow(id as _);
+            }
+            let (_grant, live) = watch::channel(());
+            let expected = format!("Europium 中文 {}", uuid::Uuid::now_v7());
+            for (kind, text, key) in [("type", expected.as_str(), ""), ("key", "", "save")] {
+                let (view, frame) = observe("")?;
+                assert_eq!(view.focus, Some(id));
+                assert!(frame.jpeg.len() > 1000 && frame.width > 0);
+                let action = DesktopActionRequest {
+                    kind: kind.into(),
+                    text: text.into(),
+                    key: key.into(),
+                    observation_id: frame.observation_id,
+                    ..Default::default()
+                };
+                execute(&mut Some(view), &action, &live)?;
+            }
+            let saved = Instant::now();
+            while fs::read_to_string(&file)?.trim_start_matches('\u{feff}') != expected {
+                if saved.elapsed() > Duration::from_secs(5) {
+                    return Err("Notepad did not save the text".into());
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            println!(
+                "Observed the real Windows desktop, entered Chinese in Notepad and read the saved file ({} ms).",
+                start.elapsed().as_millis()
+            );
+            Ok(())
+        })();
+        let _ = editor.kill();
+        let _ = editor.wait();
+        result
+    }
 }

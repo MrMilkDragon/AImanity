@@ -101,7 +101,7 @@ pub struct Chat {
     loading_older: bool,
     following: bool,
     control_busy: bool,
-    host: crate::host_desktop::Permission,
+    pub host: crate::host_desktop::Permission,
     outbox: PathBuf,
 }
 impl Chat {
@@ -124,12 +124,9 @@ impl Chat {
             loading_older: false,
             following: true,
             control_busy: false,
-            host: crate::host_desktop::Permission::Off,
+            host: crate::host_desktop::Permission::Disabled,
             outbox: PathBuf::new(),
         }
-    }
-    pub fn end_host(&mut self) {
-        self.host = crate::host_desktop::Permission::Off;
     }
     pub fn restore(&mut self, root: &str) -> Task<Message> {
         self.outbox = PathBuf::from(root).join("data/native/outbox");
@@ -168,7 +165,7 @@ impl Chat {
             && !next.agent_id.is_empty()
             && self.state.agent_id != next.agent_id
         {
-            self.end_host();
+            self.host.close();
         }
         let mut tasks = Vec::new();
         let receipt_ids: HashSet<_> = next
@@ -293,6 +290,7 @@ impl Chat {
         let id = id.to_string();
         let (ready, host_task) =
             if fresh && matches!(self.host, crate::host_desktop::Permission::Armed) {
+                request.use_host_desktop = true;
                 let (stop, closed) = tokio::sync::watch::channel(());
                 let (started, ready) = tokio::sync::oneshot::channel();
                 let request = id.clone();
@@ -311,6 +309,9 @@ impl Chat {
                 };
                 (Some(ready), task)
             } else {
+                if fresh {
+                    self.host.close();
+                }
                 (None, Task::none())
             };
         let send = Task::perform(
@@ -433,6 +434,7 @@ impl Chat {
             Message::HostToggle => {
                 use crate::host_desktop::Permission;
                 self.host = match self.host {
+                    Permission::Disabled => Permission::Disabled,
                     Permission::Off => Permission::Confirm,
                     _ => Permission::Off,
                 };
@@ -693,7 +695,7 @@ impl Chat {
                 }
             }
             Message::Command(command) => {
-                self.host = crate::host_desktop::Permission::Off;
+                self.host.close();
                 self.error.clear();
                 self.control_busy = true;
                 let input = wire::ChatRunRequest {
@@ -1128,28 +1130,31 @@ impl Chat {
                 .on_press_maybe(can_send.then_some(Message::Send)),
         );
         use crate::host_desktop::Permission;
-        let host_button: Element<'_, Message> = match self.host {
-            Permission::Armed | Permission::Active { .. } => {
+        let host_button: Option<Element<'_, Message>> = match self.host {
+            Permission::Disabled => None,
+            Permission::Armed | Permission::Active { .. } => Some(
                 button(text(locale.tr("结束本机协作")).size(12))
                     .style(style::quiet)
                     .on_press(Message::HostToggle)
-                    .into()
-            }
-            _ => iced::widget::tooltip(
-                icon_button(Icon::Screen, Some(Message::HostToggle)),
-                text(locale.tr("本机协作")).size(12),
-                iced::widget::tooltip::Position::Top,
-            )
-            .into(),
+                    .into(),
+            ),
+            _ => Some(
+                iced::widget::tooltip(
+                    icon_button(Icon::Screen, Some(Message::HostToggle)),
+                    text(locale.tr("本机协作")).size(12),
+                    iced::widget::tooltip::Position::Top,
+                )
+                .into(),
+            ),
         };
         let actions = row![
             row![
                 iced::widget::mouse_area(icon_button(Icon::Todos, Some(Message::Todos(true))))
                     .on_enter(Message::Todos(false)),
                 icon_button(Icon::Paperclip, Some(Message::Pick)),
-                host_button,
-                modes.liberty_button().map(Message::Mode),
             ]
+            .extend(host_button)
+            .push(modes.liberty_button().map(Message::Mode))
             .spacing(4)
             .align_y(iced::Center),
             container(

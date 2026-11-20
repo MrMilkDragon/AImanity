@@ -27,7 +27,6 @@ mod spring_slider;
 mod style;
 mod surface;
 mod todos;
-#[cfg(target_os = "macos")]
 mod uninstall;
 mod updates;
 use ai_phone_api::wire;
@@ -66,6 +65,8 @@ enum Message {
     Agents(agents::Message),
     Devices(devices::Message),
     CloseDevices,
+    OpenDevices,
+    HostAccess(bool),
     Audio(usize, audio::Message),
     Files(Box<files::Message>),
     Todos(todos::Message),
@@ -102,9 +103,7 @@ enum Message {
     LinkSnapshot(Result<wire::DeviceLinkState, String>),
     Rotate,
     Update(updates::Message),
-    #[cfg(target_os = "macos")]
     Uninstall,
-    #[cfg(target_os = "macos")]
     UninstallPrepared(Result<Option<uninstall::Plan>, String>),
 }
 #[derive(Clone, Debug)]
@@ -173,8 +172,9 @@ struct App {
     stop: Option<tokio::sync::oneshot::Sender<()>>,
     host_home: std::path::PathBuf,
     updates: updates::State,
-    #[cfg(target_os = "macos")]
     uninstall: Option<uninstall::Plan>,
+    #[cfg(windows)]
+    instance_guard: Option<std::os::windows::io::OwnedHandle>,
     phase: String,
     after_stop: Option<AfterStop>,
     connection: Option<Connection>,
@@ -240,8 +240,9 @@ impl App {
             stop: None,
             host_home: std::path::PathBuf::new(),
             updates: Default::default(),
-            #[cfg(target_os = "macos")]
             uninstall: None,
+            #[cfg(windows)]
+            instance_guard: host::windows_guard().ok(),
             phase: String::new(),
             after_stop: None,
             connection: None,
@@ -299,6 +300,10 @@ impl App {
             started: Instant::now(),
             input_started: None,
         };
+        #[cfg(windows)]
+        if app.instance_guard.is_none() {
+            return (app, iced::exit());
+        }
         let task = if let Some(path) = std::env::args().nth(1) {
             app.start(host::Host::load(&path))
         } else {
@@ -337,6 +342,7 @@ impl App {
                 self.error.clear();
                 self.started = Instant::now();
                 self.host_home = host.home.clone();
+                self.chat.host = host_desktop::Permission::load(&host.home);
                 self.location.set_root(&host.home);
                 let locale = self
                     .setup
@@ -413,13 +419,19 @@ impl App {
         }
     }
     fn finish_exit(&mut self) -> Task<Message> {
-        #[cfg(target_os = "macos")]
-        if let Some(plan) = self.uninstall.take()
-            && let Err(error) = plan.launch()
-        {
-            self.phase.clear();
-            self.error = error;
-            return window::latest().and_then(|id| window::set_mode(id, window::Mode::Windowed));
+        if let Some(plan) = self.uninstall.take() {
+            #[cfg(windows)]
+            drop(self.instance_guard.take());
+            if let Err(error) = plan.launch() {
+                #[cfg(windows)]
+                {
+                    self.instance_guard = host::windows_guard().ok();
+                }
+                self.phase.clear();
+                self.error = error;
+                return window::latest()
+                    .and_then(|id| window::set_mode(id, window::Mode::Windowed));
+            }
         }
         iced::exit()
     }
@@ -597,10 +609,7 @@ impl App {
                         _ => {}
                     },
                     Err(error) => {
-                        #[cfg(target_os = "macos")]
-                        {
-                            self.uninstall = None;
-                        }
+                        self.uninstall = None;
                         self.error = error;
                         if action == Some(AfterStop::Exit) {
                             return window::latest()
@@ -721,11 +730,9 @@ impl App {
                     self.updates.error = error;
                 }
             },
-            #[cfg(target_os = "macos")]
             Message::Uninstall if self.after_stop.is_none() && self.updates.progress.is_none() => {
-                return Task::perform(uninstall::prepare(), Message::UninstallPrepared);
+                return Task::perform(uninstall::prepare(self.locale), Message::UninstallPrepared);
             }
-            #[cfg(target_os = "macos")]
             Message::UninstallPrepared(result)
                 if self.after_stop.is_none() && self.updates.progress.is_none() =>
             {
@@ -1005,7 +1012,12 @@ impl App {
                     self.reflow_child();
                 }
             }
-            Message::Agents(agents::Message::Devices) => {
+            Message::HostAccess(enabled) => {
+                if let Err(error) = self.chat.host.configure(&self.host_home, enabled) {
+                    self.error = error.to_string();
+                }
+            }
+            Message::OpenDevices => {
                 self.show_devices = true;
                 self.reflow_child();
                 if let Some(device) = &self.devices[self.focus] {
@@ -1200,7 +1212,7 @@ impl App {
                 self.reduced_motion = platform::reduced_motion();
             }
             Message::Quit | Message::Event(Event::Window(window::Event::CloseRequested)) => {
-                self.chat.end_host();
+                self.chat.host.close();
                 let stopping = self.after_stop.replace(AfterStop::Exit).is_some();
                 self.connection = None;
                 self.streams = None;
@@ -1949,10 +1961,32 @@ impl App {
         let width = WORKBENCH.width;
         let padding = surface::tool_padding(width);
         if self.panel == Panel::Agent {
-            return self
-                .agents
-                .view(locale, None, width, self.reduced_motion)
-                .map(Message::Agents);
+            let action = |label, message| {
+                button(text(locale.tr(label)).size(13))
+                    .height(style::REGISTRY_CONTROL)
+                    .style(style::quiet)
+                    .on_press(message)
+            };
+            let settings = row![
+                action("设备", Message::OpenDevices),
+                iced::widget::toggler(self.chat.host.enabled())
+                    .label(locale.tr("允许本机协作"))
+                    .text_size(13)
+                    .on_toggle(Message::HostAccess),
+                space::horizontal(),
+                action("卸载 AImanity", Message::Uninstall)
+            ]
+            .spacing(14)
+            .align_y(iced::Center);
+            return column![
+                self.agents
+                    .view(locale, None, width, self.reduced_motion)
+                    .map(Message::Agents),
+                container(column![iced::widget::rule::horizontal(1), settings].spacing(13))
+                    .padding(padding.top(0))
+                    .width(Length::Fill)
+            ]
+            .into();
         }
         let title = match self.panel {
             Panel::Todos => locale.tr("待办"),
@@ -2535,10 +2569,6 @@ fn main() -> iced::Result {
         }
         return Ok(());
     }
-    #[cfg(windows)]
-    let Ok(_uninstall_guard) = host::windows_guard() else {
-        return Ok(());
-    };
     iced::application(App::boot, App::update, App::view)
         .title(|app: &App| {
             if app.connection.is_some() {

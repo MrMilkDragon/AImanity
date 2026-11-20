@@ -84,6 +84,7 @@ message ChatSendRequest {
   ChatVoiceInput voice = 7;
   // Return only the accepted message and its conversation, device, and run IDs.
   bool receipt_only = 8;
+  bool use_host_desktop = 9;
 }
 message ChatRunRequest {
   string run_id = 1;

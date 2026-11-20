@@ -47,7 +47,6 @@ pub enum Field {
 }
 #[derive(Clone, Debug)]
 pub enum Message {
-    Devices,
     Measured(Size),
     New,
     Edit(String),
@@ -127,7 +126,7 @@ impl Agents {
             return Task::none();
         }
         match message {
-            Message::Measured(_) | Message::Devices => {}
+            Message::Measured(_) => {}
             Message::New | Message::Edit(_) => {
                 self.prune_editors(false);
                 let id = if let Message::Edit(id) = message {
@@ -742,15 +741,6 @@ impl Agents {
                     .push(rule::horizontal(1));
             }
         }
-        if !editing {
-            footer = footer.push(
-                button(container(text(locale.tr("设备")).size(13)).center_y(Length::Fill))
-                    .style(style::quiet)
-                    .height(control)
-                    .padding([0, 0])
-                    .on_press(Message::Devices),
-            );
-        }
         let footer = container(column![rule::horizontal(1), footer].spacing(13))
             .padding(padding.top(0))
             .width(Length::Fill);
@@ -774,8 +764,8 @@ impl Agents {
             scrollable(content)
                 .direction(tool_scroll())
                 .height(Length::Fill),
-            footer
         ]
+        .extend(editing.then_some(footer.into()))
         .into()
     }
 }

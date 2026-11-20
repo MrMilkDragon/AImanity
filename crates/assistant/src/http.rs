@@ -331,6 +331,7 @@ async fn send_input(
     };
     // Response shape does not participate in the durable input identity.
     let receipt_only = std::mem::take(&mut request.receipt_only);
+    let use_host_desktop = std::mem::take(&mut request.use_host_desktop);
     let request_bytes = request.encode_to_vec();
     let fingerprint = crate::request_digest::encode(&request_bytes);
     let result: Result<Uuid, sqlx::Error> = async {
@@ -443,7 +444,7 @@ async fn send_input(
                 .bind(&request.text).bind(run).execute(&mut *tx).await?;
         }
         tx.commit().await?;
-        if local_run { app.run_signals.host.bind(request_id, run); }
+        if local_run { app.run_signals.host.bind(request_id, run, use_host_desktop); }
         app.run_signals.queue.notify_one();
         app.run_signals.input.notify_waiters();
         if let Some(voice) = &voice {

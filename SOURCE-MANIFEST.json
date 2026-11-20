@@ -48,8 +48,8 @@
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 4404,
-      "sha256": "f0b801e7c5ec9511c75c3269be3683e2251ea8e9917e4b5adbcfd1556b36182a"
+      "size": 4589,
+      "sha256": "4b40cea7fc076ad605da7fc02828c43d845148a630c0099223b10635f663cfd3"
     },
     {
       "path": ".github/workflows/linux-backend.yml",
@@ -263,48 +263,48 @@
     },
     {
       "path": "apps/native/locales/ar.json",
-      "size": 28190,
-      "sha256": "0a9202c2d5757dba6facd9e4a79b4dd91008a6713a589ef7d2c0f94cf4a622c4"
+      "size": 28547,
+      "sha256": "3cb647c1d8b3983b49ec862bfe1e6da41e1d6493a801ea04eecd5b933ae733e4"
     },
     {
       "path": "apps/native/locales/de.json",
-      "size": 23898,
-      "sha256": "e9be7f79d53f70f20da00d4313e03c664d579e240c351feed3b7fa492bd914b3"
+      "size": 24182,
+      "sha256": "ffbfcb186924bc9776e931248dadd87968c4e3db8520c21365ba2bd7c5737e76"
     },
     {
       "path": "apps/native/locales/en.json",
-      "size": 23121,
-      "sha256": "a5d36b7473bf84596e4d305c6119717c3817b32434d0125516162e6da6380029"
+      "size": 23386,
+      "sha256": "729ba93bebf3fc9de2a0ff70071984e526d3073eef5d634089791ec27a9aed34"
     },
     {
       "path": "apps/native/locales/es.json",
-      "size": 23945,
-      "sha256": "d12d54cdb3ee944954fddb3b270d8512f461d791092b6a342b571b5786ea697c"
+      "size": 24254,
+      "sha256": "2675fc11c77108c552a2d741ed065314ab84188f55e263d9c82ec0cae33733e9"
     },
     {
       "path": "apps/native/locales/fr.json",
-      "size": 24682,
-      "sha256": "27e668eb55d5c1d7cef5406321bd75d3ce366e84a58bf1e9d098a7a872199fc0"
+      "size": 24997,
+      "sha256": "8fa4e99afc0501ee67a26a249e593e2b08d5d85372d9638f397f3e6d4e9f24da"
     },
     {
       "path": "apps/native/locales/ja.json",
-      "size": 26568,
-      "sha256": "8fdf68ade7977109758f9d45c6fa9f30e586e476eba9b4337174e6d9cdbc1220"
+      "size": 26877,
+      "sha256": "03d4f5807c817a551349aaa13fd5b37a045b2f12dbb7ad603b41f5f7688ff345"
     },
     {
       "path": "apps/native/locales/ko.json",
-      "size": 24102,
-      "sha256": "5609e3cb52d23e3ca2da9ee6350915df930d155be0e78ecab1dcc52a9df3b3ee"
+      "size": 24362,
+      "sha256": "411467d42fb92cccfbd06c3acda501e001835a95f3508f32652c7f610111577d"
     },
     {
       "path": "apps/native/locales/ru.json",
-      "size": 32146,
-      "sha256": "f7174db93d3a1bdd51107eb9df2c4451184098841a83a0d6bc5a230723ba7f21"
+      "size": 32550,
+      "sha256": "03ef6a9652517c4bbd389a05d908ba4494430ce3c53666bf9498aab6460d42c1"
     },
     {
       "path": "apps/native/locales/zh-TW.json",
-      "size": 21163,
-      "sha256": "0534a5cc712d462946e81ddd39ee0c80fbbc747535dcb5e274db9c64fbf30cf8"
+      "size": 21409,
+      "sha256": "ba124db1a4a43b40c3c94b381c3b9ee3a7ac4f845c68b788698d1919ae66f76f"
     },
     {
       "path": "apps/native/src/agent_details.rs",
@@ -313,8 +313,8 @@
     },
     {
       "path": "apps/native/src/agents.rs",
-      "size": 32713,
-      "sha256": "d79eca2764b6f317a0a76bf2f55e4b8180a14075c2357b686459802bc27ea26f"
+      "size": 32374,
+      "sha256": "833d8ac109546c482408e88cef3a5454168c111a077afa37d3a0dbd0c321f562"
     },
     {
       "path": "apps/native/src/audio.rs",
@@ -323,8 +323,8 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 55543,
-      "sha256": "213ef011fa2f5ae0fcb1db13d2c15e92bebf3d351e7617217f1f652747253f47"
+      "size": 55744,
+      "sha256": "08b732bd33c1a8e5f63fe6505c7ea7ba0d9cfd4ec5c501a48eae50ec43054eb8"
     },
     {
       "path": "apps/native/src/connection.rs",
@@ -358,8 +358,8 @@
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 11786,
-      "sha256": "405d87103b1c3c8bd567eaad13c0138d92dd1ecb8dd65066d71f9bd5619062e9"
+      "size": 16395,
+      "sha256": "c687840fb07e8978a3543ee362a79ff78d97b00d60d0de57c987ed34d54f5b02"
     },
     {
       "path": "apps/native/src/host_memory.rs",
@@ -398,8 +398,8 @@
     },
     {
       "path": "apps/native/src/main.rs",
-      "size": 103845,
-      "sha256": "49a3336b1adb7bcbec1fba6a5163cd80f7b7b52ef94ac3003ef98b88200e74a3"
+      "size": 105162,
+      "sha256": "9f22f3e80f7b91b336f25abb270c495845d32e51edffe2df1d130e0626252232"
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
@@ -472,9 +472,19 @@
       "sha256": "adcdae183a759682a4658591237d5432a921c5430c1747bb31168268c65d0156"
     },
     {
+      "path": "apps/native/src/uninstall/macos.rs",
+      "size": 5839,
+      "sha256": "27a9ae0bc48d4d42ac268abfd47b4ce1049d5d8c57d3152700b1be2af0e83cb1"
+    },
+    {
+      "path": "apps/native/src/uninstall/windows.rs",
+      "size": 1042,
+      "sha256": "a2364b48342fe32a626ef2d65302cc554242aac513990318a4cb09799f0351ab"
+    },
+    {
       "path": "apps/native/src/uninstall.rs",
-      "size": 6570,
-      "sha256": "96110a5ca38bf1069f9acdb373f2c1eb611bfee0df3cb8d96b97b21263a919cb"
+      "size": 1080,
+      "sha256": "9912d4bf99be5057729707ff0d69ddc83993b749d0be14e9a3a62719b841a415"
     },
     {
       "path": "apps/native/src/update_core.rs",
@@ -1223,13 +1233,13 @@
     },
     {
       "path": "crates/assistant/src/host_desktop.rs",
-      "size": 7982,
-      "sha256": "8294f83a1a68128b31b6ecd70c675e555c84310261ad811110f1e8829f987f04"
+      "size": 8437,
+      "sha256": "732947ea4be5f8a7fd076e7c0b2e7e7c78956aeaa6638f9dd168ba0ab87ed2a9"
     },
     {
       "path": "crates/assistant/src/http.rs",
-      "size": 55345,
-      "sha256": "7f7007d0380dace88dbd39c6d9a9cbdc56b7ba22e9025dd14c9115af850d8a6d"
+      "size": 55437,
+      "sha256": "33152ce98f593cc065cab7ce24eb9ad72266f8747aa1ff0d07ccbed6acfa6400"
     },
     {
       "path": "crates/assistant/src/location.rs",
@@ -3333,8 +3343,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/assistant.proto",
-      "size": 2828,
-      "sha256": "c9452ef1f3eabb29d7108f4161db4f08992be3b4c6eb42e65e19ec69563acbd5"
+      "size": 2857,
+      "sha256": "9eb0c9c81113c6577a7f0de04f2a6d95cc3e936c83037d80b1531bd7dfd0d1b5"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/auth.proto",
