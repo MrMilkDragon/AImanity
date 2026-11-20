@@ -1293,10 +1293,10 @@ mod tests {
             assert_eq!(sqlx::query_scalar::<_,String>("SELECT status||':'||error FROM runs WHERE id=$1").bind(paused).fetch_one(&app.db).await.unwrap(),"paused:preserve pause");
             let resume_input=wire::ChatSendRequest{text:"now resume user work".into(),request_id:Uuid::new_v4().to_string(),..Default::default()};
             assert_eq!(crate::http::send(State(app.clone()),owner_headers,Ok(Bytes::from(resume_input.encode_to_vec()))).await.status(),StatusCode::ACCEPTED);
-            assert_eq!(sqlx::query_scalar::<_,String>("SELECT status FROM runs WHERE id=$1").bind(summary).fetch_one(&app.db).await.unwrap(),"canceled");
+            assert_eq!(sqlx::query_scalar::<_,String>("SELECT status FROM runs WHERE id=$1").bind(summary).fetch_one(&app.db).await.unwrap(),"queued","resuming the main task preserves the pending notification");
             assert_eq!(sqlx::query_scalar::<_,String>("SELECT status FROM runs WHERE id=$1").bind(paused).fetch_one(&app.db).await.unwrap(),"queued");
 
-            // A desktop uses its own conversation/model binding and wakes independently.
+            // Desktop and phone notifications enter the same shared conversation.
             let desktop="notification-desktop-fixture";
             let agent=Uuid::from_u128(2);
             sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state) VALUES($1,'Desktop','desktop','Linux','managed')").bind(desktop).execute(&app.db).await.unwrap();
@@ -1334,13 +1334,15 @@ mod tests {
             let claimed=crate::worker::claim_due_run(&app).await.unwrap().unwrap();
             assert_eq!(claimed.0,paused,"fresh owner steering wins over notifications");
             sqlx::query("UPDATE runs SET status='queued',step=20,steering='[]' WHERE id=$1").bind(paused).execute(&app.db).await.unwrap();
-            let claimed=crate::worker::claim_due_run(&app).await.unwrap().unwrap();
-            assert_ne!(claimed.0,paused,"an existing task yields between slices so other-device notification work is not starved");
-            assert_eq!(sqlx::query_scalar::<_,String>("SELECT origin FROM runs WHERE id=$1").bind(claimed.0).fetch_one(&app.db).await.unwrap(),"notification");
+            sqlx::query("DELETE FROM device_execution_leases WHERE run_id=$1").bind(paused).execute(&app.db).await.unwrap();
+            assert_eq!(crate::worker::claim_due_run(&app).await.unwrap().unwrap().0,paused,"a continuing main task retains priority");
             sqlx::query("UPDATE runs SET status='paused' WHERE id=$1").bind(paused).execute(&app.db).await.unwrap();
-            // Earlier assertions already cover the canceled notification's summary.
-            // This phase isolates exploration startup with no remaining notification work.
-            sqlx::query("UPDATE runs SET status='paused',background_finalized=false WHERE id=$1").bind(claimed.0).execute(&app.db).await.unwrap();
+            sqlx::query("DELETE FROM device_execution_leases WHERE run_id=$1").bind(paused).execute(&app.db).await.unwrap();
+            let notification=crate::worker::claim_due_run(&app).await.unwrap().unwrap().0;
+            assert_eq!(sqlx::query_scalar::<_,String>("SELECT origin FROM runs WHERE id=$1").bind(notification).fetch_one(&app.db).await.unwrap(),"notification");
+            sqlx::query("UPDATE runs SET status='succeeded',background_finalized=true WHERE origin='notification' AND status='queued'").execute(&app.db).await.unwrap();
+            sqlx::query("UPDATE runs SET status='paused',background_finalized=false WHERE id=$1").bind(notification).execute(&app.db).await.unwrap();
+            sqlx::query("DELETE FROM device_execution_leases WHERE run_id=$1").bind(notification).execute(&app.db).await.unwrap();
             sqlx::query("UPDATE runs SET status='succeeded',background_finalized=true WHERE id=$1").bind(pc_run.0).execute(&app.db).await.unwrap();
             sqlx::query("UPDATE phone_notifications SET status='succeeded' WHERE status IN ('pending','pending-summary')").execute(&app.db).await.unwrap();
             sqlx::query("UPDATE proactive_state SET exploring=true,next_cycle_at='epoch'").execute(&app.db).await.unwrap();

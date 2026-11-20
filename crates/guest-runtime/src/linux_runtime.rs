@@ -446,7 +446,7 @@ async fn run_desktop(source: &Path, cpus: u32, memory_mb: u32, proxy: &OsString)
 fn attach(args: &[OsString], admin: bool) -> Result<u8> {
     let namespace: Namespace = serde_json::from_reader(File::open(desktop_receipt())?)?;
     let mount = fs::read_link(format!("/proc/{}/ns/mnt", namespace.pid))?;
-    if mount != PathBuf::from(format!("mnt:[{}]", namespace.mount)) {
+    if mount != Path::new(&format!("mnt:[{}]", namespace.mount)) {
         return Err("Linux desktop namespace changed".into());
     }
     let mut command = std::process::Command::new("nsenter");

@@ -328,8 +328,8 @@
     },
     {
       "path": "apps/native/src/connection.rs",
-      "size": 23541,
-      "sha256": "f2527af3f91a8cbbd75fed80995fe9f2da67e342a419afd50ebcf6c155d15c7a"
+      "size": 23610,
+      "sha256": "7d7057ef8e59c7de3dc259bbe1cfeff398b3d4f94fe77a54960f78ab3810c3a2"
     },
     {
       "path": "apps/native/src/controls.rs",
@@ -393,8 +393,8 @@
     },
     {
       "path": "apps/native/src/main.rs",
-      "size": 103221,
-      "sha256": "6f1ae10923bd5a8aa4006b985f1e0d2ffa0c3c3d26636bb2424fd44afd5a041b"
+      "size": 104404,
+      "sha256": "9490a7067b983d4c47ec4e32d570ba5391844116fda3e503e810258634d23250"
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
@@ -463,8 +463,8 @@
     },
     {
       "path": "apps/native/src/todos.rs",
-      "size": 7591,
-      "sha256": "74d50937ab39bc7ade3bfbf73a23011b95ec15b8d33cc59e76598d7e9d60962e"
+      "size": 8062,
+      "sha256": "adcdae183a759682a4658591237d5432a921c5430c1747bb31168268c65d0156"
     },
     {
       "path": "apps/native/src/uninstall.rs",
@@ -1148,8 +1148,8 @@
     },
     {
       "path": "crates/assistant/src/device_setup/rpc.rs",
-      "size": 5046,
-      "sha256": "aee929c8e2651baab5cfe660d30999558e27e2a51b13e35a571ea0069fd7a38b"
+      "size": 5993,
+      "sha256": "1fb9f2ce9491b88f7a96e775d0bb9995fdd209d1e79baf246e806ceedaa3866c"
     },
     {
       "path": "crates/assistant/src/device_setup/store.rs",
@@ -1298,8 +1298,8 @@
     },
     {
       "path": "crates/assistant/src/proactive.rs",
-      "size": 76426,
-      "sha256": "3a57e0bc2a999ffae513f6bebc90f468157ee5e02bbfe0da6dd5ca2ed0dc4dbd"
+      "size": 76866,
+      "sha256": "efdd431c6dfe083f232d6df36ab8cf739e74cc7c03c0347ce205d3d0454dac3f"
     },
     {
       "path": "crates/assistant/src/recovery_process_tests.rs",
@@ -1538,8 +1538,8 @@
     },
     {
       "path": "crates/guest-runtime/src/linux_runtime.rs",
-      "size": 16239,
-      "sha256": "51d542daf7078e35d556024c69072c5b3c5186408e355ff939d80113c973d429"
+      "size": 16236,
+      "sha256": "9e8fd547c9d7e8817d07305e34a619905b2c3a3faf381b02690a3802bd5b8acf"
     },
     {
       "path": "crates/guest-runtime/src/location/browser.rs",
@@ -1768,8 +1768,8 @@
     },
     {
       "path": "crates/host-runtime/src/bin/qualify-windows-installer.rs",
-      "size": 32727,
-      "sha256": "ebfe735b5d8fa61a22e5ffc377b0f4242c1d524898df84c2257a5fd74ff7f60d"
+      "size": 33002,
+      "sha256": "44965077c1c75c227fb5b61da99b271f53ed3896b5d025933cfa6a8d0c9a02a0"
     },
     {
       "path": "crates/host-runtime/src/capsule.rs",

@@ -182,6 +182,7 @@ struct App {
     agent_traces: [Option<scene::AgentTrace>; 2],
     pointer_polling: bool,
     frame_errors: [String; 2],
+    chat_connection_error: String,
     chat: chat::Chat,
     agents: agents::Agents,
     device_admin: devices::Devices,
@@ -248,6 +249,7 @@ impl App {
             agent_traces: [None, None],
             pointer_polling: false,
             frame_errors: Default::default(),
+            chat_connection_error: String::new(),
             chat: chat::Chat::new(),
             agents: agents::Agents::new(),
             device_admin: Default::default(),
@@ -781,7 +783,17 @@ impl App {
             }
             Message::Chat(result) => {
                 if let Some(client) = &self.connection {
-                    let todos = if self.popup && self.panel == Panel::Todos && result.is_ok() {
+                    let state = match result {
+                        Ok(state) => {
+                            self.chat_connection_error.clear();
+                            state
+                        }
+                        Err(error) => {
+                            self.chat_connection_error = error;
+                            return Task::none();
+                        }
+                    };
+                    let todos = if self.popup && self.panel == Panel::Todos {
                         self.todos
                             .update(todos::Message::Load, client)
                             .map(Message::Todos)
@@ -791,7 +803,7 @@ impl App {
                     let was_active = self.agent_pointer_active();
                     let task = self
                         .chat
-                        .update(chat::Message::History(result), client, "")
+                        .update(chat::Message::History(Ok(state)), client, "")
                         .map(Message::Conversation);
                     let speech = self
                         .modes
@@ -816,7 +828,15 @@ impl App {
             }
             Message::Todos(message) => {
                 if let Some(client) = &self.connection {
-                    return self.todos.update(message, client).map(Message::Todos);
+                    let before = self.todos.rows_height();
+                    let task = self.todos.update(message, client).map(Message::Todos);
+                    if self.popup
+                        && self.panel == Panel::Todos
+                        && before != self.todos.rows_height()
+                    {
+                        self.reflow_popup();
+                    }
+                    return task;
                 }
             }
             Message::Conversation(message) => {
@@ -1499,7 +1519,14 @@ impl App {
     }
     fn panel_target(&self) -> Size {
         let (width, max_height, fit) = match self.panel {
-            Panel::Todos => (400., 430., true),
+            Panel::Todos => {
+                let padding = surface::tool_padding(WORKBENCH.width);
+                let height = style::window_insets(WORKBENCH.width).2
+                    + padding.top
+                    + self.todos.rows_height()
+                    + padding.bottom;
+                (400., height.min(430.), false)
+            }
             Panel::Agent => (680., 600., false),
             Panel::Language => (280., 480., false),
             Panel::Skills => (650., 560., true),
@@ -2121,7 +2148,7 @@ impl App {
             .padding(language_border_inset)
             .height(Length::Fill)
             .into(),
-            Panel::Files => scrollable(padded)
+            Panel::Files | Panel::Todos => scrollable(padded)
                 .direction(surface::tool_scroll())
                 .height(Length::Fill)
                 .into(),
@@ -2210,6 +2237,7 @@ impl App {
             self.audio[1].error(),
             self.frame_errors[self.focus].as_str(),
             self.chat.error.as_str(),
+            self.chat_connection_error.as_str(),
         ]
         .into_iter()
         .find(|error| !error.is_empty())

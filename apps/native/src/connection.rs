@@ -320,7 +320,7 @@ impl Connection {
                         .insert("authorization", self.assistant.clone());
                     let (socket, _) = tokio_tungstenite::connect_async(request)
                         .await
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|_| "本机 Agent 服务已断开")?;
                     // The subscription must be live before reading its initial snapshot.
                     output
                         .send(Ok(self.history().await?))
@@ -334,7 +334,8 @@ impl Connection {
                     while let Some(events) = batches.next().await {
                         let mut changed = false;
                         for event in events {
-                            if let Ws::Binary(bytes) = event.map_err(|e| e.to_string())? {
+                            if let Ws::Binary(bytes) = event.map_err(|_| "本机 Agent 服务已断开")?
+                            {
                                 wire::ChatChanged::decode(bytes).map_err(|e| e.to_string())?;
                                 changed = true;
                             }
@@ -346,7 +347,7 @@ impl Connection {
                                 .map_err(|e| e.to_string())?;
                         }
                     }
-                    Err("对话连接已关闭".into())
+                    Err("本机 Agent 服务已断开".into())
                 }
                 .await;
                 if !reconnecting

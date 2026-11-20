@@ -6,6 +6,7 @@ use iced::{
 };
 
 const ROW: f32 = 40.;
+const GAP: f32 = 2.;
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -32,6 +33,14 @@ pub struct Todos {
 }
 
 impl Todos {
+    pub fn rows_height(&self) -> f32 {
+        let notice = !self.error.is_empty() || self.items.is_empty();
+        let rows = self.items.len() + usize::from(notice);
+        self.items.len() as f32 * (ROW + 2.)
+            + if notice { ROW } else { 0. }
+            + rows.saturating_sub(1) as f32 * GAP
+    }
+
     pub fn cancel_drag(&mut self) {
         self.dragging = false;
         self.slot = None;
@@ -121,7 +130,7 @@ impl Todos {
     }
 
     pub fn view(&self, locale: Locale) -> Element<'_, Message> {
-        let mut rows = column![].spacing(2);
+        let mut rows = column![].spacing(GAP);
         if !self.error.is_empty() {
             rows = rows.push(
                 button(
@@ -129,18 +138,22 @@ impl Todos {
                         .size(13)
                         .style(style::muted_text),
                 )
+                .height(ROW)
                 .on_press(Message::Load)
                 .style(style::quiet),
             );
         } else if self.items.is_empty() {
             rows = rows.push(
-                text(locale.tr(if self.reading {
-                    "读取中…"
-                } else {
-                    "暂无待办"
-                }))
-                .size(13)
-                .style(style::muted_text),
+                container(
+                    text(locale.tr(if self.reading {
+                        "读取中…"
+                    } else {
+                        "暂无待办"
+                    }))
+                    .size(13)
+                    .style(style::muted_text),
+                )
+                .center_y(ROW),
             );
         }
         for (i, item) in self.items.iter().enumerate() {

@@ -676,9 +676,7 @@ async fn verify_desktop(http: &Client, assistant: &str, media_token: &str, id: &
 async fn watch_android(home: PathBuf, profile: PathBuf) -> Result<()> {
     let mut tick = tokio::time::interval(10 * SECOND);
     tick.tick().await;
-    while !home.join("deployment.json").is_file()
-        || !home.join("user/data/android/native/sdk.log").is_file()
-    {
+    while !home.join("user/data/android/native/sdk.log").is_file() {
         tick.tick().await;
     }
     let started = Instant::now();
@@ -719,6 +717,15 @@ async fn watch_android(home: PathBuf, profile: PathBuf) -> Result<()> {
         state.trim(),
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis()
     );
+    let start = Instant::now();
+    match timeout(15 * SECOND, android.screenshot()).await {
+        Ok(Ok(png)) => println!(
+            "Android cold screenshot: {} bytes in {} ms",
+            png.len(),
+            start.elapsed().as_millis()
+        ),
+        other => eprintln!("Android cold screenshot: {other:?}"),
+    }
     for name in ["notifications", "attention"] {
         let script =
             format!("cat /data/user/0/dev.aiphone.input/files/{name}.json 2>/dev/null || true");
