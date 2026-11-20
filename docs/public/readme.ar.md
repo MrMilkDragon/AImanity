@@ -4,7 +4,7 @@
 
 ## التنزيل والحالة
 
-[تنزيل 0.0.3 Calcium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.3)
+[تنزيل 0.0.4 Dysprosium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.4)
 
 يتطلب macOS 15.0 أو أحدث ومعالج Apple Silicon. يتطلب Windows الإصدار 11 بمعمارية x64. يضم كل مثبّت Android وLinux والمحاكي والخدمات المحلية.
 

@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.0.4 Decimal — in development
+## 0.0.4 Dysprosium
+
+- Run the shared Android and Linux workbench in a native Rust client built with Iced and wgpu.
+- See microphone input across the workspace while Copilot transcribes locally and the system voice reads replies.
+- Continue active notification work in the shared conversation when a new spoken instruction arrives.
 
 - Wake notification delivery as soon as its report is committed.
 - Fetch Liberty status in one database request.

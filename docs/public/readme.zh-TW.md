@@ -4,7 +4,7 @@
 
 ## 下載與現況
 
-[下載 0.0.3 Calcium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.3)
+[下載 0.0.4 Dysprosium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.4)
 
 支援 Apple Silicon macOS 15.0 以上與 Windows 11 x64。安裝包內建 Android、Linux、模擬器及本機服務。
 

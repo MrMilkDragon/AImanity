@@ -4,7 +4,7 @@
 
 ## 다운로드와 현황
 
-[0.0.3 Calcium 다운로드](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.3)
+[0.0.4 Dysprosium 다운로드](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.4)
 
 Apple Silicon이 탑재된 macOS 15.0 이상 또는 Windows 11 x64가 필요합니다. 각 설치 파일에 Android, Linux, 에뮬레이터와 로컬 서비스가 들어 있습니다.
 

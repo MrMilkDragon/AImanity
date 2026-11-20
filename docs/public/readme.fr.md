@@ -4,7 +4,7 @@
 
 ## Téléchargements et état
 
-[Télécharger 0.0.3 Calcium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.3)
+[Télécharger 0.0.4 Dysprosium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.4)
 
 Configuration requise : macOS 15.0 ou ultérieur sur Apple Silicon, ou Windows 11 x64. Chaque installateur contient Android, Linux, l’émulateur et les services locaux.
 
