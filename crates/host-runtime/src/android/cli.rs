@@ -1,6 +1,6 @@
 use super::Resources;
 use crate::{Error, Installation, Result};
-use ai_phone_api::wire::{NativeAndroidPrepare, NativeAndroidPrepared};
+use ai_phone_api::wire::NativeAndroidPrepare;
 use prost::Message;
 use std::{
     ffi::OsString,
@@ -22,14 +22,29 @@ fn read_request() -> Result<NativeAndroidPrepare> {
     }
     Ok(request)
 }
-fn receipt(prepared: super::Prepared) -> Result<NativeAndroidPrepared> {
-    prepared.wire()
-}
 pub fn run(arguments: &[OsString]) -> Result<()> {
-    let [home] = arguments else {
-        return Err(Error::Invalid("android_prepare_arguments"));
+    let (home, request, factory) = match arguments {
+        [home] => (home, read_request()?, false),
+        [home, payload, identity] => (
+            home,
+            NativeAndroidPrepare {
+                version: 1,
+                payload_path: payload
+                    .to_str()
+                    .ok_or(Error::Invalid("android_prepare_arguments"))?
+                    .into(),
+                payload_sha256: identity
+                    .to_str()
+                    .ok_or(Error::Invalid("android_prepare_arguments"))?
+                    .into(),
+                cpus: 2,
+                memory_mb: 2048,
+                storage_gb: 16,
+            },
+            true,
+        ),
+        _ => return Err(Error::Invalid("android_prepare_arguments")),
     };
-    let request = read_request()?;
     let resources = Resources {
         cpus: request.cpus,
         memory_mb: request.memory_mb,
@@ -43,7 +58,21 @@ pub fn run(arguments: &[OsString]) -> Result<()> {
         &|path| fs2::available_space(path).unwrap_or(0),
         &|| false,
     )?;
-    let receipt = receipt(prepared)?;
-    std::io::stdout().write_all(&receipt.encode_to_vec())?;
+    let receipt = prepared.wire()?;
+    if factory {
+        println!(
+            "{}",
+            serde_json::json!({
+                "version": receipt.version,
+                "sdkRoot": receipt.sdk_root,
+                "avdHome": receipt.avd_home,
+                "avdName": receipt.avd_name,
+                "reusedSdk": receipt.reused_sdk,
+                "reusedDevice": receipt.reused_device,
+            })
+        );
+    } else {
+        std::io::stdout().write_all(&receipt.encode_to_vec())?;
+    }
     Ok(())
 }

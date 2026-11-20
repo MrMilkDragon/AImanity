@@ -4,7 +4,7 @@ English · [简体中文](#简体中文) · [繁體中文](docs/public/readme.zh
 
 An agent that listens while it works, explores on its own, and learns from using your phone and computer.
 
-## 0.0.3 Calcium
+## 0.0.4 Dysprosium
 
 Apple Silicon macOS and Windows 11 x64. [Releases](https://github.com/MrMilkDragon/AImanity/releases) · [Installers and factory instructions](docs/public/release-status.md) · [Uninstall](docs/public/release-status.md#uninstall)
 
@@ -22,14 +22,13 @@ See [model and channel setup](docs/public/model-and-channel-setup.md), [notifica
 
 | Layer | Technology | Directory |
 | --- | --- | --- |
-| Workbench | Next.js App Router, TypeScript, Tailwind, shadcn/ui | `apps/web` |
-| Native client | Tauri 2 | `apps/client` |
+| Desktop client and workbench | Rust (Iced/wgpu) | `apps/native` |
 | Backend, devices and media | Rust, Axum, Tokio | `crates` |
 | Business API and state | protobuf, PostgreSQL, SQLx | `packages/protocol` |
-| Device runtimes | AOSP, Avo, WHPX, Linux containers, Docker Compose | `infra`, `scripts` |
+| Device runtimes | AOSP on Avo or WHPX, native Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
 | Built-in capabilities | Skills and device profiles | `skills`, `config` |
 
-Agents plan from current device observations and record their actions and results. Bun and Cargo build the project. Device disks, accounts and attachments stay in the local installation.
+Agents plan from current device observations and record their actions and results. Cargo builds the project. Device disks, accounts and attachments stay in the local installation.
 
 [Architecture](docs/public/architecture.en.md) · [Documentation](docs/public/index.md) · [Contributing](CONTRIBUTING.md) · [Report an issue](https://github.com/MrMilkDragon/AImanity/issues/new/choose)
 
@@ -49,7 +48,7 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 [Back to English](#aimanity)
 
-## 0.0.3 Calcium
+## 0.0.4 Dysprosium
 
 适用于 Apple Silicon macOS 和 Windows 11 x64。[发行页](https://github.com/MrMilkDragon/AImanity/releases) · [安装包与构建说明](docs/public/release-status.md) · [卸载](docs/public/release-status.md#卸载)
 
@@ -65,7 +64,7 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 ## 技术架构
 
-工作台采用 Next.js、TypeScript、Tailwind 和 shadcn/ui，客户端采用 Tauri 2。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，数据由 PostgreSQL 和 SQLx 管理。使用 Bun 和 Cargo 构建，Avo 或 WHPX 运行 Android；Linux 和 Docker Compose 运行桌面与服务。
+客户端与工作台采用 Rust、Iced 和 wgpu。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，数据由 PostgreSQL 和 SQLx 管理。Cargo 负责构建。Android 由 Avo 或 WHPX 运行，Debian/Openbox 桌面和工作区共用一份 Linux 根文件系统。
 
 Agent 根据当前设备画面操作，动作账本保留执行过程和结果。设备盘、账号、聊天和附件保存在本地安装目录或数据库中。
 

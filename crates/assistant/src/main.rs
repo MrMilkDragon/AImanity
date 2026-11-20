@@ -58,6 +58,7 @@ mod run_signals;
 mod settings;
 mod setup;
 mod speech;
+mod todos;
 mod tool_catalog;
 mod voice_input;
 mod workbench;
@@ -76,7 +77,7 @@ struct App {
     active: Mutex<std::collections::HashMap<Uuid, CancellationToken>>,
     run_signals: run_signals::RunSignals,
     login_attempts: Mutex<Vec<std::time::Instant>>,
-    workspace_init: Mutex<Option<String>>,
+    workspace_init: Mutex<bool>,
     location_mutation: Mutex<()>,
     network_mutation: Mutex<()>,
 }
@@ -170,16 +171,6 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
         return channels::run(&root)
             .await
             .map_err(|error| error as Box<dyn std::error::Error>);
-    }
-    #[cfg(debug_assertions)]
-    if arguments.len() == 2 && arguments[0] == "--qualify-workspace-runtime" {
-        workspace_runtime::qualify(
-            arguments[1]
-                .to_str()
-                .ok_or("workspace image is not UTF-8")?,
-        )
-        .await?;
-        return Ok(());
     }
     #[cfg(debug_assertions)]
     if arguments.as_slice() == [std::ffi::OsStr::new("--qualify-file-manager-devices")] {
@@ -321,7 +312,7 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
         active: Mutex::new(Default::default()),
         run_signals: Default::default(),
         login_attempts: Mutex::new(Vec::new()),
-        workspace_init: Mutex::new(None),
+        workspace_init: Mutex::new(false),
         location_mutation: Mutex::new(()),
         network_mutation: Mutex::new(()),
     });

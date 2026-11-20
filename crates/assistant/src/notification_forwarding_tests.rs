@@ -163,6 +163,69 @@ async fn stalled_forwarding_cannot_delay_notification_wake_or_manual_takeover() 
 }
 
 #[tokio::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn notification_batches_keep_watch_policy_and_replay_only_new_events() {
+    database_case(|app| async move {
+        registry::initialize(&app.db, &app.settings).await.unwrap();
+        schedule(&app, &["phone"]).await.unwrap();
+        sqlx::query("UPDATE proactive_state SET notifications_since='epoch',wechat_watch=false")
+            .execute(&app.db)
+            .await
+            .unwrap();
+        let feed = wire::PhoneNotificationList {
+            connected: true,
+            notifications: (0..80)
+                .map(|n| wire::PhoneNotification {
+                    event_id: format!("{n:064x}"),
+                    notification_key: match n % 4 {
+                        0 => format!("wechat-visible:{n}"),
+                        1 => format!("wechat-badge:{n}"),
+                        _ => format!("ordinary:{n}"),
+                    },
+                    package_name: "fixture.message".into(),
+                    app_name: "Fixture".into(),
+                    title: "Batch".into(),
+                    text: format!("message {n}"),
+                    posted_at_ms: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64,
+                })
+                .collect(),
+            ..Default::default()
+        };
+        ingest_feed(&app, feed.clone()).await.unwrap();
+        let states: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT status,count(*) FROM phone_notifications GROUP BY status ORDER BY status",
+        )
+        .fetch_all(&app.db)
+        .await
+        .unwrap();
+        assert_eq!(
+            states,
+            [("ignored-active-ui".into(), 20), ("pending".into(), 40)]
+        );
+        sqlx::query("UPDATE proactive_state SET wechat_watch=true")
+            .execute(&app.db)
+            .await
+            .unwrap();
+        ingest_feed(&app, feed.clone()).await.unwrap();
+        ingest_feed(&app, feed).await.unwrap();
+        let states: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT status,count(*) FROM phone_notifications GROUP BY status ORDER BY status",
+        )
+        .fetch_all(&app.db)
+        .await
+        .unwrap();
+        assert_eq!(
+            states,
+            [("ignored-active-ui".into(), 20), ("pending".into(), 60)]
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
 #[ignore = "real disposable PostgreSQL and blocked loopback phone; no devices or models"]
 async fn stalled_device_collection_cannot_delay_other_device_admission() {
     for block_phone in [true, false] {
@@ -191,7 +254,7 @@ async fn stalled_device_collection_cannot_delay_other_device_admission() {
             sqlx::query("INSERT INTO agent_device_bindings(agent_id,device_id) VALUES($1,$2)").bind(agent).bind(desktop).execute(&app.db).await.unwrap();
             sqlx::query("UPDATE devices SET default_agent_id=$2 WHERE id=$1").bind(desktop).bind(agent).execute(&app.db).await.unwrap();
             // This foreign instance ref makes available() reject before any Docker process.
-            sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'docker-desktop','fixture-never-a-real-device')").bind(desktop).execute(&app.db).await.unwrap();
+            sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'native-desktop','fixture-never-a-real-device')").bind(desktop).execute(&app.db).await.unwrap();
             schedule(&app, &["phone", "desktop"]).await.unwrap();
             for (device, id) in [(registry::PHONE, "b"), (desktop, "c")] {
                 ingest_device_feed(&app, device, wire::PhoneNotificationList {

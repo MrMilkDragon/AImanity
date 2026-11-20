@@ -9,9 +9,6 @@ mod control;
 pub mod desktop_bridge;
 pub mod device_bridge;
 mod filesystem;
-#[cfg(unix)]
-#[cfg(unix)]
-mod images;
 mod links;
 mod linux_vm;
 #[cfg(unix)]
@@ -40,6 +37,8 @@ pub use unix_initializer::shutdown as stop_macos_installation;
 #[cfg(target_os = "macos")]
 pub use unix_initializer::uninstall as remove_macos_devices;
 pub mod vm_control;
+#[cfg(windows)]
+pub mod windows_native;
 pub mod wsl;
 
 use std::{
@@ -50,6 +49,9 @@ use std::{
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub const DEVICE_SETUP_PENDING: &str = "data/deployment/device-setup.pending";
+
+#[cfg(unix)]
+mod project_command;
 
 #[derive(Debug)]
 pub enum Error {

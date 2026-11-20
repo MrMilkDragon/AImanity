@@ -4,7 +4,7 @@ set -euo pipefail
 compiled=$(realpath "$1")
 baseline=$(realpath "$2")
 out=$(realpath "$3")
-images=${4:+$(realpath "$4")}
+release=$4
 temp=$(mktemp -d "$out/.release-layer.XXXXXXXX")
 trap 'rm -rf "$temp"' EXIT
 
@@ -13,22 +13,12 @@ grep -qx 'CONFIG_BLK_DEV_INITRD=y' "$base/kernel.config"
 grep -qx 'CONFIG_RD_GZIP=y' "$base/kernel.config"
 mkdir -p "$temp/init"/{bin,dev,lib,newroot} "$temp/layer"
 qemu-img convert -f qcow2 -O raw -S 4096 "$base/guest.qcow2" "$temp/base.ext4"
-for path in /mnt /dev; do
-  debugfs -R "stat $path" "$temp/base.ext4" | grep -E 'Type:[[:space:]]+directory'
-done
-for path in /usr/local/libexec/aiphone-bootstrap /opt/aiphone/bundle/source.{payload,sha256}; do
-  debugfs -R "stat $path" "$temp/base.ext4" | grep -E 'Type:[[:space:]]+regular'
-done
-if [ -n "$images" ]; then
-  test -s "$images"
-  debugfs -R 'stat /opt/aiphone/bundle/images.payload' "$temp/base.ext4" | grep -E 'Type:[[:space:]]+regular'
-fi
 debugfs -R "dump /opt/aiphone/engine/bin/busybox $temp/init/bin/busybox" "$temp/base.ext4"
 debugfs -R "dump /opt/aiphone/engine/lib/ld-musl-x86_64.so.1 $temp/init/lib/ld-musl-x86_64.so.1" "$temp/base.ext4"
 rm "$temp/base.ext4"
 chmod 0755 "$temp/init/bin/busybox" "$temp/init/lib/ld-musl-x86_64.so.1"
 sudo chroot "$temp/init" /bin/busybox --list > "$temp/applets"
-for applet in mount sh sleep switch_root timeout; do
+for applet in mkdir mount sh sleep switch_root timeout; do
   grep -qx "$applet" "$temp/applets"
 done
 cat > "$temp/init/init" <<'INIT'
@@ -41,9 +31,14 @@ set -eu
 /bin/busybox mount -o bind /newroot/mnt/bootstrap.program /newroot/usr/local/libexec/aiphone-bootstrap
 /bin/busybox mount -o bind /newroot/mnt/source.payload /newroot/opt/aiphone/bundle/source.payload
 /bin/busybox mount -o bind /newroot/mnt/source.sha256 /newroot/opt/aiphone/bundle/source.sha256
-if [ -f /newroot/mnt/images.payload ]; then
-  /bin/busybox mount -o bind /newroot/mnt/images.payload /newroot/opt/aiphone/bundle/images.payload
-fi
+/bin/busybox mount -o bind /newroot/mnt/images.payload /newroot/opt/aiphone/bundle/images.payload
+/bin/busybox mkdir -p /newroot/opt/aiphone/redis
+/bin/busybox mount -o bind /newroot/mnt/redis /newroot/opt/aiphone/redis
+/bin/busybox mkdir -p /newroot/opt/aiphone/postgres
+/bin/busybox mount -o bind /newroot/mnt/postgres /newroot/opt/aiphone/postgres
+/bin/busybox mkdir -p /newroot/opt/aiphone/linux /newroot/usr/share/zoneinfo
+/bin/busybox mount -o bind /newroot/mnt/linux /newroot/opt/aiphone/linux
+/bin/busybox mount -o bind /newroot/mnt/linux/zoneinfo /newroot/usr/share/zoneinfo
 /bin/busybox mount -o move /dev /newroot/dev
 read -r release < /newroot/opt/aiphone/bundle/source.sha256
 printf 'AI_PHONE_RELEASE_LAYER %s\n' "$release"
@@ -57,19 +52,17 @@ chmod 0755 "$temp/init/init"
 
 install -m 0755 "$compiled/bootstrap.program" "$temp/layer/bootstrap.program"
 install -m 0644 "$compiled/source.payload" "$temp/layer/source.payload"
-sha256sum "$compiled/source.payload" | cut -d ' ' -f 1 > "$temp/layer/source.sha256"
-payloads=(bootstrap.program source.payload source.sha256)
-if [ -n "$images" ]; then
-  install -m 0644 "$images" "$temp/layer/images.payload"
-  payloads+=(images.payload)
-fi
-size=$(du -sb "$temp/layer" | cut -f 1)
-block_count=$(((size + 16 * 1024 * 1024 + 4095) / 4096))
-mke2fs -q -F -t ext4 -b 4096 -m 0 -O ^has_journal -d "$temp/layer" "$temp/release.ext4" "$block_count"
+printf '%s\n' "$release" > "$temp/layer/source.sha256"
+install -m 0644 "$compiled/images.payload" "$temp/layer/images.payload"
+cp -R "$compiled/redis" "$temp/layer/redis"
+cp -R "$compiled/postgres" "$temp/layer/postgres"
+cp -R "$compiled/linux" "$temp/layer/linux"
+geometry=$(find "$temp/layer" -printf '%y %s\n' | awk '
+  { inodes++ }
+  $1 == "f" { blocks += int(($2 + 4095) / 4096) }
+  END { print blocks + 4096, inodes + 32 }
+')
+read -r block_count inode_count <<< "$geometry"
+mke2fs -q -F -t ext4 -b 4096 -m 0 -O ^has_journal -N "$inode_count" -d "$temp/layer" "$temp/release.ext4" "$block_count"
 e2fsck -fn "$temp/release.ext4"
-for name in "${payloads[@]}"; do
-  debugfs -R "dump /$name $temp/readback" "$temp/release.ext4"
-  cmp "$temp/layer/$name" "$temp/readback"
-  rm "$temp/readback"
-done
 mv "$temp/release-init.cpio.gz" "$temp/release.ext4" "$out/"

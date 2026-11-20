@@ -6,6 +6,9 @@ on:
       artifact:
         description: Private Windows QEMU artifact ID
         value: ${{ jobs.windows.outputs.artifact }}
+      baseline:
+        description: Exact Calcium backing disk and kernel artifact ID
+        value: ${{ jobs.windows.outputs.baseline }}
       identity:
         description: SHA-256 of the QEMU factory manifest
         value: ${{ jobs.windows.outputs.identity }}
@@ -18,6 +21,7 @@ jobs:
     outputs:
       artifact: ${{ steps.handoff.outputs.artifact-id }}
       identity: ${{ steps.build.outputs.sha256 }}
+      baseline: ${{ steps.baseline.outputs.artifact-id }}
     steps:
       - name: Require a private build repository
         shell: pwsh
@@ -30,42 +34,35 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
-        with:
-          msystem: UCRT64
-          path-type: inherit
-          update: true
-          install: >-
-            tar xz
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-binutils
-            mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-meson
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-python
-            mingw-w64-ucrt-x86_64-python-pip
-            mingw-w64-ucrt-x86_64-python-setuptools
-            mingw-w64-ucrt-x86_64-python-wheel
-            mingw-w64-ucrt-x86_64-glib2
-            mingw-w64-ucrt-x86_64-libslirp
-            mingw-w64-ucrt-x86_64-zlib
-      - name: Fixed Bun tooling
-        shell: msys2 {0}
-        run: ./scripts/bootstrap.sh
-      - name: Build the Windows x64 QEMU component
+      - name: Install the pinned Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.96.0 --profile minimal
+      - name: Prepare the qualified Windows x64 QEMU component
         id: build
-        shell: msys2 {0}
+        shell: pwsh
         run: |
-          set -euo pipefail
-          ./scripts/bun scripts/windows-qemu.ts dist/windows-qemu
-          identity=$(sha256sum dist/windows-qemu/windows-qemu.json)
-          printf 'sha256=%s\n' "${identity%% *}" >> "$GITHUB_OUTPUT"
+          cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory qemu . dist/windows-qemu
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $identity = (Get-FileHash dist/windows-qemu/windows-qemu.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          "sha256=$identity" >> $env:GITHUB_OUTPUT
       - name: Transfer the runtime and source receipt
         id: handoff
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-qemu
-          path: dist/windows-qemu/
+          path: |
+            dist/windows-qemu/runtime/
+            dist/windows-qemu/licenses/
+            dist/windows-qemu/windows-qemu.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
+      - name: Transfer the unchanged Calcium backing disk and kernel
+        id: baseline
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows-calcium-baseline
+          path: dist/windows-qemu/baseline/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2

@@ -21,7 +21,7 @@ fn layout(home: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 pub(crate) fn owns_release(root: &Path, candidate: &Path) -> Result<()> {
     let releases = root
         .parent()
@@ -55,7 +55,6 @@ fn verify_existing(
         control.check()?;
         filesystem::verify_record(root, row, control)?;
     }
-    links::runtime(root, &index.manifest.components, false)?;
     links::persistent(root, home, false)
 }
 
@@ -103,7 +102,6 @@ pub(crate) fn resume(
             control.check()?;
             filesystem::open_record(&root, row)?;
         }
-        links::runtime(&root, &inventory.manifest.components, false)?;
         Ok(inventory.manifest.components)
     };
     match verify() {
@@ -150,10 +148,7 @@ fn recover_existing(
         }
     }
     if !manifest_missing && damaged.is_empty() {
-        match links::runtime(root, &index.manifest.components, false) {
-            Err(error) if repairable(&error) => {}
-            result => return result,
-        }
+        return Ok(());
     }
     control.space(root, damaged.values().map(|row| row.size).sum())?;
     let temporary = tempfile::Builder::new()
@@ -192,7 +187,6 @@ fn recover_existing(
                 root.join(manifest::HOST_MANIFEST),
             )?;
         }
-        links::runtime(root, &index.manifest.components, true)?;
         filesystem::sync_directory(root)
     })();
     filesystem::finish_temporary(result, temporary)
@@ -261,7 +255,6 @@ fn new_source(
     let result = (|| {
         filesystem::directory(&work, false)?;
         let index = write_source(file, &work, expected, control)?;
-        links::runtime(&work, &index.manifest.components, true)?;
         links::persistent(&work, home, true)?;
         filesystem::sync_tree(&work, control)?;
         publish(&work, destination, &index, home, control)?;
@@ -278,7 +271,7 @@ fn verified_inventory(
 ) -> Result<Inventory> {
     let mut digest = Sha256::new();
     let index = archive::visit(file, control, Some(&mut digest), body)?;
-    if format!("{:x}", digest.finalize()) != expected {
+    if hex::encode(digest.finalize()) != expected {
         return Err(Error::Invalid("source_resource_changed"));
     }
     Ok(index)

@@ -4,7 +4,7 @@
 
 ## 下載與現況
 
-[下載 0.0.3 Calcium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.3)
+[下載 0.0.4 Dysprosium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.4)
 
 支援 Apple Silicon macOS 15.0 以上與 Windows 11 x64。安裝包內建 Android、Linux、模擬器及本機服務。
 
@@ -21,7 +21,7 @@ AImanity 將 Android 手機與 Linux 桌面放在同一個工作台，兩台裝�
 
 ## 架構與資料
 
-`apps/web`：Next.js App Router、React、Tailwind、shadcn；`apps/client`：Tauri 2；`crates`：Rust/Axum/Tokio；`packages/protocol`：protobuf。PostgreSQL/SQLx 保存狀態，Redis 預留為選用快取，非任務佇列。Bun/Cargo 為開發工具，Compose 承載服務。`infra`、`scripts`、`skills`、`config` 存放執行環境和內建能力。
+`apps/native`：Rust（Iced/wgpu）；`crates`：Rust/Axum/Tokio；`packages/protocol`：protobuf。PostgreSQL/SQLx 保存狀態，Redis 預留為選用快取，非任務佇列。Cargo 負責建置，Compose 承載服務。`infra`、`scripts`、`skills`、`config` 存放執行環境和內建能力。
 
 程式碼與使用者狀態分離。裝置磁碟、帳號、聊天、附件、金鑰及私有證據不進入公開儲存庫。更新應使用版本化產物、備份、遷移與回復，不直接在使用者資料上執行 `git pull`。
 

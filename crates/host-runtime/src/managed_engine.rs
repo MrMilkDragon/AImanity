@@ -1,4 +1,4 @@
-//! Installation-owned Lima state; selecting it never changes a global Docker context.
+//! Installation-owned Lima state.
 use crate::{Error, Result, filesystem};
 use rustix::{
     fs::{Access, access},
@@ -37,7 +37,6 @@ struct Selection {
     state: PathBuf,
     command: PathBuf,
     command_sha256: String,
-    wrapper_sha256: String,
 }
 
 fn data_root(root: &Path) -> Result<PathBuf> {
@@ -66,19 +65,15 @@ pub(crate) fn state_directory(root: &Path, home: &Path, user: &Path) -> Result<P
     if home != installation_home(&data)? {
         return Err(Error::Invalid("managed_engine_owner"));
     }
-    state_path(&data, &home, user)
+    state_path(&data, user)
 }
 
-fn state_path(data: &Path, home: &Path, user: &Path) -> Result<PathBuf> {
-    let legacy = home.join("lima");
-    let state = if fs::symlink_metadata(&legacy).is_ok() {
-        legacy
-    } else {
-        let digest = format!("{:x}", Sha256::digest(data.as_os_str().as_bytes()));
-        user.canonicalize()?
-            .join(".aiphone-vms")
-            .join(&digest[..16])
-    };
+fn state_path(data: &Path, user: &Path) -> Result<PathBuf> {
+    let digest = hex::encode(Sha256::digest(data.as_os_str().as_bytes()));
+    let state = user
+        .canonicalize()?
+        .join(".aiphone-vms")
+        .join(&digest[..16]);
     socket_budget(&state)?;
     Ok(state)
 }
@@ -187,7 +182,7 @@ fn executable(path: &Path, home: &Path) -> Result<String> {
         }
         digest.update(&bytes[..count]);
     }
-    Ok(format!("{:x}", digest.finalize()))
+    Ok(hex::encode(digest.finalize()))
 }
 
 fn selection(root: &Path, user: &Path) -> Result<Option<Selection>> {
@@ -200,17 +195,15 @@ fn selection(root: &Path, user: &Path) -> Result<Option<Selection>> {
     let value: Selection = read(&path)?;
     let data = data_root(root)?;
     let home = installation_home(&data)?;
-    if value.format != 1
+    if value.format != 2
         || value.home != home
         || value.data_root != data
-        || value.state != state_path(&data, &home, user)?
+        || value.state != state_path(&data, user)?
     {
         return Err(Error::Invalid("managed_engine_selection_owner"));
     }
     verify_state(&data, &value.state)?;
-    if executable(&value.command, &home)? != value.command_sha256
-        || executable(&home.join("bin/docker"), &home)? != value.wrapper_sha256
-    {
+    if executable(&value.command, &home)? != value.command_sha256 {
         return Err(Error::Invalid("managed_engine_executable_changed"));
     }
     Ok(Some(value))
@@ -227,7 +220,7 @@ pub(crate) fn remove_state(home: &Path, user: &Path) -> Result<()> {
         return Ok(());
     }
     filesystem::checked_parents(home, &data)?;
-    let state = state_path(&data, home, user)?;
+    let state = state_path(&data, user)?;
     if state.try_exists()? {
         verify_state(&data, &state)?;
         fs::remove_dir_all(state)?;
@@ -262,8 +255,26 @@ pub(crate) async fn shutdown(home: &Path, user: &Path) -> Result<()> {
         if matches!(observed.stdout.trim_ascii(), b"" | b"Stopped") {
             return Ok(());
         }
+        let database = command(&[
+            "shell",
+            "--tty=false",
+            "--workdir",
+            "/",
+            "ai-phone",
+            "sudo",
+            "-n",
+            "--",
+            "/bin/sh",
+            "-c",
+            crate::wsl::backend::MAC_POSTGRES_SHUTDOWN,
+        ])
+        .status()
+        .await;
         if !command(&["stop", "ai-phone"]).status().await?.success() {
             return Err(Error::Invalid("container_host_stop_failed"));
+        }
+        if !database?.success() {
+            return Err(Error::Invalid("macos_guest_postgres_stop_failed"));
         }
         Ok(())
     };
@@ -276,16 +287,15 @@ impl Selection {
     fn environment(&self) -> Result<BTreeMap<String, String>> {
         Ok(BTreeMap::from([
             (
-                "AI_PHONE_MANAGED_BIN".into(),
-                self.home
-                    .join("bin")
+                "LIMA_HOME".into(),
+                self.state
                     .to_str()
                     .ok_or(Error::Invalid("managed_engine_path"))?
                     .into(),
             ),
             (
-                "LIMA_HOME".into(),
-                self.state
+                "AI_PHONE_LIMA_COMMAND".into(),
+                self.command
                     .to_str()
                     .ok_or(Error::Invalid("managed_engine_path"))?
                     .into(),
@@ -299,24 +309,19 @@ pub(crate) fn save(
     home: &Path,
     state: &Path,
     command: &Path,
-    wrapper: &Path,
 ) -> Result<BTreeMap<String, String>> {
     let home = home.canonicalize()?;
     let data = data_root(root)?;
-    if home != installation_home(&data)?
-        || state != state_path(&data, &home, user)?
-        || wrapper.canonicalize()? != home.join("bin")
-    {
+    if home != installation_home(&data)? || state != state_path(&data, user)? {
         return Err(Error::Invalid("managed_engine_selection_owner"));
     }
     claim_state(&data, state)?;
     let value = Selection {
-        format: 1,
+        format: 2,
         data_root: data,
         state: state.to_owned(),
         command: command.to_owned(),
         command_sha256: executable(command, &home)?,
-        wrapper_sha256: executable(&wrapper.join("docker"), &home)?,
         home,
     };
     publish(&root.join(RECORD), &value)?;
@@ -335,14 +340,13 @@ pub(crate) fn run(arguments: &[OsString]) -> Result<()> {
             claim_state(&data_root(root)?, Path::new(state))?;
             Value::Null
         }
-        (Some("save"), [home, state, command, wrapper]) => {
+        (Some("save"), [home, state, command]) => {
             save(
                 root,
                 user,
                 Path::new(home),
                 Path::new(state),
                 Path::new(command),
-                Path::new(wrapper),
             )?;
             Value::Null
         }

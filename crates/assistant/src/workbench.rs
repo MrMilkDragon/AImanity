@@ -69,26 +69,20 @@ async fn safe_path(base: &FilePath, path: &str, write: bool) -> Result<PathBuf, 
     }
     Ok(resolved)
 }
-fn runtime<'a>(app: &'a App, image: &'a str) -> crate::workspace_runtime::Runtime<'a> {
-    crate::workspace_runtime::Runtime {
-        container: "ai-phone-tools",
-        image,
-        directory: workspace(app),
-        skills: app.root.join("data/runtime-skills"),
-    }
-}
 async fn ensure_workspace(app: &App) -> Result<(), String> {
     let mut ready = app.workspace_init.lock().await;
     skill_resources::reconcile(&app.db, &app.root).await?;
-    let image = workspace_image();
-    let runtime = runtime(app, &image);
-    tokio::fs::create_dir_all(runtime.directory.join(".home"))
-        .await
-        .map_err(|e| e.to_string())?;
-    tokio::fs::create_dir_all(&runtime.skills)
-        .await
-        .map_err(|e| e.to_string())?;
-    runtime.prepare(&mut ready).await
+    if !*ready {
+        tokio::fs::create_dir_all(workspace(app).join(".home"))
+            .await
+            .map_err(|e| e.to_string())?;
+        tokio::fs::create_dir_all(app.root.join("data/runtime-skills"))
+            .await
+            .map_err(|e| e.to_string())?;
+        crate::workspace_runtime::prepare(&app.root).await?;
+        *ready = true;
+    }
+    Ok(())
 }
 async fn download(app: &App, url: &str, limit: usize) -> Result<Vec<u8>, String> {
     let parsed = reqwest::Url::parse(url).map_err(|_| "网址无效")?;
@@ -223,13 +217,6 @@ async fn skill_edit(
     let row = skill_resources::commit(tx, &app.db, &app.root, &input.id).await?;
     Ok(skill(&row))
 }
-pub fn workspace_image() -> String {
-    std::env::var("AI_PHONE_WORKSPACE_IMAGE")
-        .ok()
-        .filter(|image| !image.is_empty())
-        .unwrap_or_else(|| "ai-phone-workspace:20261103".into())
-}
-
 pub async fn initialize(db: &PgPool, root: &std::path::Path) -> Result<(), String> {
     for builtin in crate::builtin_guides::SKILLS {
         let id = builtin.id;
@@ -1012,8 +999,16 @@ pub(crate) async fn upload_knowledge_image(
     }
 }
 pub async fn skill_text(app: &App, name: &str) -> Result<String, String> {
-    let row=sqlx::query("SELECT * FROM runtime_skills WHERE (id=$1 OR lower(name)=lower($1)) AND deleted_at IS NULL ORDER BY builtin DESC,created_at LIMIT 1").bind(name).fetch_optional(&app.db).await.map_err(|e|e.to_string())?.ok_or("Skill不存在")?;
-    let row = skill_resources::publish(&app.db, &app.root, &row.get::<String, _>("id")).await?;
+    let id: String = sqlx::query_scalar(
+        "SELECT id FROM runtime_skills WHERE (id=$1 OR lower(name)=lower($1))
+         AND deleted_at IS NULL ORDER BY builtin DESC,created_at LIMIT 1",
+    )
+    .bind(name)
+    .fetch_optional(&app.db)
+    .await
+    .map_err(|error| error.to_string())?
+    .ok_or("Skill不存在")?;
+    let row = skill_resources::publish(&app.db, &app.root, &id).await?;
     let item = skill(&row);
     Ok(format!(
         "Skill id={}，name={}，enabled={}，content_version={}\n\n{}\n\n资源目录：/skills/{}（只读，可通过workspace_run读取或在隔离环境执行；停用的Skill仅供管理，不应作为当前任务指令）。",
@@ -1205,8 +1200,8 @@ pub(crate) async fn invoke_tool(
                 return Err("工作指令为空或过长".into());
             }
             ensure_workspace(app).await?;
-            let image = workspace_image();
-            let (ok, output) = runtime(app, &image).execute(&script, cancel).await?;
+            let (ok, output) =
+                crate::workspace_runtime::execute(&app.root, &script, cancel).await?;
             Ok(json!({"success":ok,"output":output,"environment":"isolated workspace"}))
         }
         _ => Err("未知工作工具".into()),

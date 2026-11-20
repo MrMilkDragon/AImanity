@@ -58,17 +58,32 @@ impl Rpc {
         &self,
         input: crate::wire::DeviceRequest,
     ) -> Result<crate::wire::DeviceObservation> {
-        let bytes = self
-            .exchange(
-                self.runner_port,
-                "observe",
-                &self.runner_token,
-                input.encode_to_vec(),
-                Duration::from_secs(30),
-            )
-            .await?;
-        crate::wire::DeviceObservation::decode(bytes.as_slice())
-            .map_err(|_| Error("device_setup_protobuf"))
+        let read_frame = async {
+            loop {
+                match self
+                    .exchange(
+                        self.runner_port,
+                        "observe",
+                        &self.runner_token,
+                        input.encode_to_vec(),
+                        Duration::from_secs(30),
+                    )
+                    .await
+                {
+                    Ok(bytes) => {
+                        return crate::wire::DeviceObservation::decode(bytes.as_slice())
+                            .map_err(|_| Error("device_setup_protobuf"));
+                    }
+                    Err(Error("device_setup_frame_pending")) => {
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(30), read_frame)
+            .await
+            .map_err(|_| Error("device_setup_phone_frame_timeout"))?
     }
     pub async fn notifications(
         &self,
@@ -118,13 +133,14 @@ impl Rpc {
             .send()
             .await
             .map_err(|_| Error("device_setup_response_unknown"))?;
-        if response.status() != reqwest::StatusCode::OK
-            || response
-                .headers()
-                .get("content-type")
-                .and_then(|h| h.to_str().ok())
-                != Some(MEDIA)
+        let status = response.status();
+        if response
+            .headers()
+            .get("content-type")
+            .and_then(|h| h.to_str().ok())
+            != Some(MEDIA)
         {
+            eprintln!("Device setup POST {route} returned HTTP {status} without protobuf");
             return Err(Error("device_setup_response_rejected"));
         }
         if response
@@ -144,6 +160,20 @@ impl Rpc {
             }
             bytes.extend_from_slice(&chunk);
         }
-        Ok(bytes)
+        if status == reqwest::StatusCode::OK {
+            Ok(bytes)
+        } else {
+            let error = crate::wire::ApiError::decode(bytes.as_slice()).unwrap_or_default();
+            let code = error.code;
+            if route == "observe"
+                && status == reqwest::StatusCode::SERVICE_UNAVAILABLE
+                && code == "device_unavailable"
+            {
+                eprintln!("Android first frame pending: {}", error.message);
+                return Err(Error("device_setup_frame_pending"));
+            }
+            eprintln!("Device setup POST {route} returned HTTP {status} {code}");
+            Err(Error("device_setup_response_rejected"))
+        }
     }
 }

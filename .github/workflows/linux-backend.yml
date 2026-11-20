@@ -1,0 +1,34 @@
+name: Linux backend checks
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: linux-backend-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux-x64-component:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Locked Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+      - name: QEMU Linux x64 bootstrap entry
+        run: |
+          contract=$(cargo run --quiet --locked -p ai-phone-host-runtime --bin host-resources -- --qemu-guest-control-contract)
+          test "$contract" = ai-phone-qemu-bootstrap-v2
+      - name: Native Linux startup and supervisor regressions
+        run: |
+          cargo test --locked -p ai-phone-host-runtime --lib wsl::backend

@@ -32,19 +32,26 @@ pub(crate) async fn claim(
 ) -> Result<Option<(Uuid, Uuid)>, sqlx::Error> {
     sqlx::query_as(
         "WITH due AS (
-            SELECT r.id,r.device_id FROM runs r
+            SELECT r.id,r.device_id FROM runs r JOIN harness_todos t ON t.id=r.id
             WHERE r.status='queued' AND NOT(r.id=ANY($1))
             AND (r.next_wake_at IS NULL OR r.next_wake_at<=now())
             AND NOT EXISTS(SELECT 1 FROM device_execution_leases l WHERE l.device_id=r.device_id)
             AND NOT EXISTS(SELECT 1 FROM runs busy WHERE busy.device_id=r.device_id AND busy.status='running')
-            ORDER BY CASE WHEN r.origin='user' AND (r.step=0 OR jsonb_array_length(r.steering)>0) THEN 0 WHEN r.origin='notification' THEN 1 WHEN r.origin='user' THEN 2 WHEN r.origin='device-handoff' THEN 3 ELSE 4 END,COALESCE(r.heartbeat_at,r.created_at),r.id
+            AND (r.origin='device-handoff' OR r.id IN (SELECT id FROM harness_next_todo))
+            ORDER BY t.lane,t.position,t.created_at,t.id
             FOR UPDATE OF r SKIP LOCKED LIMIT 1
         ), claimed AS (
             INSERT INTO device_execution_leases(device_id,run_id)
             SELECT device_id,id FROM due ON CONFLICT DO NOTHING RETURNING run_id
+        ), started AS (
+            UPDATE runs r SET status='running',heartbeat_at=now(),next_wake_at=NULL,error=''
+            FROM claimed WHERE r.id=claimed.run_id RETURNING r.id,r.assistant_message_id
+        ), recorded AS (
+            INSERT INTO harness_events(id,run_id,message_id,kind,title)
+            SELECT id,id,assistant_message_id,'task','任务' FROM started
+            ON CONFLICT(id) DO UPDATE SET status='running',finished_at=NULL RETURNING id
         )
-        UPDATE runs r SET status='running',heartbeat_at=now(),next_wake_at=NULL,error=''
-        FROM claimed WHERE r.id=claimed.run_id RETURNING r.id,r.assistant_message_id",
+        SELECT s.id,s.assistant_message_id FROM started s JOIN recorded e USING(id)",
     )
     .bind(active)
     .fetch_optional(db)

@@ -4,7 +4,7 @@
 
 ## Téléchargements et état
 
-[Télécharger 0.0.3 Calcium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.3)
+[Télécharger 0.0.4 Dysprosium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.4)
 
 Configuration requise : macOS 15.0 ou ultérieur sur Apple Silicon, ou Windows 11 x64. Chaque installateur contient Android, Linux, l’émulateur et les services locaux.
 
@@ -21,7 +21,7 @@ Les actions sont liées à une observation, un appareil, une tâche, une époque
 
 ## Architecture et données
 
-`apps/web` : Next.js App Router, React, Tailwind, shadcn. `apps/client` : Tauri 2. `crates` : Rust/Axum/Tokio. `packages/protocol` : protobuf. PostgreSQL/SQLx conserve l’état ; Redis est réservé au cache optionnel et ne constitue pas la file des tâches. Bun et Cargo servent au développement, Compose aux services. `infra`, `scripts`, `skills`, `config` regroupent exécution et capacités intégrées.
+`apps/native` : Rust (Iced/wgpu). `crates` : Rust/Axum/Tokio. `packages/protocol` : protobuf. PostgreSQL/SQLx conserve l’état ; Redis est réservé au cache optionnel et ne constitue pas la file des tâches. Cargo compile le projet, Compose aux services. `infra`, `scripts`, `skills`, `config` regroupent exécution et capacités intégrées.
 
 Code et données utilisateur sont séparés. Disques, comptes, conversations, pièces jointes et clés ne sont pas publiés. Les mises à jour doivent employer des artefacts versionnés, sauvegardes, migrations et retours arrière, sans `git pull` directement sur les données utilisateur.
 

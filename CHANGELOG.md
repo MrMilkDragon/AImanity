@@ -1,9 +1,16 @@
 # Changelog
 
-## 0.0.4 Decimal — in development
+## 0.0.4 Dysprosium
 
+- Run the shared Android and Linux workbench in a native Rust client built with Iced and wgpu.
+- See microphone input across the workspace while Copilot transcribes locally and the system voice reads replies.
+- Continue active notification work in the shared conversation when a new spoken instruction arrives.
+- Hover over To-do beside the attachment button to see or reorder work. Copilot and the current task take priority over incoming messages. The Agent can read and reorder the same queue.
+- Close the window immediately while the native host saves both devices and stops its services.
 - Wake notification delivery as soon as its report is committed.
 - Fetch Liberty status in one database request.
+- Batch incoming notifications and combine heartbeat updates with deduplication reads.
+- Persist notification and device-handoff receipts without copying the entire conversation.
 - Avoid copying screenshots twice when compacting model history and accelerate streamed response parsing.
 - Encode desktop screenshots faster with lossless PNG filtering.
 

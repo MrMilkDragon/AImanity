@@ -1,0 +1,159 @@
+use tokio::sync::oneshot;
+
+pub fn readable(value: &str) -> String {
+    let mut text = String::with_capacity(value.len());
+    for content in value.split("```").step_by(2) {
+        let mut rest = content;
+        while let Some((before, after)) = rest.split_once('[') {
+            text.extend(before.chars().filter(|c| !"*_`#".contains(*c)));
+            if let Some((label, url)) = after.split_once("](")
+                && let Some((_, remaining)) = url.split_once(')')
+            {
+                text.push_str(label);
+                rest = remaining;
+            } else {
+                text.push('[');
+                rest = after;
+            }
+        }
+        text.extend(rest.chars().filter(|c| !"*_`#".contains(*c)));
+    }
+    text
+}
+
+pub fn phrase_len(value: &str, complete: bool) -> Option<usize> {
+    for (index, (offset, letter)) in value.char_indices().enumerate() {
+        if index == 180 {
+            return Some(offset);
+        }
+        if "。！？.!?\n".contains(letter) {
+            return Some(offset + letter.len_utf8());
+        }
+    }
+    complete.then_some(value.len())
+}
+
+#[cfg(target_os = "macos")]
+pub async fn speak(
+    text: String,
+    language: String,
+    mut cancel: oneshot::Receiver<()>,
+) -> Result<(), String> {
+    use objc2_avf_audio::AVSpeechSynthesisVoice;
+    use objc2_foundation::NSString;
+    use std::process::Stdio;
+    use tokio::{io::AsyncWriteExt, process::Command};
+    let voice =
+        unsafe { AVSpeechSynthesisVoice::voiceWithLanguage(Some(&NSString::from_str(&language))) }
+            .map(|v| unsafe { v.name() }.to_string());
+    let mut command = Command::new("/usr/bin/say");
+    if let Some(voice) = voice {
+        command.args(["-v", &voice]);
+    }
+    let mut speech = command
+        .args(["-f", "-"])
+        .stdin(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let mut input = speech.stdin.take().expect("piped speech input");
+    input
+        .write_all(text.as_bytes())
+        .await
+        .map_err(|e| e.to_string())?;
+    drop(input);
+    tokio::select! {
+        result = speech.wait() => {
+            if result.map_err(|e| e.to_string())?.success() { Ok(()) } else { Err("本机播报失败".into()) }
+        }
+        _ = &mut cancel => speech.kill().await.map_err(|e| e.to_string()),
+    }
+}
+
+#[cfg(windows)]
+pub async fn speak(
+    text: String,
+    language: String,
+    mut cancel: oneshot::Receiver<()>,
+) -> Result<(), String> {
+    use tokio::sync::oneshot::error::TryRecvError;
+    use windows::{
+        Win32::{
+            Foundation::VARIANT_TRUE,
+            Media::Speech::{
+                ISpeechVoice, SVSFIsNotXML, SVSFPurgeBeforeSpeak, SVSFlagsAsync, SpVoice,
+                SpeechVoiceSpeakFlags,
+            },
+            System::Com::{
+                CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+                CoUninitialize,
+            },
+        },
+        core::BSTR,
+    };
+    tokio::task::spawn_blocking(move || {
+        // SAPI is apartment-local, so its full lifetime stays on this thread.
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok() }
+            .map_err(|error| error.to_string())?;
+        let result = (|| -> Result<(), String> {
+            let engine: ISpeechVoice =
+                unsafe { CoCreateInstance(&SpVoice, None, CLSCTX_INPROC_SERVER) }
+                    .map_err(|error| error.to_string())?;
+            let lang = match language.as_str() {
+                "zh-CN" => "804",
+                "zh-TW" => "404",
+                "en" => "409",
+                "ja" => "411",
+                "ko" => "412",
+                "de" => "407",
+                "fr" => "40c",
+                "es" => "c0a",
+                "ru" => "419",
+                "ar" => "401",
+                _ => "409",
+            };
+            let voices =
+                unsafe { engine.GetVoices(&BSTR::from(format!("Language={lang}")), &BSTR::new()) }
+                    .map_err(|error| error.to_string())?;
+            if unsafe { voices.Count() }.map_err(|error| error.to_string())? > 0 {
+                let voice = unsafe { voices.Item(0) }.map_err(|error| error.to_string())?;
+                unsafe { engine.putref_Voice(&voice) }.map_err(|error| error.to_string())?;
+            }
+            unsafe {
+                engine.Speak(
+                    &BSTR::from(text),
+                    SpeechVoiceSpeakFlags(SVSFlagsAsync.0 | SVSFIsNotXML.0),
+                )
+            }
+            .map_err(|error| error.to_string())?;
+            while unsafe { engine.WaitUntilDone(20) }.map_err(|error| error.to_string())?
+                != VARIANT_TRUE
+            {
+                if cancel.try_recv() != Err(TryRecvError::Empty) {
+                    unsafe {
+                        engine.Speak(
+                            &BSTR::new(),
+                            SpeechVoiceSpeakFlags(SVSFlagsAsync.0 | SVSFPurgeBeforeSpeak.0),
+                        )
+                    }
+                    .map_err(|error| error.to_string())?;
+                    break;
+                }
+            }
+            Ok(())
+        })();
+        unsafe { CoUninitialize() };
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub async fn speak(
+    _text: String,
+    _language: String,
+    _cancel: oneshot::Receiver<()>,
+) -> Result<(), String> {
+    Err("当前系统没有本机语音播报服务".into())
+}

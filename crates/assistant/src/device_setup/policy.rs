@@ -101,17 +101,7 @@ pub fn provision_diagnostic(stage: &str, error: &str) -> (&'static str, Vec<&'st
                 "image not found",
             ],
         ),
-        (
-            "runtime",
-            &[
-                "oci runtime",
-                "container runtime",
-                "cannot connect to the docker daemon",
-                "error during connect",
-                "failed to create shim task",
-                "unable to start container process",
-            ],
-        ),
+        ("runtime", &["bwrap:", "linux network initialization"]),
         (
             "frame_missing",
             &["桌面没有返回可验证画面", "desktop did not return a frame"],
@@ -154,7 +144,7 @@ mod tests {
             ),
             (
                 "启动桌面",
-                "OCI runtime create failed",
+                "bwrap: creating the sandbox failed",
                 "start_desktop",
                 "runtime",
             ),

@@ -77,37 +77,26 @@ pub(super) struct Plan {
     pub engine: Engine,
     pub backend: Option<Backend>,
 }
-pub(super) enum Backend {
-    Wsl(String),
-    Vm { port: u16, key: PathBuf },
+pub(super) struct Backend {
+    pub(super) port: u16,
+    pub(super) key: PathBuf,
 }
 impl Plan {
     pub fn parse(request: NativeAndroidStart) -> Result<Self> {
         let ports = Ports::parse(&request)?;
-        let distribution = request.wsl_distribution;
-        let backend = match (distribution.is_empty(), request.linux_vm) {
-            (true, None) => None,
-            (true, Some(endpoint)) => {
+        let backend = request
+            .linux_vm
+            .map(|endpoint| {
                 let key = PathBuf::from(endpoint.key_file);
                 if !key.is_absolute() {
                     return Err(Error::Invalid("android_vm_configuration"));
                 }
-                Some(Backend::Vm {
+                Ok(Backend {
                     port: port(endpoint.port, crate::vm_control::GUEST_PORT)?,
                     key,
                 })
-            }
-            (false, None)
-                if distribution.starts_with("AIPhone-wsl-")
-                    && distribution.len() <= 80
-                    && distribution
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || b == b'-') =>
-            {
-                Some(Backend::Wsl(distribution))
-            }
-            _ => return Err(Error::Invalid("android_backend_configuration")),
-        };
+            })
+            .transpose()?;
         if backend.is_some()
             && (!cfg!(windows) || (ports.adb, ports.console, ports.grpc) != (15037, 5564, 8558))
         {
@@ -128,9 +117,6 @@ impl Plan {
             },
             ports,
         )?;
-        if plan.engine != Engine::Goldfish && matches!(backend, Some(Backend::Wsl(_))) {
-            return Err(Error::Invalid("android_backend_configuration"));
-        }
         plan.backend = backend;
         Ok(plan)
     }
@@ -180,17 +166,13 @@ impl Plan {
             adb_port: self.ports.adb.into(),
             console_port: self.ports.console.into(),
             grpc_port: self.ports.grpc.into(),
-            wsl_distribution: match &self.backend {
-                Some(Backend::Wsl(distribution)) => distribution.clone(),
-                _ => String::new(),
-            },
-            linux_vm: match &self.backend {
-                Some(Backend::Vm { port, key }) => Some(NativeAndroidVmEndpoint {
-                    port: (*port).into(),
-                    key_file: key.to_string_lossy().into(),
+            linux_vm: self
+                .backend
+                .as_ref()
+                .map(|backend| NativeAndroidVmEndpoint {
+                    port: backend.port.into(),
+                    key_file: backend.key.to_string_lossy().into(),
                 }),
-                _ => None,
-            },
         }
     }
     pub fn serial(&self) -> String {

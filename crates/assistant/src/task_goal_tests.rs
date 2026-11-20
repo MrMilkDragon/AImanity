@@ -94,7 +94,7 @@ async fn goal_steers_one_run_and_blocks_liberty_until_stopped_or_completed() {
         .execute(&app.db)
         .await
         .unwrap();
-        sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'docker-desktop','ai-phone-desktop')")
+        sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'native-desktop','ai-phone-desktop')")
             .bind(DESKTOP).execute(&app.db).await.unwrap();
         schedule(&app, &["phone"]).await.unwrap();
         let before = state(&app).await.unwrap();

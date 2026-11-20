@@ -2,12 +2,10 @@
 
 Redis wakes connected-app delivery as soon as a task result commits. The worker reads the result from PostgreSQL. It checks every three seconds while subscribed, and every 300 ms if disconnected. Local chat and device execution use in-process signals.
 
-Device handoffs wake their scheduler after PostgreSQL commits. To export new handoffs for an external workflow, start Kafka and restart the source deployment with its broker address:
+Device handoffs wake their scheduler after PostgreSQL commits. To export new handoffs, use a running Apache Kafka broker reachable from the source deployment. Create the topic with the Kafka CLI and set the broker address before starting the deployment.
 
 ```sh
-docker compose -p ai-phone-events -f compose.kafka.yaml --profile events up -d --wait kafka
-docker compose -p ai-phone-events -f compose.kafka.yaml --profile events exec kafka /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server kafka:9092 --create --if-not-exists \
+kafka-topics.sh --bootstrap-server 127.0.0.1:59092 --create --if-not-exists \
   --topic ai-phone.device-handoff.accepted.v1 --partitions 1 --replication-factor 1
 AI_PHONE_KAFKA_BROKER=127.0.0.1:59092 ./scripts/phone-lab-start.sh
 ```

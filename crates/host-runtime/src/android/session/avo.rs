@@ -98,6 +98,43 @@ pub(super) async fn ready(console: u16) -> bool {
     connect(runtime(console).join("vsock.sock")).await.is_ok()
 }
 
+pub(super) async fn prepare_wifi(plan: &Plan) -> Result<()> {
+    let adb = ai_phone_adb::Client::new(plan.ports.adb, plan.serial())
+        .map_err(|_| Error::Invalid("android_avo_wifi"))?;
+    let command = r#"set -eu
+mode=$(settings get global captive_portal_mode)
+networks=$(cmd wifi list-networks)
+case "$networks" in
+    "No networks") [ "$mode" = null ] || exit 0 ;;
+    *" VirtWifi "*) ;;
+    "Network Id"*) exit 0 ;;
+    *) exit 1 ;;
+esac
+if [ "$mode" = null ]; then
+    cmd wifi set-wifi-enabled enabled
+elif [ "$(settings get global wifi_on)" != 1 ] || ip -o -4 addr show dev wlan0 | grep -q ' inet '; then
+    exit 0
+fi
+cmd wifi connect-network VirtWifi open
+cmd wifi list-networks | grep -q ' VirtWifi '
+if [ "$mode" = null ]; then settings put global captive_portal_mode 0; fi"#;
+    let receipt = adb
+        .shell(
+            command,
+            ai_phone_adb::Limits {
+                stdout: 1024,
+                stderr: 1024,
+            },
+            Duration::from_secs(8),
+        )
+        .await
+        .map_err(|_| Error::Invalid("android_avo_wifi"))?;
+    if receipt.code != 0 {
+        return Err(Error::Invalid("android_avo_wifi"));
+    }
+    Ok(())
+}
+
 pub(super) fn command(plan: &Plan) -> Result<Command> {
     let instance = plan.avd.join("cuttlefish");
     filesystem::directory(&instance, false)?;
