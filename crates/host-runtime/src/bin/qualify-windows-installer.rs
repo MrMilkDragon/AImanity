@@ -374,6 +374,14 @@ async fn verify_android(android: &Android, phone: &Phone<'_>) -> Result<()> {
         android.shell("id -u").await?.trim() == "0",
         "installed Android root ADB",
     )?;
+    check(
+        android
+            .shell("settings get global bluetooth_on")
+            .await?
+            .trim()
+            == "0",
+        "WHPX phone starts with its Bluetooth radio off",
+    )?;
     let frame = android.screenshot().await?;
     check(
         frame.starts_with(b"\x89PNG\r\n\x1a\n")
@@ -459,7 +467,7 @@ async fn verify_android(android: &Android, phone: &Phone<'_>) -> Result<()> {
         "{}",
         json!({"androidRoot": true, "androidFrame": [720, 1440], "androidWorkbenchTouch": true, "androidWorkbenchChinese": true, "linuxJpeg": true})
     );
-    verify_audio(android, phone).await
+    Ok(())
 }
 
 async fn verify_audio(android: &Android, phone: &Phone<'_>) -> Result<()> {
@@ -876,10 +884,10 @@ async fn verify_installed(
         .find(|device| device.kind == "phone" && device.runtime_state == "managed")
         .ok_or("installed Android is registered")?;
     let token = credentials.phone_token.trim();
-    tokio::try_join!(
+    let (desktop_frame, phone_frame) = tokio::join!(
         verify_frame(&http, token, "/desktop/screen", "Linux"),
         verify_frame(&http, token, "/screen", "Android"),
-    )?;
+    );
     let control: ControlState = post(
         &http,
         &format!("{PHONE}/v1/control"),
@@ -899,11 +907,28 @@ async fn verify_installed(
         epoch: control.control_epoch,
     };
     let android = Android::open(home, profile)?;
-    tokio::try_join!(
-        verify_android(&android, &phone),
+    let ((phone_actions, phone_audio), desktop_actions) = tokio::join!(
+        async {
+            (
+                verify_android(&android, &phone).await,
+                verify_audio(&android, &phone).await,
+            )
+        },
         verify_desktop(&http, credentials.assistant_token.trim(), token, &desktop),
-    )?;
-    Ok(())
+    );
+    let mut failures = Vec::new();
+    for (step, result) in [
+        ("Android video", phone_frame),
+        ("Linux video", desktop_frame),
+        ("Android controls", phone_actions),
+        ("Android audio", phone_audio),
+        ("Linux controls and audio", desktop_actions),
+    ] {
+        if let Err(error) = result {
+            failures.push(format!("{step}: {error}"));
+        }
+    }
+    check(failures.is_empty(), failures.join("\n"))
 }
 
 #[tokio::main(flavor = "current_thread")]

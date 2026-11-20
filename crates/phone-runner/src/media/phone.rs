@@ -224,8 +224,22 @@ async fn grpc_capture(media: Arc<Media>) {
 }
 
 pub(crate) async fn adb_png(adb: &ai_phone_adb::Client) -> ai_phone_adb::Result<Vec<u8>> {
-    adb.raw("exec:screencap -p", 8 * 1024 * 1024, Duration::from_secs(2))
-        .await
+    let frame = adb
+        .shell(
+            "screencap -p",
+            ai_phone_adb::Limits {
+                stdout: 8 * 1024 * 1024,
+                stderr: 4096,
+            },
+            Duration::from_secs(5),
+        )
+        .await?;
+    if frame.code != 0 {
+        return Err(ai_phone_adb::Error::Rejected(
+            String::from_utf8_lossy(&frame.stderr).into_owned(),
+        ));
+    }
+    Ok(frame.stdout)
 }
 
 async fn adb_capture(media: &Media) {
@@ -237,7 +251,10 @@ async fn adb_capture(media: &Media) {
         while media.screen.viewers.load(Ordering::Relaxed) != 0 {
             frame.tick().await;
             let result: Result<()> = async {
-                let png = adb_png(&media.adb).await?;
+                let png = match adb_png(&media.adb).await {
+                    Err(ai_phone_adb::Error::Timeout) => return Ok(()),
+                    result => result?,
+                };
                 let captured = super::now();
                 let jpeg = match &last {
                     Some((previous, jpeg)) if previous == &png => jpeg,

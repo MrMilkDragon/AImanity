@@ -168,7 +168,7 @@ pub(super) async fn provision_adb(plan: &Plan, listener: TcpListener) -> Result<
     Err(Error::Invalid("android_console_provision"))
 }
 
-pub(super) async fn stage_audio(plan: &Plan) -> Result<()> {
+pub(super) async fn prepare_guest(plan: &Plan) -> Result<()> {
     let source = plan.sdk.join("cuttlefish/aimanity-audio.jar");
     filesystem::regular(&source)?;
     let adb = || -> Result<Command> {
@@ -187,18 +187,22 @@ pub(super) async fn stage_audio(plan: &Plan) -> Result<()> {
             .await?
             .success()
             || !adb()?
-                .args(["shell", "chmod", "0444", destination])
+                .arg("shell")
+                .arg(format!(
+                    "chmod 0444 {destination} && settings put global ble_scan_always_enabled 0 && \
+                     cmd bluetooth_manager disable && am force-stop --user 0 com.android.bluetooth"
+                ))
                 .status()
                 .await?
                 .success()
         {
-            return Err(Error::Invalid("android_audio_stage"));
+            return Err(Error::Invalid("android_guest_setup"));
         }
         Ok(())
     };
     tokio::time::timeout(Duration::from_secs(10), setup)
         .await
-        .map_err(|_| Error::Invalid("android_audio_stage"))?
+        .map_err(|_| Error::Invalid("android_guest_setup"))?
 }
 
 async fn quit(port: u16) -> Result<()> {

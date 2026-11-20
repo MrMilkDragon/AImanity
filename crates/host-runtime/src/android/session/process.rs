@@ -219,7 +219,7 @@ impl Phone {
         }
         #[cfg(windows)]
         if self.plan.engine == Engine::Whpx {
-            super::windows_cuttlefish::stage_audio(&self.plan).await?;
+            super::windows_cuttlefish::prepare_guest(&self.plan).await?;
         }
         Ok(receipt)
     }
