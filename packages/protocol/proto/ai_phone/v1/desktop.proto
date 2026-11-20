@@ -88,3 +88,14 @@ message DesktopProvisionRequest { string device_id = 1; string request_id = 2; u
 message DesktopProvisionJob { string id = 1; string device_id = 2; string status = 3; string stage = 4; string error = 5; uint32 cpus = 6; uint32 memory_mb = 7; string template_id = 8; }
 message DeviceMessageRequest { string request_id = 1; string source_device_id = 2; string target_device_id = 3; string text = 4; }
 message DeviceMessage { string id = 1; string source_device_id = 2; string target_device_id = 3; string text = 4; string status = 5; string run_id = 6; string error = 7; uint64 created_at_ms = 8; }
+
+message HostDesktopReply {
+  string action_id = 1;
+  string observation_id = 2;
+  bytes jpeg = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  string error = 6;
+  repeated string displays = 7;
+  string display = 8;
+}

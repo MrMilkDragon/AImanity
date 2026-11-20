@@ -820,9 +820,63 @@ pub async fn tool(
 pub async fn archive_attachment(app: &App, id: Uuid, name: &str, bytes: &[u8]) -> Result<()> {
     let folder = app.root.join("data/workspaces/admin/uploads");
     fs::create_dir_all(&folder).await.map_err(err)?;
-    fs::write(folder.join(format!("{}-{name}", id.simple())), bytes)
+    fs::write(folder.join(upload_filename(id, name)), bytes)
         .await
         .map_err(err)
+}
+
+pub(crate) fn upload_filename(id: Uuid, name: &str) -> String {
+    format!("{}-{name}", id.simple())
+}
+
+pub(crate) fn document_type(bytes: &[u8], name: &str) -> Option<&'static str> {
+    let ext = Path::new(name).extension()?.to_str()?.to_ascii_lowercase();
+    if ext == "pdf" && bytes.starts_with(b"%PDF-") {
+        return Some("application/pdf");
+    }
+    if !bytes.starts_with(b"PK\x03\x04") {
+        return None;
+    }
+    Some(match ext.as_str() {
+        "ods" => "application/vnd.oasis.opendocument.spreadsheet",
+        "odt" => "application/vnd.oasis.opendocument.text",
+        "odp" => "application/vnd.oasis.opendocument.presentation",
+        "odg" => "application/vnd.oasis.opendocument.graphics",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        _ => return None,
+    })
+}
+
+pub(crate) async fn attachment_input(
+    file: &Path,
+    id: Uuid,
+    name: &str,
+    media: &str,
+) -> io::Result<serde_json::Value> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use serde_json::json;
+    if media.starts_with("image/") {
+        let bytes = fs::read(file).await?;
+        return Ok(
+            json!({"type":"input_image","image_url":format!("data:{media};base64,{}",STANDARD.encode(bytes))}),
+        );
+    }
+    let text = if media.starts_with("text/") {
+        let bytes = fs::read(file).await?;
+        let text: String = String::from_utf8_lossy(&bytes)
+            .chars()
+            .take(24000)
+            .collect();
+        format!("附件 {name}：\n{text}")
+    } else {
+        format!(
+            "附件 {name}，工作文件路径 /uploads/{}",
+            upload_filename(id, name)
+        )
+    };
+    Ok(json!({"type":"input_text","text":text}))
 }
 
 pub(crate) fn image_type(bytes: &[u8]) -> Option<&'static str> {
@@ -904,6 +958,7 @@ pub(crate) async fn prepare_outputs(
                 id,
                 name,
                 media_type: image_type(&header[..count])
+                    .or_else(|| document_type(&header[..count], leaf))
                     .unwrap_or("application/octet-stream")
                     .into(),
                 size_bytes: metadata.len() as i64,

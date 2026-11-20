@@ -285,6 +285,7 @@ pub async fn verify(
     let mut evidence = Vec::new();
     let mut learning_evidence = LearningEvidence::new();
     let mut illustrated = Vec::new();
+    let host_session = app.run_signals.host.session(run);
     for row in &rows {
         let row_id = row.get::<Uuid, _>("id");
         let id = row_id.to_string();
@@ -302,7 +303,13 @@ pub async fn verify(
         if let Some(observation) = observation {
             learning_evidence.insert(id.clone(), observation);
         }
-        limit_result(&mut result, &mut image_budget);
+        if name == "host_desktop"
+            && !crate::host_desktop::receipt_in_session(&result, host_session.as_deref())
+        {
+            limit_result(&mut result, &mut 0);
+        } else {
+            limit_result(&mut result, &mut image_budget);
+        }
         let first_visual = visual_inputs.len();
         extract_images(&mut result, &id, &mut visual_inputs);
         if first_visual < visual_inputs.len() && learning_evidence.contains_key(&id) {

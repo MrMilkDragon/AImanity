@@ -11,6 +11,7 @@ mod deployment;
 mod devices;
 mod files;
 mod host;
+mod host_desktop;
 mod knowledge;
 mod layout;
 mod loading;
@@ -1199,6 +1200,7 @@ impl App {
                 self.reduced_motion = platform::reduced_motion();
             }
             Message::Quit | Message::Event(Event::Window(window::Event::CloseRequested)) => {
+                self.chat.end_host();
                 let stopping = self.after_stop.replace(AfterStop::Exit).is_some();
                 self.connection = None;
                 self.streams = None;

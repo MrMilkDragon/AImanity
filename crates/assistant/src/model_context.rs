@@ -40,6 +40,38 @@ pub fn after_model_switch(context: &[Value], boundary: usize) -> Cow<'_, [Value]
     )
 }
 
+pub fn scope_host_images<'a>(
+    mut context: Cow<'a, [Value]>,
+    session: Option<&str>,
+) -> Cow<'a, [Value]> {
+    let host: HashSet<&str> = context
+        .iter()
+        .filter(|v| v["name"] == "host_desktop")
+        .filter_map(|v| v["call_id"].as_str())
+        .collect();
+    if host.is_empty() {
+        return context;
+    }
+    let archived: Vec<usize> = context
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            if item["type"] != "function_call_output" || !host.contains(item["call_id"].as_str()?) {
+                return None;
+            }
+            let value = &item["output"];
+            let keep = crate::host_desktop::receipt_in_session(value, session);
+            (!keep && value.as_array()?.iter().any(|v| v["type"] == "input_image")).then_some(index)
+        })
+        .collect();
+    for index in archived {
+        if let Some(parts) = context.to_mut()[index]["output"].as_array_mut() {
+            parts.retain(|p| p["type"] != "input_image");
+        }
+    }
+    context
+}
+
 pub fn for_chat_api(context: &[Value]) -> Vec<Value> {
     let compacted = bounded_history(context);
     let completed = completed_native_calls(compacted.iter().map(Cow::as_ref));
@@ -461,6 +493,29 @@ fn append_parts(destination: &mut Vec<Value>, value: Option<&Value>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_current_host_grant_can_replay_its_screen() {
+        let mut context = Vec::new();
+        for (id, name) in [
+            ("old", "host_desktop"),
+            ("active", "host_desktop"),
+            ("guest", "phone_observe"),
+        ] {
+            context.push(json!({"type":"function_call","name":name,"call_id":id}));
+            context.push(json!({"type":"function_call_output","call_id":id,"output":[
+                {"type":"input_text","text":json!({"host_session":id}).to_string()},
+                {"type":"input_image","image_url":"fixture"}
+            ]}));
+        }
+        for (grant, parts) in [(Some("active"), [1, 2, 2]), (None, [1, 1, 2])] {
+            let outgoing = scope_host_images(Cow::Borrowed(&context), grant);
+            for (item, expected) in [1, 3, 5].into_iter().zip(parts) {
+                assert_eq!(outgoing[item]["output"].as_array().unwrap().len(), expected);
+                assert_eq!(context[item]["output"].as_array().unwrap().len(), 2);
+            }
+        }
+    }
 
     #[test]
     fn responses_replay_a_completed_tool_even_without_a_reasoning_item() {

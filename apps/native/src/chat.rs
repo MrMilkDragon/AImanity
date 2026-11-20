@@ -23,6 +23,10 @@ use std::{
 #[derive(Clone, Debug)]
 pub enum Message {
     Todos(bool),
+    HostToggle,
+    HostAllow,
+    HostGranted(Result<(), String>),
+    HostEnded(String, Result<(), String>),
     RefreshDisplay,
     Mode(modes::Message),
     Edit(text_editor::Action),
@@ -97,6 +101,7 @@ pub struct Chat {
     loading_older: bool,
     following: bool,
     control_busy: bool,
+    host: crate::host_desktop::Permission,
     outbox: PathBuf,
 }
 impl Chat {
@@ -119,8 +124,12 @@ impl Chat {
             loading_older: false,
             following: true,
             control_busy: false,
+            host: crate::host_desktop::Permission::Off,
             outbox: PathBuf::new(),
         }
+    }
+    pub fn end_host(&mut self) {
+        self.host = crate::host_desktop::Permission::Off;
     }
     pub fn restore(&mut self, root: &str) -> Task<Message> {
         self.outbox = PathBuf::from(root).join("data/native/outbox");
@@ -155,6 +164,12 @@ impl Chat {
         client: &Connection,
         snapshot: bool,
     ) -> Task<Message> {
+        if !self.state.agent_id.is_empty()
+            && !next.agent_id.is_empty()
+            && self.state.agent_id != next.agent_id
+        {
+            self.end_host();
+        }
         let mut tasks = Vec::new();
         let receipt_ids: HashSet<_> = next
             .messages
@@ -255,7 +270,7 @@ impl Chat {
         }
         Task::batch(tasks)
     }
-    fn send_pending(&mut self, id: &str, client: &Connection) -> Task<Message> {
+    fn send_pending(&mut self, id: &str, client: &Connection, fresh: bool) -> Task<Message> {
         let pending = self
             .pending
             .iter_mut()
@@ -276,7 +291,29 @@ impl Chat {
         request.receipt_only = true;
         let client = client.clone();
         let id = id.to_string();
-        Task::perform(
+        let (ready, host_task) =
+            if fresh && matches!(self.host, crate::host_desktop::Permission::Armed) {
+                let (stop, closed) = tokio::sync::watch::channel(());
+                let (started, ready) = tokio::sync::oneshot::channel();
+                let request = id.clone();
+                let task = Task::perform(
+                    crate::host_desktop::serve(
+                        client.assistant.clone(),
+                        request.clone(),
+                        started,
+                        closed,
+                    ),
+                    move |result| Message::HostEnded(request.clone(), result),
+                );
+                self.host = crate::host_desktop::Permission::Active {
+                    request: id.clone(),
+                    _stop: stop,
+                };
+                (Some(ready), task)
+            } else {
+                (None, Task::none())
+            };
+        let send = Task::perform(
             async move {
                 tokio::fs::write(&temporary, snapshot.encode_to_vec())
                     .await
@@ -284,10 +321,14 @@ impl Chat {
                 tokio::fs::rename(temporary, path)
                     .await
                     .map_err(|e| e.to_string())?;
+                if let Some(ready) = ready {
+                    ready.await.map_err(|_| "本机桌面未连接")?;
+                }
                 client.rpc("assistant/send", request).await
             },
             move |r| Message::Sent(id.clone(), r),
-        )
+        );
+        Task::batch([host_task, send])
     }
     fn refresh_traces(&mut self, client: &Connection) -> Task<Message> {
         let mut tasks = Vec::new();
@@ -386,12 +427,48 @@ impl Chat {
                 });
                 self.following = true;
                 self.error.clear();
-                return self.send_pending(&id, client);
+                return self.send_pending(&id, client, true);
             }
-            Message::Retry(id) => return self.send_pending(&id, client),
+            Message::Retry(id) => return self.send_pending(&id, client, false),
+            Message::HostToggle => {
+                use crate::host_desktop::Permission;
+                self.host = match self.host {
+                    Permission::Off => Permission::Confirm,
+                    _ => Permission::Off,
+                };
+            }
+            Message::HostAllow => {
+                if matches!(self.host, crate::host_desktop::Permission::Confirm) {
+                    return Task::perform(
+                        async {
+                            #[cfg(target_os = "macos")]
+                            crate::host_desktop::permission().map_err(|e| e.to_string())?;
+                            Ok(())
+                        },
+                        Message::HostGranted,
+                    );
+                }
+            }
+            Message::HostGranted(result) => {
+                if matches!(self.host, crate::host_desktop::Permission::Confirm) {
+                    self.host = crate::host_desktop::Permission::Off;
+                    match result {
+                        Ok(()) => self.host = crate::host_desktop::Permission::Armed,
+                        Err(error) => self.error = error,
+                    }
+                }
+            }
+            Message::HostEnded(id, result) => {
+                if self.host.end(&id)
+                    && let Err(error) = result
+                {
+                    self.error = error;
+                }
+            }
             Message::Sent(id, result) => match result {
                 Ok(receipt) => return self.accept(receipt, client, false),
                 Err(error) => {
+                    self.host.end(&id);
                     self.error = error.clone();
                     if let Some(p) = self.pending.iter_mut().find(|p| p.request.request_id == id) {
                         p.sending = false;
@@ -616,6 +693,7 @@ impl Chat {
                 }
             }
             Message::Command(command) => {
+                self.host = crate::host_desktop::Permission::Off;
                 self.error.clear();
                 self.control_busy = true;
                 let input = wire::ChatRunRequest {
@@ -717,7 +795,7 @@ impl Chat {
         });
         self.following = true;
         self.error.clear();
-        self.send_pending(&id, client)
+        self.send_pending(&id, client, true)
     }
     pub fn recover_voice(&mut self, text: &str) {
         if text.is_empty() {
@@ -957,6 +1035,15 @@ impl Chat {
             item = item.push(delivery);
             messages = messages.push(bubble(item));
         }
+        let host_permission = matches!(self.host, crate::host_desktop::Permission::Confirm).then(|| {
+            column![
+                text(locale.tr("本次任务可跨应用操作你的整个桌面。屏幕画面会发给当前模型，并保存在本地任务记录中。")).size(13),
+                row![
+                    button(text(locale.tr("取消")).size(13)).style(style::quiet).on_press(Message::HostToggle),
+                    button(text(locale.tr("允许本次任务")).size(13)).style(style::primary).on_press(Message::HostAllow)
+                ].spacing(8)
+            ].spacing(6)
+        });
         let editor = text_editor(&self.draft)
             .placeholder(locale.tr("发送消息…"))
             .height(72.)
@@ -1040,11 +1127,27 @@ impl Chat {
                 .style(style::primary)
                 .on_press_maybe(can_send.then_some(Message::Send)),
         );
+        use crate::host_desktop::Permission;
+        let host_button: Element<'_, Message> = match self.host {
+            Permission::Armed | Permission::Active { .. } => {
+                button(text(locale.tr("结束本机协作")).size(12))
+                    .style(style::quiet)
+                    .on_press(Message::HostToggle)
+                    .into()
+            }
+            _ => iced::widget::tooltip(
+                icon_button(Icon::Screen, Some(Message::HostToggle)),
+                text(locale.tr("本机协作")).size(12),
+                iced::widget::tooltip::Position::Top,
+            )
+            .into(),
+        };
         let actions = row![
             row![
                 iced::widget::mouse_area(icon_button(Icon::Todos, Some(Message::Todos(true))))
                     .on_enter(Message::Todos(false)),
                 icon_button(Icon::Paperclip, Some(Message::Pick)),
+                host_button,
                 modes.liberty_button().map(Message::Mode),
             ]
             .spacing(4)
@@ -1060,7 +1163,9 @@ impl Chat {
             .align_x(iced::Right),
         ]
         .spacing(4);
-        let mut composer = column![].spacing(3);
+        let mut composer = column![]
+            .spacing(3)
+            .extend(host_permission.map(Element::from));
         for upload in &self.uploads {
             composer = composer.push(
                 row![

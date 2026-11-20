@@ -1,5 +1,6 @@
 use crate::*;
 use axum::extract::{Multipart, Path, State};
+#[cfg(test)]
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use sqlx::Row;
@@ -387,7 +388,7 @@ async fn send_input(
         if attachments.len() != files.len() || total > 12*1024*1024 || attachments.iter().any(|r|r.get::<i64,_>("size_bytes") < 0) {
             return Err(sqlx::Error::Protocol("invalid_attachments".into()));
         }
-        let active = sqlx::query("SELECT id,status,agent_id FROM runs WHERE conversation_id=$1 AND
+        let active = sqlx::query("SELECT id,status,agent_id,origin FROM runs WHERE conversation_id=$1 AND
             ((origin='user' AND status IN ('queued','running','paused'))
              OR ($2 AND origin='notification' AND status='running' AND NOT background_read_only))
             ORDER BY (origin='user') DESC,created_at,id LIMIT 1 FOR UPDATE")
@@ -407,6 +408,7 @@ async fn send_input(
             .bind(user).bind(id).bind(&request.text).bind(&files).bind(request_id).execute(&mut *tx).await?;
         if let Some(voice) = &voice {voice.persist(&mut tx, id, user, request_id).await?;}
 
+        let local_run = active.as_ref().is_none_or(|r| r.get::<&str,_>("origin") == "user");
         let run = if let Some(active) = active {
             let run = active.get::<Uuid,_>("id");
             if active.get::<String,_>("status") == "paused" {
@@ -441,6 +443,7 @@ async fn send_input(
                 .bind(&request.text).bind(run).execute(&mut *tx).await?;
         }
         tx.commit().await?;
+        if local_run { app.run_signals.host.bind(request_id, run); }
         app.run_signals.queue.notify_one();
         app.run_signals.input.notify_waiters();
         if let Some(voice) = &voice {
@@ -616,17 +619,16 @@ async fn steering_input(
         if !metadata.is_file() || actual_total > 12 * 1024 * 1024 {
             return Err(invalid());
         }
-        let bytes = tokio::fs::read(file).await.map_err(|_| invalid())?;
-        let media: String = row.get("media_type");
-        if media.starts_with("image/") {
-            content.push(json!({"type":"input_image","image_url":format!("data:{media};base64,{}",STANDARD.encode(bytes))}));
-        } else {
-            let text = String::from_utf8_lossy(&bytes)
-                .chars()
-                .take(24000)
-                .collect::<String>();
-            content.push(json!({"type":"input_text","text":format!("附件 {}：\n{}",row.get::<String,_>("name"),text)}));
-        }
+        content.push(
+            crate::files::attachment_input(
+                &file,
+                *attachment_id,
+                row.get("name"),
+                row.get("media_type"),
+            )
+            .await
+            .map_err(|_| invalid())?,
+        );
     }
     Ok(json!({"role":"user","content":content}))
 }
@@ -789,7 +791,7 @@ fn media_type(bytes: &[u8], name: &str) -> Option<&'static str> {
     {
         Some("text/plain; charset=utf-8")
     } else {
-        None
+        crate::files::document_type(bytes, name)
     }
 }
 pub async fn upload(
@@ -825,7 +827,7 @@ pub async fn upload(
         return error(
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
             "unsupported_file",
-            "支持PNG、JPEG、WebP、GIF及UTF-8文本文件",
+            "支持图片、文本、PDF、Office 和 OpenDocument 文件",
         );
     };
     let id = Uuid::now_v7();

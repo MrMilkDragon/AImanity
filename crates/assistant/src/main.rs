@@ -37,6 +37,7 @@ mod harness_proxy;
 mod harness_proxy_devices;
 mod history_window;
 
+mod host_desktop;
 mod http;
 mod location;
 mod location_devices;
@@ -357,6 +358,10 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
         .route("/v1/session", post(auth::session))
         .route("/v1/logout", post(auth::logout))
         .route("/v1/history", post(http::history))
+        .route(
+            "/v1/host/desktop/{request}",
+            axum::routing::get(host_desktop::connect),
+        )
         .route("/v1/chat/events", axum::routing::get(run_signals::events))
         .route("/v1/send", post(http::send))
         .route("/v1/run", post(http::run_state))

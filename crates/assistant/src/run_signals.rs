@@ -6,6 +6,7 @@ use axum::extract::{
 use tokio::sync::{Notify, broadcast};
 
 pub(crate) struct RunSignals {
+    pub host: crate::host_desktop::DesktopSession,
     pub queue: Notify,
     pub input: Notify,
     pub phone_exploration: Notify,
@@ -21,6 +22,7 @@ pub(crate) struct RunSignals {
 impl Default for RunSignals {
     fn default() -> Self {
         Self {
+            host: Default::default(),
             queue: Notify::new(),
             input: Notify::new(),
             phone_exploration: Notify::new(),

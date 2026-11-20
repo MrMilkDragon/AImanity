@@ -198,6 +198,39 @@ pub(super) fn inspection_request(request: &str) -> bool {
     )
 }
 
+pub(super) fn file_delivery_request(request: &str) -> bool {
+    let mut copy = false;
+    for clause in positive_clauses(request).filter(|c| !c.is_empty()) {
+        let clause = clause.trim_start_matches("然后").trim();
+        if [
+            "在回复中附上文件",
+            "在回复中附上成品",
+            "attach the file to your reply",
+        ]
+        .contains(&clause)
+        {
+            continue;
+        }
+        if !affirmed_action(
+            clause,
+            &["复制到", "分发到", "拷贝到", "copy ", "distribute "],
+        ) || super::device_action_request(clause)
+            || inspection_request(clause)
+            || affirmed_action(
+                clause,
+                &[
+                    "编辑", "制作", "修订", "填写", "edit ", "open ", "send ", "update ",
+                ],
+            )
+            || !required_tools(clause).is_empty()
+        {
+            return false;
+        }
+        copy = true;
+    }
+    copy
+}
+
 fn matches(requirement: &Requirement, clause: &str) -> bool {
     requirement
         .targets

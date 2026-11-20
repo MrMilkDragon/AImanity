@@ -513,5 +513,9 @@
   "继续": "Continuer",
   "配置设备": "Configurer vos appareils",
   "开始安装": "Lancer l’installation",
-  "本机资源不足，请检查内存和可用空间。": "Vérifiez la mémoire et l’espace libre."
+  "本机资源不足，请检查内存和可用空间。": "Vérifiez la mémoire et l’espace libre.",
+  "本机协作": "Utiliser cet ordinateur",
+  "结束本机协作": "Arrêter le partage du bureau",
+  "允许本次任务": "Autoriser cette tâche",
+  "本次任务可跨应用操作你的整个桌面。屏幕画面会发给当前模型，并保存在本地任务记录中。": "Cette tâche peut agir dans les applications de tout votre bureau. Les captures sont envoyées au modèle actuel et conservées dans l’historique local de la tâche."
 }

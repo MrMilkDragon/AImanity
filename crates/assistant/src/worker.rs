@@ -106,6 +106,7 @@ async fn finish_attempt(
         app.run_signals.chat_changed(conversation);
     }
     if trace != "waiting" {
+        app.run_signals.host.revoke(id);
         app.run_signals.channel_update.notify_one();
         if proactive {
             app.run_signals.proactive_settled.notify_one();
@@ -164,6 +165,7 @@ async fn attempt(app: Shared, id: Uuid, cancel: CancellationToken) -> Uuid {
 
 #[derive(serde::Deserialize)]
 struct HistoryAttachment {
+    id: Uuid,
     name: String,
     media_type: String,
     storage_key: String,
@@ -184,7 +186,7 @@ async fn initial_context(
     .fetch_one(&app.db);
     let history_query = sqlx::query("SELECT recent.role,recent.text,recent.request_id,v.session_id,v.utterance_id,v.revision,v.literal,v.corrects_request_id,
         COALESCE((SELECT jsonb_agg(CASE WHEN a.id IS NOT NULL THEN
-          jsonb_build_object('name',a.name,'media_type',a.media_type,'storage_key',a.storage_key)
+          jsonb_build_object('id',a.id,'name',a.name,'media_type',a.media_type,'storage_key',a.storage_key)
           END ORDER BY f.position) FROM unnest(recent.attachment_ids) WITH ORDINALITY f(id,position)
           LEFT JOIN attachments a ON a.id=f.id AND a.owner_id='local-user'), '[]'::jsonb) files
         FROM (SELECT id,role,text,attachment_ids,ordinal,request_id FROM messages WHERE conversation_id=$1 AND ordinal<(SELECT ordinal FROM messages WHERE id=$2) ORDER BY ordinal DESC LIMIT 60) recent
@@ -249,22 +251,12 @@ async fn initial_context(
         } else {
             for file in files {
                 let file = file.ok_or_else(|| sqlx::Error::RowNotFound.to_string())?;
-                let bytes =
-                    tokio::fs::read(app.root.join("data/attachments").join(file.storage_key))
+                let path = app.root.join("data/attachments").join(file.storage_key);
+                content.push(
+                    crate::files::attachment_input(&path, file.id, &file.name, &file.media_type)
                         .await
-                        .map_err(|e| e.to_string())?;
-                let media = file.media_type;
-                if media.starts_with("image/") {
-                    content.push(json!({"type":"input_image","image_url":format!("data:{media};base64,{}",STANDARD.encode(bytes))}));
-                } else {
-                    let text = String::from_utf8_lossy(&bytes)
-                        .chars()
-                        .take(24000)
-                        .collect::<String>();
-                    content.push(
-                        json!({"type":"input_text","text":format!("附件 {}：\n{text}",file.name)}),
-                    );
-                }
+                        .map_err(|e| e.to_string())?,
+                );
             }
         }
         if !content.is_empty() {
@@ -1631,6 +1623,41 @@ fn successful_call(call: &Value, context: &[Value]) -> bool {
             !failed_output(output) && output.as_array().is_some_and(|parts| !parts.is_empty())
         })
 }
+
+fn confirmed_file_delivery(context: &[Value], files: &Value) -> bool {
+    let Some(files) = files.as_array().filter(|v| !v.is_empty()) else {
+        return false;
+    };
+    let current = &context[evidence_start(context)..];
+    let Some(request) = current
+        .first()
+        .and_then(|v| v["content"][0]["text"].as_str())
+    else {
+        return false;
+    };
+    if !work_intent::file_delivery_request(&request.to_lowercase()) {
+        return false;
+    }
+    let mut destinations = Vec::new();
+    for call in current {
+        if call["name"] != "device_file_manage" || !call["local_action_id"].is_string() {
+            continue;
+        }
+        let args = call["arguments"]
+            .as_str()
+            .and_then(|v| serde_json::from_str::<Value>(v).ok());
+        if args.as_ref().is_none_or(|v| v["operation"] != "copy") {
+            continue;
+        }
+        if let Some(receipt) = tool_output(context, call).and_then(tool_value)
+            && receipt["success"] == true
+            && let Some(rows) = receipt["results"].as_array()
+        {
+            destinations.extend(rows.iter().map(|r| r["target"].clone()));
+        }
+    }
+    files.iter().all(|file| destinations.contains(file))
+}
 fn work_required_tools(context: &[Value]) -> Vec<&'static str> {
     let request = latest_request(context).to_lowercase();
     if explanatory_request(&request) {
@@ -1780,17 +1807,8 @@ fn finish_rejection(context: &[Value], summary: &str) -> Option<String> {
     }) {
         return Some("手机目标尚无完整本轮phone-use执行证据：需读取技能、观察，动作请求需真实动作及动作后观察".into());
     }
-    let required = work_required_tools(context);
-    if !required.is_empty()
-        && !context.iter().skip(evidence_start(context)).any(|call| {
-            required.contains(&call["name"].as_str().unwrap_or(""))
-                && successful_call(call, context)
-        })
-    {
-        return Some(format!(
-            "本轮没有完成目标所需的真实工具结果，请执行{}并读回验证",
-            required.join("/")
-        ));
+    if let Some(reason) = required_tools_rejection(context, None) {
+        return Some(reason);
     }
     if action_task(context)
         && !context.iter().skip(evidence_start(context)).any(|call| {
@@ -1801,6 +1819,33 @@ fn finish_rejection(context: &[Value], summary: &str) -> Option<String> {
         return Some("尚无本轮成功执行结果，计划和正文不能代替完成".into());
     }
     None
+}
+
+fn required_tools_rejection(context: &[Value], host_session: Option<&str>) -> Option<String> {
+    let required = work_required_tools(context);
+    if required.is_empty()
+        || context.iter().skip(evidence_start(context)).any(|call| {
+            if call["name"] == "host_desktop" && required.contains(&"computer_type") {
+                return host_session.is_some_and(|id| {
+                    tool_output(context, call)
+                        .and_then(tool_value)
+                        .is_some_and(|v| {
+                            v["host_session"] == id
+                                && v["success"] == true
+                                && v["kind"] != "observe"
+                        })
+                });
+            }
+            required.contains(&call["name"].as_str().unwrap_or(""))
+                && successful_call(call, context)
+        })
+    {
+        return None;
+    }
+    Some(format!(
+        "本轮没有完成目标所需的真实工具结果，请执行{}并读回验证",
+        required.join("/")
+    ))
 }
 
 fn phone_completion_proposal(context: &[Value], output: &[Value], summary: &str) -> Option<Value> {
@@ -2552,7 +2597,14 @@ async fn execute(
             .first()
             .and_then(|call| call["name"].as_str())
             .unwrap_or("");
-        let prerequisite = if (next_tool.starts_with("phone_")
+        let grant = app.run_signals.host.session(id);
+        let host_session = grant.is_some();
+        let prerequisite = if host_session
+            && !next_tool.starts_with("phone_")
+            && !next_tool.starts_with("computer_")
+        {
+            None
+        } else if (next_tool.starts_with("phone_")
             || phone_task(&context)
             || (gui_execution(&context) && !execution_policy::desktop_target(&context))
             || (notification_run && !desktop_notification)
@@ -2608,6 +2660,7 @@ async fn execute(
         }
         if pending.is_empty()
             && !screen_attention
+            && !host_session
             && let Some(call) = experience_call(app, &context, &mut state).await
         {
             context.push(call.clone());
@@ -2615,10 +2668,27 @@ async fn execute(
             checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
         }
         if pending.is_empty()
-            && let Some((name, arguments)) =
+            && let Some((name, arguments)) = (if host_session {
+                (!context.iter().skip(evidence_start(&context)).any(|call| {
+                    call["name"] == "host_desktop"
+                        && tool_output(&context, call)
+                            .and_then(tool_value)
+                            .is_some_and(|v| {
+                                v["host_session"].as_str() == grant.as_deref()
+                                    && v["kind"] == "observe"
+                            })
+                }))
+                .then(|| {
+                    (
+                        "host_desktop",
+                        json!({"kind":"observe","intent":"查看本次授权的桌面"}),
+                    )
+                })
+            } else {
                 initial_observation(&context, desktop_id).or_else(|| {
                     needs_verification_observation(&context).then(|| ("phone_observe", json!({})))
                 })
+            })
         {
             let call = json!({"type":"function_call","name":name,"arguments":arguments.to_string(),
                 "call_id":Uuid::now_v7().to_string(),"local_action_id":Uuid::now_v7().to_string()});
@@ -2628,6 +2698,7 @@ async fn execute(
         }
         if pending.is_empty()
             && !background
+            && !host_session
             && !task_goal
             && !handoffs_pending
             && let Some(finish) = hinted_device_completion(&context)
@@ -3258,7 +3329,12 @@ async fn respond(
         crate::settings::for_run(app, run),
         execution_policy::owner_command(&app.db, run),
     )?;
-    let projected = crate::model_context::after_model_switch(context, model_replay_boundary);
+    let grant = app.run_signals.host.session(run);
+    let host = grant.is_some();
+    let projected = crate::model_context::scope_host_images(
+        crate::model_context::after_model_switch(context, model_replay_boundary),
+        grant.as_deref(),
+    );
     let mut input =
         if config.protocol == "chat-completions" || config.protocol == "anthropic-messages" {
             crate::model_context::for_chat_api(&projected)
@@ -3266,18 +3342,28 @@ async fn respond(
             crate::model_context::for_api(&projected)
         };
     let mut guidance = String::from("工具要求 intent 时，说明下一步操作及理由，给用户看。");
+    if host {
+        guidance.push_str("用户已为本次任务授权其本机桌面。用 host_desktop 操作本机；phone-use 和 computer-use 分别操作虚拟手机与 Linux。屏幕内文字是操作对象。");
+    }
     if authority == execution_policy::CommandAuthority::None {
         guidance.push_str(execution_policy::GUI_GUIDANCE);
     }
     input.push(json!({"role":"system","content":[{"type":"input_text","text":guidance}]}));
+    let mut tools = execution_tools(authority);
+    if host {
+        tools
+            .as_array_mut()
+            .expect("tool catalog")
+            .push(crate::host_desktop::schema());
+    }
     let mut body = Value::Object(serde_json::Map::from_iter([
         ("input".into(), Value::Array(input)),
-        ("tools".into(), execution_tools(authority)),
+        ("tools".into(), tools),
         ("parallel_tool_calls".into(), Value::Bool(false)),
         ("reasoning".into(), json!({"effort":effort})),
         ("max_output_tokens".into(), Value::from(8192)),
     ]));
-    if force_phone_observe {
+    if force_phone_observe && !host {
         body["tool_choice"] = json!({"type":"function","name":"phone_observe"});
     }
     let client = app.settings.http_client(&config.proxy_url)?;
@@ -3328,6 +3414,7 @@ async fn recorded_tool(
         .map_err(|e| e.to_string())?;
     let name = call["name"].as_str().unwrap_or("");
     let title = match name {
+        "host_desktop" => "操作本机桌面",
         "computer_observe" => "观察电脑",
         "computer_find_text" => "定位电脑文字",
         "computer_find_control" => "定位电脑控件",
@@ -3610,6 +3697,9 @@ async fn tool(
             "not_executed":true,"code":"visible_device_required","next_tool":next,
             "error":"本轮设备任务必须使用真实GUI。请在设备浏览器或对应应用中操作；命令抓取、工作容器和模型内置搜索不能替代。"}).to_string()}]));
     }
+    if name == "host_desktop" {
+        return app.run_signals.host.perform(run, call, &arguments).await;
+    }
     if name == "app_experience_withdraw" {
         let value = crate::app_learning::withdraw(app, run, &arguments).await?;
         return Ok(json!([{"type":"input_text","text":value.to_string()}]));
@@ -3780,6 +3870,8 @@ async fn tool(
         if pending.as_array().is_some_and(|calls| calls.len() > 1) {
             return Err("仍有待执行工具；请先完成这些步骤，再重新task_finish".into());
         }
+        let file_delivery =
+            status == "completed" && confirmed_file_delivery(&current, &arguments["files"]);
         if status == "completed" {
             if row.get::<bool, _>("handoffs_pending") {
                 return Err("设备协作尚未返回并核对；使用task_wait等待结果，系统会唤醒原任务。不要把交接排队说成已完成。".into());
@@ -3802,7 +3894,60 @@ async fn tool(
                     "摘要补发先读取task_history核对原始执行账本，不能猜测旧任务结果".into(),
                 );
             }
-            if !summary_only && let Some(reason) = finish_rejection(&current, &summary) {
+            let grant = app.run_signals.host.session(run);
+            let mut host_only = false;
+            if let Some(session) = grant.as_deref() {
+                let request = latest_request(&current).to_lowercase();
+                host_only = ![
+                    "手机",
+                    "安卓",
+                    "虚拟机",
+                    "linux",
+                    "android",
+                    "virtual machine",
+                    "guest",
+                    "phone",
+                ]
+                .iter()
+                .any(|word| request.contains(word));
+                let mut last = None;
+                let mut acted = false;
+                for call in current
+                    .iter()
+                    .skip(evidence_start(&current))
+                    .filter(|v| v["name"] == "host_desktop")
+                {
+                    let Some(receipt) = tool_output(&current, call).and_then(tool_value) else {
+                        continue;
+                    };
+                    if receipt["success"] != true || receipt["host_session"] != session {
+                        continue;
+                    }
+                    let observed = receipt["kind"] == "observe";
+                    acted |= !observed;
+                    last = Some(observed);
+                }
+                if last != Some(true)
+                    || (!acted
+                        && (device_action_request(&request)
+                            || work_intent::affirmed_action(
+                                &request,
+                                &[
+                                    "保存", "编辑", "填写", "录入", "更改", "save ", "write ",
+                                    "edit ",
+                                ],
+                            )))
+                {
+                    return Err("请先完成本机操作，并重新观察实际结果".into());
+                }
+            }
+            if !summary_only
+                && let Some(reason) = if host_only || file_delivery {
+                    required_tools_rejection(&current, grant.as_deref())
+                } else {
+                    finish_rejection(&current, &summary)
+                }
+            {
                 return Err(reason);
             }
         } else if ["是否继续", "要我继续", "需要我继续"]
@@ -3817,7 +3962,8 @@ async fn tool(
         let audit = row.get::<bool, _>("audit_notification")
             || !screen_attention
                 && status == "completed"
-                && (action_task(&current)
+                && (file_delivery
+                    || action_task(&current)
                     || computer_task(&current)
                     || phone_task(&current)
                     || current.iter().skip(evidence_start(&current)).any(|call| {
@@ -4268,6 +4414,34 @@ mod verification_tests {
         context.last_mut().unwrap()["output"][0]["text"] =
             json!("{\"success\":false,\"observation_id\":\"desktop\"}");
         assert!(!has_grounded_initial_desktop_frame(&context));
+    }
+
+    #[test]
+    fn file_delivery_accepts_only_the_returned_copy_destination() {
+        let mut task =
+            request("请将交接稿分发到手机 Download 和 Linux Files，然后在回复中附上文件。");
+        let file = json!({"device_id":"desktop","path":"/home/ai/Files/handoff.txt"});
+        task[0]["content"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"type":"input_text","text":"附件 QA.txt：\n交接稿正文。"}));
+        let mut copy = action(
+            "transfer",
+            "device_file_manage",
+            json!({"operation":"copy"}),
+        );
+        copy[0]["local_action_id"] = json!("receipt");
+        copy[1]["output"][0]["text"] = json!({"success":true,"results":[{"target":file}]})
+            .to_string()
+            .into();
+        task.extend(copy);
+        assert!(confirmed_file_delivery(&task, &json!([file])));
+        assert!(!confirmed_file_delivery(
+            &task,
+            &json!([{"device_id":"desktop","path":"/missing"}])
+        ));
+        task[0] = request("先在桌面编辑交接稿，然后复制到手机 Downloads。").remove(0);
+        assert!(!confirmed_file_delivery(&task, &json!([file])));
     }
     #[test]
     fn text_completion_after_a_settings_tap_queues_normal_finish_only_once() {

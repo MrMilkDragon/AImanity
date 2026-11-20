@@ -11,7 +11,7 @@ use tokio_tungstenite::tungstenite::{client::IntoClientRequest, http::HeaderValu
 #[derive(Clone, Debug)]
 pub struct Connection {
     http: reqwest::Client,
-    assistant: HeaderValue,
+    pub(crate) assistant: HeaderValue,
     phone: HeaderValue,
 }
 #[derive(Clone, Debug)]
