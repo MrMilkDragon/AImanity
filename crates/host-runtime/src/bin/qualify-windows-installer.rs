@@ -876,10 +876,10 @@ async fn verify_installed(
         .find(|device| device.kind == "phone" && device.runtime_state == "managed")
         .ok_or("installed Android is registered")?;
     let token = credentials.phone_token.trim();
-    tokio::try_join!(
+    let (desktop_frame, phone_frame) = tokio::join!(
         verify_frame(&http, token, "/desktop/screen", "Linux"),
         verify_frame(&http, token, "/screen", "Android"),
-    )?;
+    );
     let control: ControlState = post(
         &http,
         &format!("{PHONE}/v1/control"),
@@ -899,11 +899,22 @@ async fn verify_installed(
         epoch: control.control_epoch,
     };
     let android = Android::open(home, profile)?;
-    tokio::try_join!(
+    let (phone_actions, desktop_actions) = tokio::join!(
         verify_android(&android, &phone),
         verify_desktop(&http, credentials.assistant_token.trim(), token, &desktop),
-    )?;
-    Ok(())
+    );
+    let mut failures = Vec::new();
+    for (step, result) in [
+        ("Android video", phone_frame),
+        ("Linux video", desktop_frame),
+        ("Android controls and audio", phone_actions),
+        ("Linux controls and audio", desktop_actions),
+    ] {
+        if let Err(error) = result {
+            failures.push(format!("{step}: {error}"));
+        }
+    }
+    check(failures.is_empty(), failures.join("\n"))
 }
 
 #[tokio::main(flavor = "current_thread")]
