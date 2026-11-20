@@ -2298,8 +2298,8 @@
     },
     {
       "path": "crates/release-tools/src/linux_rootfs.rs",
-      "size": 8316,
-      "sha256": "72668458d7fd20ca90e9d7afde2c97b92e729f700cc9ff8ec9845c236d91bb4f"
+      "size": 8611,
+      "sha256": "7ea19df90df11ed0928ddf6c39fe1a044cc1be00797db71233d12297b4ed289d"
     },
     {
       "path": "crates/release-tools/src/macos_factory.rs",
@@ -2523,8 +2523,8 @@
     },
     {
       "path": "docs/public/engineering/linux-image-runtime.md",
-      "size": 1437,
-      "sha256": "b03662b4ec84fd0ad02064c2689778101fce421cef1654a037a92d429d1ef3ee"
+      "size": 1830,
+      "sha256": "11e92a7cd881a2ed0d2ba9affea53d59a8f1688292868f679c1debccaa6529a4"
     },
     {
       "path": "docs/public/engineering/linux-offline-ocr.md",
@@ -3182,14 +3182,59 @@
       "sha256": "c2fc55db6031994f7fb6762cde3e000fd0cfb6943841115b15eafb8b025c7a5e"
     },
     {
+      "path": "infra/desktop/appearance/etc/gtk-3.0/settings.ini",
+      "size": 84,
+      "sha256": "970a595aa25cabaaa69594903487bf7b0b30427e77a4f81ec42095492af0ee78"
+    },
+    {
+      "path": "infra/desktop/appearance/etc/xdg/pcmanfm/default/desktop-items-0.conf",
+      "size": 193,
+      "sha256": "ad3be862e5909b34ad84520e3278c7e62250c98dc0238c94252bc044171f84ff"
+    },
+    {
+      "path": "infra/desktop/appearance/etc/xdg/pcmanfm/default/pcmanfm.conf",
+      "size": 241,
+      "sha256": "4d994f168ff373c8e1159ee44e981fe266a449595d48a1c0f0a63af9ca64ec9f"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/local/share/aimanity/europium.jpg",
+      "size": 112278,
+      "sha256": "c549d0c3954a2286d90be683a519654c9c4c3fd1e11a8d5fb2ed014e5095a506"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/local/share/aimanity/tint2rc",
+      "size": 1798,
+      "sha256": "58524dd8b76e1ae740f21cd463046b018c8a8f867cba06876a0a61accc35486e"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/local/share/applications/aimanity-browser.desktop",
+      "size": 361,
+      "sha256": "7ae129b07ee458768822632cdd53f5a7d5714ed6c96decd27eac2081906fb45d"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/local/share/applications/aimanity-work-files.desktop",
+      "size": 369,
+      "sha256": "1a9c2c078e6cea59cadb54a4c843decb958b24f035d44f52c8048c2fdb9ccdba"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/share/themes/Europium/openbox-3/themerc",
+      "size": 1574,
+      "sha256": "fbb5ec98ab7dbb805e8766220b9abc6071bf7768057f584e077c2373be9120aa"
+    },
+    {
       "path": "infra/desktop/dunstrc",
-      "size": 287,
-      "sha256": "07ce13a6c522d4da230c121345f1512283dbca0f0e61aa8686e889214f95ec23"
+      "size": 319,
+      "sha256": "9be267a9a554be69c65b55ae3cbe670f6309af7e219e27d1f57c445b0017e7e5"
     },
     {
       "path": "infra/desktop/home-initialize.sh",
-      "size": 2350,
-      "sha256": "df3385763be167389a111672e9f2bcca77f690e70594dbc5183aa16fb2633596"
+      "size": 1857,
+      "sha256": "5b61ab02cdd4937380726c9d14b7e34a718038073d0153e6183196e924dee840"
+    },
+    {
+      "path": "infra/desktop/install-appearance.sh",
+      "size": 668,
+      "sha256": "f876113c9aa9f48d33a9ba02167ae9a11ce9b2bbac17f9d24baaf714979f3e4e"
     },
     {
       "path": "infra/desktop/install-openbox.sh",
@@ -3218,8 +3263,8 @@
     },
     {
       "path": "infra/desktop/start.sh",
-      "size": 1681,
-      "sha256": "aa19b4f0f7259ff10655820180ef6bad0c08ecf5cfb8add4ade80305ecde660b"
+      "size": 1590,
+      "sha256": "8ef476a5aa98ba0195dda40ba60b6712ff64e34f16617532ef7aadc5532b7e6b"
     },
     {
       "path": "infra/network/supervisor.sh",

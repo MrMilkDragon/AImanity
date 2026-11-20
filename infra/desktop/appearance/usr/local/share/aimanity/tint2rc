@@ -1,0 +1,70 @@
+rounded = 25
+border_width = 1
+background_color = #192237 92
+border_color = #b3c8ef 40
+
+rounded = 12
+background_color = #ffffff 10
+background_color_hover = #ffffff 22
+background_color_pressed = #ffffff 27
+
+rounded = 7
+background_color = #1b2231 100
+border_width = 1
+border_color = #6c7c99 100
+
+panel_items = LTS:C
+panel_size = 96% 58
+panel_shrink = 1
+panel_position = bottom center horizontal
+panel_margin = 0 14
+panel_padding = 13 4 5
+panel_background_id = 1
+panel_layer = top
+strut_policy = follow_size
+disable_transparency = 1
+wm_menu = 1
+mouse_effects = 1
+mouse_hover_icon_asb = 100 0 12
+mouse_pressed_icon_asb = 90 0 -8
+
+launcher_padding = 0 0 12
+launcher_icon_size = 34
+launcher_icon_theme = Adwaita
+launcher_tooltip = 1
+launcher_item_app = /usr/local/share/applications/aimanity-work-files.desktop
+launcher_item_app = /usr/local/share/applications/aimanity-browser.desktop
+launcher_item_app = /usr/share/applications/libreoffice-writer.desktop
+launcher_item_app = /usr/share/applications/libreoffice-calc.desktop
+launcher_item_app = /usr/share/applications/libreoffice-impress.desktop
+launcher_item_app = /usr/share/applications/libreoffice-draw.desktop
+
+taskbar_mode = single_desktop
+taskbar_padding = 0 0 4
+task_icon = 1
+task_text = 0
+task_centered = 1
+task_maximum_size = 39 40
+task_padding = 5 5
+task_active_background_id = 2
+task_tooltip = 1
+mouse_left = toggle_iconify
+
+systray_icon_size = 20
+systray_padding = 2 0 4
+
+separator = new
+separator_style = line
+separator_size = 1
+separator_color = #becde9 50
+separator_padding = 2 13
+time1_format = %H:%M
+time1_font = Sans Bold 10
+clock_font_color = #f5f7fc 100
+clock_padding = 4 0
+clock_tooltip = %A, %d %B
+tooltip_background_id = 3
+tooltip_font = Sans 10
+tooltip_font_color = #ffffff 100
+tooltip_padding = 9 5
+tooltip_show_timeout = 0.35

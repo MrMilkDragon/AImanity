@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Work Files
+Name[zh_CN]=工作文件
+Name[zh_TW]=工作檔案
+Name[de]=Arbeitsdateien
+Name[es]=Archivos de trabajo
+Name[fr]=Fichiers de travail
+Name[ja]=作業ファイル
+Name[ko]=작업 파일
+Name[ru]=Рабочие файлы
+Name[ar]=ملفات العمل
+Exec=pcmanfm /home/ai/Files
+Icon=folder
+Categories=System;FileManager;

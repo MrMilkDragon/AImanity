@@ -139,6 +139,16 @@ fn install(root: &Path, target: &Path, arch: &str) -> Result<()> {
         fs::Permissions::from_mode(0o440),
     )?;
 
+    execute(
+        Command::new("cp")
+            .arg("-R")
+            .arg(root.join("infra/desktop/appearance/."))
+            .arg(target),
+    )?;
+    execute(chroot(target, "/bin/sh").args([
+        "-ec",
+        include_str!("../../../infra/desktop/install-appearance.sh"),
+    ]))?;
     for (source, destination) in [
         ("LICENSE", "usr/share/doc/ai-phone/LICENSE"),
         ("NOTICE", "usr/share/doc/ai-phone/NOTICE"),

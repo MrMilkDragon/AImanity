@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=Web Browser
+Name[zh_CN]=浏览器
+Name[zh_TW]=瀏覽器
+Name[de]=Webbrowser
+Name[es]=Navegador web
+Name[fr]=Navigateur Web
+Name[ja]=ウェブブラウザー
+Name[ko]=웹 브라우저
+Name[ru]=Браузер
+Name[ar]=متصفح الويب
+Exec=/usr/local/bin/ai-phone-browser %U
+Icon=chromium
+Categories=Network;WebBrowser;

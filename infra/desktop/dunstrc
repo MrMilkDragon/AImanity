@@ -2,12 +2,14 @@
 origin = top-right
 width = 360
 offset = (16, 16)
-font = Noto Sans 10
+font = Sans 10
 frame_width = 1
-corner_radius = 10
-background = "#f5f7fa"
-foreground = "#26313c"
-frame_color = "#ccd3db"
+corner_radius = 12
+padding = 12
+horizontal_padding = 16
+background = "#f7f9fc"
+foreground = "#233148"
+frame_color = "#a7b3c4"
 timeout = 8
 always_run_script = true
 
