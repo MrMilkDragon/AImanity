@@ -869,7 +869,6 @@ impl Chat {
         &'a self,
         modes: &'a modes::Modes,
         locale: crate::locale::Locale,
-        device_name: &'a str,
         width: f32,
         reduced_motion: bool,
     ) -> Element<'a, Message> {
@@ -1087,21 +1086,7 @@ impl Chat {
             composer = composer.push(container(text(modes.transcript()).size(13)).padding([6, 10]));
         }
         composer = composer.push(editor).push(actions);
-        let agent_name = if self.state.agent_name.is_empty() {
-            "Agent"
-        } else {
-            &self.state.agent_name
-        };
         column![
-            container(
-                row![
-                    style::section_title(device_name),
-                    text(agent_name).size(12).style(style::muted_text)
-                ]
-                .spacing(8)
-                .align_y(iced::Center)
-            )
-            .height(28),
             scrollable(container(messages).padding([12, 2]))
                 .direction(scrollable::Direction::Vertical(
                     scrollable::Scrollbar::new().width(4).scroller_width(4)

@@ -9,6 +9,8 @@ Open File → New → Spreadsheet without replacing an existing document. Select
 
 Check a formula cell's formula bar as well as its displayed result. A number that merely looks correct does not prove a formula exists. Check totals and representative inputs before saving.
 
+For a stock reconciliation received as CSV, check the import preview separates the item, requested quantity and packed quantity. Enter the shortage formula in a new column. Save a new XLSX using the Excel format in Save As and confirm “Use Excel” when prompted. This preserves the input CSV and the editable formulas.
+
 Use Ctrl+S for a new document or Ctrl+Shift+S for Save As. A full destination path can be entered in the filename field. Confirm the format selector is ODF Spreadsheet for native ODS. An extension alone does not convert a file. Never overwrite another document to make an exercise succeed.
 
 Input pastes at the current caret; it does not replace existing field text automatically. Use Ctrl+A only after confirming focus is in the intended filename, name box or text field. Keep other documents open and unchanged. Reuse action-returned frames and current observation IDs. Report the saved artifact and important checks briefly; the ledger already contains the operations.

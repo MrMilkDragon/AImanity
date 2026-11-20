@@ -2415,17 +2415,12 @@ impl App {
             );
         }
         let r = self.layout.chat;
-        let device_name = self.devices[self.focus]
-            .as_ref()
-            .map(|device| device.name.as_str())
-            .unwrap_or(tr(if self.focus == 0 { "手机" } else { "电脑" }));
         stage.push(
             pin(container(
                 self.chat
                     .view(
                         &self.modes,
                         self.locale,
-                        device_name,
                         r.width - 2. * layout::CHAT_PADDING[1],
                         self.reduced_motion,
                     )

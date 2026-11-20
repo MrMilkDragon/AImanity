@@ -27,11 +27,11 @@ pub(crate) const SKILLS: &[Builtin] = &[
     },
     Builtin {
         id: "browser-android",
-        application: None,
+        application: Some("info.plateaukao.einkbro"),
     },
     Builtin {
         id: "files-android",
-        application: None,
+        application: Some("com.android.documentsui"),
     },
     Builtin {
         id: "xiaohongshu",

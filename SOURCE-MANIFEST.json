@@ -323,8 +323,8 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 51385,
-      "sha256": "2dd74ca9b478888224342b16415aa8be1de66ff745122f2fd23538cbf07b85b0"
+      "size": 50914,
+      "sha256": "2a83f002d201d491665ee7c0a3a8a2911c59abd45ea363ef778eff9c44a46160"
     },
     {
       "path": "apps/native/src/connection.rs",
@@ -393,8 +393,8 @@
     },
     {
       "path": "apps/native/src/main.rs",
-      "size": 104404,
-      "sha256": "9490a7067b983d4c47ec4e32d570ba5391844116fda3e503e810258634d23250"
+      "size": 104167,
+      "sha256": "25245771dd580b395695dc9c9ba0690a13db7dec3800365c096b435711860c66"
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
@@ -963,8 +963,8 @@
     },
     {
       "path": "crates/assistant/src/app_guidance_tests.rs",
-      "size": 6571,
-      "sha256": "9b85c513351f29b860ef2fc23d19750954541c599c6c371f1e8a12b4c5187d12"
+      "size": 6916,
+      "sha256": "887095ffa509e5772ca4c5b9c8ab951992cff8bbc5b42bff9e51cbb1442f90e8"
     },
     {
       "path": "crates/assistant/src/app_learning/desktop_tests.rs",
@@ -1008,8 +1008,8 @@
     },
     {
       "path": "crates/assistant/src/builtin_guides.rs",
-      "size": 3407,
-      "sha256": "153c98f9695de28546ee322742ed2185916b865341e6b0720dac067f42be0a88"
+      "size": 3461,
+      "sha256": "924cafec102cec544044df1bcf8f755850a2d5d602ca09ee31f4c9f3c1f50111"
     },
     {
       "path": "crates/assistant/src/channels/feishu.rs",
@@ -2488,8 +2488,8 @@
     },
     {
       "path": "docs/public/engineering/app-guides.md",
-      "size": 5019,
-      "sha256": "bbf5e23476ade0421b7e9c39620f943dc8c0c5532fff1d9092801ab9c6a20f73"
+      "size": 5462,
+      "sha256": "aad49d476e407e3418c7d47996fee259d8e432f1608f4a303ac9be824ca05f89"
     },
     {
       "path": "docs/public/engineering/app-learning.md",
@@ -2510,6 +2510,11 @@
       "path": "docs/public/engineering/device-resources.md",
       "size": 1508,
       "sha256": "3b54c5ccf82f9fbacb2c724913387c0588dc9e87f7763aba23630c12b9372e31"
+    },
+    {
+      "path": "docs/public/engineering/europium-scenarios.zh-CN.md",
+      "size": 6208,
+      "sha256": "b23accfd00735c682fc5f0f12ca282a365734377d55e5ab7566f6c7beefabfa4"
     },
     {
       "path": "docs/public/engineering/index.md",
@@ -3453,13 +3458,13 @@
     },
     {
       "path": "skills/builtin/browser-android/SKILL.md",
-      "size": 1797,
-      "sha256": "7f551c2ae3fbe0770e75f43afbf94f77e9a7330adc35c95e0b574192398f70ce"
+      "size": 925,
+      "sha256": "af16eb12a8aa90ec865a6af18037196f2dc3ff4a8198cca8f6dda77057359b8e"
     },
     {
       "path": "skills/builtin/calc/SKILL.md",
-      "size": 2566,
-      "sha256": "be2dea6f49e026eadde1690eec6620a7915010654501a6cad0bb962c0eb17783"
+      "size": 2889,
+      "sha256": "604acfdc30635025f315cbf9fb29d2b84eea1e962ce418eda87b7972973a0b8d"
     },
     {
       "path": "skills/builtin/computer-use/SKILL.md",
@@ -3478,8 +3483,8 @@
     },
     {
       "path": "skills/builtin/files-android/SKILL.md",
-      "size": 1782,
-      "sha256": "f4a90495816801c98471cbe56eeebb9cc5c5d433e550dbb4f7a8dddb7672e9c9"
+      "size": 1371,
+      "sha256": "fb9f06b551b96e7f7c52e0f96f72c1c92d279d050c8f50adf5276d3b2a1dd02c"
     },
     {
       "path": "skills/builtin/impress/SKILL.md",

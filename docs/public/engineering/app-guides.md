@@ -14,6 +14,7 @@ Shipped guides do not replace the user's learned Skill, manual notes or knowledg
 
 | Application | Shipped guidance and evidence | Limits |
 | --- | --- | --- |
+| EinkBro and Android Files | In the Europium development branch, observed package IDs select the browser and file guides. A real-device exercise downloaded a CSV, opened it in Calc, saved an XLSX and returned it to Android. | The exercise used developer-driven device tools. An independent model run and delivery to a real social conversation are pending. |
 | WeChat | Existing notification, conversation and reply guidance | The complete real incoming work request → GUI office work → original-chat delivery scenario remains unqualified. |
 | Xiaohongshu | Android 9.51.0: GUI search, open a result, inspect its visible title, dismiss an optional login sheet and return to results | Read-only flow only. Full articles/comments behind login, publishing, private messages and commerce are not qualified. No fixed coordinates or personal content are shipped. |
 | LibreOffice Writer | Real GUI find, input-focus recovery, result verification and closing the find bar; guided experience followed by automatic reuse | Editing, replacement, formatting and export pending. |
@@ -34,5 +35,7 @@ Guest applications, versions, language and account state can change the UI. Cont
 4. Exercise fresh installation, built-in plus local experience, optional failure, checkpoint reuse and actual device execution.
 
 ## 中文
+
+[Europium 应用场景、实操样例与训练计划](europium-scenarios.zh-CN.md)
 
 内置专项指南和用户自己的经验分别保留，按真实观察到的包名或电脑应用标识加载，沿用同一工具与检查点，不新增学习Agent。已有小红书只读搜索/查看标题/返回、Writer查找、Calc公式表格与ODS/XLSX保存、Impress多页ODP/PPTX的真实演练；Draw首轮失败，指导后完成ODG流程图；后续普通任务虽读到指南仍失败，自主绘图尚不可靠。微信完整办公交付及其他App仍未逐项通过。
