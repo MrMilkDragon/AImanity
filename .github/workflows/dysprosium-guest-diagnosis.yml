@@ -1,5 +1,5 @@
 ---
-name: Diagnose the Dysprosium desktop first frame
+name: Measure the installed desktop on WHPX
 'on':
   push:
     branches:
@@ -10,9 +10,8 @@ permissions:
   contents: read
   actions: read
 jobs:
-  guest:
+  init:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
     steps:
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
@@ -20,20 +19,18 @@ jobs:
         path: "${{ runner.temp }}/guest"
         github-token: "${{ github.token }}"
         run-id: '44713087613'
-    - name: Run the packaged desktop in its Linux guest
+    - name: Prepare frame measurement in the released guest
       run: |
         set -euo pipefail
-        sudo apt-get -qq update
-        sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cpio zstd
         cd "$RUNNER_TEMP/guest"
-        tar -xf windows-guest.payload
-        mkdir -p unpack
+        tar -xf windows-guest.payload release-init.cpio.gz
+        mkdir unpack
         (cd unpack && gzip -dc ../release-init.cpio.gz | cpio -idmu --quiet)
         cat > unpack/qa-init <<'INNER'
         #!/bin/sh
         exec </dev/console >/dev/console 2>&1
         set -ux
-        export PATH=/opt/aiphone/linux/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        export PATH=/opt/aiphone/linux/bin:/usr/local/bin:/usr/bin:/bin
         bb=/opt/aiphone/engine/bin/busybox
         finish() { echo "QA_DESKTOP_EXIT $1"; sync; "$bb" poweroff -f; }
         "$bb" mount -t proc proc /proc
@@ -55,12 +52,13 @@ jobs:
         cd "$root" || finish 1
         bridge="$root/runtime/services/bin/desktop-bridge"
         ls -l "$bridge"
-        "$bridge" native-linux "$root" stage || finish 3
+        started=$(date +%s); echo "Cold desktop start $started"
         "$bridge" native-linux "$root" desktop 2 2560 '' > /qa-desktop.log 2>&1 &
         pid=$!
-        for it in $(seq 1 60); do
+        for it in $(seq 1 165); do
          if ! kill -0 "$pid" 2>/dev/null; then cat /qa-desktop.log; finish 4; fi
-         if "$bridge" native-linux "$root" exec observe </qa-request.json >/qa-response.pb 2>/qa-error.log && [ -s /qa-response.pb ]; then cat /qa-desktop.log; wc -c /qa-response.pb; finish 0; fi
+         if "$bridge" native-linux "$root" exec observe </qa-request.json >/qa-response.pb 2>/qa-error.log && [ -s /qa-response.pb ]; then echo "First real desktop frame after $(($(date +%s)-started)) seconds"; cat /qa-desktop.log; wc -c /qa-response.pb; finish 0; fi
+         if [ "$it" -eq 30 ]; then echo "First 30 seconds elapsed"; cat /qa-error.log /qa-desktop.log; fi
          sleep 1
         done
         cat /qa-desktop.log /qa-error.log
@@ -70,10 +68,41 @@ jobs:
         sed -i '/^exec .*switch_root/i /bin/busybox cp /qa-init /newroot/qa-init\n/bin/busybox chmod 755 /newroot/qa-init\necho "{}" > /newroot/qa-request.json' unpack/init
         sed -i 's@switch_root /newroot /sbin/init@switch_root /newroot /qa-init@' unpack/init
         (cd unpack && find . -print0 | cpio --null --quiet -o -H newc --owner=0:0 | gzip -1 > ../qa.cpio.gz)
-        qemu-img create -q -f qcow2 -F qcow2 -b "$PWD/guest.qcow2" scratch.qcow2
-        mode=tcg
-        if test -c /dev/kvm; then mode=kvm; fi
-        echo "Linux guest accelerator $mode"
-        sudo timeout 480 qemu-system-x86_64 -accel "$mode" -machine q35 -m 4096 -smp 2 -display none -no-reboot -serial file:"$PWD/qa-console.log" -monitor none -kernel bzImage -initrd qa.cpio.gz -append 'console=ttyS0 rdinit=/init panic=1' -drive file=scratch.qcow2,if=virtio -drive file=release.ext4,format=raw,readonly=on,if=virtio || true
-        tail -130 qa-console.log
-        grep -q 'QA_DESKTOP_EXIT 0' qa-console.log
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: guest-diagnostic-init
+        path: "${{ runner.temp }}/guest/qa.cpio.gz"
+        retention-days: 1
+  windows:
+    needs: init
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: '14619677066'
+        path: "${{ runner.temp }}/guest"
+        github-token: "${{ github.token }}"
+        run-id: '44713087613'
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: '14618032626'
+        path: "${{ runner.temp }}/qemu"
+        github-token: "${{ github.token }}"
+        run-id: '44713087613'
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: guest-diagnostic-init
+        path: "${{ runner.temp }}/init"
+    - name: Time the first desktop frame on Windows WHPX
+      shell: pwsh
+      run: |
+        $ErrorActionPreference='Stop'
+        $PSNativeCommandUseErrorActionPreference=$true
+        Set-Location "$env:RUNNER_TEMP/guest"
+        tar -xf windows-guest.payload
+        $binaries=Join-Path $env:RUNNER_TEMP 'qemu/runtime'
+        & "$binaries/qemu-img.exe" create -q -f qcow2 -F qcow2 -b "$PWD/guest.qcow2" scratch.qcow2
+        & "$binaries/qemu-system-x86_64.exe" -L "$binaries/share" -machine 'q35,accel=whpx' -cpu Nehalem -nodefaults -display none -no-reboot -smp 2 -m 4096 -rtc base=utc -kernel bzImage -initrd "$env:RUNNER_TEMP/init/qa.cpio.gz" -append 'console=ttyS0 rdinit=/init panic=1' -serial file:qa-console.log -drive 'file=scratch.qcow2,format=qcow2,if=none,id=base' -device virtio-blk-pci,drive=base -drive 'file=release.ext4,format=raw,readonly=on,if=none,id=layer' -device virtio-blk-pci,drive=layer
+        Get-Content qa-console.log -Tail 125
+        if (!(Select-String -Quiet -SimpleMatch 'QA_DESKTOP_EXIT 0' qa-console.log)){throw 'The released desktop could not produce a WHPX frame'}
