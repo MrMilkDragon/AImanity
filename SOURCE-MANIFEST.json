@@ -1718,8 +1718,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/session/process.rs",
-      "size": 14845,
-      "sha256": "fd1d12827377066c17d381f00b17658b192367270883cf9eca502a7f5dadd60a"
+      "size": 14847,
+      "sha256": "8430000cb340d36779c05776ccc2bb4ddd0357e0f75da56853de89487fdc6f19"
     },
     {
       "path": "crates/host-runtime/src/android/session/readiness.rs",
@@ -1733,8 +1733,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/session/windows_cuttlefish.rs",
-      "size": 8627,
-      "sha256": "a9dde1eda385a18734b3783a2a11f901fd7ce21143f8229ea39419d2c99edb16"
+      "size": 8845,
+      "sha256": "c8ccdd3b726fc76dd57074741819a713945df0f124cf5cf34cbbaed39d50deda"
     },
     {
       "path": "crates/host-runtime/src/android/session.rs",
@@ -1768,8 +1768,8 @@
     },
     {
       "path": "crates/host-runtime/src/bin/qualify-windows-installer.rs",
-      "size": 33476,
-      "sha256": "713d753b868a62c168db936deac4fef0132ff1fc83ef7d60e638994de1c353ce"
+      "size": 33824,
+      "sha256": "5539046e8c9ac10b9834b8ace678465fc2c7d31f2599d423e23b6544316829b2"
     },
     {
       "path": "crates/host-runtime/src/capsule.rs",
