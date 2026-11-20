@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::AtomicBool};
+use tokio::sync::oneshot;
 
 pub fn readable(value: &str) -> String {
     let mut text = String::with_capacity(value.len());
@@ -34,64 +34,49 @@ pub fn phrase_len(value: &str, complete: bool) -> Option<usize> {
 }
 
 #[cfg(target_os = "macos")]
-pub async fn speak(text: String, language: String, cancel: Arc<AtomicBool>) -> Result<(), String> {
-    use std::{process::Stdio, sync::atomic::Ordering, time::Duration};
+pub async fn speak(
+    text: String,
+    language: String,
+    mut cancel: oneshot::Receiver<()>,
+) -> Result<(), String> {
+    use objc2_avf_audio::AVSpeechSynthesisVoice;
+    use objc2_foundation::NSString;
+    use std::process::Stdio;
     use tokio::{io::AsyncWriteExt, process::Command};
-    async fn play(text: String, language: String, cancel: Arc<AtomicBool>) -> std::io::Result<()> {
-        let voices = Command::new("/usr/bin/say")
-            .args(["-v", "?"])
-            .output()
-            .await?;
-        let list = String::from_utf8_lossy(&voices.stdout);
-        let language = language.replace('-', "_");
-        let primary = language.split('_').next().expect("speech language");
-        let mut matches = list.lines().filter_map(|line| {
-            let (name_locale, _) = line.split_once('#')?;
-            let (name, locale) = name_locale.trim_end().rsplit_once(' ')?;
-            (locale.split('_').next() == Some(primary)).then_some((name.trim(), locale))
-        });
-        let voice = matches
-            .clone()
-            .find(|(_, locale)| *locale == language)
-            .or_else(|| matches.next());
-        let Some((voice, _)) = voice else {
-            return Err(std::io::Error::other("当前语言没有本机播报音色"));
-        };
-        if cancel.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        let mut child = Command::new("/usr/bin/say")
-            .args(["-v", voice, "-f", "-"])
-            .stdin(Stdio::piped())
-            .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .spawn()?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(text.as_bytes()).await?;
-        }
-        loop {
-            if cancel.load(Ordering::Acquire) {
-                child.kill().await?;
-                return Ok(());
-            }
-            if let Some(status) = child.try_wait()? {
-                return if status.success() {
-                    Ok(())
-                } else {
-                    Err(std::io::Error::other("本机播报失败"))
-                };
-            }
-            tokio::time::sleep(Duration::from_millis(40)).await;
-        }
+    let voice =
+        unsafe { AVSpeechSynthesisVoice::voiceWithLanguage(Some(&NSString::from_str(&language))) }
+            .map(|v| unsafe { v.name() }.to_string());
+    let mut command = Command::new("/usr/bin/say");
+    if let Some(voice) = voice {
+        command.args(["-v", &voice]);
     }
-    play(text, language, cancel)
+    let mut speech = command
+        .args(["-f", "-"])
+        .stdin(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let mut input = speech.stdin.take().expect("piped speech input");
+    input
+        .write_all(text.as_bytes())
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    drop(input);
+    tokio::select! {
+        result = speech.wait() => {
+            if result.map_err(|e| e.to_string())?.success() { Ok(()) } else { Err("本机播报失败".into()) }
+        }
+        _ = &mut cancel => speech.kill().await.map_err(|e| e.to_string()),
+    }
 }
 
 #[cfg(windows)]
-pub async fn speak(text: String, language: String, cancel: Arc<AtomicBool>) -> Result<(), String> {
-    use std::sync::atomic::Ordering;
+pub async fn speak(
+    text: String,
+    language: String,
+    mut cancel: oneshot::Receiver<()>,
+) -> Result<(), String> {
+    use tokio::sync::oneshot::error::TryRecvError;
     use windows::{
         Win32::{
             Foundation::VARIANT_TRUE,
@@ -130,11 +115,10 @@ pub async fn speak(text: String, language: String, cancel: Arc<AtomicBool>) -> R
             let voices =
                 unsafe { engine.GetVoices(&BSTR::from(format!("Language={lang}")), &BSTR::new()) }
                     .map_err(|error| error.to_string())?;
-            if unsafe { voices.Count() }.map_err(|error| error.to_string())? == 0 {
-                return Err("当前语言没有本机播报音色".into());
+            if unsafe { voices.Count() }.map_err(|error| error.to_string())? > 0 {
+                let voice = unsafe { voices.Item(0) }.map_err(|error| error.to_string())?;
+                unsafe { engine.putref_Voice(&voice) }.map_err(|error| error.to_string())?;
             }
-            let voice = unsafe { voices.Item(0) }.map_err(|error| error.to_string())?;
-            unsafe { engine.putref_Voice(&voice) }.map_err(|error| error.to_string())?;
             unsafe {
                 engine.Speak(
                     &BSTR::from(text),
@@ -142,10 +126,10 @@ pub async fn speak(text: String, language: String, cancel: Arc<AtomicBool>) -> R
                 )
             }
             .map_err(|error| error.to_string())?;
-            while unsafe { engine.WaitUntilDone(40) }.map_err(|error| error.to_string())?
+            while unsafe { engine.WaitUntilDone(20) }.map_err(|error| error.to_string())?
                 != VARIANT_TRUE
             {
-                if cancel.load(Ordering::Acquire) {
+                if cancel.try_recv() != Err(TryRecvError::Empty) {
                     unsafe {
                         engine.Speak(
                             &BSTR::new(),
@@ -169,7 +153,7 @@ pub async fn speak(text: String, language: String, cancel: Arc<AtomicBool>) -> R
 pub async fn speak(
     _text: String,
     _language: String,
-    _cancel: Arc<AtomicBool>,
+    _cancel: oneshot::Receiver<()>,
 ) -> Result<(), String> {
     Err("当前系统没有本机语音播报服务".into())
 }

@@ -210,6 +210,13 @@ impl Phone {
             }
         }
         let receipt = self.wait_boot(stop).await?;
+        #[cfg(target_os = "macos")]
+        if self.plan.engine == Engine::Avo {
+            tokio::select! {
+                result = super::avo::prepare_wifi(&self.plan) => result?,
+                _ = stop.changed() => return Err(Error::Cancelled),
+            }
+        }
         #[cfg(windows)]
         if self.plan.engine == Engine::Whpx {
             super::windows_cuttlefish::stage_audio(&self.plan).await?;

@@ -55,9 +55,36 @@ fn capture(
     cancel: &AtomicBool,
     events: &tokio::sync::mpsc::Sender<Event>,
 ) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use block2::RcBlock;
+        use objc2::runtime::Bool;
+        use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
+        let media = unsafe { AVMediaTypeAudio }.expect("macOS audio media type");
+        let granted = match unsafe { AVCaptureDevice::authorizationStatusForMediaType(media) } {
+            AVAuthorizationStatus::Authorized => true,
+            AVAuthorizationStatus::NotDetermined => {
+                let (answer, result) = mpsc::channel();
+                let reply = RcBlock::new(move |allowed: Bool| {
+                    let _ = answer.send(allowed.as_bool());
+                });
+                unsafe {
+                    AVCaptureDevice::requestAccessForMediaType_completionHandler(media, &reply)
+                };
+                result.recv().map_err(|e| e.to_string())?
+            }
+            _ => false,
+        };
+        if !granted {
+            return Err("麦克风权限未开启".into());
+        }
+    }
+    if cancel.load(Ordering::Acquire) {
+        return Ok(());
+    }
     let device = cpal::default_host()
         .default_input_device()
-        .ok_or("无法读取麦克风")?;
+        .ok_or("未检测到系统麦克风")?;
     let supported = device.default_input_config().map_err(|error| {
         eprintln!("native microphone configuration: {error}");
         "无法读取麦克风"
@@ -73,9 +100,14 @@ fn capture(
         SampleFormat::F32 => stream::<f32>(&device, &config, sender),
         SampleFormat::F64 => stream::<f64>(&device, &config, sender),
         SampleFormat::I16 => stream::<i16>(&device, &config, sender),
+        SampleFormat::I24 => stream::<cpal::I24>(&device, &config, sender),
         SampleFormat::U16 => stream::<u16>(&device, &config, sender),
         SampleFormat::I32 => stream::<i32>(&device, &config, sender),
         SampleFormat::U32 => stream::<u32>(&device, &config, sender),
+        SampleFormat::I8 => stream::<i8>(&device, &config, sender),
+        SampleFormat::U8 => stream::<u8>(&device, &config, sender),
+        SampleFormat::I64 => stream::<i64>(&device, &config, sender),
+        SampleFormat::U64 => stream::<u64>(&device, &config, sender),
         _ => return Err(format!("麦克风采样格式不支持：{format}")),
     }?;
     stream.play().map_err(|error| {
@@ -113,9 +145,6 @@ where
 {
     let channels = usize::from(config.channels);
     let rate = config.sample_rate.0;
-    if rate < RATE {
-        return Err("麦克风采样率低于 16 kHz".into());
-    }
     let errors = sender.clone();
     let mut numerator = 0;
     let mut sum = 0.0;
@@ -140,17 +169,20 @@ where
                     count += 1;
                     numerator += RATE;
                     if numerator >= rate {
-                        numerator -= rate;
-                        frame[write] = (sum / count as f32).to_sample::<i16>();
+                        let sample = (sum / count as f32).to_sample::<i16>();
                         sum = 0.0;
                         count = 0;
-                        write += 1;
-                        if write == FRAME {
-                            if sender.try_send(Ok(frame)).is_err() {
-                                overrun = true;
-                                break;
+                        while numerator >= rate {
+                            numerator -= rate;
+                            frame[write] = sample;
+                            write += 1;
+                            if write == FRAME {
+                                if sender.try_send(Ok(frame)).is_err() {
+                                    overrun = true;
+                                    return;
+                                }
+                                write = 0;
                             }
-                            write = 0;
                         }
                     }
                 }
@@ -170,7 +202,7 @@ where
 #[derive(Default)]
 struct Segment {
     samples: Vec<i16>,
-    before: Vec<i16>,
+    before: Option<Frame>,
     id: String,
     revision: u32,
     quiet: usize,
@@ -194,11 +226,11 @@ impl Segment {
             self.floor = self.floor * 0.95 + level * 0.05;
         }
         if self.samples.is_empty() && !voiced {
-            self.before = frame.to_vec();
+            self.before = Some(frame);
             return Ok(None);
         }
-        if self.samples.is_empty() {
-            self.samples.append(&mut self.before);
+        if let Some(before) = self.before.take() {
+            self.samples.extend_from_slice(&before);
         }
         self.samples.extend_from_slice(&frame);
         let rate = RATE as usize;
@@ -212,7 +244,7 @@ impl Segment {
             }
             return Ok(None);
         }
-        let final_text = self.quiet >= rate * 65 / 100 || self.samples.len() >= rate * 28;
+        let final_text = self.quiet >= rate / 2 || self.samples.len() >= rate * 28;
         let heard = self.samples.len() - self.quiet;
         if !final_text && heard < self.decoded + rate / 2 {
             return Ok(None);

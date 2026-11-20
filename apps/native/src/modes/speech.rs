@@ -44,7 +44,7 @@ struct Reply {
 pub struct Copilot {
     session: String,
     input: Option<Arc<AtomicBool>>,
-    speaking: Option<(u64, Arc<AtomicBool>)>,
+    speaking: Option<(u64, tokio::sync::oneshot::Sender<()>)>,
     speech_index: u64,
     language: String,
     target: Option<Target>,
@@ -62,7 +62,7 @@ impl Copilot {
         self.input.is_some()
     }
     pub fn visual(&self) -> f32 {
-        if !self.active() {
+        if !self.ready {
             0.
         } else if self.target.is_some() {
             2.
@@ -113,7 +113,7 @@ impl Copilot {
         }
         self.ready = false;
         self.target = None;
-        self.cancel_playback();
+        self.speaking = None;
         self.replies.clear();
         self.recovered = std::mem::take(&mut self.transcript);
     }
@@ -133,7 +133,7 @@ impl Copilot {
                 return self.pump();
             }
             Event::Speech(id) => {
-                self.cancel_playback();
+                self.speaking = None;
                 for reply in self.replies.values_mut() {
                     reply.interrupted = true;
                     reply.offset = reply.text.len();
@@ -218,11 +218,6 @@ impl Copilot {
         }
         self.pump()
     }
-    fn cancel_playback(&mut self) {
-        if let Some((_, cancel)) = self.speaking.take() {
-            cancel.store(true, Ordering::Release);
-        }
-    }
     fn pump(&mut self) -> Task<Message> {
         while let Some((&ordinal, reply)) = self.replies.first_key_value() {
             if !reply.complete || reply.offset < reply.text.len() {
@@ -249,8 +244,8 @@ impl Copilot {
             }
             self.speech_index += 1;
             let index = self.speech_index;
-            let cancel = Arc::new(AtomicBool::new(false));
-            self.speaking = Some((index, cancel.clone()));
+            let (stop, cancel) = tokio::sync::oneshot::channel();
+            self.speaking = Some((index, stop));
             return Task::perform(
                 speaker::speak(phrase.to_owned(), self.language.clone(), cancel),
                 move |result| Message::Spoken(index, result),

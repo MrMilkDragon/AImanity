@@ -387,10 +387,14 @@ async fn send_input(
         if attachments.len() != files.len() || total > 12*1024*1024 || attachments.iter().any(|r|r.get::<i64,_>("size_bytes") < 0) {
             return Err(sqlx::Error::Protocol("invalid_attachments".into()));
         }
-        sqlx::query("UPDATE runs SET status='canceled',error='用户新指令优先',finished_at=now(),next_wake_at=NULL WHERE conversation_id=$1 AND origin IN ('exploration','notification') AND status IN ('queued','running','paused')").bind(id).execute(&mut *tx).await?;
+        let active = sqlx::query("SELECT id,status,agent_id FROM runs WHERE conversation_id=$1 AND
+            ((origin='user' AND status IN ('queued','running','paused'))
+             OR ($2 AND origin='notification' AND status='running' AND NOT background_read_only))
+            ORDER BY (origin='user') DESC,created_at,id LIMIT 1 FOR UPDATE")
+            .bind(id).bind(voice.is_some() && goal_revision.is_none()).fetch_optional(&mut *tx).await?;
+        sqlx::query("UPDATE runs SET status='canceled',error='用户新指令优先',finished_at=now(),next_wake_at=NULL WHERE conversation_id=$1 AND origin IN ('exploration','notification') AND status IN ('queued','running','paused') AND id IS DISTINCT FROM $2")
+            .bind(id).bind(active.as_ref().map(|r| r.get::<Uuid,_>("id"))).execute(&mut *tx).await?;
         sqlx::query("UPDATE phone_notifications SET status='pending-summary' WHERE status='assigned' AND run_id IN(SELECT id FROM runs WHERE conversation_id=$1 AND origin='notification' AND status='canceled' AND NOT background_finalized)").bind(id).execute(&mut *tx).await?;
-        let active = sqlx::query("SELECT id,status,agent_id FROM runs WHERE conversation_id=$1 AND origin='user' AND status IN ('queued','running','paused') FOR UPDATE")
-            .bind(id).fetch_optional(&mut *tx).await?;
         if goal_revision.is_some()
             && active.as_ref().is_some_and(|row| Some(row.get::<Uuid,_>("id")) != goal_run)
         {
@@ -1149,6 +1153,26 @@ mod steering_tests {
             assert_eq!(wire::ChatState::decode(compact.as_slice()).unwrap().messages.len(), 1);
             assert!(compact.len() < full.len());
             println!("100 historical messages: full response {} bytes, receipt {} bytes", full.len(), compact.len());
+
+            let editing: Uuid = sqlx::query_scalar("UPDATE runs SET status='running',origin='notification' WHERE request_id=$1 RETURNING id")
+                .bind(Uuid::parse_str(&later.request_id).unwrap()).fetch_one(&app.db).await.unwrap();
+            let mut voice = wire::ChatSendRequest {
+                text: "把这一页的背景改成蓝色".into(), request_id: Uuid::new_v4().to_string(), receipt_only: true,
+                voice: Some(wire::ChatVoiceInput { session_id: Uuid::new_v4().to_string(), utterance_id: "background".into(),
+                    literal: "把这一页的背景改成蓝色".into(), revision: 1, ..Default::default() }), ..Default::default()
+            };
+            let (status, receipt) = submit(&app, &voice).await;
+            assert_eq!(status, StatusCode::ACCEPTED);
+            assert_eq!(wire::ChatState::decode(receipt.as_slice()).unwrap().run_id, editing.to_string());
+            let queue: Value = sqlx::query_scalar("SELECT steering FROM runs WHERE id=$1 AND status='running' AND origin='notification'")
+                .bind(editing).fetch_one(&app.db).await.unwrap();
+            assert!(queue[0]["input"].to_string().contains(&voice.text));
+            sqlx::query("UPDATE runs SET background_read_only=true WHERE id=$1").bind(editing).execute(&app.db).await.unwrap();
+            voice.request_id = Uuid::new_v4().to_string();
+            voice.voice.as_mut().unwrap().utterance_id = "next".into();
+            let (status, receipt) = submit(&app, &voice).await;
+            assert_eq!(status, StatusCode::ACCEPTED);
+            assert_ne!(wire::ChatState::decode(receipt.as_slice()).unwrap().run_id, editing.to_string());
         }).catch_unwind().await;
         drop(app);
         test_db.close().await;

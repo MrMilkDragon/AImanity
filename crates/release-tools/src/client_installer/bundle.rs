@@ -81,6 +81,11 @@ pub(super) fn assemble(
     let sign = |path: &Path| -> Result<()> {
         let mut command = Command::new("codesign");
         command.args(["--force", "--sign", &identity]);
+        if path == application {
+            command
+                .arg("--entitlements")
+                .arg(root.join("apps/native/entitlements.plist"));
+        }
         if signing == Signing::Release {
             command.arg("--timestamp");
             if path.extension().is_some_and(|ext| ext == "app") {

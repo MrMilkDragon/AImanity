@@ -1,10 +1,4 @@
-use std::{
-    path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::path::Path;
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperError,
     WhisperState,
@@ -13,7 +7,6 @@ use whisper_rs::{
 #[derive(Debug)]
 pub enum Error {
     UnsupportedLanguage,
-    Cancelled,
     Engine(WhisperError),
 }
 
@@ -21,7 +14,6 @@ impl std::fmt::Display for Error {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnsupportedLanguage => formatter.write_str("本机识别不支持此语言"),
-            Self::Cancelled => formatter.write_str("本机识别已取消"),
             Self::Engine(error) => write!(formatter, "本机识别失败：{error}"),
         }
     }
@@ -38,7 +30,6 @@ impl From<WhisperError> for Error {
 pub struct LocalSpeech {
     state: WhisperState,
     language: &'static str,
-    cancelled: Arc<AtomicBool>,
 }
 
 impl LocalSpeech {
@@ -55,22 +46,11 @@ impl LocalSpeech {
         parameters.use_gpu(false);
         let context = WhisperContext::new_with_params(model_path, parameters)?;
         let state = context.create_state()?;
-        Ok(Self {
-            state,
-            language,
-            cancelled: Arc::new(AtomicBool::new(false)),
-        })
-    }
-
-    pub fn cancel_handle(&self) -> Arc<AtomicBool> {
-        Arc::clone(&self.cancelled)
+        Ok(Self { state, language })
     }
 
     /// Accepts 16 kHz mono signed PCM16. The loaded model and state are reused.
     pub fn transcribe(&mut self, samples: &[i16]) -> Result<String, Error> {
-        if self.cancelled.load(Ordering::Acquire) {
-            return Err(Error::Cancelled);
-        }
         let audio: Vec<f32> = samples
             .iter()
             .map(|sample| f32::from(*sample) / 32768.0)
@@ -85,14 +65,10 @@ impl LocalSpeech {
         parameters.set_print_progress(false);
         parameters.set_print_realtime(false);
         parameters.set_print_timestamps(false);
-        let result = self.state.full(parameters, &audio);
-        if self.cancelled.load(Ordering::Acquire) {
-            return Err(Error::Cancelled);
-        }
-        result?;
+        self.state.full(parameters, &audio)?;
         let mut transcript = String::new();
         for segment in self.state.as_iter() {
-            transcript.push_str(segment.to_str()?);
+            transcript.push_str(&segment.to_str_lossy()?);
         }
         Ok(transcript.trim().to_owned())
     }

@@ -1,4 +1,6 @@
 {
+  "未检测到系统麦克风": "Aucun microphone système détecté",
+  "麦克风权限未开启": "Accès au microphone refusé",
   "更新可用": "Mise à jour disponible",
   "下载更新": "Téléchargement de la mise à jour",
   "安装并重启": "Installer et redémarrer",

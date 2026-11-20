@@ -118,13 +118,14 @@ impl Rpc {
             .send()
             .await
             .map_err(|_| Error("device_setup_response_unknown"))?;
-        if response.status() != reqwest::StatusCode::OK
-            || response
-                .headers()
-                .get("content-type")
-                .and_then(|h| h.to_str().ok())
-                != Some(MEDIA)
+        let status = response.status();
+        if response
+            .headers()
+            .get("content-type")
+            .and_then(|h| h.to_str().ok())
+            != Some(MEDIA)
         {
+            eprintln!("Device setup POST {route} returned HTTP {status} without protobuf");
             return Err(Error("device_setup_response_rejected"));
         }
         if response
@@ -144,6 +145,14 @@ impl Rpc {
             }
             bytes.extend_from_slice(&chunk);
         }
-        Ok(bytes)
+        if status == reqwest::StatusCode::OK {
+            Ok(bytes)
+        } else {
+            let code = crate::wire::ApiError::decode(bytes.as_slice())
+                .map(|error| error.code)
+                .unwrap_or_default();
+            eprintln!("Device setup POST {route} returned HTTP {status} {code}");
+            Err(Error("device_setup_response_rejected"))
+        }
     }
 }

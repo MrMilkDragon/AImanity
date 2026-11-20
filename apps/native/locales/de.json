@@ -1,4 +1,6 @@
 {
+  "未检测到系统麦克风": "Kein Systemmikrofon erkannt",
+  "麦克风权限未开启": "Mikrofonzugriff verweigert",
   "更新可用": "Update verfügbar",
   "下载更新": "Update wird geladen",
   "安装并重启": "Installieren und neu starten",
