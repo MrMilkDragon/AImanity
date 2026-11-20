@@ -10,9 +10,9 @@ until DISPLAY=:0 xdpyinfo >/dev/null 2>&1; do sleep .2; done
 cat > /usr/local/bin/ai-phone-browser <<'BROWSER'
 #!/bin/sh
 if [ -n "${HTTPS_PROXY:-}" ]; then
-  exec chromium --user-data-dir=/home/ai/.config/ai-phone-browser --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-sandbox --disable-dev-shm-usage --proxy-server="$HTTPS_PROXY" "$@"
+  set -- "--proxy-server=$HTTPS_PROXY" "$@"
 fi
-exec chromium --user-data-dir=/home/ai/.config/ai-phone-browser --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-sandbox --disable-dev-shm-usage "$@"
+exec chromium --gtk-version=4 --user-data-dir=/home/ai/.config/ai-phone-browser --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --no-sandbox --disable-dev-shm-usage "$@"
 BROWSER
 chmod +x /usr/local/bin/ai-phone-browser
 mkdir -p /tmp/ai-runtime /tmp/ai-cache
@@ -21,6 +21,9 @@ chmod 700 /tmp/ai-runtime
 rm -f /tmp/ai-runtime/dbus-address
 export XDG_RUNTIME_DIR=/tmp/ai-runtime
 export XDG_CACHE_HOME=/tmp/ai-cache
+export XDG_SESSION_TYPE=x11
+export GSK_RENDERER=cairo
+export GVFS_REMOTE_VOLUME_MONITOR_IGNORE=1
 export PULSE_SERVER=unix:/tmp/ai-runtime/pulse/native
 runuser -u ai -- /usr/local/bin/desktop-bridge location-serve >/tmp/ai-location.log 2>&1 &
 exec runuser -u ai -- dbus-run-session sh -c '
@@ -28,6 +31,7 @@ exec runuser -u ai -- dbus-run-session sh -c '
   gsettings set org.gnome.desktop.interface toolkit-accessibility true
   dunst -config /etc/xdg/dunst/dunstrc >/tmp/ai-notifications.log 2>&1 &
   /usr/local/bin/desktop-bridge audio-supervise >/tmp/ai-audio.log 2>&1 &
+  xcompmgr -n &
   openbox &
   pcmanfm --desktop &
   tint2 &

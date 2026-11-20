@@ -4,6 +4,13 @@ config=${XDG_CONFIG_HOME:-"$HOME/.config"}
 pcmanfm="$config/pcmanfm"
 desktop_style="$pcmanfm/default/desktop-items-0.conf"
 mkdir -p "$HOME/Files" "$HOME/Desktop" "$HOME/Templates" "$config/libfm" "$pcmanfm/default" "$config/tint2"
+if [ ! -e "$config/user-dirs.dirs" ]; then
+  printf '%s\n' 'XDG_DESKTOP_DIR="$HOME/Desktop"' 'XDG_DOCUMENTS_DIR="$HOME/Files"' 'XDG_TEMPLATES_DIR="$HOME/Templates"' > "$config/user-dirs.dirs"
+fi
+if [ ! -e "$config/gtk-3.0/bookmarks" ]; then
+  mkdir -p "$config/gtk-3.0"
+  printf 'file:///home/ai/Files\n' > "$config/gtk-3.0/bookmarks"
+fi
 
 if [ -f "$pcmanfm/.ai-phone-style-v1" ]; then
   if cmp -s "$desktop_style" - <<'STYLE'

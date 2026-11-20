@@ -108,6 +108,16 @@ fn install(root: &Path, target: &Path, arch: &str) -> Result<()> {
             .chain(DESKTOP_PACKAGES.split_ascii_whitespace()),
     )?;
     execute(chroot(target, "/bin/sh").args(["-ec", OPENBOX_SETUP]))?;
+    execute(
+        Command::new("cp")
+            .arg("-R")
+            .arg(root.join("infra/desktop/appearance/."))
+            .arg(target),
+    )?;
+    execute(chroot(target, "/bin/sh").args([
+        "-ec",
+        include_str!("../../../infra/desktop/install-appearance.sh"),
+    ]))?;
     execute(chroot(target, "/usr/bin/apt-get").arg("clean"))?;
     fs::remove_file(target.join("usr/sbin/policy-rc.d"))?;
     fs::remove_dir_all(target.join("var/lib/apt/lists"))?;
@@ -139,16 +149,6 @@ fn install(root: &Path, target: &Path, arch: &str) -> Result<()> {
         fs::Permissions::from_mode(0o440),
     )?;
 
-    execute(
-        Command::new("cp")
-            .arg("-R")
-            .arg(root.join("infra/desktop/appearance/."))
-            .arg(target),
-    )?;
-    execute(chroot(target, "/bin/sh").args([
-        "-ec",
-        include_str!("../../../infra/desktop/install-appearance.sh"),
-    ]))?;
     for (source, destination) in [
         ("LICENSE", "usr/share/doc/ai-phone/LICENSE"),
         ("NOTICE", "usr/share/doc/ai-phone/NOTICE"),
@@ -184,7 +184,17 @@ fn install(root: &Path, target: &Path, arch: &str) -> Result<()> {
         "desktop-bridge",
         target.join("usr/local/bin/desktop-notification-record"),
     )?;
-    execute(chroot(target, "/bin/sh").args(["-ec", "! command -v python3 && ! command -v python && test -x /usr/bin/localc && test -x /usr/bin/lowriter && test -x /usr/bin/loimpress && test -x /usr/bin/lodraw && test \"$(xdg-mime query default text/plain)\" = org.xfce.mousepad.desktop && test \"$(xdg-mime query default text/markdown)\" = org.xfce.mousepad.desktop"]))?;
+    execute(chroot(target, "/bin/sh").args([
+        "-ec",
+        r#"
+            if command -v python3 || command -v python; then exit 1; fi
+            for app in localc lowriter loimpress lodraw; do test -x "/usr/bin/$app"; done
+            test "$(xdg-mime query default inode/directory)" = org.gnome.Nautilus.desktop
+            for mime in text/plain text/markdown; do
+                test "$(xdg-mime query default "$mime")" = org.gnome.TextEditor.desktop
+            done
+        "#,
+    ]))?;
     Ok(())
 }
 

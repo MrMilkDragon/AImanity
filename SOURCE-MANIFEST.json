@@ -143,8 +143,8 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 14524,
-      "sha256": "f86f3adbbc8a89988c1b69ba552fee796780fef3cab4893f7a32df47a2bc6488"
+      "size": 15026,
+      "sha256": "cc01300d555ea645752aa241e625ee4850a61c480463d9e919f0ef7b9c3365e1"
     },
     {
       "path": "ai-phone",
@@ -2298,8 +2298,8 @@
     },
     {
       "path": "crates/release-tools/src/linux_rootfs.rs",
-      "size": 8611,
-      "sha256": "7ea19df90df11ed0928ddf6c39fe1a044cc1be00797db71233d12297b4ed289d"
+      "size": 8743,
+      "sha256": "40385ded8f05cf56cab82195316b6c803d1c196e1cb8e0a277eba5230148af64"
     },
     {
       "path": "crates/release-tools/src/macos_factory.rs",
@@ -2523,8 +2523,8 @@
     },
     {
       "path": "docs/public/engineering/linux-image-runtime.md",
-      "size": 1830,
-      "sha256": "11e92a7cd881a2ed0d2ba9affea53d59a8f1688292868f679c1debccaa6529a4"
+      "size": 2455,
+      "sha256": "a6496010056af17513d114a88c6ca6d020e5eafc8b0a3ae4703b470b8ebef891"
     },
     {
       "path": "docs/public/engineering/linux-offline-ocr.md",
@@ -3183,8 +3183,13 @@
     },
     {
       "path": "infra/desktop/appearance/etc/gtk-3.0/settings.ini",
-      "size": 84,
-      "sha256": "970a595aa25cabaaa69594903487bf7b0b30427e77a4f81ec42095492af0ee78"
+      "size": 212,
+      "sha256": "d6d6d7dce27cd1d1071eb065877dc02ebbd0d78f826e433051b0098a76ad9b40"
+    },
+    {
+      "path": "infra/desktop/appearance/etc/gtk-4.0/settings.ini",
+      "size": 110,
+      "sha256": "c5679d9aeb7c83b97eee821bf6ed2258818e2fe01128d039908923d9cbfa38aa"
     },
     {
       "path": "infra/desktop/appearance/etc/xdg/pcmanfm/default/desktop-items-0.conf",
@@ -3195,6 +3200,11 @@
       "path": "infra/desktop/appearance/etc/xdg/pcmanfm/default/pcmanfm.conf",
       "size": 241,
       "sha256": "4d994f168ff373c8e1159ee44e981fe266a449595d48a1c0f0a63af9ca64ec9f"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/lib/libreoffice/share/registry/europium.xcd",
+      "size": 1292,
+      "sha256": "4317dada84e235b8ca3c5593645508771bdf4628d73ce54b00f156ca42716487"
     },
     {
       "path": "infra/desktop/appearance/usr/local/share/aimanity/europium.jpg",
@@ -3213,13 +3223,38 @@
     },
     {
       "path": "infra/desktop/appearance/usr/local/share/applications/aimanity-work-files.desktop",
-      "size": 369,
-      "sha256": "1a9c2c078e6cea59cadb54a4c843decb958b24f035d44f52c8048c2fdb9ccdba"
+      "size": 382,
+      "sha256": "4686479686f256d531ef5564e3eb0da6ca0981278997a01ad2dd28a89285116e"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/share/glib-2.0/schemas/60-aimanity-desktop.gschema.override",
+      "size": 439,
+      "sha256": "7b59b65f80453c9b0913a144493e8ba3ae901918a5a735c3eb37985750aafbaa"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/share/themes/Europium/openbox-3/close.xbm",
+      "size": 235,
+      "sha256": "171e1fd23f79ab446b37b0506bb6d244390b6947906a02cc748016c4da06258b"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/share/themes/Europium/openbox-3/iconify.xbm",
+      "size": 241,
+      "sha256": "d223c0967037fd0531e99d654f2300610e5d6cf04105063efc2ae7a615488aec"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/share/themes/Europium/openbox-3/max.xbm",
+      "size": 229,
+      "sha256": "9b5dd947441ff92e111f74dc01ec9ed965dc236e8f6f43b04955edeaa81a4427"
+    },
+    {
+      "path": "infra/desktop/appearance/usr/share/themes/Europium/openbox-3/max_toggled.xbm",
+      "size": 253,
+      "sha256": "2154e8fcfe3c095eb03577b1c7f63fb00644818b3a3d53721cde0a150ce38f6d"
     },
     {
       "path": "infra/desktop/appearance/usr/share/themes/Europium/openbox-3/themerc",
       "size": 1574,
-      "sha256": "fbb5ec98ab7dbb805e8766220b9abc6071bf7768057f584e077c2373be9120aa"
+      "sha256": "7d6b54470e701fdbcd64a3354ef43d9b449c8fc41ed28c6fd8b0e5a678cc253e"
     },
     {
       "path": "infra/desktop/dunstrc",
@@ -3228,13 +3263,13 @@
     },
     {
       "path": "infra/desktop/home-initialize.sh",
-      "size": 1857,
-      "sha256": "5b61ab02cdd4937380726c9d14b7e34a718038073d0153e6183196e924dee840"
+      "size": 2195,
+      "sha256": "900292052880e61281c0bfbaa0bcb373b6a4eae4a86ce92cba94c12638eb54b4"
     },
     {
       "path": "infra/desktop/install-appearance.sh",
-      "size": 668,
-      "sha256": "f876113c9aa9f48d33a9ba02167ae9a11ce9b2bbac17f9d24baaf714979f3e4e"
+      "size": 1248,
+      "sha256": "a6cf4119bd44733c3840f905374c1e02cf7935d94e2dc4fc60aeef2a50b8cb4c"
     },
     {
       "path": "infra/desktop/install-openbox.sh",
@@ -3243,18 +3278,18 @@
     },
     {
       "path": "infra/desktop/menu.xml",
-      "size": 1190,
-      "sha256": "494f6584932c81bcea3d21775283db97a11fdb1c9151400e6a8efc6a6137dfdc"
+      "size": 1200,
+      "sha256": "22d36c49025d3d3aac73a3cb5e540e86b436ccd4c003b84c921c7986a4b272dd"
     },
     {
       "path": "infra/desktop/mimeapps.list",
-      "size": 145,
-      "sha256": "5648dc16a9adc54ddc9a85aa3d6590fd29280df7bbbad34d47de0538236f6da4"
+      "size": 198,
+      "sha256": "19f7aba88c966f1eb4e396c2afb3289fdb50c8960b561cb9e18e6bafec317546"
     },
     {
       "path": "infra/desktop/packages.txt",
-      "size": 320,
-      "sha256": "5d5d58e0ad69cc84a1f7242cf659cab229c665ad5a629b361c2ea9eb71e0ac9a"
+      "size": 404,
+      "sha256": "a10c8f16ee8abd6c07e5543bf50461bc82a16b7d268b44362abd5c4c26ec5281"
     },
     {
       "path": "infra/desktop/pulse.pa",
@@ -3263,8 +3298,8 @@
     },
     {
       "path": "infra/desktop/start.sh",
-      "size": 1590,
-      "sha256": "8ef476a5aa98ba0195dda40ba60b6712ff64e34f16617532ef7aadc5532b7e6b"
+      "size": 1559,
+      "sha256": "ee208ebbbe70efb8c9e7600878ef4b5be13c43daa9624713fbffb3b84c289a67"
     },
     {
       "path": "infra/network/supervisor.sh",

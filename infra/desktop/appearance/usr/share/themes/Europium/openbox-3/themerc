@@ -1,25 +1,25 @@
 border.width: 1
 padding.width: 8
-padding.height: 5
+padding.height: 7
 window.handle.width: 0
 window.client.padding.width: 0
 window.label.text.justify: center
 window.active.border.color: #9ca9bc
 window.inactive.border.color: #b9c2d0
 window.*.title.bg: Flat Solid
-window.active.title.bg.color: #edf1f7
+window.active.title.bg.color: #f6f7f9
 window.inactive.title.bg.color: #f4f6f9
 window.*.label.bg: Parentrelative
 window.active.label.text.color: #202d40
 window.inactive.label.text.color: #596475
 window.*.button.*.bg: Parentrelative
-window.active.button.*.image.color: #34435a
+window.active.button.*.image.color: #374151
 window.inactive.button.*.image.color: #6a7587
 window.active.button.*.hover.bg: Flat Solid
 window.active.button.*.hover.bg.color: #cbd8eb
 window.active.button.*.pressed.bg: Flat Solid
 window.active.button.*.pressed.bg.color: #b0c4e2
-window.active.title.separator.color: #d3dce8
+window.active.title.separator.color: #dce0e6
 window.inactive.title.separator.color: #e0e4ea
 
 menu.border.width: 1

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<oor:data xmlns:oor="http://openoffice.org/2001/registry">
+  <dependency file="main"/>
+  <oor:component-data oor:name="ToolbarMode" oor:package="org.openoffice.Office.UI">
+    <prop oor:name="ActiveWriter"><value>notebookbar_compact.ui</value></prop>
+    <prop oor:name="ActiveCalc"><value>notebookbar_compact.ui</value></prop>
+    <prop oor:name="ActiveImpress"><value>notebookbar_compact.ui</value></prop>
+    <prop oor:name="ActiveDraw"><value>notebookbar_compact.ui</value></prop>
+    <node oor:name="Applications">
+      <node oor:name="Writer" oor:op="fuse"><prop oor:name="Active"><value>notebookbar_compact.ui</value></prop></node>
+      <node oor:name="Calc" oor:op="fuse"><prop oor:name="Active"><value>notebookbar_compact.ui</value></prop></node>
+      <node oor:name="Impress" oor:op="fuse"><prop oor:name="Active"><value>notebookbar_compact.ui</value></prop></node>
+      <node oor:name="Draw" oor:op="fuse"><prop oor:name="Active"><value>notebookbar_compact.ui</value></prop></node>
+    </node>
+  </oor:component-data>
+  <oor:component-data oor:name="Common" oor:package="org.openoffice.Office">
+    <node oor:name="Misc">
+      <prop oor:name="SymbolStyle"><value>breeze_svg</value></prop>
+    </node>
+  </oor:component-data>
+</oor:data>
