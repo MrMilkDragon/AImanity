@@ -1,222 +1,270 @@
-name: Desktop installer factory
-on:
-  workflow_dispatch:
-    inputs:
-      platform:
-        description: Complete offline installer
-        type: choice
-        options: [macos, windows]
-        required: true
-      android_draft_id:
-        description: Draft release ID in this private factory repository
-        type: string
-        required: true
-      android_payload_sha256:
-        description: SHA-256 of android-macos-arm64.payload or android-windows-x64.payload in the draft
-        type: string
-        required: true
+---
+name: Dysprosium signed Windows installer
+'on':
+  push:
+    branches:
+    - codex/dysprosium-release-build
+    paths:
+    - ".github/workflows/client-factory.yml"
 permissions:
   contents: read
   actions: read
-env:
-  AIMANITY_ANDROID_DRAFT_ID: ${{ inputs.android_draft_id }}
-  AIMANITY_ANDROID_PAYLOAD_SHA256: ${{ inputs.android_payload_sha256 }}
 concurrency:
-  group: installer-${{ inputs.platform }}-${{ github.ref }}
+  group: dysprosium-final-b2f99b4a9f7a
   cancel-in-progress: false
+env:
+  PRODUCT_SOURCE: b2f99b4a9f7acf2b10bdf802a01c4c3b981689db
+  CARGO_HTTP_MULTIPLEXING: 'false'
 jobs:
-  admit:
+  linux-final:
     runs-on: ubuntu-24.04
-    steps:
-      - name: Require a private build repository
-        env:
-          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
-        run: |
-          if [ "$REPOSITORY_PRIVATE" != true ]; then
-            echo "::error::Run the installer factory in a private repository."
-            exit 1
-          fi
-
-  windows-qemu:
-    if: inputs.platform == 'windows'
-    needs: admit
-    uses: ./.github/workflows/windows-qemu.yml
-
-  windows-guest:
-    if: inputs.platform == 'windows'
-    needs: [admit, windows-qemu]
-    uses: ./.github/workflows/windows-guest.yml
-    with:
-      baseline_artifact: ${{ needs.windows-qemu.outputs.baseline }}
-
-  windows-exe:
-    needs: [windows-qemu, windows-guest]
-    runs-on: windows-2022
-    timeout-minutes: 90
-    permissions:
-      contents: write
-      actions: read
+    timeout-minutes: 120
+    outputs:
+      artifact: "${{ steps.handoff.outputs.artifact-id }}"
+      identity: "${{ steps.disk.outputs.sha256 }}"
     env:
-      CARGO_BUILD_JOBS: '2'
+      CARGO_BUILD_JOBS: '4'
       CARGO_INCREMENTAL: '0'
+      AI_PHONE_TEST_TESSERACT: "/usr/bin/tesseract"
       CARGO_HTTP_MULTIPLEXING: 'false'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - name: Locked build tools
-        shell: bash
-        run: |
-          cmake --version
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-      - name: Prepare Authenticode tools
-        shell: pwsh
-        run: |
-          & C:\msys64\usr\bin\bash.exe -lc 'pacman -Sy --needed --noconfirm mingw-w64-ucrt-x86_64-osslsigncode'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          'C:\msys64\ucrt64\bin' >> $env:GITHUB_PATH
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          github-token: ${{ github.token }}
-          artifact-ids: ${{ needs.windows-qemu.outputs.artifact }}
-          path: dist/windows-qemu
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          github-token: ${{ github.token }}
-          artifact-ids: ${{ needs.windows-guest.outputs.artifact }}
-          path: dist/windows-guest
-      - name: Fetch the sealed offline Android component
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: cargo run --quiet --locked -p ai-phone-release-tools -- factory-android
-      - name: Assemble and inspect the offline Windows EXE
-        env:
-          GH_TOKEN: ${{ github.token }}
-          QEMU_SHA256: ${{ needs.windows-qemu.outputs.identity }}
-          GUEST_SHA256: ${{ needs.windows-guest.outputs.identity }}
-        run: |
-          cargo run --locked -p ai-phone-release-tools -- windows-factory build dist/windows-qemu $env:QEMU_SHA256 dist/windows-guest/windows-guest.payload $env:GUEST_SHA256
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: complete-windows-installer
-          path: |
-            dist/AImanity-*-windows-x64-setup.exe
-            dist/AImanity-*-windows-x64-setup.exe.manifest.json
-            dist/windows-full-factory-report.json
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 2
-
-  native-arm-rootfs:
-    if: inputs.platform == 'macos'
-    needs: admit
-    runs-on: ubuntu-24.04-arm
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+        ref: "${{ env.PRODUCT_SOURCE }}"
+    - name: Set up the disposable Linux x64 builder
+      run: |
+        test "$RUNNER_ENVIRONMENT" = github-hosted
+        test "$(uname -m)" = x86_64
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "$ANDROID_HOME/ndk"
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential pkg-config libssl-dev cpio \
+          ca-certificates unzip e2fsprogs qemu-utils debootstrap zstd \
+          tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
+        rustup toolchain install 1.96.0 --profile minimal
+        rustup default 1.96.0
+        rustup target add aarch64-linux-android x86_64-linux-android
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: '14618520860'
+        path: "${{ runner.temp }}/windows-calcium-baseline"
+        github-token: "${{ github.token }}"
+        run-id: '44713087613'
+    - name: Build the amd64 filesystem and native offline assets
+      run: |
+        cargo build --quiet --locked -p ai-phone-release-tools --bin release-tools
+        keyring=$(scripts/stage-debian-keyring.sh "$RUNNER_TEMP/trixie-keyring")
+        sudo env AI_PHONE_DEBIAN_KEYRING="$keyring" \
+          "$PWD/target/debug/release-tools" factory-images rootfs amd64 "$RUNNER_TEMP/linux-rootfs.tar.zst"
+        sudo env AI_PHONE_DEBIAN_KEYRING="$keyring" \
+          "$PWD/target/debug/release-tools" windows-guest-assets "$RUNNER_TEMP/windows-guest-assets"
+    - name: Build the Linux release components
+      env:
+        GH_TOKEN: "${{ github.token }}"
+        AI_PHONE_DISPOSABLE_QUALIFICATION: '1'
+      run: |
+        CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$HOME=/build-user" \
+        CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_PROFILE_RELEASE_STRIP=debuginfo \
+          cargo build --release --locked -p ai-phone-guest-runtime --bin desktop-bridge
+        AI_PHONE_RELEASE_DESKTOP_BRIDGE="$PWD/target/release/desktop-bridge" \
+          target/debug/release-tools windows-release-context "$RUNNER_TEMP/windows-release-context" \
+            --linux-rootfs "$RUNNER_TEMP/linux-rootfs.tar.zst" --guest-assets "$RUNNER_TEMP/windows-guest-assets"
+    - name: Assemble the offline layer on the immutable Calcium guest disk
+      id: disk
+      run: |
+        guest=dist/windows-guest/windows-guest.payload
+        target/debug/release-tools windows-release \
+          "$RUNNER_TEMP/windows-calcium-baseline" "$RUNNER_TEMP/windows-release-context" "$guest"
+        guest_hash=$(sha256sum "$guest")
+        printf 'sha256=%s\n' "${guest_hash%% *}" >> "$GITHUB_OUTPUT"
+    - name: Transfer the sealed guest to the Windows builder
+      id: handoff
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: windows-guest
+        path: dist/windows-guest/windows-guest.payload
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 2
+  windows-exe:
+    runs-on: windows-2025
     timeout-minutes: 90
-    outputs:
-      artifact: ${{ steps.retain.outputs.artifact-id }}
-    env:
-      CARGO_BUILD_JOBS: '2'
-      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-      CC_aarch64_unknown_linux_musl: musl-gcc
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - name: Prepare isolated ARM64 builder
-        run: |
-          test "$RUNNER_ENVIRONMENT" = github-hosted
-          test "$(uname -m)" = aarch64
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/lib/android/sdk
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y debootstrap zstd musl-tools
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-          rustup target add aarch64-unknown-linux-musl
-      - name: Build shared Linux runtime and ARM64 guest helper
-        run: |
-          cargo build --locked -p ai-phone-release-tools
-          target/debug/release-tools source check --repository --manifest
-          CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$HOME=/build-user" \
-          CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_PROFILE_RELEASE_STRIP=debuginfo \
-            cargo build --release --locked -p ai-phone-guest-runtime --target aarch64-unknown-linux-musl --bin desktop-bridge
-          mkdir "$RUNNER_TEMP/mac-linux"
-          install -m 0755 target/aarch64-unknown-linux-musl/release/desktop-bridge "$RUNNER_TEMP/mac-linux/desktop-bridge"
-          keyring=$(scripts/stage-debian-keyring.sh "$RUNNER_TEMP/trixie-keyring")
-          sudo env AI_PHONE_DEBIAN_KEYRING="$keyring" target/debug/release-tools factory-images rootfs arm64 "$RUNNER_TEMP/mac-linux/linux-rootfs.tar.zst"
-          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/mac-linux/linux-rootfs.tar.zst"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        id: retain
-        with:
-          name: macos-linux-runtime
-          path: ${{ runner.temp }}/mac-linux/
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 2
-
-  full-macos-arm64:
-    if: inputs.platform == 'macos'
-    needs: native-arm-rootfs
-    runs-on: macos-26
-    timeout-minutes: 120
     permissions:
       contents: read
       actions: read
     env:
-      CARGO_BUILD_JOBS: '2'
+      CARGO_BUILD_JOBS: '4'
       CARGO_INCREMENTAL: '0'
-      HOMEBREW_NO_AUTO_UPDATE: '1'
+      CARGO_HTTP_MULTIPLEXING: 'false'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - name: Disposable Mac factory toolchain
-        run: |
-          set -euo pipefail
-          cmake --version
-          # This hosted job builds only macOS/ARM Linux, so no Android NDK is
-          # consumed. Reclaim only this disposable runner's unused compiler SDKs.
-          rm -rf "$ANDROID_HOME/ndk"
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-          rustup target add --toolchain 1.96.0 aarch64-linux-android x86_64-linux-android
-          brew update
-          brew install --force-bottle tesseract
-          cargo run --quiet --locked -p ai-phone-release-tools -- prepare-ocr-models --destination "$RUNNER_TEMP/aiphone-ocr-models"
-          echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
-          echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aiphone-ocr-models" >> "$GITHUB_ENV"
-          test -f "$ANDROID_HOME/platforms/android-35/android.jar"
-          df -h .
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          artifact-ids: ${{ needs.native-arm-rootfs.outputs.artifact }}
-          path: ${{ runner.temp }}/mac-linux
-      - name: Fetch the sealed offline Android component
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: cargo run --quiet --locked -p ai-phone-release-tools -- factory-android
-      - name: Build the complete Mac client
-        env:
-          GH_TOKEN: ${{ github.token }}
-          AI_PHONE_RELEASE_DESKTOP_BRIDGE: ${{ runner.temp }}/mac-linux/desktop-bridge
-        run: cargo run --quiet --locked -p ai-phone-release-tools -- macos-factory --compiler-sdk "$ANDROID_HOME" --linux-rootfs "$RUNNER_TEMP/mac-linux/linux-rootfs.tar.zst"
-      - name: Retain text qualification receipts
-        if: always() && hashFiles('dist/macos-full-factory-report.json') != ''
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: complete-macos-build-receipt
-          path: |
-            dist/macos-full-factory-report.json
-          if-no-files-found: error
-          retention-days: 14
-      - name: Retain the complete installer for maintainer delivery
-        if: always() && hashFiles('dist/AImanity-*-macos-arm64.dmg.manifest.json') != ''
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: complete-macos-installer
-          path: |
-            dist/AImanity-*-macos-arm64.dmg
-            dist/AImanity-*-macos-arm64.dmg.manifest.json
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 2
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+        ref: "${{ env.PRODUCT_SOURCE }}"
+    - name: Locked build tools
+      shell: bash
+      run: |
+        cmake --version
+        rustup toolchain install 1.96.0 --profile minimal
+        rustup default 1.96.0
+    - name: Prepare Authenticode tools
+      shell: pwsh
+      run: |
+        & C:\msys64\usr\bin\bash.exe -lc 'pacman -Sy --needed --noconfirm mingw-w64-ucrt-x86_64-osslsigncode'
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        'C:\msys64\ucrt64\bin' >> $env:GITHUB_PATH
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        github-token: "${{ github.token }}"
+        artifact-ids: '14618032626'
+        path: dist/windows-qemu
+        run-id: '44713087613'
+    - name: Extract the published AOSP guest for offline installation
+      env:
+        GH_TOKEN: "${{ github.token }}"
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
+        cargo build --quiet --locked -p ai-phone-release-tools --bin release-tools
+        $tool = Join-Path $PWD 'target/debug/release-tools.exe'
+        $base = (Get-Content 'config/windows-qemu.json' -Raw | ConvertFrom-Json).calcium_installer
+        $download = Join-Path $env:RUNNER_TEMP $base.file
+        curl.exe -fLsS --retry 3 -o $download $base.url
+        if ((Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant() -ne $base.sha256) { throw 'Calcium asset identity mismatch' }
+        $android = Join-Path $env:RUNNER_TEMP 'shipped-aosp'
+        & $tool windows-factory unpack . $download $android '{app}\host\android.payload'
+        $payload = Join-Path $android 'host/android.payload'
+        $digest = (Get-FileHash $payload -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($digest -ne '23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce') { throw 'Published AOSP component changed' }
+        Remove-Item -LiteralPath $download
+        "AIMANITY_ANDROID_PAYLOAD=$payload" >> $env:GITHUB_ENV
+        "AIMANITY_ANDROID_PAYLOAD_SHA256=$digest" >> $env:GITHUB_ENV
+      shell: pwsh
+    - name: Build the native Windows components while the Linux guest is prepared
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
+        cargo build --release --locked -p ai-phone-host-runtime --bin host-resources
+        $env:CARGO_ENCODED_RUSTFLAGS = "--remap-path-prefix=$env:USERPROFILE=/build-user" + [char]31 + '-Ctarget-feature=+crt-static'
+        $env:CARGO_TARGET_DIR = Join-Path $PWD 'apps/native/target'
+        cargo build --release --locked --target x86_64-pc-windows-msvc --manifest-path apps/native/Cargo.toml
+    - name: Receive the Linux guest from this build
+      shell: pwsh
+      env:
+        GH_TOKEN: "${{ github.token }}"
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
+        while ($true) {
+          $job = (gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/jobs" | ConvertFrom-Json).jobs | Where-Object name -eq 'linux-final'
+          if ($job.status -eq 'completed') {
+            if ($job.conclusion -ne 'success') { throw "Linux factory: $($job.conclusion)" }
+            break
+          }
+          Start-Sleep -Seconds 6
+        }
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        github-token: "${{ github.token }}"
+        path: dist/windows-guest
+        name: windows-guest
+    - name: Assemble and inspect the offline Windows EXE
+      env:
+        GH_TOKEN: "${{ github.token }}"
+        QEMU_SHA256: 6922ed48a5a895e09fbfd5c2d20236b137a8d07ea312bb4b55439ba8733020e8
+      run: |
+        $env:GUEST_SHA256 = (Get-FileHash 'dist/windows-guest/windows-guest.payload' -Algorithm SHA256).Hash.ToLowerInvariant()
+        cargo run --locked -p ai-phone-release-tools -- windows-factory build dist/windows-qemu $env:QEMU_SHA256 dist/windows-guest/windows-guest.payload $env:GUEST_SHA256
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: complete-windows-installer
+        path: |
+          dist/AImanity-*-windows-x64-setup.exe
+          dist/AImanity-*-windows-x64-setup.exe.manifest.json
+          dist/windows-full-factory-report.json
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 5
+      id: publish
+    outputs:
+      artifact: "${{ steps.publish.outputs.artifact-id }}"
+  exact-exe:
+    runs-on: windows-2025
+    timeout-minutes: 55
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+        ref: b2f99b4a9f7acf2b10bdf802a01c4c3b981689db
+    - name: Prepare acceptance tools
+      shell: pwsh
+      run: |
+        rustup toolchain install 1.96.0 --profile minimal
+        rustup default 1.96.0
+    - name: Choose a fresh installation volume
+      shell: pwsh
+      run: |
+        $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match '^[A-Z]:\\$' } | Sort-Object Free -Descending
+        $drives | ForEach-Object { 'Free on {0}: {1:N1} GiB' -f $_.Root, ($_.Free / 1GB) }
+        $os = Get-CimInstance Win32_OperatingSystem
+        '{0} build {1}, RAM {2:N1} GiB' -f $os.Caption, $os.BuildNumber, ($os.TotalVisibleMemorySize / 1MB)
+        $root = Join-Path $drives[0].Root "Dysprosium-QA-$env:GITHUB_RUN_ID"
+        $profile = Join-Path $root 'profile'
+        New-Item -ItemType Directory -Path $profile -Force | Out-Null
+        Add-Type -Name ShellFolders -Namespace Acceptance -MemberDefinition @'
+        [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, ExactSpelling = true)]
+        public static extern int SHSetKnownFolderPath(ref System.Guid folder, uint flags, System.IntPtr token, string path);
+        '@
+        $roaming = [Guid]'3eb685db-65f9-4cf6-a03a-e3ef65729f3d'
+        $redirect = [Acceptance.ShellFolders]::SHSetKnownFolderPath([ref] $roaming, 0, [IntPtr]::Zero, $profile)
+        if ($redirect -ne 0) { throw "Cannot redirect the runner's RoamingAppData: $redirect" }
+        if ([Environment]::GetFolderPath('ApplicationData') -ne $profile) {
+          throw 'The isolated Windows profile did not become the RoamingAppData known folder.'
+        }
+        "AIMANITY_QA_ROOT=$root" >> $env:GITHUB_ENV
+    - name: Get the signed native Windows candidate
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: "${{ needs.windows-exe.outputs.artifact }}"
+        github-token: "${{ github.token }}"
+        path: "${{ env.AIMANITY_QA_ROOT }}/candidate"
+    - name: Install and drive the real first-run desktop client
+      env:
+        AIMANITY_QA_SOURCE: b2f99b4a9f7acf2b10bdf802a01c4c3b981689db
+      shell: pwsh
+      run: |-
+        $ErrorActionPreference = 'Stop'
+        $PSNativeCommandUseErrorActionPreference = $true
+        $gui = Join-Path $PWD 'scripts/qualify-windows-window.ps1'
+        $press = @'
+          Start-Sleep -Milliseconds 200
+          if ([NativeQaInput]::GetForegroundWindow() -ne $handle) { throw "Foreground changed before the click." }
+          [NativeQaInput]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero)
+          try { Start-Sleep -Milliseconds 190 } finally { [NativeQaInput]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero) }
+        '@
+        $receipt = @'
+          Start-Sleep -Milliseconds 1300
+          (Capture "native-installation-post-click.png").Dispose()
+          $request = Join-Path $env:AIMANITY_QA_ROOT 'profile/dev.aimanity.native/host/request.json'
+          $acknowledged = [DateTime]::UtcNow.AddSeconds(15)
+          while (!(Test-Path -LiteralPath $request) -and [DateTime]::UtcNow -lt $acknowledged) { Start-Sleep -Milliseconds 250 }
+          if (!(Test-Path -LiteralPath $request)) { throw "Install click did not produce the isolated request.json. See the post-click screenshot." }
+          Write-Host "Native install request was committed."
+        '@
+        $windowScript = (Get-Content -Raw $gui).Replace('"fresh", "capture", "close"', '"fresh", "capture", "close", "diagnostic"').Replace('if ($Action -eq "capture") {', 'if ($Action -in @("capture", "diagnostic")) {').Replace('Capture "native-workbench.png"', 'Capture "native-$Action.png"')
+        $windowScript = $windowScript -replace '(?m)^  \[NativeQaInput\]::mouse_event\(2, 0, 0, 0, \[IntPtr\]::Zero\)\r?\n  Start-Sleep -Milliseconds 70\r?\n  \[NativeQaInput\]::mouse_event\(4, 0, 0, 0, \[IntPtr\]::Zero\)', $press
+        $windowScript = $windowScript.Replace('  Write-Host "Native GUI selected English and activated the visually verified install button."', $receipt)
+        Set-Content -LiteralPath $gui -Value $windowScript -Encoding utf8
+
+        try { cargo run --release --locked -p ai-phone-host-runtime --bin qualify-windows-installer } finally { $file=Join-Path $env:AIMANITY_QA_ROOT 'native.log'; if (Test-Path $file) { Get-Content $file -Tail 100 } }
+    - name: Retain isolated startup screenshots
+      if: failure()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: native-startup-screenshot
+        path: "${{ env.AIMANITY_QA_ROOT }}/native-*.png"
+        if-no-files-found: warn
+        retention-days: 2
+    needs: windows-exe
