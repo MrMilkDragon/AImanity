@@ -1,4 +1,13 @@
 {
+  "待办": "À faire",
+  "暂无待办": "Aucune tâche en attente",
+  "主线任务": "Tâche principale",
+  "通知": "Notification",
+  "设备协作": "Relais entre appareils",
+  "执行中": "En cours",
+  "待办已变化": "La liste des tâches a changé",
+  "本机 Agent 服务已断开": "Agent local déconnecté",
+  "连接应用服务已断开": "Service de messagerie déconnecté",
   "未检测到系统麦克风": "Aucun microphone système détecté",
   "麦克风权限未开启": "Accès au microphone refusé",
   "更新可用": "Mise à jour disponible",

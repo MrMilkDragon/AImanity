@@ -58,6 +58,7 @@ mod run_signals;
 mod settings;
 mod setup;
 mod speech;
+mod todos;
 mod tool_catalog;
 mod voice_input;
 mod workbench;

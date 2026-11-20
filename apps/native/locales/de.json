@@ -1,4 +1,13 @@
 {
+  "待办": "Aufgaben",
+  "暂无待办": "Keine offenen Aufgaben",
+  "主线任务": "Hauptaufgabe",
+  "通知": "Mitteilung",
+  "设备协作": "Geräteübergabe",
+  "执行中": "Läuft",
+  "待办已变化": "Die Aufgabenliste hat sich geändert",
+  "本机 Agent 服务已断开": "Lokaler Agent getrennt",
+  "连接应用服务已断开": "Nachrichtendienst getrennt",
   "未检测到系统麦克风": "Kein Systemmikrofon erkannt",
   "麦克风权限未开启": "Mikrofonzugriff verweigert",
   "更新可用": "Update verfügbar",

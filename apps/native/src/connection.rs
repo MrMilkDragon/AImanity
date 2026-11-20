@@ -117,7 +117,18 @@ impl Connection {
             .body(input.encode_to_vec())
             .send()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| {
+                if error.is_connect() {
+                    match port {
+                        17862 => "手机连接中断",
+                        17864 => "连接应用服务已断开",
+                        _ => "本机 Agent 服务已断开",
+                    }
+                    .to_owned()
+                } else {
+                    error.without_url().to_string()
+                }
+            })?;
         let status = response.status();
         let bytes = response.bytes().await.map_err(|e| e.to_string())?;
         if !route.ends_with("/cursor") {

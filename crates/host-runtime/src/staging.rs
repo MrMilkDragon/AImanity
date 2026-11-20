@@ -21,7 +21,7 @@ fn layout(home: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 pub(crate) fn owns_release(root: &Path, candidate: &Path) -> Result<()> {
     let releases = root
         .parent()

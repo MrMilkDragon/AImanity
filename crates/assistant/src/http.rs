@@ -392,9 +392,8 @@ async fn send_input(
              OR ($2 AND origin='notification' AND status='running' AND NOT background_read_only))
             ORDER BY (origin='user') DESC,created_at,id LIMIT 1 FOR UPDATE")
             .bind(id).bind(voice.is_some() && goal_revision.is_none()).fetch_optional(&mut *tx).await?;
-        sqlx::query("UPDATE runs SET status='canceled',error='用户新指令优先',finished_at=now(),next_wake_at=NULL WHERE conversation_id=$1 AND origin IN ('exploration','notification') AND status IN ('queued','running','paused') AND id IS DISTINCT FROM $2")
-            .bind(id).bind(active.as_ref().map(|r| r.get::<Uuid,_>("id"))).execute(&mut *tx).await?;
-        sqlx::query("UPDATE phone_notifications SET status='pending-summary' WHERE status='assigned' AND run_id IN(SELECT id FROM runs WHERE conversation_id=$1 AND origin='notification' AND status='canceled' AND NOT background_finalized)").bind(id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE runs SET status='canceled',error='用户新指令优先',finished_at=now(),next_wake_at=NULL WHERE conversation_id=$1 AND origin='exploration' AND status IN ('queued','running','paused')")
+            .bind(id).execute(&mut *tx).await?;
         if goal_revision.is_some()
             && active.as_ref().is_some_and(|row| Some(row.get::<Uuid,_>("id")) != goal_run)
         {
@@ -433,6 +432,10 @@ async fn send_input(
             crate::registry::pin_run_for(&mut tx, &app.settings, run, &request.agent_id).await?;
             run
         };
+        if voice.is_some() {
+            sqlx::query("UPDATE runs SET copilot=true,todo_lane=NULL,todo_position=0 WHERE id=$1")
+                .bind(run).execute(&mut *tx).await?;
+        }
         if goal_revision.is_some() {
             sqlx::query("UPDATE proactive_state SET goal=$1,goal_run_id=$2,exploring=false,revision=revision+1,last_error='' WHERE owner_id='local-user'")
                 .bind(&request.text).bind(run).execute(&mut *tx).await?;

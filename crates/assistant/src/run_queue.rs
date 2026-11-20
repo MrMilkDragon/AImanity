@@ -32,12 +32,13 @@ pub(crate) async fn claim(
 ) -> Result<Option<(Uuid, Uuid)>, sqlx::Error> {
     sqlx::query_as(
         "WITH due AS (
-            SELECT r.id,r.device_id FROM runs r
+            SELECT r.id,r.device_id FROM runs r JOIN harness_todos t ON t.id=r.id
             WHERE r.status='queued' AND NOT(r.id=ANY($1))
             AND (r.next_wake_at IS NULL OR r.next_wake_at<=now())
             AND NOT EXISTS(SELECT 1 FROM device_execution_leases l WHERE l.device_id=r.device_id)
             AND NOT EXISTS(SELECT 1 FROM runs busy WHERE busy.device_id=r.device_id AND busy.status='running')
-            ORDER BY CASE WHEN r.origin='user' AND (r.step=0 OR jsonb_array_length(r.steering)>0) THEN 0 WHEN r.origin='notification' THEN 1 WHEN r.origin='user' THEN 2 WHEN r.origin='device-handoff' THEN 3 ELSE 4 END,COALESCE(r.heartbeat_at,r.created_at),r.id
+            AND (r.origin='device-handoff' OR r.id IN (SELECT id FROM harness_next_todo))
+            ORDER BY t.lane,t.position,t.created_at,t.id
             FOR UPDATE OF r SKIP LOCKED LIMIT 1
         ), claimed AS (
             INSERT INTO device_execution_leases(device_id,run_id)

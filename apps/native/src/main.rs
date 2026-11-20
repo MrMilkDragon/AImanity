@@ -25,6 +25,7 @@ mod skills;
 mod spring_slider;
 mod style;
 mod surface;
+mod todos;
 #[cfg(target_os = "macos")]
 mod uninstall;
 mod updates;
@@ -66,6 +67,7 @@ enum Message {
     CloseDevices,
     Audio(usize, audio::Message),
     Files(Box<files::Message>),
+    Todos(todos::Message),
     Knowledge(knowledge::Message),
     Skills(skills::Message),
     Location(location::Message),
@@ -81,6 +83,7 @@ enum Message {
     DesktopClickElapsed(Instant),
     InputDone(usize, Result<(), String>, Instant),
     Retry,
+    Quit,
     Tick(Instant),
     FitViewport(window::Id),
     Viewport(Size),
@@ -113,6 +116,7 @@ struct Capture {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Panel {
+    Todos,
     Language,
     Skills,
     Location,
@@ -184,6 +188,7 @@ struct App {
     show_devices: bool,
     audio: [audio::Playback; 2],
     files: files::Files,
+    todos: todos::Todos,
     knowledge: knowledge::Knowledge,
     skills: skills::Skills,
     location: location::Location,
@@ -249,6 +254,7 @@ impl App {
             show_devices: false,
             audio: std::array::from_fn(|_| audio::Playback::new()),
             files: Default::default(),
+            todos: Default::default(),
             knowledge: Default::default(),
             skills: Default::default(),
             location: Default::default(),
@@ -384,6 +390,9 @@ impl App {
     }
     fn set_popup(&mut self, open: bool) {
         if self.popup != open {
+            if !open && self.panel == Panel::Todos {
+                self.todos.cancel_drag();
+            }
             self.popup = open;
             self.reflow_popup();
             self.reflow_child();
@@ -407,7 +416,7 @@ impl App {
         {
             self.phase.clear();
             self.error = error;
-            return Task::none();
+            return window::latest().and_then(|id| window::set_mode(id, window::Mode::Windowed));
         }
         iced::exit()
     }
@@ -494,6 +503,11 @@ impl App {
         )
     }
     fn update(&mut self, message: Message) -> Task<Message> {
+        if self.after_stop == Some(AfterStop::Exit)
+            && !matches!(message, Message::Host(host::Event::Stopped(_)))
+        {
+            return Task::none();
+        }
         match message {
             Message::Setup(message) if self.after_stop.is_none() => {
                 if let Some(setup) = &mut self.setup {
@@ -585,6 +599,10 @@ impl App {
                             self.uninstall = None;
                         }
                         self.error = error;
+                        if action == Some(AfterStop::Exit) {
+                            return window::latest()
+                                .and_then(|id| window::set_mode(id, window::Mode::Windowed));
+                        }
                     }
                 }
             }
@@ -693,8 +711,7 @@ impl App {
                 updates::Message::Install => return self.updates.install().map(Message::Update),
                 updates::Message::Progress(progress) => self.updates.progress = Some(progress),
                 updates::Message::Finished(Ok(())) => {
-                    return self
-                        .update(Message::Event(Event::Window(window::Event::CloseRequested)));
+                    return self.update(Message::Quit);
                 }
                 updates::Message::Finished(Err(error)) => {
                     self.updates.progress = None;
@@ -712,8 +729,7 @@ impl App {
                 match result {
                     Ok(Some(plan)) => {
                         self.uninstall = Some(plan);
-                        return self
-                            .update(Message::Event(Event::Window(window::Event::CloseRequested)));
+                        return self.update(Message::Quit);
                     }
                     Ok(None) => {}
                     Err(error) => self.error = error,
@@ -765,6 +781,13 @@ impl App {
             }
             Message::Chat(result) => {
                 if let Some(client) = &self.connection {
+                    let todos = if self.popup && self.panel == Panel::Todos && result.is_ok() {
+                        self.todos
+                            .update(todos::Message::Load, client)
+                            .map(Message::Todos)
+                    } else {
+                        Task::none()
+                    };
                     let was_active = self.agent_pointer_active();
                     let task = self
                         .chat
@@ -785,7 +808,15 @@ impl App {
                     } else {
                         Task::none()
                     };
-                    return Task::batch([task, speech, sample, link]);
+                    return Task::batch([task, speech, sample, link, todos]);
+                }
+            }
+            Message::Conversation(chat::Message::Todos(click)) => {
+                return self.update(Message::OpenPanel(Panel::Todos, click));
+            }
+            Message::Todos(message) => {
+                if let Some(client) = &self.connection {
+                    return self.todos.update(message, client).map(Message::Todos);
                 }
             }
             Message::Conversation(message) => {
@@ -1147,11 +1178,9 @@ impl App {
             Message::Event(Event::Window(window::Event::Focused)) => {
                 self.reduced_motion = platform::reduced_motion();
             }
-            Message::Event(Event::Window(window::Event::CloseRequested)) => {
-                if self.after_stop == Some(AfterStop::Exit) {
-                    return Task::none();
-                }
+            Message::Quit | Message::Event(Event::Window(window::Event::CloseRequested)) => {
                 let stopping = self.after_stop.replace(AfterStop::Exit).is_some();
+                self.connection = None;
                 self.streams = None;
                 self.desktop_click = None;
                 self.agent_traces = [None, None];
@@ -1159,18 +1188,33 @@ impl App {
                     audio.stop();
                 }
                 self.modes.stop_capture();
+                self.error.clear();
                 self.phase = "正在关闭设备".into();
-                if let Some(stop) = self.stop.take() {
-                    let _ = stop.send(());
-                } else if stopping {
-                    return Task::none();
-                } else if self.host_home.as_os_str().is_empty() {
+                if self.host_home.as_os_str().is_empty() {
                     return self.finish_exit();
-                } else {
-                    return Task::perform(host::Host::stop(self.host_home.clone()), |r| {
-                        Message::Host(host::Event::Stopped(r))
-                    });
                 }
+                let hide =
+                    window::latest().and_then(|id| window::set_mode(id, window::Mode::Hidden));
+                if stopping || self.stop.take().is_some_and(|stop| stop.send(()).is_ok()) {
+                    return hide;
+                }
+                return Task::batch([
+                    hide,
+                    Task::perform(host::Host::stop(self.host_home.clone()), |r| {
+                        Message::Host(host::Event::Stopped(r))
+                    }),
+                ]);
+            }
+            Message::Event(Event::Keyboard(keyboard::Event::KeyPressed {
+                key:
+                    keyboard::Key::Named(
+                        key @ (keyboard::key::Named::ArrowUp | keyboard::key::Named::ArrowDown),
+                    ),
+                ..
+            })) if self.popup && self.panel == Panel::Todos => {
+                return self.update(Message::Todos(todos::Message::Step(
+                    key == keyboard::key::Named::ArrowDown,
+                )));
             }
             Message::Event(Event::Keyboard(keyboard::Event::KeyPressed {
                 key: keyboard::Key::Named(keyboard::key::Named::Tab),
@@ -1275,8 +1319,7 @@ impl App {
                 }
                 if self.panel != panel {
                     self.show_devices = false;
-                }
-                if self.panel != panel {
+                    self.todos.cancel_drag();
                     self.panel = panel;
                     self.popup_amount = 0.;
                     self.panel_size = self.panel_target();
@@ -1340,6 +1383,11 @@ impl App {
                 return self.update(Message::Conversation(chat::Message::Files(vec![path])));
             }
             Message::Event(Event::Mouse(iced::mouse::Event::ButtonReleased(_)))
+                if self.panel == Panel::Todos =>
+            {
+                return self.update(Message::Todos(todos::Message::Cancel));
+            }
+            Message::Event(Event::Mouse(iced::mouse::Event::ButtonReleased(_)))
                 if self.panel == Panel::Files =>
             {
                 return self.update(Message::Files(Box::new(files::Message::EndDrag)));
@@ -1355,6 +1403,9 @@ impl App {
                 && chat.next_wake_at_ms <= connection::epoch_ms() as i64)
     }
     fn subscription(&self) -> Subscription<Message> {
+        if self.after_stop == Some(AfterStop::Exit) {
+            return Subscription::none();
+        }
         let mut subscriptions = vec![iced::event::listen_with(|event, status, id| match &event {
             Event::Window(window::Event::Resized(_)) => Some(Message::FitViewport(id)),
             Event::Window(
@@ -1366,7 +1417,13 @@ impl App {
             | Event::Mouse(iced::mouse::Event::CursorMoved { .. })
             | Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => Some(Message::Event(event)),
             Event::Keyboard(keyboard::Event::KeyPressed {
-                key: keyboard::Key::Named(keyboard::key::Named::Escape | keyboard::key::Named::Tab),
+                key:
+                    keyboard::Key::Named(
+                        keyboard::key::Named::Escape
+                        | keyboard::key::Named::Tab
+                        | keyboard::key::Named::ArrowUp
+                        | keyboard::key::Named::ArrowDown,
+                    ),
                 ..
             }) if status == iced::event::Status::Ignored => Some(Message::Event(event)),
             Event::Mouse(iced::mouse::Event::ButtonReleased(_))
@@ -1434,7 +1491,7 @@ impl App {
     fn popup_rect(&self) -> Rectangle {
         if self.popup_amount > 0. {
             let anchor = self.panel_anchor(self.panel);
-            let panel = surface::tool_rect(WORKBENCH, anchor, self.panel_size, false);
+            let panel = self.panel_bounds(self.panel_size);
             surface::tool_motion(anchor, panel, self.popup_amount)
         } else {
             Rectangle::default()
@@ -1442,6 +1499,7 @@ impl App {
     }
     fn panel_target(&self) -> Size {
         let (width, max_height, fit) = match self.panel {
+            Panel::Todos => (400., 430., true),
             Panel::Agent => (680., 600., false),
             Panel::Language => (280., 480., false),
             Panel::Skills => (650., 560., true),
@@ -1463,13 +1521,23 @@ impl App {
         } else {
             max_height
         };
-        surface::tool_rect(
-            WORKBENCH,
-            self.panel_anchor(self.panel),
-            Size::new(width, height),
-            false,
+        self.panel_bounds(Size::new(width, height)).size()
+    }
+    fn panel_bounds(&self, size: Size) -> Rectangle {
+        let anchor = self.panel_anchor(self.panel);
+        if self.panel != Panel::Todos {
+            return surface::tool_rect(WORKBENCH, anchor, size, false);
+        }
+        let height = size.height.min(anchor.y - 26.);
+        Rectangle::new(
+            iced::Point::new(
+                anchor
+                    .x
+                    .min(WORKBENCH.width - size.width - layout::SIDE_INSET),
+                anchor.y - height - 10.,
+            ),
+            Size::new(size.width, height),
         )
-        .size()
     }
     const NAV_PANELS: [Panel; 8] = [
         Panel::Language,
@@ -1482,6 +1550,18 @@ impl App {
         Panel::Agent,
     ];
     fn panel_anchor(&self, panel: Panel) -> Rectangle {
+        if panel == Panel::Todos {
+            let chat = self.layout.chat;
+            let [vertical, horizontal] = layout::CHAT_PADDING;
+            let size = style::CONTROL_HEIGHT;
+            return Rectangle::new(
+                iced::Point::new(
+                    chat.x + horizontal + 12.,
+                    chat.y + chat.height - vertical - 12. - size,
+                ),
+                Size::new(size, size),
+            );
+        }
         if let Panel::Capture(index) = panel {
             let toolbar = self.layout.toolbars[index];
             return Rectangle::new(
@@ -1530,6 +1610,7 @@ impl App {
     }
     fn load_panel(&mut self) -> Task<Message> {
         let message = match self.panel {
+            Panel::Todos => Message::Todos(todos::Message::Load),
             Panel::Skills => Message::Skills(skills::Message::Load),
             Panel::Knowledge => Message::Knowledge(knowledge::Message::Load),
             Panel::Location => Message::Location(location::Message::Load),
@@ -1845,6 +1926,7 @@ impl App {
                 .map(Message::Agents);
         }
         let title = match self.panel {
+            Panel::Todos => locale.tr("待办"),
             Panel::Language => "Language",
             Panel::Skills => locale.tr("Skill 管理"),
             Panel::Knowledge => locale.tr("知识库"),
@@ -1886,6 +1968,7 @@ impl App {
                 .knowledge
                 .view(locale, self.reduced_motion)
                 .map(Message::Knowledge),
+            Panel::Todos => self.todos.view(locale).map(Message::Todos),
             Panel::Files => self
                 .files
                 .view(body_height, locale)
@@ -2134,7 +2217,7 @@ impl App {
         let error = if error_message.is_empty() {
             text(self.locale.tr(&self.phase)).size(12)
         } else {
-            text(error_message)
+            text(self.locale.tr(error_message))
                 .size(12)
                 .color(style::ERROR)
                 .wrapping(iced::widget::text::Wrapping::None)
@@ -2168,7 +2251,7 @@ impl App {
                 Panel::Knowledge => (Icon::Book, false),
                 Panel::Files => (Icon::Folder, false),
                 Panel::Goal => (Icon::Target, self.modes.goal_active()),
-                Panel::Capture(_) | Panel::Update => unreachable!(),
+                Panel::Capture(_) | Panel::Update | Panel::Todos => unreachable!(),
             };
             let click = self
                 .connection
@@ -2334,12 +2417,7 @@ impl App {
         ));
         let p = self.popup_rect();
         if self.popup_amount > 0. {
-            let settled = surface::tool_rect(
-                WORKBENCH,
-                self.panel_anchor(self.panel),
-                self.panel_size,
-                false,
-            );
+            let settled = self.panel_bounds(self.panel_size);
             let content = container(occlude::behind(self.panel_body(), place(child_popup)))
                 .width(self.panel_target().width)
                 .height(settled.height);

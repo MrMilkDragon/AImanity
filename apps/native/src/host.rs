@@ -65,6 +65,7 @@ impl Host {
         mut stop: oneshot::Receiver<()>,
     ) -> impl futures_util::Stream<Item = Event> {
         iced::stream::channel(8, async move |mut output| {
+            let mut closing = false;
             let result: Result<bool, String> = async {
                 let mut command = Command::new(std::env::current_exe().map_err(|e|e.to_string())?);
                 command
@@ -80,8 +81,9 @@ impl Host {
                 loop {
                     tokio::select! {
                         _ = &mut stop => {
+                            closing = true;
                             let status=Command::new("/bin/kill").arg("-TERM").arg(child.id().unwrap().to_string()).status().await.map_err(|e|e.to_string())?;
-                            if !status.success() { return Err("无法停止设备启动进程".into()); }
+                            if !status.success() && child.try_wait().map_err(|e|e.to_string())?.is_none() { return Err("无法停止设备启动进程".into()); }
                             child.wait().await.map_err(|e|e.to_string())?;
                             return Ok(false);
                         }
@@ -122,7 +124,9 @@ impl Host {
                 Ok(false) => {}
                 Err(error) => {
                     let _ = output.send(Event::Failed(error)).await;
-                    let _ = stop.await;
+                    if !closing {
+                        let _ = stop.await;
+                    }
                 }
             }
             let result = Self::stop(self.home).await;

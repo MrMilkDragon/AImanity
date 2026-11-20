@@ -1534,16 +1534,12 @@ async fn install(app: &App, id: Uuid) -> Result<()> {
     )
     .await?;
     install_step(app, id, "验证画面与控制").await?;
-    let mut ok = false;
-    for _ in 0..30 {
-        if helper_frame("observe", json!({})).await.is_ok() {
-            ok = true;
-            break;
+    for attempt in 1..=30 {
+        match helper_frame("observe", json!({})).await {
+            Ok(_) => break,
+            Err(error) if attempt == 30 => return Err(format!("桌面没有返回可验证画面 · {error}")),
+            Err(_) => tokio::time::sleep(Duration::from_secs(1)).await,
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    if !ok {
-        return Err("桌面没有返回可验证画面".into());
     }
     let mut tx = app.db.begin().await.map_err(|e| e.to_string())?;
     sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES($1,'native-desktop',$2) ON CONFLICT(device_id) DO NOTHING").bind(&device).bind(CONTAINER).execute(&mut *tx).await.map_err(|e|e.to_string())?;

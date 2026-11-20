@@ -27,6 +27,7 @@ pub enum Icon {
     Eye,
     EyeOff,
     Paperclip,
+    Todos,
     Send,
     Stop,
     Pause,
@@ -148,6 +149,7 @@ impl Icon {
             Self::Paperclip => {
                 "<path d='m21 11-9 9a6 6 0 0 1-8-8L14 2a4 4 0 0 1 6 6L10 18a2 2 0 0 1-3-3l9-9'/>"
             }
+            Self::Todos => "<path d='m3 6 1.5 1.5L7 4m3 2h11M3 12h3m4 0h11M3 18h3m4 0h11'/>",
             Self::Send => "<path d='m5 12 7-7 7 7M12 5v14'/>",
             Self::Stop => "<rect x='6' y='6' width='12' height='12' rx='2'/>",
             Self::Pause => "<path d='M8 5v14M16 5v14'/>",

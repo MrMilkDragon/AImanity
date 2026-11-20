@@ -352,6 +352,10 @@ async fn initialize<E: Execute>(
         return Err(Error::Invalid("foreign_installation"));
     }
     crate::desktop_bridge::require_rootfs(&root, None)?;
+    let stage = crate::desktop_bridge::native_arguments(&root, "stage", None)?;
+    backend
+        .checked(backend.command(&stage[0], &stage[1..]), Vec::new())
+        .await?;
     phase("profile");
     if request.android_qemu {
         filesystem::directory(Path::new(crate::device_bridge::guest::RUNTIME), true)?;

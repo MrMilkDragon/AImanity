@@ -1,6 +1,17 @@
 syntax = "proto3";
 package ai_phone.v1;
 message ProactiveRequest {}
+message TodoItem {
+  string id = 1;
+  string title = 2;
+  string source = 3;
+  string status = 4;
+}
+message TodoList { repeated TodoItem items = 1; }
+message TodoMove {
+  string id = 1;
+  string before_id = 2;
+}
 message ProactiveState {
   uint64 revision = 1;
   bool exploring = 2;

@@ -1,4 +1,13 @@
 {
+  "待办": "To-do",
+  "暂无待办": "No pending tasks",
+  "主线任务": "Main task",
+  "通知": "Notification",
+  "设备协作": "Device handoff",
+  "执行中": "Running",
+  "待办已变化": "The queue has changed",
+  "本机 Agent 服务已断开": "Local Agent disconnected",
+  "连接应用服务已断开": "Messaging service disconnected",
   "未检测到系统麦克风": "No system microphone detected",
   "更新可用": "Update available",
   "下载更新": "Downloading update",

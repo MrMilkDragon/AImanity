@@ -2498,8 +2498,8 @@ async fn execute(
         {
             wait_deadline = None;
         }
-        if exploration
-            && crate::proactive::should_yield(app, id).await?
+        let displaced = pending.is_empty() && crate::todos::displaced(app, id).await?;
+        if (displaced || (exploration && crate::proactive::should_yield(app, id).await?))
             && persist_disposition(
                 app,
                 id,
@@ -2512,14 +2512,11 @@ async fn execute(
                     state: &state,
                 },
                 RunDisposition::Queued,
-                Some(now_ms() + 5000),
+                (!displaced).then(|| now_ms() + 5000),
             )
             .await?
         {
             return Ok(RunDisposition::Queued);
-        }
-        if !exploration && pending.is_empty() {
-            crate::proactive::inject_attention(app, id, &mut context).await?;
         }
         if handoffs_pending
             && crate::device_exchange::returns::receive(app, id, &mut context).await?
@@ -3352,6 +3349,8 @@ async fn recorded_tool(
         "device_location_set" => "调整模拟位置",
         "phone_notifications" => "读取手机通知",
         "device_notifications" => "读取设备通知",
+        "todo_list" => "查看待办",
+        "todo_move" => "调整待办顺序",
         "channel_notify" => "联系远端主人",
         "channel_delivery" => "核对推送送达状态",
         "phone_observe" if call["local_after_action"].is_string() => "查看操作结果",
@@ -3543,6 +3542,7 @@ fn can_restart_tool(call: &Value) -> bool {
             | "device_files"
             | "device_file_list"
             | "device_notifications"
+            | "todo_list"
             | "device_transfer_status"
             | "device_location_state"
             | "channel_delivery"
@@ -3617,6 +3617,36 @@ async fn tool(
     if name == "app_experience_save" {
         let value = crate::app_learning::save(app, run, &arguments).await?;
         return Ok(json!([{"type":"input_text","text":value.to_string()}]));
+    }
+    if matches!(name, "todo_list" | "todo_move") {
+        if name == "todo_move" {
+            let input = wire::TodoMove {
+                id: arguments["id"].as_str().unwrap_or_default().to_owned(),
+                before_id: arguments["before_id"]
+                    .as_str()
+                    .ok_or("缺少目标位置")?
+                    .to_owned(),
+            };
+            if !crate::todos::move_before(app, &input)
+                .await
+                .map_err(|e| e.to_string())?
+            {
+                return Err("待办已变化".into());
+            }
+        }
+        let items = crate::todos::list(app)
+            .await
+            .map_err(|e| e.to_string())?
+            .items;
+        let items: Vec<_> = items
+            .iter()
+            .map(|item| {
+                json!({
+                    "id": item.id, "title": item.title, "source": item.source, "status": item.status
+                })
+            })
+            .collect();
+        return Ok(json!([{"type":"input_text","text":json!({"items":items}).to_string()}]));
     }
     if name == "device_notifications" {
         return crate::proactive::read_device_notifications(

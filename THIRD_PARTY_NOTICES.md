@@ -15,6 +15,7 @@ See [distribution requirements](docs/public/distribution-requirements.md) for th
 | Component | Source / licence evidence | Distribution scope and obligations |
 | --- | --- | --- |
 | Iced 0.14.0 | [Upstream](https://github.com/iced-rs/iced/tree/0.14.0), [MIT licence](docs/public/licenses/native-ui/iced-LICENSE) | Native workbench UI; locked dependencies in apps/native/Cargo.lock |
+| Cryoglyph 0.1.0 | [Upstream](https://github.com/iced-rs/cryoglyph), [licences](apps/native/vendor/cryoglyph) | Native GPU text renderer. The bundled source uses lru 0.18 for its glyph cache. |
 | rfd 0.15.4 | [Upstream](https://github.com/PolyMeilex/rfd), [MIT licence](docs/public/licenses/native-ui/rfd-LICENSE) | Native attachment open/save dialogs |
 | Rodio 0.21.1 | [Upstream](https://github.com/RustAudio/rodio/tree/v0.21.1), [MIT licence](docs/public/licenses/native-ui/rodio-LICENSE.MIT) | Native device audio mixing and resampling |
 | CPAL 0.16.0 | [Upstream](https://github.com/RustAudio/cpal/tree/0.16.0), [Apache-2.0 licence](docs/public/licenses/native-ui/cpal-LICENSE.APACHE) | System speaker and microphone access |

@@ -22,6 +22,7 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub enum Message {
+    Todos(bool),
     RefreshDisplay,
     Mode(modes::Message),
     Edit(text_editor::Action),
@@ -348,7 +349,7 @@ impl Chat {
                 self.display_after = self.state.messages.last().map(|m| m.ordinal);
                 self.following = true;
             }
-            Message::Mode(_) => {}
+            Message::Mode(_) | Message::Todos(_) => {}
             Message::Edit(action) => self.draft.perform(action),
             Message::Send => {
                 if !self.can_send() {
@@ -1041,6 +1042,8 @@ impl Chat {
         );
         let actions = row![
             row![
+                iced::widget::mouse_area(icon_button(Icon::Todos, Some(Message::Todos(true))))
+                    .on_enter(Message::Todos(false)),
                 icon_button(Icon::Paperclip, Some(Message::Pick)),
                 modes.liberty_button().map(Message::Mode),
             ]

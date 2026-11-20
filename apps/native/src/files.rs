@@ -667,11 +667,11 @@ impl Files {
                         icon.view().width(16).height(16),
                         text(&entry.name).size(12).wrapping(text::Wrapping::None)
                     ]
+                    .height(style::CONTROL_HEIGHT - style::BORDER_WIDTH)
                     .align_y(iced::Center)
                     .spacing(PANE_PADDING),
                 )
                 .width(Length::Fill)
-                .height(style::CONTROL_HEIGHT - style::BORDER_WIDTH)
                 .padding([0., PANE_PADDING])
                 .clip(true)
                 .on_press_maybe(enabled.then_some(activate))

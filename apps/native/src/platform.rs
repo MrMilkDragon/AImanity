@@ -265,13 +265,17 @@ pub fn menu() -> iced::Task<crate::Message> {
     define_class!(
         #[unsafe(super(NSObject))]
         #[thread_kind = MainThreadOnly]
-        #[ivars = UnboundedSender<()>]
+        #[ivars = UnboundedSender<crate::Message>]
         struct AImanityMenuActions;
 
         impl AImanityMenuActions {
             #[unsafe(method(uninstallAImanity:))]
             fn uninstall(&self, _item: &NSMenuItem) {
-                let _ = self.ivars().unbounded_send(());
+                let _ = self.ivars().unbounded_send(crate::Message::Uninstall);
+            }
+            #[unsafe(method(quitAImanity:))]
+            fn quit(&self, _item: &NSMenuItem) {
+                let _ = self.ivars().unbounded_send(crate::Message::Quit);
             }
         }
     );
@@ -286,9 +290,6 @@ pub fn menu() -> iced::Task<crate::Message> {
     let quit = application
         .itemAtIndex(application.numberOfItems() - 1)
         .expect("quit item");
-    unsafe {
-        quit.setAction(Some(sel!(performClose:)));
-    }
     let (sender, receiver) = unbounded();
     let actions: Retained<AImanityMenuActions> = unsafe {
         msg_send![
@@ -296,6 +297,10 @@ pub fn menu() -> iced::Task<crate::Message> {
             init
         ]
     };
+    unsafe {
+        quit.setAction(Some(sel!(quitAImanity:)));
+        quit.setTarget(Some(&actions));
+    }
     let uninstall = unsafe {
         NSMenuItem::initWithTitle_action_keyEquivalent(
             main.alloc(),
@@ -330,5 +335,5 @@ pub fn menu() -> iced::Task<crate::Message> {
     item.setTitle(&NSString::from_str("Edit"));
     item.setSubmenu(Some(&edit));
     menu.addItem(&item);
-    iced::Task::run(receiver, |()| crate::Message::Uninstall)
+    iced::Task::run(receiver, std::convert::identity)
 }
