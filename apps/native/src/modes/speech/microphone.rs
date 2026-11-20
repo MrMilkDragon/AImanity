@@ -1,4 +1,4 @@
-use super::Event;
+use super::{Event, MicrophoneLevels};
 use ai_phone_local_speech::LocalSpeech;
 use cpal::{
     FromSample, Sample, SampleFormat, SizedSample,
@@ -14,6 +14,7 @@ use std::{
     },
     time::Duration,
 };
+use tokio::sync::watch;
 
 const RATE: u32 = 16_000;
 const FRAME: usize = RATE as usize / 50;
@@ -25,11 +26,12 @@ pub fn events(
 ) -> impl Stream<Item = Event> {
     iced::stream::channel(12, async move |mut output| {
         let (sender, mut events) = tokio::sync::mpsc::channel(12);
+        let (levels, mut updates) = watch::channel(MicrophoneLevels::default());
         let consumer = cancel.clone();
         let spawn = std::thread::Builder::new()
             .name("aimanity-microphone".into())
             .spawn(move || {
-                if let Err(error) = capture(model, &language, &consumer, &sender) {
+                if let Err(error) = capture(model, &language, &consumer, &sender, levels) {
                     let _ = sender.blocking_send(Event::Error(error));
                 }
             });
@@ -37,7 +39,15 @@ pub fn events(
             let _ = output.send(Event::Error(error.to_string())).await;
             return;
         }
-        while let Some(event) = events.recv().await {
+        loop {
+            let event = tokio::select! {
+                biased;
+                event = events.recv() => match event {
+                    Some(event) => event,
+                    None => return,
+                },
+                Ok(()) = updates.changed() => Event::Levels(*updates.borrow_and_update()),
+            };
             if cancel.load(Ordering::Acquire) {
                 return;
             }
@@ -54,6 +64,7 @@ fn capture(
     language: &str,
     cancel: &AtomicBool,
     events: &tokio::sync::mpsc::Sender<Event>,
+    levels: watch::Sender<MicrophoneLevels>,
 ) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -96,35 +107,35 @@ fn capture(
     }
     let (sender, receiver) = mpsc::sync_channel(256);
     let stream = match format {
-        SampleFormat::F32 => stream::<f32>(&device, &config, sender),
-        SampleFormat::F64 => stream::<f64>(&device, &config, sender),
-        SampleFormat::I16 => stream::<i16>(&device, &config, sender),
-        SampleFormat::I24 => stream::<cpal::I24>(&device, &config, sender),
-        SampleFormat::U16 => stream::<u16>(&device, &config, sender),
-        SampleFormat::I32 => stream::<i32>(&device, &config, sender),
-        SampleFormat::U32 => stream::<u32>(&device, &config, sender),
-        SampleFormat::I8 => stream::<i8>(&device, &config, sender),
-        SampleFormat::U8 => stream::<u8>(&device, &config, sender),
-        SampleFormat::I64 => stream::<i64>(&device, &config, sender),
-        SampleFormat::U64 => stream::<u64>(&device, &config, sender),
+        SampleFormat::F32 => stream::<f32>(&device, &config, sender, levels),
+        SampleFormat::F64 => stream::<f64>(&device, &config, sender, levels),
+        SampleFormat::I16 => stream::<i16>(&device, &config, sender, levels),
+        SampleFormat::I24 => stream::<cpal::I24>(&device, &config, sender, levels),
+        SampleFormat::U16 => stream::<u16>(&device, &config, sender, levels),
+        SampleFormat::I32 => stream::<i32>(&device, &config, sender, levels),
+        SampleFormat::U32 => stream::<u32>(&device, &config, sender, levels),
+        SampleFormat::I8 => stream::<i8>(&device, &config, sender, levels),
+        SampleFormat::U8 => stream::<u8>(&device, &config, sender, levels),
+        SampleFormat::I64 => stream::<i64>(&device, &config, sender, levels),
+        SampleFormat::U64 => stream::<u64>(&device, &config, sender, levels),
         _ => return Err(format!("麦克风采样格式不支持：{format}")),
     }?;
     stream.play().map_err(|error| {
         eprintln!("native microphone start: {error}");
         "麦克风开启失败"
     })?;
-    let mut decoder = LocalSpeech::new(model, language).map_err(|e| e.to_string())?;
     events
         .blocking_send(Event::Ready)
         .map_err(|e| e.to_string())?;
+    let mut decoder = LocalSpeech::new(model, language).map_err(|e| e.to_string())?;
     let mut segment = Segment::default();
     while !cancel.load(Ordering::Acquire) {
-        let frame = match receiver.recv_timeout(Duration::from_millis(100)) {
+        let (frame, rms) = match receiver.recv_timeout(Duration::from_millis(100)) {
             Ok(data) => data?,
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => return Err("麦克风已断开".into()),
         };
-        if let Some(event) = segment.push(frame, &mut decoder)? {
+        if let Some(event) = segment.push(frame, rms, &mut decoder)? {
             events.blocking_send(event).map_err(|e| e.to_string())?;
         }
     }
@@ -133,12 +144,44 @@ fn capture(
 }
 
 type Frame = [i16; FRAME];
-type Sender = mpsc::SyncSender<Result<Frame, String>>;
+type Sender = mpsc::SyncSender<Result<(Frame, f32), String>>;
+
+fn measure(frame: &Frame, levels: &watch::Sender<MicrophoneLevels>) -> f32 {
+    let (mut high, mut low, mut power) = (0_i16, 0_i16, 0_f32);
+    for &sample in frame {
+        high = high.max(sample);
+        low = low.min(sample);
+        power += f32::from(sample).powi(2);
+    }
+    let rms = (power / FRAME as f32).sqrt() / 32768.;
+    let encode = |unit: f32| (unit.sqrt() * 255.).round() as u8;
+    let point = if rms < 0.0025 {
+        0
+    } else {
+        u32::from_le_bytes([
+            encode(f32::from(high) / 32768.),
+            encode(-f32::from(low) / 32768.),
+            encode(rms),
+            0,
+        ])
+    };
+    levels.send_if_modified(|history| {
+        let bins = history.as_flattened_mut();
+        if bins.iter().all(|&bin| bin == point) {
+            return false;
+        }
+        bins.rotate_left(1);
+        bins[bins.len() - 1] = point;
+        true
+    });
+    rms
+}
 
 fn stream<T: SizedSample + Sample>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     sender: Sender,
+    levels: watch::Sender<MicrophoneLevels>,
 ) -> Result<cpal::Stream, String>
 where
     f32: FromSample<T>,
@@ -177,7 +220,8 @@ where
                             frame[write] = sample;
                             write += 1;
                             if write == FRAME {
-                                if sender.try_send(Ok(frame)).is_err() {
+                                let rms = measure(&frame, &levels);
+                                if sender.try_send(Ok((frame, rms))).is_err() {
                                     overrun = true;
                                     return;
                                 }
@@ -211,12 +255,12 @@ struct Segment {
     floor: f32,
 }
 impl Segment {
-    fn push(&mut self, frame: Frame, decoder: &mut LocalSpeech) -> Result<Option<Event>, String> {
-        let power = frame
-            .iter()
-            .map(|sample| (f32::from(*sample) / 32768.).powi(2))
-            .sum::<f32>();
-        let level = (power / FRAME as f32).sqrt();
+    fn push(
+        &mut self,
+        frame: Frame,
+        level: f32,
+        decoder: &mut LocalSpeech,
+    ) -> Result<Option<Event>, String> {
         let voiced = level > (self.floor * 3.).max(0.008);
         if voiced {
             self.quiet = 0;
@@ -280,5 +324,37 @@ impl Segment {
         self.voice = 0;
         self.quiet = 0;
         self.decoded = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn waveform_tracks_input_level_and_stops_redrawing_during_silence() {
+        let (levels, mut updates) = watch::channel(MicrophoneLevels::default());
+        let silence = [0; FRAME];
+        assert_eq!(measure(&silence, &levels), 0.);
+        assert!(!updates.has_changed().unwrap());
+        let quiet = std::array::from_fn(|i| if i % 2 == 0 { 1024 } else { -512 });
+        let loud = quiet.map(|sample| sample * 8);
+        let soft_rms = measure(&quiet, &levels);
+        let loud_rms = measure(&loud, &levels);
+        assert!((loud_rms / soft_rms - 8.).abs() < 0.001);
+        {
+            let history = updates.borrow_and_update();
+            let bins = history.as_flattened();
+            let soft = bins[bins.len() - 2].to_le_bytes();
+            let loud = bins[bins.len() - 1].to_le_bytes();
+            assert!(loud[0] > loud[1]);
+            assert!((0..3).all(|i| soft[i] > 0 && loud[i] > soft[i]));
+        }
+        for _ in 0..MicrophoneLevels::default().as_flattened().len() {
+            measure(&silence, &levels);
+        }
+        assert_eq!(*updates.borrow_and_update(), MicrophoneLevels::default());
+        measure(&silence, &levels);
+        assert!(!updates.has_changed().unwrap());
     }
 }

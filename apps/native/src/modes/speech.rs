@@ -1,7 +1,7 @@
 mod microphone;
 mod speaker;
 
-use super::Message;
+use super::{Message, MicrophoneLevels};
 use ai_phone_api::wire;
 use iced::Task;
 use std::{
@@ -16,6 +16,7 @@ use std::{
 #[derive(Clone, Debug)]
 pub enum Event {
     Ready,
+    Levels(MicrophoneLevels),
     Speech(String),
     Transcript {
         id: String,
@@ -48,7 +49,8 @@ pub struct Copilot {
     speech_index: u64,
     language: String,
     target: Option<Target>,
-    ready: bool,
+    pub(super) ready: bool,
+    pub(super) levels: MicrophoneLevels,
     baseline: u64,
     replies: BTreeMap<u64, Reply>,
     pub transcript: String,
@@ -60,17 +62,6 @@ pub struct Copilot {
 impl Copilot {
     pub fn active(&self) -> bool {
         self.input.is_some()
-    }
-    pub fn visual(&self) -> f32 {
-        if !self.ready {
-            0.
-        } else if self.target.is_some() {
-            2.
-        } else if self.speaking.is_some() {
-            3.
-        } else {
-            1.
-        }
     }
     pub fn start(
         &mut self,
@@ -112,6 +103,7 @@ impl Copilot {
             cancel.store(true, Ordering::Release);
         }
         self.ready = false;
+        self.levels = MicrophoneLevels::default();
         self.target = None;
         self.speaking = None;
         self.replies.clear();
@@ -128,6 +120,7 @@ impl Copilot {
             return Task::none();
         }
         match event {
+            Event::Levels(levels) => self.levels = levels,
             Event::Ready => {
                 self.ready = true;
                 return self.pump();

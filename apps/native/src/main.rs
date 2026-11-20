@@ -1937,7 +1937,7 @@ impl App {
                                     | iced::widget::button::Status::Pressed
                             )
                         {
-                            appearance.background = Some(style::accent(theme).into());
+                            appearance.background = Some(style::ACCENT.into());
                         }
                         appearance
                     })
@@ -1980,9 +1980,8 @@ impl App {
                                         status,
                                         iced::widget::button::Status::Hovered
                                             | iced::widget::button::Status::Pressed
-                                    ) || style::dark(theme)
-                                    {
-                                        style::accent(theme)
+                                    ) {
+                                        style::ACCENT
                                     } else {
                                         iced::Color::from_rgb8(0xf2, 0xf2, 0xf2)
                                     };
@@ -2087,7 +2086,7 @@ impl App {
         let tr = |key: &'static str| self.locale.tr(key);
         let popup = self.popup_rect();
         let child_popup = self.child_rect();
-        let (mode_effects, mode_motion) = self.modes.effects(self.reduced_motion);
+        let (mode_effects, mode_motion, microphone) = self.modes.effects(self.reduced_motion);
         let scene = scene::Scene {
             layout: self.layout,
             size: WORKBENCH,
@@ -2110,6 +2109,7 @@ impl App {
                 }),
             mode_effects,
             mode_motion,
+            microphone,
             keyboard_target: self.keyboard_target,
             agent_pointers: std::array::from_fn(|i| {
                 self.agent_traces[i]
@@ -2144,11 +2144,11 @@ impl App {
         let linked = self.linked;
         let cable = Icon::Cable
             .view()
-            .style(move |theme, _| iced::widget::svg::Style {
+            .style(move |_, _| iced::widget::svg::Style {
                 color: Some(if linked {
-                    style::primary_ink(theme)
+                    iced::Color::WHITE
                 } else {
-                    style::muted_color(theme)
+                    style::MUTED
                 }),
             });
         let mut shared = row![
@@ -2188,7 +2188,7 @@ impl App {
                     .style(move |theme, status| {
                         let mut s = style::quiet(theme, status);
                         if chosen {
-                            s.background = Some(style::accent(theme).into());
+                            s.background = Some(style::ACCENT.into());
                         }
                         s
                     })
@@ -2453,13 +2453,7 @@ fn main() -> iced::Result {
         })
         .subscription(App::subscription)
         .scale_factor(|app| app.ui_scale)
-        .theme(|app: &App| {
-            if app.modes.copilot_active() {
-                style::copilot_theme()
-            } else {
-                style::theme()
-            }
-        })
+        .theme(|_: &App| style::theme())
         .window(window::Settings {
             size: SETUP_SIZE,
             position: window::Position::Centered,

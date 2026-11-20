@@ -705,10 +705,10 @@ impl Files {
                 ]
                 .align_y(iced::Center);
                 let entry_row =
-                    container(column![entry_row, file_divider(0.55)]).style(move |theme| {
+                    container(column![entry_row, file_divider(0.55)]).style(move |_| {
                         let appearance = container::Style::default();
                         if checked {
-                            appearance.background(style::accent(theme))
+                            appearance.background(style::ACCENT)
                         } else {
                             appearance
                         }
@@ -738,13 +738,7 @@ impl Files {
                 .width(Length::Fill)
                 .height(32)
                 .align_y(iced::Center)
-                .style(
-                    |theme| container::Style::default().background(if style::dark(theme) {
-                        Color::from_rgb8(48, 48, 48)
-                    } else {
-                        Color::from_rgb8(242, 242, 242)
-                    })
-                ),
+                .style(|_| container::Style::default().background(Color::from_rgb8(242, 242, 242))),
             scrollable(
                 container(listing).padding(Padding::ZERO.right(SCROLLBAR_WIDTH + SCROLLBAR_GAP)),
             )

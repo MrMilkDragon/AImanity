@@ -306,7 +306,7 @@ impl<M, F: Fn(u8) -> M> Widget<M, Theme, Renderer> for SpringSlider<F> {
         let neutral = if theme.palette().background == crate::style::BACKGROUND {
             iced::Color::from_rgb8(222, 222, 222)
         } else {
-            crate::style::accent(theme)
+            crate::style::ACCENT
         };
         renderer.fill_quad(
             renderer::Quad {

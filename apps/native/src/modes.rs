@@ -1,5 +1,7 @@
 mod speech;
 
+pub type MicrophoneLevels = [[u32; 4]; 12];
+
 use crate::{
     connection::Connection,
     controls::{Icon, action_button},
@@ -43,8 +45,6 @@ pub struct Modes {
     speech: speech::Copilot,
     model: PathBuf,
     locale: Locale,
-    speech_time: f32,
-    speech_strength: f32,
     goal_time: f32,
     last_tick: Option<Instant>,
     edge: f32,
@@ -179,8 +179,6 @@ impl Modes {
                 if self.speech.active() {
                     self.speech.stop();
                 } else if !chat.conversation_id.is_empty() && !device_id.is_empty() {
-                    self.speech_time = 0.28;
-                    self.speech_strength = 0.7;
                     return self
                         .speech
                         .start(self.model.clone(), self.locale.code(), chat);
@@ -259,9 +257,6 @@ impl Modes {
             })
             .unwrap_or("")
     }
-    pub fn copilot_active(&self) -> bool {
-        self.speech.active()
-    }
     pub fn goal_active(&self) -> bool {
         self.state.as_ref().is_some_and(|state| state.goal_active)
     }
@@ -271,7 +266,7 @@ impl Modes {
         })
     }
     pub fn animating(&self) -> bool {
-        self.last_edge || self.edge_changed.is_some() || self.speech.active() || self.goal_moving()
+        !self.speech.ready && (self.last_edge || self.edge_changed.is_some() || self.goal_moving())
     }
     pub fn animate(&mut self, now: Instant) {
         if let Some(previous) = self.last_tick.replace(now) {
@@ -281,16 +276,6 @@ impl Modes {
                 .min(0.09);
             if self.goal_moving() {
                 self.goal_time += delta;
-            }
-            if self.speech.active() {
-                self.speech_time += delta;
-                let target = match self.speech.visual() {
-                    3. => 1.,
-                    2. => 0.82,
-                    _ => 0.68,
-                };
-                self.speech_strength +=
-                    (target - self.speech_strength) * (1. - (-8.3 * delta).exp());
             }
         }
         if let Some(started) = self.edge_started {
@@ -309,7 +294,7 @@ impl Modes {
             }
         }
     }
-    pub fn effects(&self, reduced_motion: bool) -> ([f32; 4], [f32; 4]) {
+    pub fn effects(&self, reduced_motion: bool) -> ([f32; 4], [f32; 4], MicrophoneLevels) {
         let goal = if self.goal_active() {
             if reduced_motion {
                 1.
@@ -318,12 +303,6 @@ impl Modes {
             }
         } else {
             0.
-        };
-        let speech = self.speech.visual();
-        let time = if reduced_motion {
-            0.28
-        } else {
-            self.speech_time
         };
         let edge = if reduced_motion {
             f32::from(self.last_edge)
@@ -336,9 +315,15 @@ impl Modes {
             (1. - (1. - (self.edge_time / 1.8).min(1.)).powi(3)) * 1.1
         };
         let orbit = if reduced_motion { 0. } else { self.edge_time };
+        let voice_scale = if self.speech.ready {
+            if reduced_motion { 0.14 } else { 0.42 }
+        } else {
+            0.
+        };
         (
-            [time, edge, goal, speech],
-            [orbit, reveal, self.speech_strength, 0.],
+            [0., edge, goal, voice_scale],
+            [orbit, reveal, 0., 0.],
+            self.speech.levels,
         )
     }
     pub fn liberty_button(&self) -> Element<'_, Message> {
@@ -395,7 +380,7 @@ impl Modes {
             .on_action(Message::GoalEdit)
             .style(|theme, status| {
                 let mut s = text_editor::default(theme, status);
-                s.background = style::control_fill(theme).into();
+                s.background = style::CONTROL_FILL.into();
                 s.border.width = style::BORDER_WIDTH;
                 s.border.radius = style::CONTROL_RADIUS.into();
                 s
@@ -459,12 +444,12 @@ fn mode_button(
     let ink = move |theme: &iced::Theme| {
         if liberty && active {
             Color::from_rgb8(0x51, 0x4b, 0x8a)
-        } else if liberty && !style::dark(theme) {
+        } else if liberty {
             Color::from_rgb8(0x65, 0x6a, 0x78)
         } else if active {
             theme.palette().text
         } else {
-            style::muted_color(theme)
+            style::MUTED
         }
     };
     button(

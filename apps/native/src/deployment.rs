@@ -647,8 +647,8 @@ impl Setup {
                                     .width(Length::Fill)
                                     .height(SETUP_CONTROL)
                                     .padding([0, 13])
-                                    .style(move |theme, status| button::Style {
-                                        background: Some(style::control_fill(theme).into()),
+                                    .style(move |_, status| button::Style {
+                                        background: Some(style::CONTROL_FILL.into()),
                                         text_color: if selected
                                             || matches!(
                                                 status,

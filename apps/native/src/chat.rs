@@ -872,12 +872,7 @@ impl Chat {
         width: f32,
         reduced_motion: bool,
     ) -> Element<'a, Message> {
-        let copilot = modes.copilot_active();
-        let theme = if copilot {
-            style::copilot_theme()
-        } else {
-            style::theme()
-        };
+        let theme = style::theme();
         let bubble = |item| {
             row![
                 space::horizontal(),
@@ -886,14 +881,7 @@ impl Chat {
                     .padding([10, 16])
                     .style(move |_| {
                         container::Style {
-                            background: Some(
-                                if copilot {
-                                    iced::Color::from_rgb8(58, 58, 58)
-                                } else {
-                                    iced::Color::from_rgb8(242, 242, 242)
-                                }
-                                .into(),
-                            ),
+                            background: Some(iced::Color::from_rgb8(242, 242, 242).into()),
                             border: iced::Border {
                                 radius: iced::border::Radius::new(14.).bottom_right(4.),
                                 ..Default::default()
@@ -1040,8 +1028,8 @@ impl Chat {
         let send = Icon::Send
             .view()
             .opacity(if can_send { 1. } else { 0.5 })
-            .style(|theme, _| iced::widget::svg::Style {
-                color: Some(style::primary_ink(theme)),
+            .style(|_, _| iced::widget::svg::Style {
+                color: Some(iced::Color::WHITE),
             });
         submit = submit.push(
             button(container(send).center(Length::Fill))
@@ -1121,20 +1109,9 @@ impl Chat {
             container(composer.spacing(8))
                 .padding(12)
                 .style(move |_| container::Style {
-                    background: Some(
-                        if copilot {
-                            iced::Color::from_rgb8(41, 41, 41)
-                        } else {
-                            iced::Color::WHITE
-                        }
-                        .into()
-                    ),
+                    background: Some(iced::Color::WHITE.into()),
                     border: iced::Border {
-                        color: if copilot {
-                            iced::Color::from_rgb8(67, 67, 67)
-                        } else {
-                            iced::Color::from_rgb8(222, 222, 222)
-                        },
+                        color: iced::Color::from_rgb8(222, 222, 222),
                         width: 1.,
                         radius: style::PANEL_RADIUS.into()
                     },

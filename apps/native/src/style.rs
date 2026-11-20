@@ -19,7 +19,11 @@ pub const CJK_FONT: iced::Font = iced::Font::with_name(if cfg!(target_os = "maco
 } else {
     "Microsoft YaHei"
 });
-const COPILOT_BACKGROUND: Color = Color::from_rgb8(34, 34, 34);
+pub const ACCENT: Color = Color::from_rgb8(0xea, 0xea, 0xea);
+pub const CONTROL_FILL: Color = Color {
+    a: GLASS_OPACITY,
+    ..Color::WHITE
+};
 pub const CONTROL_RADIUS: f32 = 8.;
 pub const PANEL_RADIUS: f32 = 14.;
 pub const GLASS_OPACITY: f32 = 0.35;
@@ -109,62 +113,13 @@ pub fn theme() -> Theme {
         .clone()
 }
 
-pub fn copilot_theme() -> Theme {
-    static THEME: OnceLock<Theme> = OnceLock::new();
-    THEME
-        .get_or_init(|| {
-            Theme::custom(
-                "AImanity · Copilot",
-                Palette {
-                    background: COPILOT_BACKGROUND,
-                    text: Color::from_rgb8(244, 244, 244),
-                    primary: Color::from_rgb8(242, 242, 242),
-                    danger: Color::from_rgb8(248, 128, 128),
-                    ..Theme::Dark.palette()
-                },
-            )
-        })
-        .clone()
-}
-
-pub fn muted_text(theme: &Theme) -> text::Style {
-    text::Style {
-        color: Some(muted_color(theme)),
-    }
-}
-pub fn muted_color(theme: &Theme) -> Color {
-    if dark(theme) {
-        Color::from_rgb8(188, 188, 188)
-    } else {
-        MUTED
-    }
+pub fn muted_text(_: &Theme) -> text::Style {
+    text::Style { color: Some(MUTED) }
 }
 
 pub fn error_text(theme: &Theme) -> text::Style {
     text::Style {
         color: Some(theme.palette().danger),
-    }
-}
-
-pub fn dark(theme: &Theme) -> bool {
-    theme.palette().background == COPILOT_BACKGROUND
-}
-
-pub fn control_fill(theme: &Theme) -> Color {
-    let gray = if dark(theme) { 0.13 } else { 1. };
-    Color::from_rgba(gray, gray, gray, GLASS_OPACITY)
-}
-
-pub fn accent(theme: &Theme) -> Color {
-    let gray = if dark(theme) { 0x42 } else { 0xea };
-    Color::from_rgb8(gray, gray, gray)
-}
-
-pub fn primary_ink(theme: &Theme) -> Color {
-    if dark(theme) {
-        Color::from_rgb8(32, 32, 32)
-    } else {
-        Color::WHITE
     }
 }
 
@@ -176,7 +131,7 @@ pub fn primary(theme: &Theme, status: button::Status) -> button::Style {
     };
     button::Style {
         background: Some(theme.palette().primary.scale_alpha(opacity).into()),
-        text_color: primary_ink(theme).scale_alpha(if status == button::Status::Disabled {
+        text_color: Color::WHITE.scale_alpha(if status == button::Status::Disabled {
             0.5
         } else {
             1.
@@ -198,11 +153,7 @@ pub fn quiet(theme: &Theme, status: button::Status) -> button::Style {
         });
     style.border.radius = CONTROL_RADIUS.into();
     if matches!(status, button::Status::Hovered | button::Status::Pressed) {
-        style.background = Some(
-            accent(theme)
-                .scale_alpha(if dark(theme) { 0.5 } else { 1. })
-                .into(),
-        );
+        style.background = Some(ACCENT.into());
     }
     style
 }
@@ -212,7 +163,7 @@ pub fn input(
     status: iced::widget::text_input::Status,
 ) -> iced::widget::text_input::Style {
     let mut s = iced::widget::text_input::default(theme, status);
-    s.background = control_fill(theme).into();
+    s.background = CONTROL_FILL.into();
     s.border.radius = CONTROL_RADIUS.into();
     s.border.width = BORDER_WIDTH;
     s.border.color = if matches!(status, iced::widget::text_input::Status::Focused { .. }) {
@@ -227,7 +178,7 @@ pub fn select(
     status: iced::widget::pick_list::Status,
 ) -> iced::widget::pick_list::Style {
     let mut s = iced::widget::pick_list::default(theme, status);
-    s.background = control_fill(theme).into();
+    s.background = CONTROL_FILL.into();
     s.border.radius = CONTROL_RADIUS.into();
     s.border.width = BORDER_WIDTH;
     s.border.color = theme.palette().text.scale_alpha(0.16);
@@ -239,12 +190,7 @@ pub fn registry_input(
     status: iced::widget::text_input::Status,
 ) -> iced::widget::text_input::Style {
     let mut style = input(theme, status);
-    style.background = if dark(theme) {
-        accent(theme)
-    } else {
-        Color::WHITE
-    }
-    .into();
+    style.background = Color::WHITE.into();
     style
 }
 
@@ -253,12 +199,7 @@ pub fn registry_select(
     status: iced::widget::pick_list::Status,
 ) -> iced::widget::pick_list::Style {
     let mut style = select(theme, status);
-    style.background = if dark(theme) {
-        accent(theme)
-    } else {
-        Color::WHITE
-    }
-    .into();
+    style.background = Color::WHITE.into();
     style
 }
 pub fn menu(theme: &Theme) -> iced::overlay::menu::Style {

@@ -761,7 +761,7 @@ impl Knowledge {
                                 })
                                 .style(|theme, status| {
                                     let mut appearance = text_editor::default(theme, status);
-                                    appearance.background = style::control_fill(theme).into();
+                                    appearance.background = style::CONTROL_FILL.into();
                                     appearance.border.width = style::BORDER_WIDTH;
                                     appearance.border.radius = style::CONTROL_RADIUS.into();
                                     appearance

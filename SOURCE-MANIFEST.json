@@ -323,8 +323,8 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 52031,
-      "sha256": "a698b2d483fe2b7b4e4207f5bfd275573f0e872d3e38141c51e762c26f51cd7d"
+      "size": 51199,
+      "sha256": "e71195b3b2b8eb3fd626e243f0d92e53c9a1641090f011d7dac283f598436d42"
     },
     {
       "path": "apps/native/src/connection.rs",
@@ -338,8 +338,8 @@
     },
     {
       "path": "apps/native/src/deployment.rs",
-      "size": 29326,
-      "sha256": "4f4ef36d41da1f192af6f9bda45643aafae5c3ecbf2ac5bbb11335070bbe1a7d"
+      "size": 29315,
+      "sha256": "4a60709f05c5362f30b0e8d41195ec7625d9cdaa4b6c308b9cd2b173c8ff069b"
     },
     {
       "path": "apps/native/src/devices.rs",
@@ -348,8 +348,8 @@
     },
     {
       "path": "apps/native/src/files.rs",
-      "size": 31361,
-      "sha256": "efae63e04e151ee99c0b3e32c5d43834e0b2f8cc0e67055b27330146a86d9139"
+      "size": 31156,
+      "sha256": "bc74c87b8df294ea1dab915284c6a443e4373f3f9aae2bc429d6bbf1850e60f1"
     },
     {
       "path": "apps/native/src/host.rs",
@@ -368,8 +368,8 @@
     },
     {
       "path": "apps/native/src/knowledge.rs",
-      "size": 37283,
-      "sha256": "977071b72d3a52d3df3f4a16f0ced96229cf6c5cb5f3e960140abdac21e8798a"
+      "size": 37276,
+      "sha256": "0117a96d1291f3a04bf9cf0837d71ebfdeafbbcc838c3e8cc50719f3ee2fb8f3"
     },
     {
       "path": "apps/native/src/layout.rs",
@@ -388,18 +388,18 @@
     },
     {
       "path": "apps/native/src/location.rs",
-      "size": 28871,
-      "sha256": "2cff7c79d4a45803da49fb2a7d498e8695ae3859d88c79c689c5eaaa261cd6d0"
+      "size": 28854,
+      "sha256": "f84241bc5daa7964ed8df36ad8d7644e88f459f15bacd8732442f726897ab266"
     },
     {
       "path": "apps/native/src/main.rs",
-      "size": 100004,
-      "sha256": "369c7812dc40b8653f2da3b8015aa9c24d75608bcd95bdb6c88e63a0ea144186"
+      "size": 99789,
+      "sha256": "d7c99931b2c533996d85c193da7a3d45f7433857a0cfa2be4cb247603856e067"
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
-      "size": 9720,
-      "sha256": "658eac444934dc24f3dc746d04f44b3cb019774b75b882fc62008fd16e7e121f"
+      "size": 12463,
+      "sha256": "6a66a3485192300ce77942048209a04d8371f8679d03ae8395c8030ff0c0896a"
     },
     {
       "path": "apps/native/src/modes/speech/speaker.rs",
@@ -408,13 +408,13 @@
     },
     {
       "path": "apps/native/src/modes/speech.rs",
-      "size": 10420,
-      "sha256": "99839c12984413c30f432b170d8b1fcc2d8e57e2258756ad7c6e830e39b19b97"
+      "size": 10394,
+      "sha256": "4383430a102c6933f986da0f9f7e19f82860afd7b28e9bdbd1f57c8951e821dd"
     },
     {
       "path": "apps/native/src/modes.rs",
-      "size": 18679,
-      "sha256": "13021855e712b3a66614d93a4c7714792937e5d23f6acfc9b3d29907cee55420"
+      "size": 18098,
+      "sha256": "772240b8d68a97e7eaee8af18427f7b9d54b85d60d32b342b1544075c27c7aec"
     },
     {
       "path": "apps/native/src/occlude.rs",
@@ -432,19 +432,14 @@
       "sha256": "11178b48e1e128743c862d8908772f7b775445a08e776a1b732b6332721524e9"
     },
     {
-      "path": "apps/native/src/scene/copilot.rs",
-      "size": 4567,
-      "sha256": "c9e307265346f035f65c36623a9566dd1e1919523848cae969c1dc6c5cfac072"
-    },
-    {
       "path": "apps/native/src/scene.rs",
-      "size": 34840,
-      "sha256": "5bf82eb0a95839bbeafb1acec7ed9e7c7b8912bfa01627a12852aae14cffe5a0"
+      "size": 33388,
+      "sha256": "e4e03f73950c405f0831df2fe23e51fce51b25df824961abfc74603fe200b36d"
     },
     {
       "path": "apps/native/src/scene.wgsl",
-      "size": 17467,
-      "sha256": "5c368c8f5afe4af4a728538d68abb7f6da049ff989b14d2022ada66308355a9e"
+      "size": 12867,
+      "sha256": "2d648c5b205ca9e92c5ad661c4099c29f47d5d8000b7b8f7ab0276b98de6c415"
     },
     {
       "path": "apps/native/src/skills.rs",
@@ -453,13 +448,13 @@
     },
     {
       "path": "apps/native/src/spring_slider.rs",
-      "size": 11178,
-      "sha256": "a8477d59093ca18697e3a94063df9187bbbc2949d205f2a9bc787e8ab60e25f1"
+      "size": 11171,
+      "sha256": "e08c59bc3e1fb0edd6a60cc6e1bc1484e608596a15d0f1af97de257bffb2b2b2"
     },
     {
       "path": "apps/native/src/style.rs",
-      "size": 7573,
-      "sha256": "f618b5faf95adbdd44507002d3059960d69a614adc75b24959321776779ed033"
+      "size": 6123,
+      "sha256": "12cb3ee4ffeb2d71e852f49b579e8d66680bcdb0235c4ec4d5c4b19460bddb9c"
     },
     {
       "path": "apps/native/src/surface.rs",
@@ -2378,8 +2373,8 @@
     },
     {
       "path": "docs/public/copilot-voice.md",
-      "size": 1716,
-      "sha256": "31c5bb000611f19f691248f33ecc1b7ce63516564c4b210718c9259c29f43a43"
+      "size": 2019,
+      "sha256": "591eaac629cb575e4cbbe32d52cf57c376ac1b95a900a667fef144c2dfb779c8"
     },
     {
       "path": "docs/public/database-roles.md",

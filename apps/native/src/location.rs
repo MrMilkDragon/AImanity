@@ -454,8 +454,8 @@ impl Location {
                 .view()
                 .width(28)
                 .height(28)
-                .style(|theme, _| svg::Style {
-                    color: Some(style::muted_color(theme)),
+                .style(|_, _| svg::Style {
+                    color: Some(style::MUTED),
                 });
             let enable = button(
                 text(locale.tr("开启"))

@@ -1,6 +1,6 @@
 # Copilot voice
 
-Enable Copilot beside Liberty in the conversation composer. Both modes can run together. Voice instructions have priority.
+Enable Copilot beside Liberty in the conversation composer. Both modes can run together. Voice instructions have priority. Across the white workspace, black lines trace the microphone input behind the devices and conversation. Softer speech produces smaller peaks. Pauses leave a flat line.
 
 The macOS and Windows clients bundle a multilingual Whisper model. Turn on Copilot and allow microphone access. Recognition updates the draft as you speak. A pause submits the phrase to the current conversation. The system voice reads replies, and new speech interrupts playback. The microphone opens when Copilot starts and closes when it stops.
 
@@ -12,6 +12,6 @@ Guest voice messages, microphone injection and phone calls are on the roadmap.
 
 ## Copilot 语音
 
-在输入区开启 Copilot。它可以和 Liberty 同时运行，语音指令优先。
+在输入区开启 Copilot。它可以和 Liberty 同时运行，语音指令优先。白色工作台上的黑色声纹横贯整个窗口，位于设备和对话下方。声纹随麦克风音量起伏，停顿时收平。
 
 macOS 和 Windows 随包提供多语 Whisper 模型。开启 Copilot 并允许访问麦克风后，说话时草稿会更新，停顿时发送到当前会话。系统音色播报回复，说下一句会打断播报。录音、转写和播报均在本机运行。工作进行中继续说话，改稿指令会进入当前任务，Agent 可以继续编辑同一份文件并交付。

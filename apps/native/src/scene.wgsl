@@ -1,17 +1,10 @@
-struct Scene { size:vec4<f32>, phone:vec4<f32>, desktop:vec4<f32>, chat:vec4<f32>, popup:vec4<f32>, child_popup:vec4<f32>, state:vec4<f32>, device_scale:vec4<f32>, material:vec4<f32>, background:vec4<f32>, mode_effects:vec4<f32>, mode_motion:vec4<f32>, agent_pointers:array<array<vec4<f32>,5>,2> }
+struct Scene { size:vec4<f32>, phone:vec4<f32>, desktop:vec4<f32>, chat:vec4<f32>, popup:vec4<f32>, child_popup:vec4<f32>, state:vec4<f32>, device_scale:vec4<f32>, material:vec4<f32>, background:vec4<f32>, mode_effects:vec4<f32>, mode_motion:vec4<f32>, agent_pointers:array<array<vec4<f32>,5>,2>, microphone:array<vec4<u32>,12> }
 @group(0) @binding(0) var<uniform> scene:Scene;
 @group(0) @binding(1) var phone:texture_2d<f32>;
 @group(0) @binding(2) var desktop:texture_2d<f32>;
 @group(0) @binding(3) var linear_sampler:sampler;
-@group(0) @binding(4) var copilot_ink:texture_2d<f32>;
 @group(1) @binding(0) var glass_source:texture_2d<f32>;
 struct Vertex { @builtin(position) position:vec4<f32>, @location(0) uv:vec2<f32> }
-struct CopilotMark {
- @builtin(position) position:vec4<f32>,
- @location(0) distance:vec2<f32>,
- @location(1) radius:f32,
- @location(2) tone:f32
-}
 @vertex fn vertex(@builtin(vertex_index) index:u32)->Vertex {
  let v=array<vec2<f32>,3>(vec2(-1.,-1.),vec2(3.,-1.),vec2(-1.,3.));
  var out:Vertex;out.position=vec4(v[index],0.,1.);out.uv=vec2((v[index].x+1.)*.5,(1.-v[index].y)*.5);return out;
@@ -124,107 +117,30 @@ fn goal_background(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
   select(mix(steel,copper,(position-.42)/.38),mix(copper,gold,(position-.8)/.2),position>=.8),position>=.42);
  return mix(c,metal,max(max(guides,rings),engraving(q,1./scale)));
 }
-fn mark_position(p:vec2<f32>)->vec4<f32> {
- return vec4(p.x/scene.size.x*2.-1.,1.-p.y/scene.size.y*2.,0.,1.);
+fn microphone_levels(index:u32)->vec4<f32> {
+ let sample=unpack4x8unorm(scene.microphone[index/4u][index%4u]);
+ return vec4(-sample.x,sample.y,-sample.z,sample.z);
 }
-@vertex fn copilot_particle(@builtin(vertex_index) vertex_index:u32,@builtin(instance_index) point:u32)->CopilotMark {
- let quad=array<vec2<f32>,6>(vec2(-1.,-1.),vec2(1.,-1.),vec2(1.,1.),vec2(-1.,-1.),vec2(1.,1.),vec2(-1.,1.));
- let size=scene.size.xy;
- let scale=min(size.x,size.y);
- let time=scene.mode_effects.x;
- let seed=f32(point)*2.399963;
- let grain=fract(f32(point)*vec2(.754877666,.569840291));
- let cell=vec2(f32(point%48u),f32(point/48u))+(grain-.5)*1.45;
- let x=cell.x/23.5-1.;
- let z=cell.y/7.5-1.;
- let phase=.43+time*1.67;
- let sway=cos(time*3.141593);
- let yaw=.24*sin(time*1.18)-.12;
- let depth=scale*(.028-.017*sway);
- let crest=pow(max(0.,1.-.66*abs(x)),1.2);
- let wave=.62*cos(phase-x*2.75+z*.46)*crest-.19*cos(phase);
- let ripple=.112*sin(phase*2.3+x*18.+z*6.);
- let scatter=.15*sin(seed+phase*2.1);
- let near=(z+1.)*.5;
- let perspective=.93+near*.11;
- let span=scale*(.214+.022*sway);
- let position=vec2(
-  size.x*.5-scale*(.009+.012*sin(time*1.57+.1))+(x*cos(yaw)+z*sin(yaw)*.38)*span*perspective,
-  size.y*.476+z*depth+x*depth*yaw-(wave+ripple+scatter)*scale*.066*scene.mode_motion.z);
- let sparkle=.5+.5*cos(seed+phase*1.74);
- let radius=clamp(scale/336.,.65,3.1)*(.49+near*.34+sparkle*.58);
- let shades=array<f32,5>(.18,.36,.57,.76,.91);
- var mark:CopilotMark;
- mark.distance=quad[vertex_index]*(radius+.5);
- mark.position=mark_position(position+mark.distance);
- mark.radius=radius;
- mark.tone=shades[min(4u,u32((near*.52+sparkle*.47)*5.))];
- return mark;
-}
-const WAVE_POINTS=array<vec2<f32>,56>(
- vec2(-70.,240.),vec2(34.,236.),vec2(99.,263.),vec2(147.,235.),vec2(212.,159.),vec2(250.,202.),vec2(309.,401.),vec2(355.,308.),vec2(398.,55.),vec2(444.,149.),vec2(513.,323.),vec2(565.,254.),vec2(672.,220.),vec2(795.,240.),
- vec2(-70.,240.),vec2(18.,244.),vec2(86.,216.),vec2(145.,244.),vec2(198.,305.),vec2(246.,274.),vec2(309.,79.),vec2(350.,171.),vec2(410.,408.),vec2(452.,319.),vec2(511.,188.),vec2(564.,223.),vec2(664.,264.),vec2(795.,240.),
- vec2(-70.,240.),vec2(43.,238.),vec2(91.,263.),vec2(148.,237.),vec2(211.,194.),vec2(250.,221.),vec2(307.,349.),vec2(352.,289.),vec2(410.,109.),vec2(452.,191.),vec2(520.,286.),vec2(563.,255.),vec2(656.,227.),vec2(795.,240.),
- vec2(-70.,240.),vec2(33.,241.),vec2(90.,225.),vec2(154.,243.),vec2(216.,274.),vec2(251.,257.),vec2(310.,150.),vec2(350.,199.),vec2(412.,356.),vec2(449.,294.),vec2(513.,206.),vec2(563.,230.),vec2(661.,247.),vec2(795.,240.));
-@vertex fn copilot_wave(@builtin(vertex_index) vertex_index:u32,@builtin(instance_index) wave:u32)->CopilotMark {
- let step=vertex_index/2u;
- let segment=min(step/24u,5u);
- let t=f32(step-segment*24u)/24.;
+fn microphone_background(p:vec2<f32>)->vec3<f32> {
+ let y=p.y-scene.size.y*.51;
+ let scale=scene.size.y*scene.mode_effects.w;
+ if abs(y)>scale+2. {return vec3(1.);}
+ let x=clamp(p.x/scene.size.x,0.,1.)*47.;
+ let i=u32(x);
+ let t=fract(x);
  let u=1.-t;
- let base=wave*14u;
- let end=base+segment*2u+3u;
- var a=WAVE_POINTS[base];
- var b=WAVE_POINTS[base+1u];
- if segment>0u {
-  a=WAVE_POINTS[end-2u];
-  b=2.*a-WAVE_POINTS[end-3u];
- }
- let c=WAVE_POINTS[end-1u];
- let d=WAVE_POINTS[end];
- let activity=u32(scene.mode_effects.w)-1u;
- let duration=array<f32,3>(7.,2.7,2.2)[activity];
- let delay=array<f32,4>(0.,.8,1.6,1.1)[wave];
- let traversal=1.-abs(2.*fract((scene.mode_effects.x+delay)/(2.*duration))-1.);
- let drift=.5-.5*cos(select(traversal,1.-traversal,wave%2u==1u)*3.141593);
- let height=array<f32,3>(.5,1.28,1.65)[activity]*mix(.69,1.14,drift);
- let tone=array<f32,3>(.28,.43,.48)[activity]*array<f32,4>(1.,.7,.5,.45)[wave];
- let scale=scene.chat.zw/vec2(720.,480.)*vec2(1.,height);
- let xyz=a*u*u*u+3.*b*u*u*t+3.*c*u*t*t+d*t*t*t;
- let center=(xyz-vec2(0.,240.))*scale+scene.chat.xy+vec2(mix(-.04,.04,drift)*scene.chat.z,scene.chat.w*.5);
- let slope=(3.*u*u*(b-a)+6.*u*t*(c-b)+3.*t*t*(d-c))*scale;
- let normal=normalize(vec2(-slope.y,slope.x));
- let side=select(-1.,1.,vertex_index%2u==1u);
- var mark:CopilotMark;
- mark.position=mark_position(center+side*normal);
- mark.distance=vec2(side,0.);
- mark.radius=.5;
- mark.tone=tone;
- return mark;
-}
-@fragment fn copilot_stroke(mark:CopilotMark)->@location(0) vec4<f32> {
- let coverage=clamp(mark.radius+.5-length(mark.distance),0.,1.);
- return vec4(1.,1.,1.,mark.tone*coverage);
-}
-fn copilot_background(p:vec2<f32>)->vec3<f32> {
- let size=scene.size.xy;
- let uv=p/size;
- let scale=min(size.x,size.y);
- let radial=1.-clamp(length((uv-vec2(.48,.02))/vec2(.77,1.08))/.74,0.,1.);
- let gradient=mix(mix(.027,.0156,uv.y),.039,radial);
- let y=(uv.y-.585)/.33;
- let lattice=vec2(p.x/scale)+vec2(2.6,-2.6)*y;
- let directions=abs(fract(lattice*6.5+.5)-vec2(.5));
- let distance=min(directions.x,directions.y)/length(vec2(6.5/scale,16.9/(.33*size.y)));
- let intensity=max(0.,min(y/.4,(1.-y)/.6))*.048;
- let grid=line_alpha(distance,.72,1.)*intensity;
- let sway=cos(scene.mode_effects.x*3.141593);
- let drag=-.009-.012*sin(scene.mode_effects.x*1.57+.1);
- let offset=(p-vec2(.5,.746)*size-vec2(drag*scale,0.))/scale;
- let stretch=vec2(.225+.021*sway,.026-.007*sway);
- let shadow_distance=offset/stretch;
- let shadow=(1.-smoothstep(.02,1.,dot(shadow_distance,shadow_distance)))*.58;
- let points=textureSampleLevel(copilot_ink,linear_sampler,uv,0.).r;
- return vec3(mix(mix(gradient,.46208,grid)*(1.-shadow),.93869,points*(.23+.77*points)));
+ let a=microphone_levels(max(i,1u)-1u);
+ let b=microphone_levels(i);
+ let c=microphone_levels(min(i+1u,47u));
+ let d=microphone_levels(min(i+2u,47u));
+ let t2=t*t;
+ let levels=(u*u*u*a+(3.*t*t2-6.*t2+4.)*b+(-3.*t*t2+3.*t2+3.*t+1.)*c+t*t2*d)/6.;
+ let slope=(-u*u*a+(3.*t2-4.*t)*b+(-3.*t2+2.*t+1.)*c+t2*d)*(.5*47.*scale/scene.size.x);
+ let distance=abs(vec4(y)-levels*scale)*inverseSqrt(vec4(1.)+slope*slope);
+ let stroke=vec4(1.)-smoothstep(vec4(.32),vec4(1.25),distance);
+ let ink=max(max(stroke.x,stroke.y*.93),max(stroke.z*.79,stroke.w*.70));
+ let activity=smoothstep(.01,.13,max(-levels.x,levels.y));
+ return vec3(1.-ink*mix(.26,1.,activity));
 }
 fn cable(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
  let a=vec2(scene.phone.x+scene.phone.z*.5,scene.phone.y+scene.phone.w);
@@ -251,8 +167,8 @@ fn cable(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
 }
 fn base(p:vec2<f32>)->vec3<f32>{
  var c=scene.background.rgb;
- if scene.mode_effects.z>0. {c=goal_background(p,c);}
- if scene.mode_effects.w>0. {c=copilot_background(p);}
+ if scene.mode_effects.w>0. {c=microphone_background(p);}
+ else if scene.mode_effects.z>0. {c=goal_background(p,c);}
  if p.y<scene.device_scale.z {return c;}
  if scene.state.z<.5 {
   c=device(p,scene.desktop,scene.state.y,1u,c);c=device(p,scene.phone,scene.state.x,0u,c);
@@ -286,9 +202,9 @@ fn glass(p:vec2<f32>,r:vec4<f32>,under:vec3<f32>)->vec3<f32>{
  if dist>1. {return under*(1.-exp(-max(dist,0.)*.1)*.018);}
  let copilot=scene.mode_effects.w>0.;
  let backdrop=select(textureSampleLevel(glass_source,linear_sampler,p/scene.size.xy,0.).rgb,under,copilot);
- var c=mix(backdrop,vec3(select(1.,.015,copilot)),scene.material.y);
+ var c=mix(backdrop,vec3(1.),scene.material.y);
  let edge=smoothstep(-scene.material.w-.5,-.5,dist)*(1.-smoothstep(-.5,.5,dist));
- c=mix(c,select(vec3(.1384,.1812,.2462),vec3(.14),copilot),edge*select(.42,1.,copilot));
+ c=mix(c,vec3(.1384,.1812,.2462),edge*.42);
  return mix(c,under,smoothstep(0.,1.,dist));
 }
 fn tool_glass(p:vec2<f32>,r:vec4<f32>,under:vec3<f32>)->vec3<f32>{
@@ -344,13 +260,8 @@ fn liberty_glow(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
  let p=v.uv*scene.size.xy;
  var c=base(p);
  if p.y>=scene.device_scale.z {c=glass(p,scene.chat,c);}
- if p.y>=scene.device_scale.z && scene.mode_effects.w>0. && sdf(p,scene.chat,scene.material.x)<0. {
-  let x=(p.x-scene.chat.x)/scene.chat.z;
-  let ink=textureSampleLevel(copilot_ink,linear_sampler,p/scene.size.xy,0.).g*clamp(min(x,1.-x)/.1,0.,1.);
-  c=mix(c,vec3(.90466),ink*(.23+.77*ink));
- }
  if scene.popup.z>0. && scene.size.w>0. {c=mix(c,tool_glass(p,scene.popup,c),scene.size.w);}
  if scene.child_popup.z>0. && scene.background.w>0. {c=mix(c,tool_glass(p,scene.child_popup,c),scene.background.w);}
- if scene.mode_effects.y>0. {c=liberty_glow(p,c);}
+ if scene.mode_effects.y>0. && scene.mode_effects.w==0. {c=liberty_glow(p,c);}
  return vec4(c,1.);
 }
