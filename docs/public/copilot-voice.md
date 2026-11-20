@@ -6,6 +6,8 @@ The macOS and Windows clients bundle a multilingual Whisper model. Turn on Copil
 
 The first activation requests the system microphone. Speech recognition and playback run locally. A spoken revision joins the active user task or the notification work already in progress, so the Agent can edit the open document and continue the same delivery. Accepted corrections and transcripts use [assistant.proto](../../packages/protocol/proto/ai_phone/v1/assistant.proto).
 
+Copilot starts reading at a natural break in a streaming reply. It keeps decimal values and version numbers together, reads link labels, and can speak a completed short reply in one utterance.
+
 The Rust service also exposes compatible provider adapters defined in [voice.proto](../../packages/protocol/proto/ai_phone/v1/voice.proto), including binary WebSocket transcription and WAV synthesis. Voice service configuration lives under **Configuration → Agent → Voice**.
 
 Guest voice messages, microphone injection and phone calls are on the roadmap.
@@ -15,3 +17,5 @@ Guest voice messages, microphone injection and phone calls are on the roadmap.
 在输入区开启 Copilot。它可以和 Liberty 同时运行，语音指令优先。白色工作台上的黑色声纹横贯整个窗口，位于设备和对话下方。声纹随麦克风音量起伏，停顿时收平。
 
 macOS 和 Windows 随包提供多语 Whisper 模型。开启 Copilot 并允许访问麦克风后，说话时草稿会更新，停顿时发送到当前会话。系统音色播报回复，说下一句会打断播报。录音、转写和播报均在本机运行。工作进行中继续说话，改稿指令会进入当前任务，Agent 可以继续编辑同一份文件并交付。
+
+流式回复遇到自然停顿即可开口，小数和版本号连读，链接只读名称。已经收齐的短回复一次播完。

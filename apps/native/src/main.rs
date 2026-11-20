@@ -2193,7 +2193,6 @@ impl App {
             );
         }
         use controls::{Icon, sized_icon_button};
-        let tr = |key: &'static str| self.locale.tr(key);
         let popup = self.popup_rect();
         let child_popup = self.child_rect();
         let (mode_effects, mode_motion, microphone) = self.modes.effects(self.reduced_motion);
@@ -2370,11 +2369,6 @@ impl App {
                 continue;
             }
             let rect = self.layout.toolbars[index];
-            let name = self.devices[index]
-                .as_ref()
-                .map(|d| d.name.as_str())
-                .unwrap_or(tr(if index == 0 { "手机" } else { "电脑" }));
-            let name = style::section_title(name);
             let mut tools = row![
                 self.audio[index]
                     .view(self.connection.is_some(), self.reduced_motion)
@@ -2402,9 +2396,8 @@ impl App {
                 32.,
                 34.,
             ));
-            let toolbar = row![name, tools].spacing(8).align_y(iced::Center);
             stage.push(
-                pin(container(toolbar)
+                pin(container(tools)
                     .width(rect.width)
                     .height(rect.height)
                     .align_y(iced::Center)

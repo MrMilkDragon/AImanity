@@ -883,7 +883,8 @@ impl Chat {
                         container::Style {
                             background: Some(iced::Color::from_rgb8(242, 242, 242).into()),
                             border: iced::Border {
-                                radius: iced::border::Radius::new(14.).bottom_right(4.),
+                                radius: iced::border::Radius::new(style::PANEL_RADIUS)
+                                    .bottom_right(style::CONTROL_RADIUS * 0.5),
                                 ..Default::default()
                             },
                             ..Default::default()

@@ -7,7 +7,9 @@ description: 真实Linux桌面的观察、键鼠操作、中文输入和办公�
 
 GUI工具：computer_click（左键1/右键3，双击clicks=2）、computer_type（Unicode粘贴；replace=true一次替换已聚焦字段）、computer_key（Return、ctrl+l、ctrl+s、alt+F4等）、computer_scroll、computer_drag。每次使用本轮最新observation_id；动作后返回新截图，继续根据新图决策。观察过期、控制权变化、目标不见时重新观察，不盲点。手动接管后等待，不抢回用户控制。
 
-手机工具仅操作Android。电脑上的桌面图标可双击打开工作文件、表格与浏览器；工作目录/home/ai/Files，文件管理器和LibreOffice均为真实GUI。
+底部 Dock 可打开工作文件、浏览器和四款办公应用。GNOME 文件管理器默认列出 `/home/ai/Files`。双击文件用默认应用打开。用 Ctrl+L 输入完整路径后，若文件已选中且仍在文件管理器，按 Return 打开。文件选择器输入完整路径后，点击右上角「打开」。
+
+交接笔记与 Markdown 用 GNOME 文本编辑器修改。需要保留来稿时先 Ctrl+Shift+S 另存工作副本，等标题出现新文件名再编辑。用户中途纠正交付日期或数量时，改这份副本并 Ctrl+S，再从工作文件回传同一份成品。
 
 普通操作、搜索资料、下载和办公处理使用真实GUI。联网检索打开设备浏览器、输入搜索、阅读页面和核对来源；不使用模型内置搜索、curl、Python抓取或workspace_fetch替代。computer_run只用于用户明确要求的命令、代码处理或系统维护；必须公开写明是命令处理，不能称“用鼠标编辑”。不得读macOS宿主路径、凭据或其他项目。workspace_run是另一台无界面工具容器，不应在那里生成文件却声称已生成在电脑上。
 

@@ -6,11 +6,9 @@ pub fn readable(value: &str) -> String {
         let mut rest = content;
         while let Some((before, after)) = rest.split_once('[') {
             text.extend(before.chars().filter(|c| !"*_`#".contains(*c)));
-            if let Some((label, url)) = after.split_once("](")
-                && let Some((_, remaining)) = url.split_once(')')
-            {
+            if let Some((label, url)) = after.split_once("](") {
                 text.push_str(label);
-                rest = remaining;
+                rest = url.split_once(')').map_or("", |(_, remaining)| remaining);
             } else {
                 text.push('[');
                 rest = after;
@@ -22,12 +20,32 @@ pub fn readable(value: &str) -> String {
 }
 
 pub fn phrase_len(value: &str, complete: bool) -> Option<usize> {
-    for (index, (offset, letter)) in value.char_indices().enumerate() {
-        if index == 180 {
-            return Some(offset);
+    let mut letters = value.char_indices().peekable();
+    let mut word_break = None;
+    let mut count = 0;
+    while let Some((offset, letter)) = letters.next() {
+        let end = offset + letter.len_utf8();
+        let sentence = match letter {
+            '.' => letters
+                .peek()
+                .map_or(complete, |(_, next)| next.is_whitespace()),
+            '。' | '！' | '？' | '!' | '?' | '؟' | '\n' => true,
+            _ => false,
+        };
+        let clause = count >= 8 && matches!(letter, '，' | ',' | '،' | '；' | ';');
+        if sentence || clause || letter.is_whitespace() {
+            word_break = Some(end);
         }
-        if "。！？.!?\n".contains(letter) {
-            return Some(offset + letter.len_utf8());
+        if !complete && (sentence || clause) {
+            return Some(end);
+        }
+        count += 1;
+        if count == 140 {
+            return Some(
+                word_break
+                    .filter(|&split| split >= offset / 2)
+                    .unwrap_or(end),
+            );
         }
     }
     complete.then_some(value.len())

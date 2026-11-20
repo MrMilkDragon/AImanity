@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "0.0.4",
+  "version": "0.0.5",
   "license": "Apache-2.0",
   "remote_publication_authorized": true,
   "remote_review_authorized": true,
@@ -224,12 +224,12 @@
     {
       "path": "apps/native/Cargo.lock",
       "size": 155069,
-      "sha256": "33d76899ad760ca97c2ca53f06a620f26f1ea7100e2818856f30263610fc4f13"
+      "sha256": "13e0b4ad2bb6dfffbcf7b74543478efb87f43db50bbec8dbff39321b4bf5d3d7"
     },
     {
       "path": "apps/native/Cargo.toml",
       "size": 2692,
-      "sha256": "69248ba4cca88fe3d180abfecce7fc21f31e6656428d9c8f0677b7e067f57688"
+      "sha256": "a110add6811aa934a90141fa8cc737b8b3b8d4b107d423d9f64169791a51aec6"
     },
     {
       "path": "apps/native/Info.plist",
@@ -323,8 +323,8 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 50914,
-      "sha256": "2a83f002d201d491665ee7c0a3a8a2911c59abd45ea363ef778eff9c44a46160"
+      "size": 50992,
+      "sha256": "dcc0f0a98c3d70e85165f0d66879395b2e2d94df4b8705ca33df3c153ddd5419"
     },
     {
       "path": "apps/native/src/connection.rs",
@@ -373,8 +373,8 @@
     },
     {
       "path": "apps/native/src/layout.rs",
-      "size": 7286,
-      "sha256": "c0334cebb907306b9c775b47e8c3baf73ec5e203daac16621e00317abd9931b8"
+      "size": 8651,
+      "sha256": "54df52c5702ad2b663334ec79f19dd2986b89661aaa8c70a78f141e5fcc4f182"
     },
     {
       "path": "apps/native/src/loading.rs",
@@ -393,8 +393,8 @@
     },
     {
       "path": "apps/native/src/main.rs",
-      "size": 104167,
-      "sha256": "25245771dd580b395695dc9c9ba0690a13db7dec3800365c096b435711860c66"
+      "size": 103789,
+      "sha256": "b4832c6fa56bbb436ccf3e2da7780aad7bced579ace1e427f010666147e4dc96"
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
@@ -403,13 +403,13 @@
     },
     {
       "path": "apps/native/src/modes/speech/speaker.rs",
-      "size": 5536,
-      "sha256": "0407c4ec11aa4f39869171b498198bb70d7c66123cc2d1e0c8123aff5be00bce"
+      "size": 6225,
+      "sha256": "5cfabea4a125b0d5fa07483ed916932d29e550ceff4498268c59520c4d52dffe"
     },
     {
       "path": "apps/native/src/modes/speech.rs",
-      "size": 10394,
-      "sha256": "4383430a102c6933f986da0f9f7e19f82860afd7b28e9bdbd1f57c8951e821dd"
+      "size": 10909,
+      "sha256": "44d59e6ab0adf88743f70ac94e0666dc6039d64dc3acadcc6b73d402b2be92df"
     },
     {
       "path": "apps/native/src/modes.rs",
@@ -433,13 +433,13 @@
     },
     {
       "path": "apps/native/src/scene.rs",
-      "size": 33388,
-      "sha256": "e4e03f73950c405f0831df2fe23e51fce51b25df824961abfc74603fe200b36d"
+      "size": 33396,
+      "sha256": "53be9e73cf6f349e27d45c36f206f1e4679a9c32995f565b880e8b6b0cc60598"
     },
     {
       "path": "apps/native/src/scene.wgsl",
-      "size": 12867,
-      "sha256": "2d648c5b205ca9e92c5ad661c4099c29f47d5d8000b7b8f7ab0276b98de6c415"
+      "size": 12837,
+      "sha256": "0f1aef7e80044c15ef3e12e88570311f945e372c06f307fd99ec7efb618b1628"
     },
     {
       "path": "apps/native/src/skills.rs",
@@ -474,7 +474,7 @@
     {
       "path": "apps/native/src/update_core.rs",
       "size": 13242,
-      "sha256": "8993fc055d46f633c2e053c56a0cb72c105013888ba0427251f85511ea1d4c34"
+      "sha256": "e96c7f8bac444059194617c2c50f1eb1b1dde85f89fe12227ee2c7debda8b4fa"
     },
     {
       "path": "apps/native/src/update_install/macos.rs",
@@ -623,8 +623,8 @@
     },
     {
       "path": "config/release-policy.json",
-      "size": 411,
-      "sha256": "42f5a800eb4db556ef264c8206bed181a411c207815c00d60e9648223dfd70cb"
+      "size": 346,
+      "sha256": "768c9b29b9ca61bee6412b8b4030dc239c82ec2341de9ad127b9d2fac21f50ec"
     },
     {
       "path": "config/rust-runtime-notices.json",
@@ -1443,8 +1443,8 @@
     },
     {
       "path": "crates/assistant/src/worker/execution_policy.rs",
-      "size": 22489,
-      "sha256": "c45ee9629601ef0f09dd0006d3d1c88f6e72e9b052911e9cc56c5d89934591b3"
+      "size": 22547,
+      "sha256": "b2083570372a341fc8136682069cecc30c89840860d801781961780d7b9a3aa2"
     },
     {
       "path": "crates/assistant/src/worker/model_trace.rs",
@@ -2443,8 +2443,8 @@
     },
     {
       "path": "docs/public/copilot-voice.md",
-      "size": 2019,
-      "sha256": "591eaac629cb575e4cbbe32d52cf57c376ac1b95a900a667fef144c2dfb779c8"
+      "size": 2347,
+      "sha256": "0d9994428778ef1b022ff61a2ce1ccbec403557cb5f07a83978821a57f0e5868"
     },
     {
       "path": "docs/public/database-roles.md",
@@ -3548,8 +3548,8 @@
     },
     {
       "path": "skills/builtin/computer-use/SKILL.md",
-      "size": 7439,
-      "sha256": "f8338a5c503f9b7b012d7008dce0c3616bf604258142ccc70de9befd0defef13"
+      "size": 7858,
+      "sha256": "2e200f51c3c787bba70a07fac0537698a0e50500de5e8c1caf35aad9b36534c0"
     },
     {
       "path": "skills/builtin/device-transfer/SKILL.md",

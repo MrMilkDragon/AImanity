@@ -100,6 +100,8 @@ pub fn browser_lookup(request: &str) -> bool {
             "抖音",
             "bilibili",
             "mousepad",
+            "text editor",
+            "文本编辑器",
             "文档中",
             "表格中",
         ]

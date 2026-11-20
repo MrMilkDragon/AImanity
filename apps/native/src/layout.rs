@@ -1,7 +1,6 @@
 use iced::{Point, Rectangle, Size};
 
 const PERSPECTIVE: f32 = 1800.;
-const BEZEL: f32 = 5.;
 pub const STAGE_TOP: f32 = 60.;
 pub const SIDE_INSET: f32 = 24.;
 pub const CHAT_PADDING: [f32; 2] = [14., 18.];
@@ -12,9 +11,30 @@ pub struct Layout {
     pub toolbars: [Rectangle; 2],
     pub chat: Rectangle,
     pub angles: [f32; 2],
-    pub device_scale: [f32; 2],
+    pub device_radius: [f32; 2],
     pub cable: f32,
     pub cable_end: f32,
+}
+
+#[cfg(test)]
+#[test]
+fn input_uses_the_visible_screen_in_each_orientation() {
+    for phone in [0.5, 2.] {
+        let aspects = [phone, 1.6];
+        let layout = Layout::target(Size::new(1440., 900.), 0, true, aspects);
+        for (i, aspect) in aspects.into_iter().enumerate() {
+            let rect = layout.devices[i];
+            let inset = layout.device_radius[i] / 3.;
+            let ratio = (rect.width - 2. * inset) / (rect.height - 2. * inset);
+            assert!((ratio - aspect).abs() < 1e-5);
+            assert_eq!(layout.local(i, rect.center()), Some(Point::new(0.5, 0.5)));
+            assert!(
+                layout
+                    .local(i, Point::new(rect.x + inset, rect.y + inset))
+                    .is_none()
+            );
+        }
+    }
 }
 
 impl Layout {
@@ -47,7 +67,7 @@ impl Layout {
         let mut devices = [Rectangle::default(); 2];
         let mut toolbars = [Rectangle::default(); 2];
         let mut angles = [0.; 2];
-        let mut device_scale = [1.; 2];
+        let mut device_radius = [0.; 2];
         for index in 0..2 {
             let rear = !linked && index != focus;
             let rear_phone = wide && rear && index == 0;
@@ -63,8 +83,14 @@ impl Layout {
             let header_height = if rear { 40. } else { 44. };
             let header_space = if linked { 64. } else { 56. };
             let aspect = aspects[index];
-            let width = pane_width.min((stage_height - header_space) * aspect);
-            let height = width / aspect;
+            let max_height = stage_height - header_space;
+            let fit_width = pane_width.min(max_height * aspect);
+            let radius = (fit_width.min(fit_width / aspect) * 0.05).min(crate::style::PANEL_RADIUS);
+            device_radius[index] = radius;
+            let borders = 2. * radius / 3.;
+            let content_width = (pane_width - borders).min((max_height - borders) * aspect);
+            let width = content_width + borders;
+            let height = content_width / aspect + borders;
             let screen_top = if index == 1 {
                 top + (stage_height + header_height + 12. - height) * 0.5
             } else {
@@ -82,7 +108,7 @@ impl Layout {
                 width,
                 height,
             };
-            let toolbar_width = width.max(236.).min(pane_width).min(760.);
+            let toolbar_width = if index == 0 { 156. } else { 124. };
             toolbars[index] = Rectangle {
                 x: if linked {
                     screen_left - (toolbar_width - width).max(0.) * 0.5
@@ -119,7 +145,7 @@ impl Layout {
                     height: height * scale,
                 };
                 angles[index] = -side * 10_f32.to_radians();
-                device_scale[index] = scale;
+                device_radius[index] *= scale;
             }
         }
         let chat = if wide {
@@ -142,7 +168,7 @@ impl Layout {
             toolbars,
             chat,
             angles,
-            device_scale,
+            device_radius,
             cable: if linked { 1. } else { 0. },
             cable_end: if linked { 1. } else { 0. },
         }
@@ -161,8 +187,8 @@ impl Layout {
             toolbars: std::array::from_fn(|i| rect(self.toolbars[i], target.toolbars[i])),
             chat: rect(self.chat, target.chat),
             angles: std::array::from_fn(|i| mix(self.angles[i], target.angles[i])),
-            device_scale: std::array::from_fn(|i| {
-                mix(self.device_scale[i], target.device_scale[i])
+            device_radius: std::array::from_fn(|i| {
+                mix(self.device_radius[i], target.device_radius[i])
             }),
             cable: mix(self.cable, target.cable),
             cable_end: mix(self.cable_end, target.cable_end),
@@ -192,11 +218,18 @@ impl Layout {
         let a = self.angles[index];
         let x = sx / (a.cos() - sx * a.sin() / PERSPECTIVE);
         let y = sy * (1. + x * a.sin() / PERSPECTIVE);
-        let bezel = BEZEL * self.device_scale[index];
+        let radius = self.device_radius[index];
+        let bezel = radius / 3.;
+        let dx = (x.abs() - (r.width * 0.5 - radius)).max(0.);
+        let dy = (y.abs() - (r.height * 0.5 - radius)).max(0.);
+        let inner = radius - bezel;
+        if dx * dx + dy * dy > inner * inner {
+            return None;
+        }
         let q = Point::new(
             x / (r.width - 2. * bezel) + 0.5,
             y / (r.height - 2. * bezel) + 0.5,
         );
-        (q.x >= 0. && q.x <= 1. && q.y >= 0. && q.y <= 1.).then_some(q)
+        Some(q)
     }
 }

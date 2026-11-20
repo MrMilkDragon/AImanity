@@ -433,9 +433,9 @@ impl shader::Program<Message> for Scene {
                         0.
                     },
                 ],
-                device_scale: [
-                    self.layout.device_scale[0],
-                    self.layout.device_scale[1],
+                radii_and_clip: [
+                    self.layout.device_radius[0],
+                    self.layout.device_radius[1],
                     crate::layout::STAGE_TOP,
                     self.layout.cable_end,
                 ],
@@ -483,7 +483,7 @@ pub struct Uniforms {
     popup: [f32; 4],
     child_popup: [f32; 4],
     state: [f32; 4],
-    device_scale: [f32; 4],
+    radii_and_clip: [f32; 4],
     material: [f32; 4],
     background: [f32; 4],
     mode_effects: [f32; 4],
@@ -497,7 +497,7 @@ struct BackdropKey {
     size_and_cable: [f32; 3],
     devices: [[f32; 4]; 2],
     state: [f32; 4],
-    scale_and_clip: [f32; 4],
+    radii_and_clip: [f32; 4],
     background: [f32; 3],
     blur: f32,
     goal: f32,
@@ -515,7 +515,7 @@ impl BackdropKey {
             size_and_cable: [width, height, cable],
             devices: [scene.phone, scene.desktop],
             state: scene.state,
-            scale_and_clip: scene.device_scale,
+            radii_and_clip: scene.radii_and_clip,
             background: [red, green, blue],
             blur: scene.material[2],
             goal: if scene.mode_effects[3] > 0. {

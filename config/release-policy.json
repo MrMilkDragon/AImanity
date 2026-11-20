@@ -1,7 +1,7 @@
 {
-  "version": "0.0.4",
-  "release_name": "Dysprosium",
-  "release_notes": "Native Rust workbench for Android and Linux. Copilot transcribes locally and draws live microphone levels across the workspace. Shared conversations and notification work accept spoken revisions.",
+  "version": "0.0.5",
+  "release_name": "Europium",
+  "release_notes": "A quieter shared workbench, better-proportioned device frames and modern Linux file, text and office applications for everyday work.",
   "source_preview": {
     "license": "Apache-2.0",
     "remote_publication_authorized": true,
