@@ -10,7 +10,7 @@ concurrency:
   group: europium-mac-candidate
   cancel-in-progress: false
 env:
-  PRODUCT_SOURCE: a7608b15db3244e664908676ee546a4e410d169c
+  PRODUCT_SOURCE: 56a7568ecb1fd00defe46bc7ef513c5b567f6d80
   CARGO_BUILD_JOBS: '2'
   CARGO_INCREMENTAL: '0'
 jobs:
