@@ -89,8 +89,10 @@ impl Cue {
         }
         let dx = (x.end - x.start).div_ceil(40) as usize;
         let dy = (y.end - y.start).div_ceil(40) as usize;
-        let mut hits = [0; 8];
-        let mut total = 0;
+        let per_row = x.len().div_ceil(dx);
+        let mut remaining = per_row * y.len().div_ceil(dy);
+        let required = (remaining * self.percent as usize).div_ceil(100);
+        let mut hits = [0usize; 8];
         for row in y.step_by(dy) {
             for col in x.clone().step_by(dx) {
                 let p = pixel(col, row);
@@ -99,17 +101,16 @@ impl Cue {
                         hits[i] += 1;
                     }
                 }
-                total += 1;
+            }
+            remaining -= per_row;
+            let coverage = hits[1..colors.len()].iter().fold(hits[0], |n, &count| {
+                if any { n.max(count) } else { n.min(count) }
+            });
+            if coverage >= required || coverage + remaining < required {
+                return coverage >= required;
             }
         }
-        let mut matches = hits[..colors.len()]
-            .iter()
-            .map(|h| h * 100 >= total * self.percent);
-        if any {
-            matches.any(|found| found)
-        } else {
-            matches.all(|found| found)
-        }
+        false
     }
 }
 
@@ -348,7 +349,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn alternate_colors_still_require_coverage_inside_the_lane() {
+    fn a_visible_state_finishes_sampling_at_its_requested_coverage() {
+        let cue = Cue {
+            target: None,
+            source: (40, 40),
+            region: wire::PhoneBounds {
+                left: 0,
+                top: 0,
+                right: 40,
+                bottom: 40,
+            },
+            clear_region: None,
+            palette: vec![[0, 120, 0]],
+            percent: 10,
+            any_color: false,
+            moving: false,
+        };
+        let reads = std::cell::Cell::new(0);
+        assert!(cue.matches((40, 40), |_, _| {
+            reads.set(reads.get() + 1);
+            [0, 120, 0]
+        }));
+        assert_eq!(reads.get(), 160);
+    }
+
+    #[test]
+    fn color_coverage_and_exclusion_use_their_own_regions() {
         let mut cue = Cue {
             target: None,
             source: (8, 8),
@@ -374,10 +400,10 @@ mod tests {
         };
         cue.clear_region = Some((destination, cue.palette.clone()));
         assert!(!cue.matches((8, 8), window));
-        let maroon_car = |x, y| if x < 2 { [125, 43, 61] } else { window(x, y) };
-        assert!(cue.matches((8, 8), maroon_car));
-        cue.clear_region.as_mut().unwrap().1.push([125, 43, 61]);
-        assert!(!cue.matches((8, 8), maroon_car));
+        let overlay = |x, y| if x < 2 { [0, 200, 0] } else { window(x, y) };
+        assert!(cue.matches((8, 8), overlay));
+        cue.clear_region.as_mut().unwrap().1.push([0, 200, 0]);
+        assert!(!cue.matches((8, 8), overlay));
         assert!(!cue.matches((8, 8), window));
         assert!(cue.matches((8, 8), |x, y| if x < 2 {
             [50, 80, 60]
@@ -390,7 +416,7 @@ mod tests {
         cue.percent = 50;
         cue.any_color = false;
         assert!(!cue.matches((8, 8), window));
-        cue.palette = vec![[125, 43, 61]];
-        assert!(!cue.matches((8, 8), |_, _| [125, 76, 82]));
+        cue.palette = vec![[0, 200, 0]];
+        assert!(!cue.matches((8, 8), |_, _| [0, 225, 0]));
     }
 }

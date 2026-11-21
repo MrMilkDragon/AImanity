@@ -21,10 +21,9 @@ impl Target {
         screen: (u32, u32),
         pixel: impl Fn(u32, u32) -> [u8; 3],
     ) -> Option<PhoneBounds> {
-        let a = self.area;
-        let (w, h) = (a.right - a.left, a.bottom - a.top);
         let prior = *self.last.lock().unwrap();
-        let anchor = prior.unwrap_or(a);
+        let anchor = prior.unwrap_or(self.area);
+        let (w, h) = (anchor.right - anchor.left, anchor.bottom - anchor.top);
         let destination = prior.unwrap_or(destination);
         let (cx, cy) = (
             (anchor.left + anchor.right) / 2,
@@ -37,8 +36,7 @@ impl Target {
         };
         let mut best = u32::MAX;
         let mut found = None;
-        // Search between the observed object and its destination, at its observed and approaching sizes.
-        for scale in [100, 75, 135, 185, 260] {
+        for scale in [100, 75, 133, 56, 178, 38, 260] {
             let (sw, sh) = ((w * scale / 100).max(1), (h * scale / 100).max(1));
             if sw > screen.0 || sh > screen.1 {
                 continue;
@@ -75,7 +73,7 @@ impl Target {
                 }
                 cost
             };
-            if scale == 100 && xs.contains(&cx) && ys.contains(&cy) && evaluate(cx, cy, 1) == 0 {
+            if xs.contains(&cx) && ys.contains(&cy) && evaluate(cx, cy, 1) == 0 {
                 best = 0;
                 found = Some(PhoneBounds {
                     left: cx - sw / 2,
@@ -88,12 +86,15 @@ impl Target {
             let xstep = stride.max(xs.end().saturating_sub(*xs.start()).div_ceil(64)) as usize;
             let ystep = stride.max(ys.end().saturating_sub(*ys.start()).div_ceil(96)) as usize;
             let mut coarse = None;
-            for y in ys.clone().step_by(ystep) {
+            'coarse: for y in ys.clone().step_by(ystep) {
                 for x in xs.clone().step_by(xstep) {
                     let cost = evaluate(x, y, best);
                     if cost < best {
                         best = cost;
                         coarse = Some((x, y));
+                        if best == 0 {
+                            break 'coarse;
+                        }
                     }
                 }
             }
@@ -183,6 +184,36 @@ pub(super) fn crossing(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn follows_a_resizing_selection_in_both_directions() {
+        let bounds = |side: u32| PhoneBounds {
+            left: 48 - side / 2,
+            right: 48 - side / 2 + side,
+            top: 48 - side / 2,
+            bottom: 48 - side / 2 + side,
+        };
+        let ink = |x: u32, y: u32| [(x * 53) as u8, (y * 53) as u8, ((x + y) % 2 * 245) as u8];
+        let patch = std::array::from_fn(|i| ink((i / 3 % 5) as u32, (i / 15) as u32)[i % 3]);
+        for sizes in [[32, 24, 18], [32, 42, 56]] {
+            let target = Target::new(bounds(32), patch);
+            for side in sizes {
+                let area = bounds(side);
+                let found = target
+                    .locate(bounds(64), (96, 96), |x, y| {
+                        if (area.left..area.right).contains(&x)
+                            && (area.top..area.bottom).contains(&y)
+                        {
+                            ink((x - area.left) * 5 / side, (y - area.top) * 5 / side)
+                        } else {
+                            [220, 220, 220]
+                        }
+                    })
+                    .unwrap();
+                assert!((found.right - found.left).abs_diff(side) <= 2);
+            }
+        }
+    }
 
     #[test]
     fn forecast_requires_the_selected_texture_and_an_intersecting_trajectory() {

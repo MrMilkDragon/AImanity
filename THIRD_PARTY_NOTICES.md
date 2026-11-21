@@ -98,3 +98,13 @@ The Linux phone bridge includes a verbatim AOSP `emulator_controller.proto` sche
 The [native service licence collection](docs/public/native-services-licenses.txt) and [inventory](docs/public/native-services-license-inventory.json) identify the locked Rust service dependencies, full terms, copyright notices and source references. The Linux guest image retains these materials under `/usr/share/doc/ai-phone/`.
 
 Image processing enables PNG in image 0.25.10. The x11rb protocol bindings retain the separate xcb-proto copyright and permission notice. The host archive decoder links liblzma through xz2 and lzma-sys; the collection preserves the vendored XZ terms separately from the Rust wrapper licences. XZ command-line programs and shell utilities are not part of this static library build. This software includes code from [XZ Utils](https://tukaani.org/xz/).
+
+## Development Skill references
+
+The offline Skill library includes selected MIT-licensed Markdown references from the following projects. Each corresponding Skill directory includes its upstream copyright notice and license.
+
+- GSAP guides from [GreenSock](https://github.com/greensock/gsap-skills) for animation.
+- Backend and PostgreSQL guides from [Everything Claude Code](https://github.com/affaan-m/ECC).
+- Interface critique and typography references from [Hallmark](https://github.com/Nutlope/hallmark) and [UI UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill).
+- Interaction and spring references from UI Interaction Kit by ChangerXu.
+- Code review references from [simplify-codebase](https://github.com/tt-a1i/simplify-codebase).

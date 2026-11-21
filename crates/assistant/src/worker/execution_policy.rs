@@ -92,36 +92,64 @@ pub fn browser_lookup(request: &str) -> bool {
         return false;
     }
     let text = request.to_lowercase();
-    online_request(&text)
-        || (![
-            "微信",
-            "wechat",
-            "小红书",
-            "抖音",
-            "bilibili",
-            "mousepad",
-            "text editor",
-            "文本编辑器",
-            "文档中",
-            "表格中",
+    if online_request(&text) {
+        return true;
+    }
+    let in_named_place = super::work_intent::positive_clauses(&text).any(|clause| {
+        let prefix = ["搜索", "检索", "查找", "查询", "搜一下"]
+            .iter()
+            .filter_map(|verb| clause.find(verb))
+            .min()
+            .map(|i| {
+                let lead = clause[..i]
+                    .trim_start_matches('请')
+                    .trim_start_matches("帮我");
+                lead.rsplit_once(['在', '用'])
+                    .map_or(lead, |(_, place)| place)
+                    .trim()
+                    .trim_start_matches("我的")
+                    .trim_start_matches("当前")
+                    .trim_start_matches("这台")
+                    .trim_end_matches(['里', '上', '中', '内'])
+                    .trim()
+            })
+            .or_else(|| {
+                clause
+                    .strip_prefix("search ")
+                    .and_then(|s| s.split_once(" for "))
+                    .map(|(place, _)| place.trim())
+            });
+        prefix.is_some_and(|p| {
+            !matches!(
+                p,
+                "" | "手机"
+                    | "电脑"
+                    | "设备"
+                    | "桌面"
+                    | "安卓"
+                    | "linux"
+                    | "windows"
+                    | "mac"
+                    | "the web"
+            )
+        })
+    });
+    !in_named_place
+        && [
+            "企业",
+            "公司",
+            "资料",
+            "新闻",
+            "产品",
+            "论文",
+            "行情",
+            "research",
+            "companies",
+            "news",
+            "web search",
         ]
         .iter()
         .any(|word| text.contains(word))
-            && [
-                "企业",
-                "公司",
-                "资料",
-                "新闻",
-                "产品",
-                "论文",
-                "行情",
-                "research",
-                "companies",
-                "news",
-                "web search",
-            ]
-            .iter()
-            .any(|word| text.contains(word)))
 }
 
 pub fn visible_action(name: &str) -> bool {
@@ -195,6 +223,11 @@ pub fn programming_request(request: &str) -> bool {
             "用python",
             "用 python",
             "用代码",
+            "写代码",
+            "编写代码",
+            "编程实现",
+            "用 vibe coding",
+            "用vibe coding",
             "运行代码",
             "用node",
             "用 node",
@@ -206,6 +239,8 @@ pub fn programming_request(request: &str) -> bool {
         ]
         .iter()
         .any(|word| clause.contains(word))
+            || clause.starts_with("vibe coding")
+            || clause.starts_with("vibe code")
     })
 }
 
@@ -391,6 +426,7 @@ mod execution_policy_tests {
             "阿里巴巴最近发展怎么样",
             "帮我了解一下今天的市场",
             "OpenAI latest developments",
+            "在手机打开编程课程",
             "在电脑浏览器搜索root教程",
             "在手机搜索shell的资料",
             "找root教程",
@@ -435,6 +471,7 @@ mod execution_policy_tests {
             "用命令检查电脑磁盘",
             "用 Python 处理电脑里的本地表格",
             "Use shell to check disk space",
+            "Vibe coding: build a form in the workspace",
             "执行ADB维护命令，打开系统设置验证",
             "不要删除原件，但用命令检查电脑磁盘",
         ] {
@@ -467,6 +504,9 @@ mod execution_policy_tests {
         assert!(gui_execution(&request("在电脑浏览器搜索写代码的教程")));
         assert!(!gui_execution(&request("只解释搜索引擎原理，不要调用工具")));
         assert!(!browser_lookup("在微信搜索好友"));
+        assert!(!browser_lookup("在项目看板搜索公司资料"));
+        assert!(!browser_lookup("Search TeamNotes for company research"));
+        assert!(browser_lookup("请帮我搜索公司资料"));
         assert!(!lookup_request("检索知识库里的文档"));
     }
 

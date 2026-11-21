@@ -143,8 +143,8 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 15533,
-      "sha256": "cb75e879fefbfacbac85b03e1c3730b6b11192679b1db7e38e3e5208eb86bac3"
+      "size": 16293,
+      "sha256": "16b4e39f89f954ac19309ecd597a2af083d44c0a13a103119d570e3fe0643a3e"
     },
     {
       "path": "ai-phone",
@@ -448,8 +448,8 @@
     },
     {
       "path": "apps/native/src/skills.rs",
-      "size": 12732,
-      "sha256": "a80618a16ec260f2f46c2c2c38db0c42417f0b2c7fe226e5b4d4f54cf8749b5f"
+      "size": 13176,
+      "sha256": "1158579a82d7248ef19ab5a72129feb6f3ea2b751da44345973907da618395fa"
     },
     {
       "path": "apps/native/src/spring_slider.rs",
@@ -1053,8 +1053,8 @@
     },
     {
       "path": "crates/assistant/src/builtin_guides.rs",
-      "size": 3461,
-      "sha256": "924cafec102cec544044df1bcf8f755850a2d5d602ca09ee31f4c9f3c1f50111"
+      "size": 2161,
+      "sha256": "dabfc8054454b722bdbb3fd5f4eb99381bcbea6ee0a12fb7ab9f73a0f2858e8f"
     },
     {
       "path": "crates/assistant/src/channels/feishu.rs",
@@ -1138,8 +1138,8 @@
     },
     {
       "path": "crates/assistant/src/completion_audit.rs",
-      "size": 50558,
-      "sha256": "71f312317449264b9dd2a3ebe0e6b69821285326552b73561ebe4e28a6b4889a"
+      "size": 50522,
+      "sha256": "0481afb71d11173a80b7f127caa11c0aa7d7aa997870cc752d90ed4aa3491f5a"
     },
     {
       "path": "crates/assistant/src/database/bootstrap.rs",
@@ -1168,8 +1168,8 @@
     },
     {
       "path": "crates/assistant/src/desktop.rs",
-      "size": 86249,
-      "sha256": "37b44858a187b57784ff29a3141b928d2b1d7d733d84d03773da33329b4f7b50"
+      "size": 86138,
+      "sha256": "b1c1ea2c748d236bb136a3e093499dfddeea007e6b0c9be86eb4bf59314cf1a5"
     },
     {
       "path": "crates/assistant/src/device_exchange/kafka.rs",
@@ -1178,8 +1178,8 @@
     },
     {
       "path": "crates/assistant/src/device_exchange.rs",
-      "size": 19173,
-      "sha256": "1dc5c297fa381bd6fdd9c1147384588c337f0588226195fa7f7b626b576f97f1"
+      "size": 18895,
+      "sha256": "ef5416e0eeb5946726b12324098544f870cf6bacfbe94698cae625e517dbb72c"
     },
     {
       "path": "crates/assistant/src/device_network.rs",
@@ -1223,8 +1223,8 @@
     },
     {
       "path": "crates/assistant/src/exploration_policy.rs",
-      "size": 2854,
-      "sha256": "688a4a57c561b6ea46b473e2543418a58e5b5f6cd212218eda950c22a4c8fb83"
+      "size": 1715,
+      "sha256": "611ef854b8616196fa891f0630fb7d5cfc6f12171d686c58b0d28ccfb55ada6c"
     },
     {
       "path": "crates/assistant/src/files.rs",
@@ -1233,8 +1233,8 @@
     },
     {
       "path": "crates/assistant/src/handoff_returns.rs",
-      "size": 5550,
-      "sha256": "e60ee459c695ece9af2ad847e0fb590037c63e6d5680e848c21e9de4e746176c"
+      "size": 5213,
+      "sha256": "2bb439e347b43d6f349f779797388bc3c9f50b1fd7596f5eb4fed1d46b8cf171"
     },
     {
       "path": "crates/assistant/src/handoff_tests.rs",
@@ -1323,8 +1323,8 @@
     },
     {
       "path": "crates/assistant/src/notification_policy.rs",
-      "size": 5826,
-      "sha256": "25a939280ae5bdd6c2c42c2d902a33a3bc4d7976f982a86d5ddbf664a950e154"
+      "size": 4256,
+      "sha256": "bcab0fd44076134e4e7e2946e7db86bd41bac9e3d5678ec410909d4f1f002f33"
     },
     {
       "path": "crates/assistant/src/persistence_tests.rs",
@@ -1408,13 +1408,13 @@
     },
     {
       "path": "crates/assistant/src/skill_persistence_tests.rs",
-      "size": 18499,
-      "sha256": "46ee410dd988389eae0b627fe04fe143eff3bfb35799f5bb8da0317353364022"
+      "size": 21223,
+      "sha256": "2a2436dd1bc7c73cbd9a1fca9e19f755a2115f82cec127995559ee3d05e8a152"
     },
     {
       "path": "crates/assistant/src/skill_resources.rs",
-      "size": 6518,
-      "sha256": "e9a4d2fb6cb0e6a1ed2b29903568a27200bcfecf0b0d61c9dbf114a3a15cf860"
+      "size": 6615,
+      "sha256": "adb1fd663a2419c058161a8e81e0df56d549f331c5a68a80789e243306f95726"
     },
     {
       "path": "crates/assistant/src/speech/activity.rs",
@@ -1478,8 +1478,8 @@
     },
     {
       "path": "crates/assistant/src/tool_catalog.rs",
-      "size": 21468,
-      "sha256": "425a0f2780898c336809f08aafa2e530b1cd46d9907b84d636ca07b3a68ea024"
+      "size": 21616,
+      "sha256": "9c08f55041cc3ff79939b1b3268501cdb3c47af24a32b83b37bd523f335689ed"
     },
     {
       "path": "crates/assistant/src/voice_input.rs",
@@ -1493,8 +1493,8 @@
     },
     {
       "path": "crates/assistant/src/workbench.rs",
-      "size": 52979,
-      "sha256": "ecf9639413cdb4535656d676f8911676d5dc08e00e23373178d306cb6b286e60"
+      "size": 54928,
+      "sha256": "99b65da32a477722ec704c40f0e72cc6444c8a4be28edb6804e4dddf816ae4a8"
     },
     {
       "path": "crates/assistant/src/worker/action_cue.rs",
@@ -1503,8 +1503,8 @@
     },
     {
       "path": "crates/assistant/src/worker/execution_policy.rs",
-      "size": 22547,
-      "sha256": "b2083570372a341fc8136682069cecc30c89840860d801781961780d7b9a3aa2"
+      "size": 24161,
+      "sha256": "224a2c379f789eabab68600f899b7a7616b31ebd6dccd4d2ea237241de94f139"
     },
     {
       "path": "crates/assistant/src/worker/model_trace.rs",
@@ -1518,8 +1518,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 264545,
-      "sha256": "077c32afad9f70279a93d2fbd0d6ad61c499531700bdd3c7bdc1313aa387a103"
+      "size": 263720,
+      "sha256": "fd8ad916e70ffe0f89ee9e0e876a9c9718a3e1376d425811cfa3353dba6bfd30"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -2223,13 +2223,13 @@
     },
     {
       "path": "crates/phone-runner/src/media/cue/target.rs",
-      "size": 8032,
-      "sha256": "ecb0dc29132fe199644958530ca5f3c598847c685c56f6e612714ab6239b014f"
+      "size": 9285,
+      "sha256": "aab936344a8ec77e7aca42ae536f7bc0e34891132c0539ac949a04f3d5c202ed"
     },
     {
       "path": "crates/phone-runner/src/media/cue.rs",
-      "size": 14784,
-      "sha256": "ac995856ee10d823b4ee0c5794bca056deea548817581a57d14698ded6bbaac1"
+      "size": 15689,
+      "sha256": "bd60314f1bcff8f24cde9d5ce7d058a50a1bf41dc9bac0f8e61391219af56faa"
     },
     {
       "path": "crates/phone-runner/src/media/desktop.rs",
@@ -2493,8 +2493,8 @@
     },
     {
       "path": "docs/public/capabilities-and-data.md",
-      "size": 2123,
-      "sha256": "e5fc313695c247633d276ab703c1b98bbd887a046a253558a074e1e0a21da90d"
+      "size": 3180,
+      "sha256": "5ab2b45fa67fe738ae9e7924de6df79742cd3f63d2c1e282558de3143f263bf7"
     },
     {
       "path": "docs/public/companion-extension.md",
@@ -3622,9 +3622,29 @@
       "sha256": "ab29b847fb73fa59a4f9f710c7e03867c5c80da73c2017fe1cc019a4f7dab838"
     },
     {
+      "path": "skills/builtin/animista/SKILL.md",
+      "size": 604,
+      "sha256": "fad98538245d83315af3d4e99be87565e2a951c98bd099ae1f4521518d522a31"
+    },
+    {
       "path": "skills/builtin/autonomous-learning/SKILL.md",
       "size": 2213,
       "sha256": "531a5f16068e5a0439825a1a3889c900917d86757a00861d19ca954df08137bc"
+    },
+    {
+      "path": "skills/builtin/backend-patterns/LICENSE",
+      "size": 1071,
+      "sha256": "326146379f01bb137c0a5d3c54770c1aa31076705c8b88a7f6b26a460f6221b2"
+    },
+    {
+      "path": "skills/builtin/backend-patterns/SKILL.md",
+      "size": 815,
+      "sha256": "83f66b9df3f02b2fc37463ef95202368e0373480a62e683cc566330666ead9bd"
+    },
+    {
+      "path": "skills/builtin/backend-patterns/references/upstream.md",
+      "size": 13349,
+      "sha256": "9b983d0297a983110fdfda8dce55d19b750ca3e53ef155d75a3eff740d3874b8"
     },
     {
       "path": "skills/builtin/browser-android/SKILL.md",
@@ -3642,6 +3662,21 @@
       "sha256": "2e200f51c3c787bba70a07fac0537698a0e50500de5e8c1caf35aad9b36534c0"
     },
     {
+      "path": "skills/builtin/create-game-assets/SKILL.md",
+      "size": 485,
+      "sha256": "4a15ec2cf787609d5bb89fc26e07dbba33dd6c3d114645980c3dd2c4b35b6984"
+    },
+    {
+      "path": "skills/builtin/design-game-design-fundamentals/SKILL.md",
+      "size": 505,
+      "sha256": "32633c1083fe7c78d955faa3d817da47309b5f65d3d0d4344f73b87aca8c4762"
+    },
+    {
+      "path": "skills/builtin/design-taste-frontend/SKILL.md",
+      "size": 669,
+      "sha256": "763df791b3e093cf75bf60d0ae3db3452fd43e80912d2184d941099e5fe80ae1"
+    },
+    {
       "path": "skills/builtin/device-transfer/SKILL.md",
       "size": 3635,
       "sha256": "4d7932fea80a1f7e850ec25b046152fb901e7370fcec2264d74869c811ffe9bd"
@@ -3657,14 +3692,359 @@
       "sha256": "fb9f06b551b96e7f7c52e0f96f72c1c92d279d050c8f50adf5276d3b2a1dd02c"
     },
     {
+      "path": "skills/builtin/game-architect/SKILL.md",
+      "size": 463,
+      "sha256": "2cbe5f7a775afa210059d70a5ebdfc877ddb7fe181acccf622ae97af989a19e7"
+    },
+    {
+      "path": "skills/builtin/game-asset-pipeline/SKILL.md",
+      "size": 503,
+      "sha256": "f80971cc9148d28a8e3f8d3f1d9ab09b32ffa2e23efbaeba74e30acdd1c75334"
+    },
+    {
+      "path": "skills/builtin/game-balance-analysis/SKILL.md",
+      "size": 506,
+      "sha256": "e9a2cba151aa9f0c191c752ebb5595305d7b9eabd56b728e9bc2039a3d9ffbf8"
+    },
+    {
+      "path": "skills/builtin/game-design-review/SKILL.md",
+      "size": 480,
+      "sha256": "13388661b9cab071c28cda3305267260481cbeba4c8afae119bea137840b3dba"
+    },
+    {
+      "path": "skills/builtin/game-developer/SKILL.md",
+      "size": 470,
+      "sha256": "99f3b956abf5170451ad06a09a762d17e30fa5a23095e2a1a89e589f3e03fd46"
+    },
+    {
+      "path": "skills/builtin/game-engine/SKILL.md",
+      "size": 450,
+      "sha256": "73ee5f6c0c51d15659a35e7469a23f9b5b2c50338a596ba2f122f35feaafa0ae"
+    },
+    {
+      "path": "skills/builtin/game-feel/SKILL.md",
+      "size": 452,
+      "sha256": "46ff332e2aed32edca22ba85025567fadbc91a80d02328861032deeb703db2b3"
+    },
+    {
+      "path": "skills/builtin/game-image-generation-rules/SKILL.md",
+      "size": 453,
+      "sha256": "edbcb5ca6afe8561f5f59f657cab14d2719395675f5ecb4ce2143c0a1806ba98"
+    },
+    {
+      "path": "skills/builtin/game-ui-design/SKILL.md",
+      "size": 454,
+      "sha256": "5a85ea5d6a1f52903cd36541df1f6c11bdf1fa5922704ebe54c9fe4919df27ca"
+    },
+    {
+      "path": "skills/builtin/game-ui-ux/SKILL.md",
+      "size": 477,
+      "sha256": "ca0e2f22b67241feabebd84d96352593e13dae4e9d647dd8a4a53fc2f2f8c9f8"
+    },
+    {
+      "path": "skills/builtin/gsap-core/LICENSE",
+      "size": 1066,
+      "sha256": "51b04b06556662dd817e8f4aa6d06bc7139dc73739e1319a7233cfde3e147b90"
+    },
+    {
+      "path": "skills/builtin/gsap-core/SKILL.md",
+      "size": 576,
+      "sha256": "76099085c74c59e9bc2ff7554a36fc297c32fe5d1fc53caceb0632569b950d8c"
+    },
+    {
+      "path": "skills/builtin/gsap-core/references/upstream.md",
+      "size": 14788,
+      "sha256": "57f22eaa662c3d46e5397a6366df2afc7983392da1e8c713b602794f6eac800c"
+    },
+    {
+      "path": "skills/builtin/gsap-frameworks/LICENSE",
+      "size": 1066,
+      "sha256": "51b04b06556662dd817e8f4aa6d06bc7139dc73739e1319a7233cfde3e147b90"
+    },
+    {
+      "path": "skills/builtin/gsap-frameworks/SKILL.md",
+      "size": 558,
+      "sha256": "deca9d36b021948c0cf1e0a4537c2e0dec76eac1f37c205e5e0f63a54c533ea6"
+    },
+    {
+      "path": "skills/builtin/gsap-frameworks/references/upstream.md",
+      "size": 10621,
+      "sha256": "842d9d3659ec3ddc8abbdc524708f8facf81f468ac25d0577f48c759c4fa31e6"
+    },
+    {
+      "path": "skills/builtin/gsap-performance/LICENSE",
+      "size": 1066,
+      "sha256": "51b04b06556662dd817e8f4aa6d06bc7139dc73739e1319a7233cfde3e147b90"
+    },
+    {
+      "path": "skills/builtin/gsap-performance/SKILL.md",
+      "size": 588,
+      "sha256": "5b2140be2a1b2f86f41bd422ea7c23308bb35734d929fa7a74eb36c5cdf84a79"
+    },
+    {
+      "path": "skills/builtin/gsap-performance/references/upstream.md",
+      "size": 4138,
+      "sha256": "b8638f67bde4665bd149baf56d9d7c1e1c8e0b17771d8c5744b2d1c3203fb4fb"
+    },
+    {
+      "path": "skills/builtin/gsap-plugins/LICENSE",
+      "size": 1066,
+      "sha256": "51b04b06556662dd817e8f4aa6d06bc7139dc73739e1319a7233cfde3e147b90"
+    },
+    {
+      "path": "skills/builtin/gsap-plugins/SKILL.md",
+      "size": 596,
+      "sha256": "c5229cceb8fcf717f3e6d7a3eadf1b603651b5aa45b9a6f74a737dfa8e41bc8f"
+    },
+    {
+      "path": "skills/builtin/gsap-plugins/references/upstream.md",
+      "size": 21575,
+      "sha256": "551d7d4944a19376698f6be13b058bac4fcb516e7f708e77eeb0a88bc7a5d333"
+    },
+    {
+      "path": "skills/builtin/gsap-react/LICENSE",
+      "size": 1066,
+      "sha256": "51b04b06556662dd817e8f4aa6d06bc7139dc73739e1319a7233cfde3e147b90"
+    },
+    {
+      "path": "skills/builtin/gsap-react/SKILL.md",
+      "size": 576,
+      "sha256": "a2d5889fbb201a23318f1a4ba349290be67d708eba9c26412135c9ea0ac2c5bf"
+    },
+    {
+      "path": "skills/builtin/gsap-react/references/upstream.md",
+      "size": 6564,
+      "sha256": "63974768d991aacbe0287b9870771e7147f7f6e9f6a0fbfad645bb77c33ec101"
+    },
+    {
+      "path": "skills/builtin/gsap-scrolltrigger/LICENSE",
+      "size": 1066,
+      "sha256": "51b04b06556662dd817e8f4aa6d06bc7139dc73739e1319a7233cfde3e147b90"
+    },
+    {
+      "path": "skills/builtin/gsap-scrolltrigger/SKILL.md",
+      "size": 603,
+      "sha256": "4b0a2debfa8114a82dad601147da66acf1c3d7e2bd9474258efa38fd5f60eb9c"
+    },
+    {
+      "path": "skills/builtin/gsap-scrolltrigger/references/upstream.md",
+      "size": 18383,
+      "sha256": "5440bbf42b3aa57f64aa495ae3c7fba1efe554c8a1fdd923d0932e5ac1751e0e"
+    },
+    {
+      "path": "skills/builtin/gsap-timeline/LICENSE",
+      "size": 1066,
+      "sha256": "51b04b06556662dd817e8f4aa6d06bc7139dc73739e1319a7233cfde3e147b90"
+    },
+    {
+      "path": "skills/builtin/gsap-timeline/SKILL.md",
+      "size": 576,
+      "sha256": "245f6797b523277519c6c328ac69fd2f209bbe4acfee6c417e850e037469b6d9"
+    },
+    {
+      "path": "skills/builtin/gsap-timeline/references/upstream.md",
+      "size": 4394,
+      "sha256": "1a8b0f39cc4be3ed3d834b89672e4ae2f151b901dc3450bebf10bbc45379fe02"
+    },
+    {
+      "path": "skills/builtin/gsap-utils/LICENSE",
+      "size": 1066,
+      "sha256": "51b04b06556662dd817e8f4aa6d06bc7139dc73739e1319a7233cfde3e147b90"
+    },
+    {
+      "path": "skills/builtin/gsap-utils/SKILL.md",
+      "size": 582,
+      "sha256": "d9fa570844d7bd8a4f92de8d7ceb0f0dab11602226820c6d7a549b7bbabc01c0"
+    },
+    {
+      "path": "skills/builtin/gsap-utils/references/upstream.md",
+      "size": 12093,
+      "sha256": "1927bcc4ea95b38203404ad5ea1d060b15c4a886c65ae53e885ff1793aabe0ba"
+    },
+    {
+      "path": "skills/builtin/hallmark/LICENSE",
+      "size": 1078,
+      "sha256": "06088a8b94598626f27612dea42300154bf7be967c85d9d3eee4490cb056af7d"
+    },
+    {
+      "path": "skills/builtin/hallmark/SKILL.md",
+      "size": 840,
+      "sha256": "c2b1ff3e3cd3138ebe3f2094714b5a9244237ee93da02b19acfcdcc2ff172d9c"
+    },
+    {
+      "path": "skills/builtin/hallmark/references/copy.md",
+      "size": 12261,
+      "sha256": "703cdbf81fbef6f71d90596a32041d2a33a46fb71ba07ccf5ede6b4b1471d347"
+    },
+    {
+      "path": "skills/builtin/hallmark/references/layout-and-space.md",
+      "size": 6766,
+      "sha256": "987f3a45f5dbe81547117a77987bcedf5376608a6412067e04337047e0c7c839"
+    },
+    {
+      "path": "skills/builtin/hallmark/references/typography.md",
+      "size": 18381,
+      "sha256": "94d7b2d2b138bd8687e09dc3dd618eaafff500b0497a6d69cb4c29b764e94b9c"
+    },
+    {
+      "path": "skills/builtin/higgsfield-game-generation/SKILL.md",
+      "size": 537,
+      "sha256": "2149d7fdb3dce060e3df6c567f83bbe3528150e79824c60332119a3f6abc6eea"
+    },
+    {
       "path": "skills/builtin/impress/SKILL.md",
       "size": 1662,
       "sha256": "7eb89862db207d2b0b10fecd2b1714e6ee2f4ad00699838f4023274da3b5b885"
     },
     {
+      "path": "skills/builtin/interface-copy-layout/SKILL.md",
+      "size": 2655,
+      "sha256": "6aa163109ff64eb9cea2327e8e42b5ba31463af6d5d99b64af62b8e6fceb8082"
+    },
+    {
+      "path": "skills/builtin/iso-glow/SKILL.md",
+      "size": 628,
+      "sha256": "46e536f4be65f9e526a19893b647c67eabfa338d5c742fc9bb42ce8c81c8a13f"
+    },
+    {
+      "path": "skills/builtin/level-design/SKILL.md",
+      "size": 432,
+      "sha256": "072e1d7f94b9edc44b23fca2ad26a27edf81545f1bde0811e6fa5adabfa3fb97"
+    },
+    {
+      "path": "skills/builtin/magic-ui/SKILL.md",
+      "size": 639,
+      "sha256": "c2b7c033fa6e61701f31d2e25e4f4602dca5053e5493edd6d1d3605ef9c34766"
+    },
+    {
+      "path": "skills/builtin/motion-showreel/SKILL.md",
+      "size": 524,
+      "sha256": "9be272b88b58d90699fbe55b32047e77e94481d51d20e54b29fb5ad8ead1d64c"
+    },
+    {
+      "path": "skills/builtin/namethatui/SKILL.md",
+      "size": 679,
+      "sha256": "db5487353f4b647d1b9bb7f202e6683d41af575f3c75613895b47a717bf584cf"
+    },
+    {
+      "path": "skills/builtin/open-design/SKILL.md",
+      "size": 650,
+      "sha256": "c70b48a25cc270857867e9aa333ee89dd28c21f1ee9a1183028ad45028592219"
+    },
+    {
       "path": "skills/builtin/phone-use/SKILL.md",
-      "size": 11093,
-      "sha256": "acb1a3ba046b9f1890fe3f0fa93c5d82b772e6e59505fb3b390937452e1b21c7"
+      "size": 11120,
+      "sha256": "bba2a482c1aabb26d039a92792c15227a6c89513236fbf975281312af8611184"
+    },
+    {
+      "path": "skills/builtin/playwright/SKILL.md",
+      "size": 668,
+      "sha256": "6f9ca0587a965969f51cab8f7f9cd247556cd9dd30cd7f705a0d39b6ea6bd6ea"
+    },
+    {
+      "path": "skills/builtin/postgres-patterns/LICENSE",
+      "size": 1071,
+      "sha256": "326146379f01bb137c0a5d3c54770c1aa31076705c8b88a7f6b26a460f6221b2"
+    },
+    {
+      "path": "skills/builtin/postgres-patterns/SKILL.md",
+      "size": 774,
+      "sha256": "f84a1b2ce1574aa1b3150747d968bcff98318d1deb9118b31a39ca30e9a544a7"
+    },
+    {
+      "path": "skills/builtin/postgres-patterns/references/upstream.md",
+      "size": 3914,
+      "sha256": "9c8c391ae9e9aa87faa7ca091e1d395c97766df14080d0bfbea8a97721776163"
+    },
+    {
+      "path": "skills/builtin/react-bits/SKILL.md",
+      "size": 656,
+      "sha256": "e2d3d133c02e268b0550c3a75876d2e8786f5a97fddd0d3408d62f8a64c99f89"
+    },
+    {
+      "path": "skills/builtin/screenshot/SKILL.md",
+      "size": 652,
+      "sha256": "d9380150ca5081dea0c0d1f168c207c23ae0bef99d4f2e08d62d197031694805"
+    },
+    {
+      "path": "skills/builtin/simplify-codebase/LICENSE",
+      "size": 1087,
+      "sha256": "fa5adbb22e6cbe08103f365a3418d1ede2490432e8d6c8769118f326b47dfc30"
+    },
+    {
+      "path": "skills/builtin/simplify-codebase/SKILL.md",
+      "size": 914,
+      "sha256": "3fbfc445f86c0673e84bbfbeeac5391aef576a8ce0f8aff035f50580f5baefa3"
+    },
+    {
+      "path": "skills/builtin/simplify-codebase/references/boundaries-and-lifecycle.md",
+      "size": 3651,
+      "sha256": "30011698b4af8be19e3dc6a43d06797626c302f81363cbd148cc23d7db77605f"
+    },
+    {
+      "path": "skills/builtin/simplify-codebase/references/investigation.md",
+      "size": 6374,
+      "sha256": "d467afc5419fa51257dd05efa7180d7b1c98f5cede14985f3d65e1ed169d076a"
+    },
+    {
+      "path": "skills/builtin/spine-animation/SKILL.md",
+      "size": 496,
+      "sha256": "87bd063b5aea058dfbe47009bca05e892e5464ec5387c9e5cde451c552c7ec42"
+    },
+    {
+      "path": "skills/builtin/threejs-game-ui-designer/SKILL.md",
+      "size": 473,
+      "sha256": "c14a9cd9e3432eeb68b35c8702dced692325910c17827ed5649f6d5b0b638ed3"
+    },
+    {
+      "path": "skills/builtin/ub-mode/SKILL.md",
+      "size": 639,
+      "sha256": "f0170d4792dc63577ad8c2484a15c9bf2a21498441da71f29b68585d8500b6d4"
+    },
+    {
+      "path": "skills/builtin/ui-interaction-kit/LICENSE",
+      "size": 1066,
+      "sha256": "5624f91e1145ed4388b14ddc8b73c7c6d5bbe1d1b12971402b68ef3b2e782326"
+    },
+    {
+      "path": "skills/builtin/ui-interaction-kit/SKILL.md",
+      "size": 886,
+      "sha256": "c555702b435792c0248f32f854a7306e9c6307953ac97602ee99ed36af575811"
+    },
+    {
+      "path": "skills/builtin/ui-interaction-kit/references/06-overlays.md",
+      "size": 2924,
+      "sha256": "7ca2e0ebad93a8e5c9c34fd9e20412f0165bedc41af7032ca4893ffdada0bc46"
+    },
+    {
+      "path": "skills/builtin/ui-interaction-kit/references/12-instant-feedback.md",
+      "size": 12989,
+      "sha256": "a612b0fa1fb5f0728e46dbd8b995458f49c88c2074068fd98ed4b3eae6b63d30"
+    },
+    {
+      "path": "skills/builtin/ui-interaction-kit/references/13-spring-physics.md",
+      "size": 6578,
+      "sha256": "d0cc90f84f856c6d01b508863a545eaaecaa83a6efc720b5219fc4f7b6fa0ee0"
+    },
+    {
+      "path": "skills/builtin/ui-ux-pro-max/LICENSE",
+      "size": 1075,
+      "sha256": "738f69dfa83db5c347c678fb9d90e560877059f0de93a327c39001bff92dc014"
+    },
+    {
+      "path": "skills/builtin/ui-ux-pro-max/SKILL.md",
+      "size": 973,
+      "sha256": "c452212842c5e47d2742bdc9976078c65c6277f55180aa5cc3e1979c39e2f0f7"
+    },
+    {
+      "path": "skills/builtin/ui-ux-pro-max/references/pro-rules.md",
+      "size": 10909,
+      "sha256": "d28442d61c310b49c054a4ea736f89fb3008beebdbbc38c4b3a540b8f7fadf23"
+    },
+    {
+      "path": "skills/builtin/ui-ux-pro-max/references/quick-reference.md",
+      "size": 24526,
+      "sha256": "0609bc7c89dacb40472465d8fc14257b56b2c43439660fc8d6fa3b8c022e1876"
     },
     {
       "path": "skills/builtin/wechat/SKILL.md",

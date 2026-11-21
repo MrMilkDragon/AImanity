@@ -72,7 +72,7 @@ async fn safe_path(base: &FilePath, path: &str, write: bool) -> Result<PathBuf, 
 }
 async fn ensure_workspace(app: &App) -> Result<(), String> {
     let mut ready = app.workspace_init.lock().await;
-    skill_resources::reconcile(&app.db, &app.root).await?;
+    skill_resources::reconcile(&app.db, &app.root, false).await?;
     if !*ready {
         tokio::fs::create_dir_all(workspace(app).join(".home"))
             .await
@@ -222,16 +222,32 @@ async fn skill_edit(
     Ok(skill(&row))
 }
 pub async fn initialize(db: &PgPool, root: &std::path::Path) -> Result<(), String> {
-    for builtin in crate::builtin_guides::SKILLS {
-        let id = builtin.id;
-        let content = tokio::fs::read_to_string(root.join(format!("skills/builtin/{id}/SKILL.md")))
+    let mut entries = tokio::fs::read_dir(root.join("skills/builtin"))
+        .await
+        .map_err(|e| e.to_string())?;
+    let (mut ids, mut descriptions, mut contents) = (Vec::new(), Vec::new(), Vec::new());
+    while let Some(entry) = entries.next_entry().await.map_err(|e| e.to_string())? {
+        if !entry.file_type().await.map_err(|e| e.to_string())?.is_dir() {
+            continue;
+        }
+        let path = entry.path().join("SKILL.md");
+        let content = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| e.to_string())?;
-        let (name, description) = metadata(&content, id);
-        sqlx::query("INSERT INTO runtime_skills(id,name,description,source,content,builtin) VALUES($1,$2,$3,'builtin',$4,true) ON CONFLICT(id) DO UPDATE SET content=excluded.content,description=excluded.description")
-            .bind(id).bind(name).bind(description).bind(content).execute(db).await.map_err(|e|e.to_string())?;
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let (name, description) = validate_skill(&content, "")?;
+        if entry.file_name().to_str() != Some(&name) {
+            return Err(format!("Skill 名称与目录不匹配：{}", path.display()));
+        }
+        ids.push(name);
+        descriptions.push(description);
+        contents.push(content);
     }
-    skill_resources::reconcile(db, root).await
+    sqlx::query("INSERT INTO runtime_skills AS s (id,name,description,source,content,builtin)
+        SELECT id,id,description,'builtin',content,true FROM unnest($1::text[],$2::text[],$3::text[]) AS entry(id,description,content)
+        ON CONFLICT (id) DO UPDATE SET description=excluded.description,content=excluded.content
+        WHERE (s.description,s.content) IS DISTINCT FROM (excluded.description,excluded.content)")
+        .bind(ids).bind(descriptions).bind(contents).execute(db).await.map_err(|e| e.to_string())?;
+    skill_resources::reconcile(db, root, true).await
 }
 async fn skill_import(
     app: &App,
@@ -378,15 +394,16 @@ async fn skill_import(
     Ok(skill(&row))
 }
 fn skill(row: &sqlx::postgres::PgRow) -> wire::RuntimeSkill {
+    let content: String = row.get("content");
     wire::RuntimeSkill {
         id: row.get("id"),
         name: row.get("name"),
         description: row.get("description"),
         source: row.get("source"),
-        content: row.get("content"),
         enabled: row.get("enabled"),
         builtin: row.get("builtin"),
-        content_version: content_version(&row.get::<String, _>("content")),
+        content_version: content_version(&content),
+        content,
     }
 }
 fn document(row: &sqlx::postgres::PgRow) -> wire::KnowledgeDocument {
@@ -1002,20 +1019,46 @@ pub(crate) async fn upload_knowledge_image(
         Err(error) => issue(error),
     }
 }
-pub async fn skill_text(app: &App, name: &str) -> Result<String, String> {
-    let id: String = sqlx::query_scalar(
-        "SELECT id FROM runtime_skills WHERE (id=$1 OR lower(name)=lower($1))
+async fn read_skill_row(app: &App, name: &str) -> Result<sqlx::postgres::PgRow, String> {
+    let row = sqlx::query(
+        "SELECT * FROM runtime_skills WHERE (id=$1 OR lower(name)=lower($1))
          AND deleted_at IS NULL ORDER BY builtin DESC,created_at LIMIT 1",
     )
     .bind(name)
     .fetch_optional(&app.db)
     .await
     .map_err(|error| error.to_string())?
-    .ok_or("Skill不存在")?;
-    let row = skill_resources::publish(&app.db, &app.root, &id).await?;
-    let item = skill(&row);
+    .ok_or_else(|| "Skill不存在".to_owned())?;
+    if row.get("builtin") {
+        Ok(row)
+    } else {
+        skill_resources::publish(&app.db, &app.root, row.get("id")).await
+    }
+}
+
+pub(super) async fn skill_reference(
+    app: &App,
+    name: &str,
+    resource: &str,
+) -> Result<String, String> {
+    let row = read_skill_row(app, name).await?;
+    let id: &str = row.get("id");
+    let base = if row.get("builtin") {
+        app.root.join("skills/builtin")
+    } else {
+        app.root.join("data/runtime-skills")
+    };
+    let path = safe_path(&base.join(id), resource, false).await?;
+    let content = tokio::fs::read_to_string(path)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("Skill resource {id}/{resource}\n\n{content}"))
+}
+
+pub async fn skill_text(app: &App, name: &str) -> Result<String, String> {
+    let item = skill(&read_skill_row(app, name).await?);
     Ok(format!(
-        "Skill id={}，name={}，enabled={}，content_version={}\n\n{}\n\n资源目录：/skills/{}（只读，可通过workspace_run读取或在隔离环境执行；停用的Skill仅供管理，不应作为当前任务指令）。",
+        "Skill id={}，name={}，enabled={}，content_version={}\n\n{}\n\n工作区正文：/skills/{}/SKILL.md。附属资料用 skill_read(resource) 按需读取。",
         item.id, item.name, item.enabled, item.content_version, item.content, item.id
     ))
 }
@@ -1039,13 +1082,15 @@ pub(crate) async fn invoke_tool(
     let string = |key: &str| args[key].as_str().unwrap_or("").to_string();
     match name {
         "skill_list" => {
-            let list = skills(app).await?;
-            Ok(json!(
-                list.skills
-                    .iter()
-                    .map(|s| json!({"id":s.id,"name":s.name,"description":s.description,"enabled":s.enabled,"builtin":s.builtin,"content_version":s.content_version}))
-                    .collect::<Vec<_>>()
-            ))
+            let rows: Vec<(String,String,String,bool,bool,String)> = sqlx::query_as(
+                "SELECT id,name,description,enabled,builtin,encode(sha512(convert_to(content,'UTF8')),'hex')
+                 FROM runtime_skills WHERE deleted_at IS NULL AND
+                 (strpos(lower(name),lower($1))>0 OR strpos(lower(description),lower($1))>0)
+                 ORDER BY builtin DESC,lower(name),id")
+                .bind(string("query").trim()).fetch_all(&app.db).await.map_err(|e| e.to_string())?;
+            Ok(json!(rows.into_iter().map(|(id,name,description,enabled,builtin,version)|
+                json!({"id":id,"name":name,"description":description,"enabled":enabled,"builtin":builtin,"content_version":version})
+            ).collect::<Vec<_>>()))
         }
         "skill_install" => {
             let item = skill_import(app, &string("source"), "", "").await?;

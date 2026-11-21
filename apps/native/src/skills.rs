@@ -17,6 +17,7 @@ pub enum Message {
     Load,
     Loaded(Result<wire::SkillList, String>),
     ToggleImport,
+    Search(String),
     Source(String),
     ChooseFile,
     FileChosen(Option<PathBuf>),
@@ -34,6 +35,7 @@ pub enum Message {
 pub struct Skills {
     items: Vec<wire::RuntimeSkill>,
     source: String,
+    query: String,
     adding: bool,
     busy: bool,
     loaded: bool,
@@ -72,6 +74,7 @@ impl Skills {
                 }
             }
             Message::ToggleImport => self.adding = !self.adding,
+            Message::Search(query) => self.query = query,
             Message::Source(source) => self.source = source,
             Message::ChooseFile => {
                 return Task::perform(
@@ -222,7 +225,9 @@ impl Skills {
     }
 
     pub fn view(&self, locale: Locale) -> Element<'_, Message> {
-        let mut content = column![].spacing(10);
+        let mut content =
+            column![form_input(locale.tr("搜索"), &self.query).on_input(Message::Search)]
+                .spacing(10);
         if self.adding {
             let submit =
                 (!self.busy && !self.source.trim().is_empty()).then_some(Message::ImportUrl);
@@ -257,7 +262,12 @@ impl Skills {
             content = content.push(text(locale.tr("读取中…")).size(13).style(style::muted_text));
         }
         let mut list = column![].spacing(4);
-        for skill in &self.items {
+        let query = self.query.trim().to_lowercase();
+        for skill in self.items.iter().filter(|skill| {
+            query.is_empty()
+                || skill.name.to_lowercase().contains(&query)
+                || skill.description.to_lowercase().contains(&query)
+        }) {
             let expanded = self.expanded.as_ref() == Some(&skill.id);
             let label = row![
                 if expanded { Icon::Down } else { Icon::Right }

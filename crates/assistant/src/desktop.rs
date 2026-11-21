@@ -1350,13 +1350,13 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "device_file_manage",
-            "批量管理文件。sources和target含device_id/path；空device_id为工作文件，非空设备须有本任务的控制授权。目标是目录，name为空沿用文件名。跨设备需device_link；向另一Agent设备交接共享文件用device_transfer。不覆盖已有文件；文件到达不代表社交软件发送成功。",
+            "批量管理文件。sources和target含device_id/path；空device_id为工作文件，非空设备须有本任务的控制授权。目标是目录，name为空沿用文件名。跨设备需device_link；向已连接设备的共享目录交付文件用device_transfer。不覆盖已有文件；文件到达不代表社交软件发送成功。",
             json!({"operation":{"type":"string","enum":["copy","move","delete","mkdir","rename"]},"sources":{"type":"array","items":location},"target":location,"name":id}),
             vec!["operation", "sources", "target", "name"],
         ),
         function(
             "device_message",
-            "向已连线的另一设备Agent交接一项工作，包含预期结果和已核对的文件路径。对方空闲时自动唤醒；可用task_wait让出运行，返回结果会唤醒原任务。排队不是完成。",
+            "向已连接设备交接任务，写明结果要求和实际文件路径。task_wait 可等待回执，交接完成会唤醒原任务。",
             json!({"source_device_id":id,"target_device_id":id,"text":id}),
             vec!["source_device_id", "target_device_id", "text"],
         ),
@@ -1434,7 +1434,7 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "device_link",
-            "连接或断开主人已安装的手机与电脑，本任务至少控制一端。文件通道不改变GUI控制归属；另一Agent的设备用device_message交接。",
+            "连接或断开主人已安装的手机与电脑，本任务至少控制一端。GUI 操作仍需对应设备的控制权限。",
             json!({"source_device_id":id,"target_device_id":id,"connected":{"type":"boolean"}}),
             vec!["source_device_id", "target_device_id", "connected"],
         ),

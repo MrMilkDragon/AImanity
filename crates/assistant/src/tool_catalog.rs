@@ -67,13 +67,13 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "skill_read",
-            "读取Skill完整正文、启用状态和content_version。每个手机任务必须先读phone-use；停用Skill可读取供编辑。",
-            json!({"name":{"type":"string"}}),
+            "按名称读取 Skill 正文、启用状态和版本。resource 可读取正文引用的相对资料文件。手机操作先读 phone-use；停用项仅供管理。",
+            json!({"name":{"type":"string"},"resource":{"type":"string"}}),
             vec!["name"],
         ),
         function(
             "phone_observe",
-            "读取当前手机画面、前台应用及控件ID。always 补充文字。motion 看当前画面，sequence 按时间顺序返回两帧，用来判断移动、落点或页面是否稳定。",
+            "读取当前手机画面、前台应用及控件ID。always 补充文字。motion 看当前画面，sequence 按时间顺序返回两帧，用来判断目标位移、方向和界面是否稳定。",
             json!({"include_ui_tree":{"type":"boolean"},"ocr_mode":{"type":"string","enum":["auto","always","motion","sequence"]}}),
             vec![],
         ),
@@ -159,8 +159,8 @@ pub(crate) fn tools() -> Value {
         json!({"type":"function","name":"app_experience_save","description":"保存/修订本轮应用使用心得候选。同一应用标识+标题替代旧草稿，原稿保留。提供可复现方法、真实边界与本轮观察ID；verified至少2次同应用观察且有动作后复查。结束审计通过后汇入Skill。","parameters":experience_schema()}),
         function(
             "skill_list",
-            "列出Skill、启用状态、内置标记和content_version；先检查避免重复创建。",
-            json!({}),
+            "按关键词查找 Skill 名称和简介，省略 query 列出目录。编程、设计、数据库等工作按需搜索，再用 skill_read 读取。",
+            json!({"query":{"type":"string"}}),
             vec![],
         ),
         function(

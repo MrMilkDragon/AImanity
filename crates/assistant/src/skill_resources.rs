@@ -147,9 +147,14 @@ pub(crate) async fn commit(
         .map_err(|error| format!("Skill正文已保存，资源同步失败；修复后重新读取即可恢复：{error}"))
 }
 
-pub(super) async fn reconcile(db: &PgPool, root: &Path) -> Result<(), String> {
+pub(super) async fn reconcile(
+    db: &PgPool,
+    root: &Path,
+    include_builtin: bool,
+) -> Result<(), String> {
     let ids: Vec<String> =
-        sqlx::query_scalar("SELECT id FROM runtime_skills WHERE deleted_at IS NULL ORDER BY id")
+        sqlx::query_scalar("SELECT id FROM runtime_skills WHERE deleted_at IS NULL AND ($1 OR NOT builtin) ORDER BY id")
+            .bind(include_builtin)
             .fetch_all(db)
             .await
             .map_err(|e| e.to_string())?;

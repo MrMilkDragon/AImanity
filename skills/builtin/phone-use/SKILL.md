@@ -10,11 +10,11 @@ version: 0.10.0
 
 用 `phone_observe(ocr_mode="sequence")` 查运动。两张图按时间排序，`motion_tracks` 给出纹理块在后一帧的位置 `bounds` 及两帧之间的 `dx,dy`（向右、向下为正，单位为截图像素）。结合物体轮廓、周围参照物和目标区域判断方向；滚屏时多个物体会一起移动。
 
-对即将发生的状态，可以提前提交一次 `phone_tap.when` 或 `phone_swipe.when`。用 `region` 框住对象将经过的位置，`motion_direction` 选 left、right、up 或 down，`timeout_ms` 设为 100–15000。背景或场景也在移动时，从实景选取能区分目标外观的 `colors` 或 `sample_points` 和 `coverage_percent`，让外观与方向同时命中。固定状态变色时只提交颜色条件和 `on_appearance=true`。返回已出现时重新观察。可替代的特征色用 `any_color`，避开受阻落点用 `clear_region` 和 `avoid_points`。普通列表优先控件滚动。
+对即将发生的状态，可以提前提交一次 `phone_tap.when` 或 `phone_swipe.when`。用 `region` 框住对象将经过的位置，`motion_direction` 选 left、right、up 或 down，`timeout_ms` 设为 100–15000。背景或场景也在移动时，从实景选取能区分目标外观的 `colors` 或 `sample_points` 和 `coverage_percent`，让外观与方向同时命中。固定状态变色时只提交颜色条件和 `on_appearance=true`。返回已出现时重新观察。可替代的特征色用 `any_color`，需要区域保持空闲时用 `clear_region`，额外排除的颜色从本次画面用 `avoid_points` 采样。普通列表优先控件滚动。
 
-最后一次点击或滑动附上 `completion_summary`，说明动作后要读回哪项结果。如需当前分数、界面名称或新状态，交由动作后的真实观察和核验读回。
+最后一次点击或滑动附上 `completion_summary`，说明动作后要读回哪项结果。从动作回执和新画面读回用户关心的值或状态。
 
-连续画面先确认操控对象、相对运动和可通行空间，从本次屏幕选择动作。需要预判时，在最新一帧用 `track_from` 框住目标的独特纹理，`region` 指定它将进入的位置，`lead_ms` 为动作预留时间。若目标尚不可辨认，继续观察。执行后从新画面确认实际结果。
+连续画面先区分交互目标与一起移动的背景，确认目标位置、方向及操作区域。需要预判时，在最新一帧用 `track_from` 框住目标的独特纹理，`region` 指定它将进入的位置，`lead_ms` 为动作预留时间。若目标尚不可辨认，继续观察。执行后从新画面确认实际结果。
 
 原生树不足时本机OCR自动兜底；树有部分内容但目标文字缺失可phone_observe(ocr_mode=always)。OCR只提供文字位置与置信度，不代表文字可点击；结合真实截图判断是否为目标，再用OCR元素ID点击，执行前会复查文字位置与画面。低置信度、遮挡、重复文字和找不到目标都不能凭空补全。原生控件树为空不代表页面没有内容。
 
