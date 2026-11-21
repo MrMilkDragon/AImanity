@@ -1318,8 +1318,8 @@
     },
     {
       "path": "crates/assistant/src/model_recovery_tests.rs",
-      "size": 37785,
-      "sha256": "8a433724b4728eebb20f612c505bb0eb144e5167ded3e164e3a11063537da8d0"
+      "size": 38244,
+      "sha256": "438f19c7f9a8df5133c6644051c1e82743150a98eb797ca5439f115a1611c52b"
     },
     {
       "path": "crates/assistant/src/model_sse.rs",
