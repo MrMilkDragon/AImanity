@@ -290,20 +290,21 @@ impl Skills {
             ]
             .spacing(12)
             .align_y(iced::Alignment::Center);
-            if skill.builtin {
+            if skill.source == "builtin" {
                 heading = heading.push(text(locale.tr("内置")).size(12).style(style::muted_text));
             } else {
                 let id = skill.id.clone();
-                heading = heading
-                    .push(checkbox(skill.enabled).size(16).on_toggle_maybe(
-                        (!self.busy).then_some(move |enabled| Message::Enable(id.clone(), enabled)),
-                    ))
-                    .push(sized_icon_button(
-                        Icon::Trash,
-                        (!self.busy).then(|| Message::Remove(skill.id.clone())),
-                        style::COMPACT_CONTROL,
-                        style::COMPACT_CONTROL,
-                    ));
+                heading = heading.push(checkbox(skill.enabled).size(16).on_toggle_maybe(
+                    (!self.busy).then_some(move |enabled| Message::Enable(id.clone(), enabled)),
+                ));
+            }
+            if !skill.builtin {
+                heading = heading.push(sized_icon_button(
+                    Icon::Trash,
+                    (!self.busy).then(|| Message::Remove(skill.id.clone())),
+                    style::COMPACT_CONTROL,
+                    style::COMPACT_CONTROL,
+                ));
             }
             let mut article = column![heading];
             if expanded {
@@ -316,7 +317,7 @@ impl Skills {
                             .style(style::muted_text),
                     );
                 }
-                if skill.source != "builtin" {
+                if !skill.builtin {
                     let source = text(&skill.source).size(12).style(style::muted_text);
                     details = if skill.source.starts_with("https://") {
                         details.push(

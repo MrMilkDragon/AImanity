@@ -117,9 +117,17 @@ pub(super) async fn publish(db: &PgPool, root: &Path, id: &str) -> Result<PgRow,
         .ok_or("Skill不存在")?;
     let root = root.to_owned();
     let id = id.to_owned();
+    let inactive = row.get::<bool, _>("builtin") && !row.get::<bool, _>("enabled");
     let content: String = row.get("content");
     tokio::task::spawn_blocking(move || {
         let _lock = lock;
+        if inactive {
+            let folder = root.join("data/runtime-skills").join(id);
+            if folder.exists() {
+                std::fs::remove_dir_all(folder).map_err(|e| e.to_string())?;
+            }
+            return Ok(());
+        }
         let folder = resource_folder(&root, &id)?;
         atomic_text(&folder, &content)
     })
@@ -152,14 +160,16 @@ pub(super) async fn reconcile(
     root: &Path,
     include_builtin: bool,
 ) -> Result<(), String> {
-    let ids: Vec<String> =
-        sqlx::query_scalar("SELECT id FROM runtime_skills WHERE deleted_at IS NULL AND ($1 OR NOT builtin) ORDER BY id")
+    let entries: Vec<(String, bool)> =
+        sqlx::query_as("SELECT id,builtin AND NOT enabled FROM runtime_skills WHERE deleted_at IS NULL AND ($1 OR NOT builtin) ORDER BY id")
             .bind(include_builtin)
             .fetch_all(db)
             .await
             .map_err(|e| e.to_string())?;
-    for id in ids {
-        publish(db, root, &id).await?;
+    for (id, inactive) in entries {
+        if !inactive || root.join("data/runtime-skills").join(&id).exists() {
+            publish(db, root, &id).await?;
+        }
     }
     Ok(())
 }

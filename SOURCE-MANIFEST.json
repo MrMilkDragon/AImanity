@@ -453,8 +453,8 @@
     },
     {
       "path": "apps/native/src/skills.rs",
-      "size": 13176,
-      "sha256": "1158579a82d7248ef19ab5a72129feb6f3ea2b751da44345973907da618395fa"
+      "size": 13188,
+      "sha256": "7dfbc208de1e69c90b7dbad8ab135ee4b0ac68a44f175e7922efd393036467ba"
     },
     {
       "path": "apps/native/src/spring_slider.rs",
@@ -1148,8 +1148,8 @@
     },
     {
       "path": "crates/assistant/src/completion_audit.rs",
-      "size": 50565,
-      "sha256": "9529488c5072c036bb16b570fa6ce337cd4fedc80ed2c169dd443e20cc805ab7"
+      "size": 56216,
+      "sha256": "14beaeecb42dab6319dda89aa55e9c8dbe1f904f51e0d52df7ee8901406c8776"
     },
     {
       "path": "crates/assistant/src/database/bootstrap.rs",
@@ -1418,13 +1418,13 @@
     },
     {
       "path": "crates/assistant/src/skill_persistence_tests.rs",
-      "size": 21223,
-      "sha256": "2a2436dd1bc7c73cbd9a1fca9e19f755a2115f82cec127995559ee3d05e8a152"
+      "size": 24007,
+      "sha256": "c3800408a428658b6c167163bc4a467e8bd2db93d0d795999dace52b57e99606"
     },
     {
       "path": "crates/assistant/src/skill_resources.rs",
-      "size": 6615,
-      "sha256": "adb1fd663a2419c058161a8e81e0df56d549f331c5a68a80789e243306f95726"
+      "size": 7090,
+      "sha256": "1d84d2a7f77801abcb1a7f329d5f44f3930bf0dae731748af74ae5cab05ca1a2"
     },
     {
       "path": "crates/assistant/src/speech/activity.rs",
@@ -1503,8 +1503,8 @@
     },
     {
       "path": "crates/assistant/src/workbench.rs",
-      "size": 54931,
-      "sha256": "89bec6c0b4d864e6e317c5925871c0709fb857355548347157689d9f9e0ef594"
+      "size": 56272,
+      "sha256": "eb400ba21f76d61ba72e3d9115fcd2b4e53d6b7d9c7e187d0f77bf1f14a04d88"
     },
     {
       "path": "crates/assistant/src/worker/action_cue.rs",
@@ -2503,8 +2503,8 @@
     },
     {
       "path": "docs/public/capabilities-and-data.md",
-      "size": 3180,
-      "sha256": "5ab2b45fa67fe738ae9e7924de6df79742cd3f63d2c1e282558de3143f263bf7"
+      "size": 3149,
+      "sha256": "78939ff8ede64b520b9aa2b1dd5c9d34aa668b0d3980c10209ebf26000e483ad"
     },
     {
       "path": "docs/public/companion-extension.md",

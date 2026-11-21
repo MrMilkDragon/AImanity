@@ -18,11 +18,11 @@ The browser and file Skills came from real Android runs and independent review. 
 
 ## Development and design Skills
 
-Open Skills and search for a name or a task, such as `typography`, `Postgres` or `营销小字`. The same catalogue is available to the Agent through `skill_list(query)`. Read a guide with `skill_read(name)` and a linked reference with `skill_read(name, resource)`.
+Open Skills and select the development or design guides you want to use. Search by name or topic, such as `typography`, `Postgres` or `营销小字`. The Agent finds selected guides through `skill_list(query)` and reads their instructions and references through `skill_read`.
 
 For a form redesign, start with `interface-copy-layout` to decide which labels to keep, align the fields and check the result at a short window height. For a slow query, use `postgres-patterns` to compare plans for the same data and parameters. The library also covers motion, code review, browser verification and creating games and visual assets. The guides and bundled references are available offline.
 
-在「Skill」里可按名称或任务搜索。界面设计先用 `interface-copy-layout` 审查文案、基线、控件高度和字号；后端和数据库任务可分别读取 `backend-patterns`、`postgres-patterns`。Agent 按当前任务查找和读取技能。
+开发与设计 Skill 默认关闭。在「Skill」里按名称或任务搜索，勾选后 Agent 即可使用。界面审查可选 `interface-copy-layout`，后端和数据库可选 `backend-patterns`、`postgres-patterns`。
 
 ## 数据 / Data
 

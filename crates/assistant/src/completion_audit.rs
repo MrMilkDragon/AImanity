@@ -298,7 +298,11 @@ pub async fn verify(
     let mut learning_evidence = LearningEvidence::new();
     let mut illustrated = Vec::new();
     let host_session = app.run_signals.host.session(run);
-    for row in &rows {
+    let complete_ledger = rows.len() < 64;
+    let user_run = rows
+        .first()
+        .is_some_and(|row| row.get::<bool, _>("user_run"));
+    for row in rows {
         let row_id = row.get::<Uuid, _>("id");
         let id = row_id.to_string();
         let call = current_calls[&row_id];
@@ -365,13 +369,10 @@ pub async fn verify(
         && handoff_receipts.is_empty()
         && notifications.is_empty()
         && learning.is_empty()
-        && rows.len() < 64;
-    let phone_input = (compact_allowed
-        && rows
-            .first()
-            .is_some_and(|row| row.get::<bool, _>("user_run")))
-    .then(|| single_phone_input(&evidence, &current_calls, post_visuals))
-    .flatten();
+        && complete_ledger;
+    let phone_input = (compact_allowed && user_run)
+        .then(|| single_phone_input(&evidence, &current_calls, post_visuals))
+        .flatten();
     let compact_phone = phone_input.is_some();
     let compact_visuals = if let Some(tap) = phone_input {
         evidence = vec![
@@ -397,6 +398,9 @@ pub async fn verify(
     if readback && compact_allowed {
         evidence.retain(|receipt| receipt["tool"] != "skill_read");
     }
+    if !compact {
+        compact_phone_trees(&mut evidence);
+    }
     let mut audit_input = vec![
         json!({"type":"input_text","text":json!({"request":request_text,"proposed_completion":summary,"needs_input":needs_input,"tool_evidence":evidence,"handoff_receipts":handoff_receipts}).to_string()}),
     ];
@@ -413,11 +417,17 @@ pub async fn verify(
     if !learning.is_empty() {
         audit_input.push(json!({"type":"input_text","text":format!("核对以下当前经验候选的步骤、结果和适用范围：{}",json!(learning))}));
     }
-    if let Some(range) = compact_visuals {
-        audit_input.extend(visual_inputs.drain(range));
+    let selected = if let Some(range) = compact_visuals {
+        let count = range.len();
+        visual_inputs
+            .into_iter()
+            .skip(range.start)
+            .take(count)
+            .collect()
     } else {
-        audit_input.extend(visual_inputs);
-    }
+        visual_inputs
+    };
+    append_visuals(&mut audit_input, selected);
     let mut tool = json!({"type":"function","name":"audit_result","description":"核验任务结果",
         "parameters":{"type":"object","properties":{"approved":{"type":"boolean"},"feedback":{"type":"string"}},
         "required":["approved","feedback"],"additionalProperties":false}});
@@ -621,6 +631,80 @@ fn extract_images(value: &mut Value, id: &str, inputs: &mut Vec<Value>) {
     }
 }
 
+// Native observations repeat the same field names and often the same values
+// for every control. Store the common fields once and keep every other value
+// by column, including IDs, text, bounds and actionability in original order.
+fn compact_phone_trees(evidence: &mut [Value]) {
+    for receipt in evidence.iter_mut().filter(|r| r["tool"] == "phone_observe") {
+        let Some(parts) = receipt["result"].as_array_mut() else {
+            continue;
+        };
+        for part in parts {
+            if part["type"] != "input_text" || !part.as_object().is_some_and(|p| p.len() == 2) {
+                continue;
+            }
+            let Some(text) = part["text"].as_str().filter(|s| s.contains("\"elements\"")) else {
+                continue;
+            };
+            let Ok(mut frame) = serde_json::from_str::<Value>(text) else {
+                continue;
+            };
+            if !frame["device_id"].is_string() || !frame["observation_id"].is_string() {
+                continue;
+            }
+            let Some(controls) = frame["elements"].as_array().filter(|a| a.len() > 1) else {
+                continue;
+            };
+            let Some(first) = controls[0].as_object() else {
+                continue;
+            };
+            if !controls.iter().all(|c| {
+                c.as_object().is_some_and(|o| {
+                    o.len() == first.len() && first.keys().all(|key| o.contains_key(key))
+                })
+            }) {
+                continue;
+            }
+            let mut common = serde_json::Map::new();
+            let mut columns = Vec::new();
+            for (key, value) in first {
+                if controls.iter().all(|c| &c[key] == value) {
+                    common.insert(key.clone(), value.clone());
+                } else {
+                    columns.push(key.as_str());
+                }
+            }
+            let rows: Vec<Vec<_>> = controls
+                .iter()
+                .map(|c| columns.iter().map(|&k| &c[k]).collect())
+                .collect();
+            let table = json!({"common":common,"columns":columns,"rows":rows});
+            frame["elements"] = table;
+            if frame.to_string().len() < text.len() {
+                *part = json!({"phone_observation":frame});
+            }
+        }
+    }
+}
+
+fn append_visuals(input: &mut Vec<Value>, visuals: Vec<Value>) {
+    // At most eight pictures. Compare against the images already in the
+    // request so distinct sizes are rejected without hashing base64 bodies.
+    let mut unique: Vec<usize> = Vec::new();
+    let mut pairs = visuals.into_iter();
+    while let (Some(mut label), Some(image)) = (pairs.next(), pairs.next()) {
+        if let Some(prior) = unique.iter().position(|&index| input[index] == image) {
+            let event = label["text"].as_str().unwrap();
+            label["text"] = json!(format!("{event}（与前面第 {} 张图完全相同）", prior + 1));
+            input.push(label);
+        } else {
+            input.push(label);
+            unique.push(input.len());
+            input.push(image);
+        }
+    }
+}
+
 fn limit_result(value: &mut Value, images: &mut usize) {
     match value {
         Value::Array(items) => {
@@ -654,6 +738,59 @@ fn limit_result(value: &mut Value, images: &mut usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn audit_control_table_round_trips_every_target_in_order() {
+        let controls: Vec<_> = (0..4)
+            .map(|i| {
+                json!({
+                    "id":format!("n{i}"), "text":"Repeated label", "source":"native",
+                    "resource_id":"app:id/item", "clickable":i != 1, "editable":false,
+                    "bounds":[0,i*30,200,(i+1)*30], "confidence":1.0,
+                })
+            })
+            .collect();
+        let frame = json!({"device_id":"phone","observation_id":"frame","elements":controls});
+        let mut receipt = json!({"tool":"phone_observe","result":[
+            {"type":"input_text","text":frame.to_string()}
+        ]});
+        compact_phone_trees(std::slice::from_mut(&mut receipt));
+        let compact = &receipt["result"][0]["phone_observation"];
+        assert_eq!(compact["observation_id"], "frame");
+        let table = &compact["elements"];
+        let columns = table["columns"].as_array().unwrap();
+        let restored: Vec<_> = table["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                let mut control = table["common"].clone();
+                for (name, value) in columns.iter().zip(row.as_array().unwrap()) {
+                    control[name.as_str().unwrap()] = value.clone();
+                }
+                control
+            })
+            .collect();
+        assert_eq!(restored, controls);
+    }
+
+    #[test]
+    fn identical_images_keep_each_event_and_distinct_render_options() {
+        let mut visuals = Vec::new();
+        for (event, detail) in [("before", "high"), ("after", "high"), ("crop", "low")] {
+            let mut part = json!({"type":"input_image","image_url":"data:image/png;base64,same","detail":detail});
+            extract_images(&mut part, event, &mut visuals);
+        }
+        let mut input = Vec::new();
+        append_visuals(&mut input, visuals);
+        assert_eq!(input.len(), 5);
+        assert_eq!(input[0]["text"], "截图 before");
+        assert_eq!(input[1]["detail"], "high");
+        assert_eq!(input[2]["text"], "截图 after（与前面第 1 张图完全相同）");
+        assert_eq!(input[3]["text"], "截图 crop");
+        assert_eq!(input[4]["detail"], "low");
+    }
+
     #[test]
     fn short_review_requires_one_confirmed_input_and_its_observation() {
         let observation = json!({"tool":"computer_observe","status":"completed"});

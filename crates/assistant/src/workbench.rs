@@ -171,15 +171,27 @@ fn validate_skill(content: &str, fallback: &str) -> Result<(String, String), Str
 }
 async fn skill_set_enabled(
     app: &App,
-    id: &str,
-    enabled: bool,
-    remove: bool,
+    request: wire::SkillUpdateRequest,
+    from_menu: bool,
 ) -> Result<wire::RuntimeSkill, String> {
-    let row = sqlx::query("UPDATE runtime_skills SET enabled=$2,deleted_at=CASE WHEN $3 THEN now() ELSE NULL END WHERE id=$1 AND builtin=false RETURNING *")
-        .bind(id).bind(enabled && !remove).bind(remove).fetch_optional(&app.db).await.map_err(|e|e.to_string())?;
-    row.as_ref()
-        .map(skill)
-        .ok_or_else(|| "Skill不存在或内置Skill不可修改".into())
+    let row = sqlx::query(
+        "UPDATE runtime_skills SET enabled=$2,deleted_at=CASE WHEN $3 THEN now() ELSE NULL END
+        WHERE id=$1 AND (NOT builtin OR ($4 AND source='catalog' AND NOT $3)) RETURNING *",
+    )
+    .bind(&request.id)
+    .bind(request.enabled && !request.remove)
+    .bind(request.remove)
+    .bind(from_menu)
+    .fetch_optional(&app.db)
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or("Skill不存在或此操作不可用")?;
+    if row.get("builtin") {
+        return Ok(skill(
+            &skill_resources::publish(&app.db, &app.root, &request.id).await?,
+        ));
+    }
+    Ok(skill(&row))
 }
 async fn skill_edit(
     app: &App,
@@ -242,11 +254,33 @@ pub async fn initialize(db: &PgPool, root: &std::path::Path) -> Result<(), Strin
         descriptions.push(description);
         contents.push(content);
     }
-    sqlx::query("INSERT INTO runtime_skills AS s (id,name,description,source,content,builtin)
-        SELECT id,id,description,'builtin',content,true FROM unnest($1::text[],$2::text[],$3::text[]) AS entry(id,description,content)
-        ON CONFLICT (id) DO UPDATE SET description=excluded.description,content=excluded.content
-        WHERE (s.description,s.content) IS DISTINCT FROM (excluded.description,excluded.content)")
-        .bind(ids).bind(descriptions).bind(contents).execute(db).await.map_err(|e| e.to_string())?;
+    let required: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            matches!(
+                id.as_str(),
+                "autonomous-learning"
+                    | "browser-android"
+                    | "calc"
+                    | "computer-use"
+                    | "device-transfer"
+                    | "draw"
+                    | "files-android"
+                    | "impress"
+                    | "phone-use"
+                    | "wechat"
+                    | "writer"
+                    | "xiaohongshu"
+            )
+        })
+        .collect();
+    sqlx::query("INSERT INTO runtime_skills AS s (id,name,description,source,content,builtin,enabled)
+        SELECT id,id,description,CASE WHEN required THEN 'builtin' ELSE 'catalog' END,content,true,required
+        FROM unnest($1::text[],$2::text[],$3::text[],$4::bool[]) AS entry(id,description,content,required)
+        ON CONFLICT (id) DO UPDATE SET description=excluded.description,content=excluded.content,source=excluded.source,
+            enabled=CASE WHEN s.source=excluded.source THEN s.enabled ELSE excluded.enabled END
+        WHERE s.builtin AND (s.description,s.content,s.source) IS DISTINCT FROM (excluded.description,excluded.content,excluded.source)")
+        .bind(ids).bind(descriptions).bind(contents).bind(required).execute(db).await.map_err(|e| e.to_string())?;
     skill_resources::reconcile(db, root, true).await
 }
 async fn skill_import(
@@ -840,7 +874,7 @@ pub async fn route(
         }
         "skill-update" => {
             let input = request!(wire::SkillUpdateRequest);
-            if let Err(e) = skill_set_enabled(&app, &input.id, input.enabled, input.remove).await {
+            if let Err(e) = skill_set_enabled(&app, input, true).await {
                 return issue(e);
             }
             match skills(&app).await {
@@ -1022,7 +1056,7 @@ pub(crate) async fn upload_knowledge_image(
 async fn read_skill_row(app: &App, name: &str) -> Result<sqlx::postgres::PgRow, String> {
     let row = sqlx::query(
         "SELECT * FROM runtime_skills WHERE (id=$1 OR lower(name)=lower($1))
-         AND deleted_at IS NULL ORDER BY builtin DESC,created_at LIMIT 1",
+         AND deleted_at IS NULL AND (source<>'catalog' OR enabled) ORDER BY builtin DESC,created_at LIMIT 1",
     )
     .bind(name)
     .fetch_optional(&app.db)
@@ -1084,7 +1118,7 @@ pub(crate) async fn invoke_tool(
         "skill_list" => {
             let rows: Vec<(String,String,String,bool,bool,String)> = sqlx::query_as(
                 "SELECT id,name,description,enabled,builtin,encode(sha512(convert_to(content,'UTF8')),'hex')
-                 FROM runtime_skills WHERE deleted_at IS NULL AND
+                 FROM runtime_skills WHERE deleted_at IS NULL AND (source<>'catalog' OR enabled) AND
                  (strpos(lower(name),lower($1))>0 OR strpos(lower(description),lower($1))>0)
                  ORDER BY builtin DESC,lower(name),id")
                 .bind(string("query").trim()).fetch_all(&app.db).await.map_err(|e| e.to_string())?;
@@ -1129,7 +1163,16 @@ pub(crate) async fn invoke_tool(
         }
         "skill_set_enabled" => {
             let enabled = args["enabled"].as_bool().ok_or("enabled必须为布尔值")?;
-            let item = skill_set_enabled(app, &string("id"), enabled, false).await?;
+            let item = skill_set_enabled(
+                app,
+                wire::SkillUpdateRequest {
+                    id: string("id"),
+                    enabled,
+                    remove: false,
+                },
+                false,
+            )
+            .await?;
             Ok(
                 json!({"id":item.id,"name":item.name,"enabled":item.enabled,"content_version":item.content_version}),
             )
