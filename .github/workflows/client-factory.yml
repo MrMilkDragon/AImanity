@@ -1,0 +1,157 @@
+name: Europium macOS candidate
+on:
+  push:
+    branches: [codex/europium-macos-candidate]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: europium-mac-candidate
+  cancel-in-progress: false
+env:
+  PRODUCT_SOURCE: 779692bf2878974ec6a7ef6d1d78f79a0b9dab28
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+jobs:
+  linux:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 100
+    outputs:
+      artifact: ${{ steps.retain.outputs.artifact-id }}
+    env:
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+      CC_aarch64_unknown_linux_musl: musl-gcc
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.PRODUCT_SOURCE }}
+          persist-credentials: false
+      - name: Prepare the hosted ARM builder
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = aarch64
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SOURCE"
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/lib/android/sdk
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y debootstrap zstd musl-tools
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          rustup target add aarch64-unknown-linux-musl
+      - name: Build the candidate Linux filesystem and bridge
+        run: |
+          cargo build --locked -p ai-phone-release-tools --bin release-tools
+          target/debug/release-tools source check --repository --manifest
+          CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$HOME=/build-user" \
+          CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_PROFILE_RELEASE_STRIP=debuginfo \
+            cargo build --release --locked -p ai-phone-guest-runtime --target aarch64-unknown-linux-musl --bin desktop-bridge
+          mkdir "$RUNNER_TEMP/mac-linux"
+          install -m 0755 target/aarch64-unknown-linux-musl/release/desktop-bridge "$RUNNER_TEMP/mac-linux/desktop-bridge"
+          keyring=$(scripts/stage-debian-keyring.sh "$RUNNER_TEMP/trixie-keyring")
+          sudo env AI_PHONE_DEBIAN_KEYRING="$keyring" target/debug/release-tools factory-images rootfs arm64 "$RUNNER_TEMP/mac-linux/linux-rootfs.tar.zst"
+          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/mac-linux/linux-rootfs.tar.zst"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        id: retain
+        with:
+          name: europium-mac-linux-runtime
+          path: ${{ runner.temp }}/mac-linux/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 5
+  dmg:
+    needs: linux
+    runs-on: macos-26
+    timeout-minutes: 165
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: source
+          ref: ${{ env.PRODUCT_SOURCE }}
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: carrier
+          sparse-checkout: factory-inputs/macos
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ needs.linux.outputs.artifact }}
+          path: ${{ runner.temp }}/mac-linux
+      - name: Prepare the disposable Apple Silicon builder
+        run: |
+          set -eu
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$(uname -m)" = arm64
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SOURCE"
+          if [ -d "${ANDROID_HOME:-/nonexistent}/ndk" ]; then
+            rm -rf "${ANDROID_HOME:?}/ndk"
+          fi
+          if [ "$(df -Pk . | awk 'END {print $4}')" -lt 32505856 ]; then
+            active=$(cd "$(xcode-select -p)/../.." && pwd -P)
+            for bundle in /Applications/Xcode*.app; do
+              [ -d "$bundle" ] || continue
+              resolved=$(cd "$bundle" && pwd -P)
+              if [ "$resolved" != "$active" ]; then sudo rm -rf "$bundle"; fi
+            done
+          fi
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+          if ! command -v tesseract >/dev/null; then brew install --force-bottle tesseract; fi
+          df -h .
+      - name: Recover the pinned Android engine and macOS Linux host from the official DMG
+        run: |
+          set -euo pipefail
+          old="$RUNNER_TEMP/dysprosium.dmg"
+          curl -fLsS --retry 3 -o "$old" https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-macos-arm64.dmg
+          echo "6ed472b515b6f5ce4059f40c71ed8a5c2ba7db47513c8629215a6c9ea61ab703  $old" | shasum -a 256 -c -
+          codesign --verify --strict "$old"
+          mount="$RUNNER_TEMP/dysprosium-image"
+          stage="$RUNNER_TEMP/dysprosium-components"
+          mkdir "$mount" "$stage"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$old"
+          trap 'hdiutil detach "$mount" >/dev/null' EXIT
+          host="$mount/AImanity.app/Contents/Resources/host"
+          cp "$host/android.payload" "$RUNNER_TEMP/mac-linux/android.payload"
+          /usr/bin/tar -xf "$host/source.payload" -C "$stage" runtime/container-host runtime/phone-apps/browser.apk
+          mkdir -p .tools/phone-apps
+          mv "$stage/runtime/container-host" .tools/native-linux-host
+          mv "$stage/runtime/phone-apps/browser.apk" .tools/phone-apps/
+          cp "$GITHUB_WORKSPACE"/carrier/factory-inputs/macos/{home.apk,input.apk,manifest.json} .tools/phone-apps/
+          hdiutil detach "$mount"
+          trap - EXIT
+          rm "$old"
+          df -h .
+      - name: Build and sign the complete offline DMG
+        env:
+          AI_PHONE_RELEASE_DESKTOP_BRIDGE: ${{ runner.temp }}/mac-linux/desktop-bridge
+          AIMANITY_ANDROID_PAYLOAD: ${{ runner.temp }}/mac-linux/android.payload
+          AIMANITY_ANDROID_PAYLOAD_SHA256: 5e99337bfaffc36edea006a5844f0befd39b7552e48dd0dcbcc40c9e7779afd2
+        run: |
+          set -euo pipefail
+          cargo build --quiet --locked -p ai-phone-release-tools --bin release-tools
+          release=target/debug/release-tools
+          "$release" phone-apps verify "$PWD"
+          "$release" prepare-ocr-models --destination "$RUNNER_TEMP/aiphone-ocr-models"
+          export AI_PHONE_TEST_TESSERACT="$(command -v tesseract)"
+          export AI_PHONE_TEST_TESSDATA="$RUNNER_TEMP/aiphone-ocr-models"
+          "$release" macos-factory --linux-rootfs "$RUNNER_TEMP/mac-linux/linux-rootfs.tar.zst"
+          dmg=dist/AImanity-0.0.5-macos-arm64.dmg
+          codesign --verify --strict "$dmg"
+          jq -e --arg rev "$PRODUCT_SOURCE" '.version == "0.0.5" and .source_commit == $rev and .complete_device_bundle and .installer_delivery.github_asset_eligible' "$dmg.manifest.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: europium-complete-macos-candidate
+          path: |
+            source/dist/AImanity-0.0.5-macos-arm64.dmg
+            source/dist/AImanity-0.0.5-macos-arm64.dmg.manifest.json
+            source/dist/macos-full-factory-report.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
