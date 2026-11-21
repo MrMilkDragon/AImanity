@@ -1,8 +1,15 @@
+use super::cue::{Cue, Samples};
 use super::{Arc, Bytes, Duration, Media, Ordering, Result, now};
 use axum::body::Body;
-use futures_util::stream;
-use image::{ImageBuffer, RgbImage, codecs::jpeg::JpegEncoder};
-use std::{io, io::Cursor, path::PathBuf};
+use futures_util::{StreamExt, stream};
+use image::{
+    ExtendedColorType, ImageBuffer, ImageEncoder, RgbImage,
+    codecs::{
+        jpeg::JpegEncoder,
+        png::{CompressionType, FilterType, PngEncoder},
+    },
+};
+use std::{io, path::PathBuf};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::UnixStream,
@@ -95,11 +102,61 @@ impl Avo {
         let rotation = media.orientation().await?;
         tokio::task::spawn_blocking(move || {
             let (image, captured) = frame.read(rotation)?;
-            let mut png = Cursor::new(Vec::new());
-            image.write_to(&mut png, image::ImageFormat::Png)?;
-            Ok((png.into_inner(), captured))
+            let mut png = Vec::new();
+            PngEncoder::new_with_quality(&mut png, CompressionType::Fast, FilterType::Paeth)
+                .write_image(
+                    image.as_raw(),
+                    image.width(),
+                    image.height(),
+                    ExtendedColorType::Rgb8,
+                )?;
+            Ok((png, captured))
         })
         .await?
+    }
+
+    pub(super) fn cue_samples<'a>(
+        &self,
+        media: &'a Media,
+        cue: Arc<Cue>,
+        on_appearance: bool,
+    ) -> Samples<'a> {
+        let mut frames = self.frame.subscribe();
+        let last = if on_appearance {
+            frames.mark_changed();
+            None
+        } else {
+            frames.borrow_and_update().clone().map(|d| {
+                let seq = d.sequence();
+                (d, seq)
+            })
+        };
+        stream::unfold(
+            (frames, last, cue),
+            move |(mut frames, mut last, cue)| async move {
+                loop {
+                    frames.changed().await.ok()?;
+                    let display = frames.borrow_and_update().clone()?;
+                    let seq = display.sequence();
+                    if seq == 0
+                        || last
+                            .as_ref()
+                            .is_some_and(|(d, s)| *s == seq && Arc::ptr_eq(d, &display))
+                    {
+                        continue;
+                    }
+                    let at = std::time::Instant::now();
+                    let rotation = media.rotation.load(Ordering::Relaxed);
+                    let matched = display.matches(&cue, seq, rotation);
+                    let intact = display.sequence().saturating_sub(seq) < 3;
+                    last = Some((display, seq));
+                    if intact {
+                        return Some((Ok((matched, at)), (frames, last, cue)));
+                    }
+                }
+            },
+        )
+        .boxed()
     }
 
     pub(super) async fn capture(&self, media: &Media) {
@@ -110,6 +167,7 @@ impl Avo {
             heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             let mut last: Option<EncodedFrame> = None;
             while media.screen.viewers.load(Ordering::Relaxed) != 0 {
+                let next_frame = tokio::time::Instant::now() + Duration::from_millis(33);
                 let frame = frames.borrow_and_update().clone();
                 if let Some(frame) = frame.filter(|frame| frame.sequence() != 0) {
                     let sequence = frame.sequence();
@@ -141,7 +199,7 @@ impl Avo {
                     media.screen.end();
                 }
                 tokio::select! {
-                    _ = frames.changed() => tokio::time::sleep(Duration::from_millis(33)).await,
+                    _ = frames.changed() => tokio::time::sleep_until(next_frame).await,
                     _ = heartbeat.tick() => { let _ = media.orientation().await; }
                     _ = media.screen.changed.notified() => {}
                 }
@@ -256,6 +314,30 @@ impl Display {
         self.map.sequence(48)
     }
 
+    fn matches(&self, cue: &Cue, sequence: u64, rotation: u32) -> super::cue::Sample {
+        let (w, h) = (self.width, self.height);
+        let rotation = if w < h || rotation == 2 { rotation } else { 0 };
+        let size = if rotation % 2 == 1 { (h, w) } else { (w, h) };
+        let start = FRAME_HEADER + (sequence % 3) as usize * self.buffer;
+        cue.sample(size, |x, y| {
+            let (x, y) = match rotation {
+                1 => (w - 1 - y, x),
+                2 => (w - 1 - x, h - 1 - y),
+                3 => (y, h - 1 - x),
+                _ => (x, y),
+            };
+            let [r, g, b, _] = self
+                .map
+                .word(start + y as usize * self.stride + x as usize * 4)
+                .to_le_bytes();
+            if self.format == 0 {
+                [b, g, r]
+            } else {
+                [r, g, b]
+            }
+        })
+    }
+
     fn jpeg(&self, rotation: u32) -> Result<(Vec<u8>, u64)> {
         let (image, captured) = self.read(rotation)?;
         let mut jpeg = Vec::new();
@@ -278,12 +360,15 @@ impl Display {
         } else {
             [0, 1, 2]
         };
-        let rgb = raw
-            .chunks_exact(4)
-            .flat_map(|p| [p[order[0]], p[order[1]], p[order[2]]])
-            .collect();
+        let pixels = (self.width * self.height) as usize;
+        for i in 0..pixels {
+            let source = &raw[i * 4..i * 4 + 4];
+            let rgb = [source[order[0]], source[order[1]], source[order[2]]];
+            raw[i * 3..i * 3 + 3].copy_from_slice(&rgb);
+        }
+        raw.truncate(pixels * 3);
         let image =
-            ImageBuffer::from_raw(self.width, self.height, rgb).ok_or("invalid RGB frame")?;
+            ImageBuffer::from_raw(self.width, self.height, raw).ok_or("invalid RGB frame")?;
         let portrait = self.width < self.height;
         Ok((
             match rotation {

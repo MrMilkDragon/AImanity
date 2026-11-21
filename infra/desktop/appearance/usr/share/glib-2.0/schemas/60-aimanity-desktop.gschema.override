@@ -1,0 +1,17 @@
+[org.gnome.desktop.interface]
+gtk-theme='Yaru-blue'
+font-name='Cantarell 11'
+
+[org.gnome.desktop.wm.preferences]
+button-layout=':minimize,maximize,close'
+
+[org.gnome.nautilus.preferences]
+default-folder-viewer='list-view'
+
+[org.gnome.nautilus.window-state]
+initial-size=(920, 570)
+initial-size-file-chooser=(880, 540)
+
+[org.freedesktop.Tracker3.Miner.Files]
+index-recursive-directories=['&DOCUMENTS']
+index-single-directories=['&DESKTOP']

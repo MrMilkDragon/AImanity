@@ -1,6 +1,7 @@
 mod speech;
+mod voice_particles;
 
-pub type MicrophoneLevels = [[u32; 4]; 12];
+pub type MicrophoneLevels = [u8; 32];
 
 use crate::{
     connection::Connection,
@@ -266,7 +267,7 @@ impl Modes {
         })
     }
     pub fn animating(&self) -> bool {
-        !self.speech.ready && (self.last_edge || self.edge_changed.is_some() || self.goal_moving())
+        self.last_edge || self.edge_changed.is_some() || self.goal_moving()
     }
     pub fn animate(&mut self, now: Instant) {
         if let Some(previous) = self.last_tick.replace(now) {
@@ -294,7 +295,17 @@ impl Modes {
             }
         }
     }
-    pub fn effects(&self, reduced_motion: bool) -> ([f32; 4], [f32; 4], MicrophoneLevels) {
+    pub fn voice_strip<M: 'static>(&self, running: bool, reduced_motion: bool) -> Element<'_, M> {
+        iced::widget::canvas(voice_particles::Particles {
+            levels: self.speech.ready.then_some(&self.speech.levels),
+            thinking: self.speech.ready && running,
+            reduced_motion,
+        })
+        .width(Length::Fill)
+        .height(42.)
+        .into()
+    }
+    pub fn effects(&self, reduced_motion: bool) -> ([f32; 4], [f32; 4]) {
         let goal = if self.goal_active() {
             if reduced_motion {
                 1.
@@ -315,35 +326,78 @@ impl Modes {
             (1. - (1. - (self.edge_time / 1.8).min(1.)).powi(3)) * 1.1
         };
         let orbit = if reduced_motion { 0. } else { self.edge_time };
-        let voice_scale = if self.speech.ready {
-            if reduced_motion { 0.14 } else { 0.42 }
-        } else {
-            0.
-        };
-        (
-            [0., edge, goal, voice_scale],
-            [orbit, reveal, 0., 0.],
-            self.speech.levels,
-        )
+        ([0., edge, goal, 0.], [orbit, reveal, 0., 0.])
     }
     pub fn liberty_button(&self) -> Element<'_, Message> {
         let liberty = self.state.as_ref().is_some_and(|state| state.exploring);
         let ready = self.state.is_some() && !self.saving && (!self.goal_active() || liberty);
+        let ink = if liberty {
+            Color::from_rgb8(0x51, 0x4b, 0x8a)
+        } else {
+            Color::from_rgb8(0x65, 0x6a, 0x78)
+        };
         mode_button(
-            "Liberty",
+            text("Liberty")
+                .size(12)
+                .wrapping(text::Wrapping::None)
+                .into(),
             if liberty { Icon::Pause } else { Icon::Compass },
-            liberty,
+            ink,
             ready.then_some(Message::ToggleLiberty),
         )
+        .style(move |theme, status| {
+            let mut s = style::quiet(theme, status);
+            s.text_color = if ready { ink } else { ink.scale_alpha(0.5) };
+            if liberty {
+                s.background = Some(
+                    iced::gradient::Linear::new(iced::Degrees(115.))
+                        .add_stop(0., Color::from_rgba8(0xb0, 0xdf, 0xfb, 0.19))
+                        .add_stop(0.5, Color::from_rgba8(0xe2, 0xbf, 0xfb, 0.19))
+                        .add_stop(1., Color::from_rgba8(0xff, 0xd4, 0xbb, 0.19))
+                        .into(),
+                );
+            } else if matches!(status, button::Status::Hovered | button::Status::Pressed) {
+                s.background = Some(Color::from_rgba8(0x77, 0x71, 0x8a, 11. / 255.).into());
+                s.text_color = Color::from_rgb8(0x26, 0x23, 0x37);
+            }
+            s
+        })
+        .into()
     }
     pub fn copilot_button(&self, conversation_ready: bool) -> Element<'_, Message> {
+        use iced::widget::{rich_text, span};
         let active = self.speech.active();
+        let blue = Color::from_rgb8(0x19, 0x68, 0x94);
+        let label = if active {
+            rich_text::<(), _, _, _>([
+                span("Co").color(blue),
+                span("pi").color(Color::from_rgb8(0x63, 0x4d, 0xa3)),
+                span("lot").color(Color::from_rgb8(0xa4, 0x3c, 0x68)),
+            ])
+            .size(12)
+            .wrapping(text::Wrapping::None)
+            .into()
+        } else {
+            text("Copilot")
+                .size(12)
+                .wrapping(text::Wrapping::None)
+                .into()
+        };
         mode_button(
-            "Copilot",
+            label,
             if active { Icon::Mic } else { Icon::MicOff },
-            active,
+            if active { blue } else { style::MUTED },
             (active || conversation_ready).then_some(Message::ToggleCopilot),
         )
+        .style(|_, status| button::Style {
+            text_color: match status {
+                button::Status::Disabled => style::MUTED.scale_alpha(0.4),
+                button::Status::Hovered | button::Status::Pressed => style::FOREGROUND,
+                _ => style::MUTED,
+            },
+            ..Default::default()
+        })
+        .into()
     }
     fn can_save_goal(&self, value: &str) -> bool {
         self.state.as_ref().is_some_and(|state| {
@@ -408,18 +462,14 @@ impl Modes {
                     self.locale.tr("关闭目标"),
                     (!self.saving).then_some(Message::SetGoal(true)),
                 )
-                .style(style::quiet)
-                .width(92),
+                .style(style::quiet),
             );
         }
         if !active || self.state.as_ref().is_some_and(|s| value != s.goal) {
-            actions = actions.push(
-                action_button(
-                    self.locale.tr(if active { "更新目标" } else { "激活" }),
-                    can_save.then_some(Message::SetGoal(false)),
-                )
-                .width(92),
-            );
+            actions = actions.push(action_button(
+                self.locale.tr(if active { "更新目标" } else { "激活" }),
+                can_save.then_some(Message::SetGoal(false)),
+            ));
         }
         let error = if value.len() > 12000 {
             self.locale.tr("目标内容不能超过 12 KB")
@@ -435,40 +485,20 @@ impl Modes {
 }
 
 fn mode_button(
-    label: &str,
+    label: Element<'static, Message>,
     icon: Icon,
-    active: bool,
+    ink: Color,
     action: Option<Message>,
-) -> Element<'static, Message> {
-    let liberty = label == "Liberty";
-    let ink = move |theme: &iced::Theme| {
-        if liberty && active {
-            Color::from_rgb8(0x51, 0x4b, 0x8a)
-        } else if liberty {
-            Color::from_rgb8(0x65, 0x6a, 0x78)
-        } else if active {
-            theme.palette().text
-        } else {
-            style::MUTED
-        }
-    };
+) -> button::Button<'static, Message> {
     button(
         container(
             row![
                 icon.view()
                     .width(15)
                     .height(15)
-                    .opacity(if action.is_some() {
-                        1.
-                    } else if liberty {
-                        0.5
-                    } else {
-                        0.4
-                    })
-                    .style(move |theme, _| iced::widget::svg::Style {
-                        color: Some(ink(theme))
-                    }),
-                text(label.to_owned()).size(12)
+                    .opacity(if action.is_some() { 1. } else { 0.5 })
+                    .style(move |_, _| iced::widget::svg::Style { color: Some(ink) }),
+                label,
             ]
             .align_y(iced::Alignment::Center)
             .spacing(7),
@@ -477,34 +507,5 @@ fn mode_button(
     )
     .height(style::CONTROL_HEIGHT)
     .padding([0, 10])
-    .style(move |theme, status| {
-        let mut s = style::quiet(theme, status);
-        s.text_color = ink(theme);
-        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-        if active && liberty {
-            s.background = Some(
-                iced::gradient::Linear::new(iced::Degrees(115.))
-                    .add_stop(0., Color::from_rgba8(0xb0, 0xdf, 0xfb, 0.188235))
-                    .add_stop(0.5, Color::from_rgba8(0xe2, 0xbf, 0xfb, 0.188235))
-                    .add_stop(1., Color::from_rgba8(0xff, 0xd4, 0xbb, 0.188235))
-                    .into(),
-            );
-        } else if active {
-            s.background = Some(theme.palette().background.scale_alpha(0.65).into());
-            s.border.width = 1.;
-            s.border.color = Color::from_rgb8(0x66, 0x66, 0x66);
-        } else if hovered && liberty {
-            s.background = Some(Color::from_rgba8(0x77, 0x71, 0x8a, 11. / 255.).into());
-            s.text_color = Color::from_rgb8(0x26, 0x23, 0x37);
-        } else if hovered {
-            s.background = Some(theme.palette().background.scale_alpha(0.4).into());
-            s.text_color = theme.palette().text;
-        }
-        if matches!(status, button::Status::Disabled) {
-            s.text_color = s.text_color.scale_alpha(if liberty { 0.5 } else { 0.4 });
-        }
-        s
-    })
     .on_press_maybe(action)
-    .into()
 }

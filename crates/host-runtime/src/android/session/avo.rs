@@ -105,8 +105,7 @@ pub(super) async fn prepare_wifi(plan: &Plan) -> Result<()> {
 mode=$(settings get global captive_portal_mode)
 networks=$(cmd wifi list-networks)
 case "$networks" in
-    "No networks") [ "$mode" = null ] || exit 0 ;;
-    *" VirtWifi "*) ;;
+    "No networks"|*" VirtWifi "*) ;;
     "Network Id"*) exit 0 ;;
     *) exit 1 ;;
 esac

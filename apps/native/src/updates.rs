@@ -2,7 +2,7 @@ use crate::{client_update, locale::Locale, style};
 use futures_util::SinkExt;
 use iced::{
     Element, Font, Length, Task, font,
-    widget::{button, column, container, row, text},
+    widget::{column, container, row, text},
 };
 use semver::Version;
 use std::path::PathBuf;
@@ -130,11 +130,13 @@ impl State {
             reduced_motion,
         );
         body.push(
-            button(container(action).center_x(Length::Fill))
-                .width(Length::Fill)
-                .height(style::CONTROL_HEIGHT)
-                .style(style::primary)
-                .on_press_maybe((!busy).then_some(Message::Install)),
+            crate::controls::content_button(
+                container(action).center_x(Length::Fill),
+                style::CONTROL_HEIGHT,
+            )
+            .width(Length::Fill)
+            .style(style::primary)
+            .on_press_maybe((!busy).then_some(Message::Install)),
         )
         .into()
     }

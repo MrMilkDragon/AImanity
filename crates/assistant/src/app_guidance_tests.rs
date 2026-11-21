@@ -2,11 +2,11 @@
 use super::*;
 use serde_json::{Value, json};
 
-fn observed() -> Vec<Value> {
+fn observed(foreground: &str) -> Vec<Value> {
     vec![
-        json!({"role":"user","content":[{"type":"input_text","text":"在手机小红书搜索"}]}),
+        json!({"role":"user","content":[{"type":"input_text","text":"查找活动物料清单"}]}),
         json!({"type":"function_call","name":"phone_observe","call_id":"observation","arguments":"{}"}),
-        json!({"type":"function_call_output","call_id":"observation","output":[{"type":"input_text","text":json!({"success":true,"device_id":"phone-local-01","observation_id":"current","foreground_app":"com.xingin.xhs/.Dashboard"}).to_string()}]}),
+        json!({"type":"function_call_output","call_id":"observation","output":[{"type":"input_text","text":json!({"success":true,"device_id":"phone-local-01","observation_id":"current","foreground_app":foreground}).to_string()}]}),
     ]
 }
 fn loaded(context: &mut Vec<Value>, call: Value, text: String) {
@@ -28,14 +28,22 @@ async fn built_in_app_guidance_and_personal_experience_load_once_without_extra_m
         crate::builtin_guides::test_files(&app.root);
         crate::workbench::initialize(&app.db,&app.root).await.unwrap();
         // A fresh install has useful shipped guidance without any private experience.
-        let mut fresh=observed();let mut fresh_state=agent_loop::LoopState::default();
-        let shipped=worker::experience_call(&app,&fresh,&mut fresh_state).await.unwrap();
-        assert_eq!(name(&shipped),"xiaohongshu");
-        loaded(&mut fresh,shipped,crate::workbench::skill_text(&app,"xiaohongshu").await.unwrap());
-        assert!(worker::experience_call(&app,&fresh,&mut fresh_state).await.is_none());
+        let social = "com.xingin.xhs/.Dashboard";
+        for (foreground, expected) in [
+            (social, "xiaohongshu"),
+            ("info.plateaukao.einkbro/.activity.BrowserActivity", "browser-android"),
+            ("com.android.documentsui/.files.FilesActivity", "files-android"),
+        ] {
+            let mut fresh = observed(foreground);
+            let mut state = agent_loop::LoopState::default();
+            let call = worker::experience_call(&app, &fresh, &mut state).await.unwrap();
+            assert_eq!(name(&call), expected);
+            loaded(&mut fresh, call, crate::workbench::skill_text(&app, expected).await.unwrap());
+            assert!(worker::experience_call(&app, &fresh, &mut state).await.is_none());
+        }
         let experience="app-experience-10e91357b2f2";
         sqlx::query("INSERT INTO runtime_skills(id,name,source,content) VALUES($1,$1,'app-learning','Personal verified method')").bind(experience).execute(&app.db).await.unwrap();
-        let mut context=observed();let mut state=agent_loop::LoopState::default();
+        let mut context=observed(social);let mut state=agent_loop::LoopState::default();
         let guide=worker::experience_call(&app,&context,&mut state).await.unwrap();
         assert_eq!(name(&guide),"xiaohongshu");
         loaded(&mut context,guide.clone(),crate::workbench::skill_text(&app,"xiaohongshu").await.unwrap());
@@ -46,7 +54,7 @@ async fn built_in_app_guidance_and_personal_experience_load_once_without_extra_m
         let mut resumed:agent_loop::LoopState=serde_json::from_value(serde_json::to_value(&state).unwrap()).unwrap();
         assert!(worker::experience_call(&app,&context,&mut resumed).await.is_none());
 
-        let mut unavailable=observed();
+        let mut unavailable=observed(social);
         loaded(&mut unavailable,guide,"{\"success\":false,\"error\":\"fixture unavailable\"}".into());
         let method=worker::experience_call(&app,&unavailable,&mut agent_loop::LoopState::default()).await.unwrap();
         assert_eq!(name(&method),experience,"one failed optional guide must not repeat or hide local experience");

@@ -1,6 +1,6 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, sized_icon_button},
+    controls::{Icon, action_button, form_input, sized_icon_button},
     locale::Locale,
     style,
     surface::tool_action,
@@ -8,7 +8,7 @@ use crate::{
 use ai_phone_api::wire;
 use iced::{
     Element, Font, Length, Padding, Task,
-    widget::{button, checkbox, column, container, row, rule, text, text_input},
+    widget::{button, checkbox, column, container, row, rule, text},
 };
 use std::path::PathBuf;
 
@@ -17,6 +17,7 @@ pub enum Message {
     Load,
     Loaded(Result<wire::SkillList, String>),
     ToggleImport,
+    Search(String),
     Source(String),
     ChooseFile,
     FileChosen(Option<PathBuf>),
@@ -34,6 +35,7 @@ pub enum Message {
 pub struct Skills {
     items: Vec<wire::RuntimeSkill>,
     source: String,
+    query: String,
     adding: bool,
     busy: bool,
     loaded: bool,
@@ -72,6 +74,7 @@ impl Skills {
                 }
             }
             Message::ToggleImport => self.adding = !self.adding,
+            Message::Search(query) => self.query = query,
             Message::Source(source) => self.source = source,
             Message::ChooseFile => {
                 return Task::perform(
@@ -222,20 +225,18 @@ impl Skills {
     }
 
     pub fn view(&self, locale: Locale) -> Element<'_, Message> {
-        let mut content = column![].spacing(10);
+        let mut content =
+            column![form_input(locale.tr("搜索"), &self.query).on_input(Message::Search)]
+                .spacing(10);
         if self.adding {
             let submit =
                 (!self.busy && !self.source.trim().is_empty()).then_some(Message::ImportUrl);
             content = content.push(
                 row![
                     Icon::Link.view(),
-                    text_input(locale.tr("GitHub / SKILL.md 网址"), &self.source)
+                    form_input(locale.tr("GitHub / SKILL.md 网址"), &self.source)
                         .on_input_maybe((!self.busy).then_some(Message::Source))
                         .on_submit_maybe(submit.clone())
-                        .padding([10, 12])
-                        .size(14)
-                        .line_height(iced::Pixels(20.))
-                        .style(style::input)
                         .width(Length::Fill),
                     action_button(
                         if self.busy {
@@ -244,8 +245,7 @@ impl Skills {
                             locale.tr("导入")
                         },
                         submit
-                    )
-                    .width(76),
+                    ),
                 ]
                 .spacing(10)
                 .align_y(iced::Alignment::Center),
@@ -262,17 +262,24 @@ impl Skills {
             content = content.push(text(locale.tr("读取中…")).size(13).style(style::muted_text));
         }
         let mut list = column![].spacing(4);
-        for skill in &self.items {
+        let query = self.query.trim().to_lowercase();
+        for skill in self.items.iter().filter(|skill| {
+            query.is_empty()
+                || skill.name.to_lowercase().contains(&query)
+                || skill.description.to_lowercase().contains(&query)
+        }) {
             let expanded = self.expanded.as_ref() == Some(&skill.id);
             let label = row![
                 if expanded { Icon::Down } else { Icon::Right }
                     .view()
                     .width(15)
                     .height(15),
-                style::section_title(&skill.name),
+                container(style::section_title(&skill.name))
+                    .width(Length::Fill)
+                    .clip(true),
             ]
             .spacing(8)
-            .height(36)
+            .height(style::COMPACT_CONTROL)
             .align_y(iced::Alignment::Center);
             let mut heading = row![
                 button(label)
@@ -283,20 +290,21 @@ impl Skills {
             ]
             .spacing(12)
             .align_y(iced::Alignment::Center);
-            if skill.builtin {
+            if skill.source == "builtin" {
                 heading = heading.push(text(locale.tr("内置")).size(12).style(style::muted_text));
             } else {
                 let id = skill.id.clone();
-                heading = heading
-                    .push(checkbox(skill.enabled).size(16).on_toggle_maybe(
-                        (!self.busy).then_some(move |enabled| Message::Enable(id.clone(), enabled)),
-                    ))
-                    .push(sized_icon_button(
-                        Icon::Trash,
-                        (!self.busy).then(|| Message::Remove(skill.id.clone())),
-                        36.,
-                        36.,
-                    ));
+                heading = heading.push(checkbox(skill.enabled).size(16).on_toggle_maybe(
+                    (!self.busy).then_some(move |enabled| Message::Enable(id.clone(), enabled)),
+                ));
+            }
+            if !skill.builtin {
+                heading = heading.push(sized_icon_button(
+                    Icon::Trash,
+                    (!self.busy).then(|| Message::Remove(skill.id.clone())),
+                    style::COMPACT_CONTROL,
+                    style::COMPACT_CONTROL,
+                ));
             }
             let mut article = column![heading];
             if expanded {
@@ -309,7 +317,7 @@ impl Skills {
                             .style(style::muted_text),
                     );
                 }
-                if skill.source != "builtin" {
+                if !skill.builtin {
                     let source = text(&skill.source).size(12).style(style::muted_text);
                     details = if skill.source.starts_with("https://") {
                         details.push(
@@ -336,12 +344,12 @@ impl Skills {
         content = content.push(list);
         if self.removed.is_some() {
             content = content.push(
-                button(
+                crate::controls::content_button(
                     row![Icon::Undo.view(), text(locale.tr("撤销移除")).size(13)]
                         .spacing(8)
                         .align_y(iced::Alignment::Center),
+                    style::CONTROL_HEIGHT,
                 )
-                .style(style::quiet)
                 .on_press_maybe((!self.busy).then_some(Message::Undo)),
             );
         }

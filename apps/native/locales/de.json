@@ -1,4 +1,8 @@
 {
+  "应用并重启两台设备": "Beide Geräte neu starten und Änderungen anwenden",
+  "允许本机协作": "Steuerung des Host-Desktops erlauben",
+  "卸载 AImanity": "AImanity deinstallieren",
+  "两台虚拟设备、聊天、工作文件和设置将永久删除。": "Beide virtuellen Geräte, Chats, Arbeitsdateien und Einstellungen werden dauerhaft gelöscht.",
   "待办": "Aufgaben",
   "暂无待办": "Keine offenen Aufgaben",
   "主线任务": "Hauptaufgabe",
@@ -27,6 +31,7 @@
   "目标运行中": "Ziel ist aktiv",
   "目标内容不能超过 12 KB": "Das Ziel darf höchstens 12 KB groß sein",
   "系统更新": "Systemupdate",
+  "确认": "Bestätigen",
   "确认更新": "Update bestätigen",
   "正在更新…": "Update läuft…",
   "更新中断，请重试": "Update unterbrochen. Versuche es erneut.",
@@ -166,6 +171,7 @@
   "数据线": "Kabel",
   "尚未安装系统": "System nicht installiert",
   "未分配 Agent": "Kein Agent zugewiesen",
+  "发送消息…": "Nachricht schreiben…",
   "发送消息": "Nachricht",
   "设备安装后即可对话": "Gerät installieren, um Chat zu starten",
   "消息": "Nachricht",
@@ -513,5 +519,9 @@
   "继续": "Weiter",
   "配置设备": "Geräte einrichten",
   "开始安装": "Installation starten",
-  "本机资源不足，请检查内存和可用空间。": "Arbeitsspeicher und freien Speicher prüfen."
+  "本机资源不足，请检查内存和可用空间。": "Arbeitsspeicher und freien Speicher prüfen.",
+  "本机协作": "Diesen Computer verwenden",
+  "结束本机协作": "Desktopzugriff beenden",
+  "允许本次任务": "Für diese Aufgabe erlauben",
+  "本次任务可跨应用操作你的整个桌面。屏幕画面会发给当前模型，并保存在本地任务记录中。": "Diese Aufgabe kann Apps auf dem gesamten Desktop bedienen. Bildschirmbilder werden an das aktuelle Modell gesendet und im lokalen Aufgabenverlauf gespeichert."
 }

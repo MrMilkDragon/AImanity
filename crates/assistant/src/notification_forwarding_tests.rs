@@ -74,6 +74,7 @@ async fn response(inbox: Arc<Inbox>, request: axum::extract::Request) -> Respons
                 wire::DeviceObservation {
                     controller: if manual { "manual" } else { "agent" }.into(),
                     control_epoch: if manual { 2 } else { 1 },
+                    last_manual_control_epoch: if manual { 2 } else { 0 },
                     ..Default::default()
                 },
             )

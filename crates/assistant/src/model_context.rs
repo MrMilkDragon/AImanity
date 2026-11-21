@@ -40,6 +40,39 @@ pub fn after_model_switch(context: &[Value], boundary: usize) -> Cow<'_, [Value]
     )
 }
 
+pub fn scope_host_images<'a>(
+    mut context: Cow<'a, [Value]>,
+    session: Option<&str>,
+) -> Cow<'a, [Value]> {
+    let host: HashSet<&str> = context
+        .iter()
+        .filter(|v| v["name"] == "host_desktop")
+        .filter_map(|v| v["call_id"].as_str())
+        .collect();
+    if host.is_empty() {
+        return context;
+    }
+    let archived: Vec<usize> = context
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            if item["type"] != "function_call_output" || !host.contains(item["call_id"].as_str()?) {
+                return None;
+            }
+            let value = &item["output"];
+            (value.as_array()?.iter().any(|v| v["type"] == "input_image")
+                && !crate::host_desktop::receipt_in_session(value, session))
+            .then_some(index)
+        })
+        .collect();
+    for index in archived {
+        if let Some(parts) = context.to_mut()[index]["output"].as_array_mut() {
+            parts.retain(|p| p["type"] != "input_image");
+        }
+    }
+    context
+}
+
 pub fn for_chat_api(context: &[Value]) -> Vec<Value> {
     let compacted = bounded_history(context);
     let completed = completed_native_calls(compacted.iter().map(Cow::as_ref));
@@ -370,8 +403,46 @@ fn archived_item<'a>(call: Option<&Value>, item: &'a Value) -> Option<Cow<'a, Va
     }
 }
 
-// Run only at the next model decision (after tool outputs are checkpointed).
-// Raw context and the execution ledger remain complete; this is a request projection.
+fn replay_item(item: &Value) -> Cow<'_, Value> {
+    let Some(parts) = item["output"].as_array() else {
+        return Cow::Borrowed(item);
+    };
+    if !parts.iter().any(|p| {
+        p["text"]
+            .as_str()
+            .is_some_and(|s| s.starts_with(crate::agent_loop::ARCHIVED_OBSERVATION))
+    }) {
+        return Cow::Borrowed(item);
+    }
+    for (index, part) in parts.iter().enumerate() {
+        let Some(text) = part["text"].as_str().filter(|s| s.contains("\"elements\"")) else {
+            continue;
+        };
+        let Ok(mut receipt) = serde_json::from_str::<Value>(text) else {
+            continue;
+        };
+        if !receipt["observation_id"].is_string() {
+            continue;
+        }
+        let Some(Value::Array(elements)) =
+            receipt.as_object_mut().and_then(|v| v.remove("elements"))
+        else {
+            continue;
+        };
+        let mut seen = HashSet::new();
+        let labels: Vec<_> = elements
+            .iter()
+            .filter_map(|e| e["text"].as_str())
+            .filter(|s| !s.is_empty() && seen.insert(*s))
+            .collect();
+        receipt["visible_text"] = json!(labels);
+        let mut past = item.clone();
+        past["output"][index]["text"] = Value::String(receipt.to_string());
+        return Cow::Owned(past);
+    }
+    Cow::Borrowed(item)
+}
+
 fn bounded_history(context: &[Value]) -> Vec<Cow<'_, Value>> {
     if context
         .iter()
@@ -380,10 +451,10 @@ fn bounded_history(context: &[Value]) -> Vec<Cow<'_, Value>> {
         })
         .is_some()
     {
-        return context.iter().map(Cow::Borrowed).collect();
+        return context.iter().map(replay_item).collect();
     }
     let Some(cut) = archive_boundary(context) else {
-        return context.iter().map(Cow::Borrowed).collect();
+        return context.iter().map(replay_item).collect();
     };
     let calls: HashMap<_, _> = context
         .iter()
@@ -414,7 +485,7 @@ fn bounded_history(context: &[Value]) -> Vec<Cow<'_, Value>> {
     if omitted > 0 {
         result.push(Cow::Owned(json!({"role":"user","content":[{"type":"input_text","text":format!("系统归档提示（非新任务）：模型请求省略了{omitted}条较早的工具结果或助手叙述；原始执行账本仍完整保存。旧摘录不是当前屏幕，不得据此重放动作或推断成功，必要时重新观察并核对产物。") }]})));
     }
-    result.extend(context[cut..].iter().map(Cow::Borrowed));
+    result.extend(context[cut..].iter().map(replay_item));
     result
 }
 fn tool_record(call: Option<&Value>, output: Option<&Value>) -> Value {
@@ -461,6 +532,48 @@ fn append_parts(destination: &mut Vec<Value>, value: Option<&Value>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn archived_phone_frames_replay_text_without_expired_targets() {
+        let receipt = json!({"device_id":"phone","observation_id":"view","elements":[
+            {"id":"old-target","text":"Play"},{"id":"second-target","text":"Play"}]});
+        let mut item = json!({"type":"function_call_output","output":[
+            {"type":"input_text","text":receipt.to_string()},
+            {"type":"input_image","image_url":"frame"}]});
+        assert!(matches!(replay_item(&item), Cow::Borrowed(_)));
+        item["output"][1] =
+            json!({"type":"input_text","text":crate::agent_loop::ARCHIVED_OBSERVATION});
+        let replay = replay_item(&item);
+        let projected: Value =
+            serde_json::from_str(replay["output"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            projected,
+            json!({"device_id":"phone","observation_id":"view","visible_text":["Play"]})
+        );
+        assert_eq!(item["output"][0]["text"], receipt.to_string());
+    }
+
+    #[test]
+    fn only_the_current_host_grant_can_replay_its_screen() {
+        let mut context = Vec::new();
+        for (id, name) in [
+            ("old", "host_desktop"),
+            ("active", "host_desktop"),
+            ("guest", "phone_observe"),
+        ] {
+            context.push(json!({"type":"function_call","name":name,"call_id":id}));
+            context.push(json!({"type":"function_call_output","call_id":id,"output":[
+                {"type":"input_text","text":json!({"host_session":id}).to_string()},
+                {"type":"input_image","image_url":"fixture"}
+            ]}));
+        }
+        for (grant, parts) in [(Some("active"), [1, 2, 2]), (None, [1, 1, 2])] {
+            let outgoing = scope_host_images(Cow::Borrowed(&context), grant);
+            for (item, expected) in [1, 3, 5].into_iter().zip(parts) {
+                assert_eq!(outgoing[item]["output"].as_array().unwrap().len(), expected);
+                assert_eq!(context[item]["output"].as_array().unwrap().len(), 2);
+            }
+        }
+    }
 
     #[test]
     fn responses_replay_a_completed_tool_even_without_a_reasoning_item() {

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 struct Phone {
     installed: bool,
+    version: u64,
     user: String,
     settings: BTreeMap<String, String>,
     granted: bool,
@@ -25,6 +26,7 @@ impl Phone {
     fn new(installed: bool) -> Self {
         Self {
             installed,
+            version: VERSION,
             user: "0".into(),
             settings: BTreeMap::from([
                 ("enabled_input_methods".into(), "other/.Keyboard;7".into()),
@@ -96,12 +98,24 @@ impl Device for Phone {
         if self.ignore.as_ref() == Some(&owned) {
             return Ok(String::new());
         }
-        let output = if args == ["shell", "pm", "list", "packages", "--user", "0", PACKAGE] {
+        let output = if args
+            == [
+                "shell",
+                "pm",
+                "list",
+                "packages",
+                "--show-versioncode",
+                "--user",
+                "0",
+                PACKAGE,
+            ] {
             if self.installed {
-                format!("package:{PACKAGE}")
+                format!("package:{PACKAGE} versionCode:{}", self.version)
             } else {
                 String::new()
             }
+        } else if args == ["shell", "sh", "-c", windows_migration::IDENTITY] {
+            String::new()
         } else if args == ["shell", "am", "get-current-user"] {
             self.user.clone()
         } else if args.first() == Some(&"install") {
@@ -121,6 +135,7 @@ impl Device for Phone {
             }
             if self.install_visible {
                 self.installed = true;
+                self.version = VERSION;
             }
             "Success".into()
         } else if args == ["shell", "ime", "list", "-a", "-s", "--user", "0"] {
@@ -303,6 +318,40 @@ async fn one_install_records_unknown_first_and_observes_success_without_replay()
     assert_eq!(phone.calls.iter().filter(|a| a[0] == "install").count(), 1);
     f.run(&mut phone, false).await.unwrap();
     assert_eq!(phone.calls.iter().filter(|a| a[0] == "install").count(), 1);
+}
+#[tokio::test]
+async fn older_input_is_replaced_once_and_only_a_new_version_confirms_the_install() {
+    let f = Fixture::new();
+    let mut phone = Phone::ready();
+    phone.version = 0;
+    assert!(f.run(&mut phone, true).await.is_err());
+    assert!(f.run(&mut phone, false).await.unwrap());
+    assert!(!f.run(&mut phone, false).await.unwrap());
+    assert_eq!(
+        phone
+            .calls
+            .iter()
+            .filter(|call| call[0] == "install")
+            .count(),
+        1
+    );
+
+    phone.calls.clear();
+    phone.version = 0;
+    phone.install_visible = false;
+    assert_eq!(
+        f.run(&mut phone, false).await.unwrap_err().code(),
+        "phone_input_install_unknown"
+    );
+    assert!(f.run(&mut phone, false).await.is_err());
+    assert_eq!(
+        phone
+            .calls
+            .iter()
+            .filter(|call| call[0] == "install")
+            .count(),
+        1
+    );
 }
 #[tokio::test]
 async fn absent_package_after_attempt_remains_unknown_and_is_not_replayed_on_resume() {
@@ -499,6 +548,7 @@ async fn wrong_user_and_offline_observation_never_install_or_create_pending() {
         "pm".into(),
         "list".into(),
         "packages".into(),
+        "--show-versioncode".into(),
         "--user".into(),
         "0".into(),
         PACKAGE.into(),

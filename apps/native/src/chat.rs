@@ -1,6 +1,6 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, icon_button},
+    controls::{ICON_SIZE, Icon, icon_button, text_button},
     modes,
     platform::{self, ClipboardContent},
     style,
@@ -20,9 +20,24 @@ use std::{
     sync::Arc,
 };
 
+pub const COMPOSER_PADDING: iced::Padding = iced::Padding {
+    top: 12.,
+    right: 12.,
+    bottom: 16.,
+    left: 12.,
+};
+pub const COMPOSER_ACTION_GAP: f32 = 4.;
+const DISCLOSURE_GAP: f32 = 6.;
+const REPLY_TEXT_INSET: f32 = button::DEFAULT_PADDING.left + ICON_SIZE + DISCLOSURE_GAP;
+
 #[derive(Clone, Debug)]
 pub enum Message {
     Todos(bool),
+    Goal(bool),
+    HostToggle,
+    HostAllow,
+    HostGranted(Result<(), String>),
+    HostEnded(String, Result<(), String>),
     RefreshDisplay,
     Mode(modes::Message),
     Edit(text_editor::Action),
@@ -48,7 +63,7 @@ pub enum Message {
     Controlled(Result<wire::ChatState, String>),
     Trace(String),
     TraceDetail(String),
-    TraceLoaded(String, Result<wire::HarnessEventList, String>),
+    TraceLoaded(String, bool, Result<wire::HarnessEventList, String>),
     Poll,
     Link(String),
     Opened(Result<(), String>),
@@ -97,6 +112,7 @@ pub struct Chat {
     loading_older: bool,
     following: bool,
     control_busy: bool,
+    pub host: crate::host_desktop::Permission,
     outbox: PathBuf,
 }
 impl Chat {
@@ -119,6 +135,7 @@ impl Chat {
             loading_older: false,
             following: true,
             control_busy: false,
+            host: crate::host_desktop::Permission::Disabled,
             outbox: PathBuf::new(),
         }
     }
@@ -155,6 +172,12 @@ impl Chat {
         client: &Connection,
         snapshot: bool,
     ) -> Task<Message> {
+        if !self.state.agent_id.is_empty()
+            && !next.agent_id.is_empty()
+            && self.state.agent_id != next.agent_id
+        {
+            self.host.close();
+        }
         let mut tasks = Vec::new();
         let receipt_ids: HashSet<_> = next
             .messages
@@ -184,12 +207,18 @@ impl Chat {
             self.has_older = page.has_older;
         }
         let sorted_len = self.state.messages.len();
-        for incoming in next.messages.drain(..) {
+        for mut incoming in next.messages.drain(..) {
             let old = self.state.messages[..sorted_len]
                 .binary_search_by_key(&incoming.ordinal, |m| m.ordinal)
                 .ok();
             if old.is_some() && next.revision < self.state.revision {
                 continue;
+            }
+            if let Some(i) = old
+                && incoming.action_receipts.len() < self.state.messages[i].action_receipts.len()
+            {
+                incoming.action_receipts =
+                    std::mem::take(&mut self.state.messages[i].action_receipts);
             }
             if old.is_none_or(|i| self.state.messages[i].text != incoming.text) {
                 self.markdown.insert(
@@ -255,7 +284,7 @@ impl Chat {
         }
         Task::batch(tasks)
     }
-    fn send_pending(&mut self, id: &str, client: &Connection) -> Task<Message> {
+    fn send_pending(&mut self, id: &str, client: &Connection, fresh: bool) -> Task<Message> {
         let pending = self
             .pending
             .iter_mut()
@@ -276,7 +305,33 @@ impl Chat {
         request.receipt_only = true;
         let client = client.clone();
         let id = id.to_string();
-        Task::perform(
+        let (ready, host_task) =
+            if fresh && matches!(self.host, crate::host_desktop::Permission::Armed) {
+                request.use_host_desktop = true;
+                let (stop, closed) = tokio::sync::watch::channel(());
+                let (started, ready) = tokio::sync::oneshot::channel();
+                let request = id.clone();
+                let task = Task::perform(
+                    crate::host_desktop::serve(
+                        client.assistant.clone(),
+                        request.clone(),
+                        started,
+                        closed,
+                    ),
+                    move |result| Message::HostEnded(request.clone(), result),
+                );
+                self.host = crate::host_desktop::Permission::Active {
+                    request: id.clone(),
+                    _stop: stop,
+                };
+                (Some(ready), task)
+            } else {
+                if fresh {
+                    self.host.close();
+                }
+                (None, Task::none())
+            };
+        let send = Task::perform(
             async move {
                 tokio::fs::write(&temporary, snapshot.encode_to_vec())
                     .await
@@ -284,10 +339,14 @@ impl Chat {
                 tokio::fs::rename(temporary, path)
                     .await
                     .map_err(|e| e.to_string())?;
+                if let Some(ready) = ready {
+                    ready.await.map_err(|_| "本机桌面未连接")?;
+                }
                 client.rpc("assistant/send", request).await
             },
             move |r| Message::Sent(id.clone(), r),
-        )
+        );
+        Task::batch([host_task, send])
     }
     fn refresh_traces(&mut self, client: &Connection) -> Task<Message> {
         let mut tasks = Vec::new();
@@ -315,7 +374,7 @@ impl Chat {
                 let id = message.id.clone();
                 tasks.push(Task::perform(
                     async move { client.rpc("workbench/events", input).await },
-                    move |r| Message::TraceLoaded(id.clone(), r),
+                    move |r| Message::TraceLoaded(id.clone(), live, r),
                 ));
             }
         }
@@ -349,7 +408,7 @@ impl Chat {
                 self.display_after = self.state.messages.last().map(|m| m.ordinal);
                 self.following = true;
             }
-            Message::Mode(_) | Message::Todos(_) => {}
+            Message::Mode(_) | Message::Todos(_) | Message::Goal(_) => {}
             Message::Edit(action) => self.draft.perform(action),
             Message::Send => {
                 if !self.can_send() {
@@ -386,12 +445,49 @@ impl Chat {
                 });
                 self.following = true;
                 self.error.clear();
-                return self.send_pending(&id, client);
+                return self.send_pending(&id, client, true);
             }
-            Message::Retry(id) => return self.send_pending(&id, client),
+            Message::Retry(id) => return self.send_pending(&id, client, false),
+            Message::HostToggle => {
+                use crate::host_desktop::Permission;
+                self.host = match self.host {
+                    Permission::Disabled => Permission::Disabled,
+                    Permission::Off => Permission::Confirm,
+                    _ => Permission::Off,
+                };
+            }
+            Message::HostAllow => {
+                if matches!(self.host, crate::host_desktop::Permission::Confirm) {
+                    return Task::perform(
+                        async {
+                            #[cfg(target_os = "macos")]
+                            crate::host_desktop::permission().map_err(|e| e.to_string())?;
+                            Ok(())
+                        },
+                        Message::HostGranted,
+                    );
+                }
+            }
+            Message::HostGranted(result) => {
+                if matches!(self.host, crate::host_desktop::Permission::Confirm) {
+                    self.host = crate::host_desktop::Permission::Off;
+                    match result {
+                        Ok(()) => self.host = crate::host_desktop::Permission::Armed,
+                        Err(error) => self.error = error,
+                    }
+                }
+            }
+            Message::HostEnded(id, result) => {
+                if self.host.end(&id)
+                    && let Err(error) = result
+                {
+                    self.error = error;
+                }
+            }
             Message::Sent(id, result) => match result {
                 Ok(receipt) => return self.accept(receipt, client, false),
                 Err(error) => {
+                    self.host.end(&id);
                     self.error = error.clone();
                     if let Some(p) = self.pending.iter_mut().find(|p| p.request.request_id == id) {
                         p.sending = false;
@@ -616,6 +712,7 @@ impl Chat {
                 }
             }
             Message::Command(command) => {
+                self.host.close();
                 self.error.clear();
                 self.control_busy = true;
                 let input = wire::ChatRunRequest {
@@ -658,12 +755,18 @@ impl Chat {
                 }
             }
             Message::Poll => return self.refresh_traces(client),
-            Message::TraceLoaded(id, result) => {
+            Message::TraceLoaded(id, requested_live, result) => {
+                let finished_during_request = requested_live
+                    && self
+                        .state
+                        .messages
+                        .iter()
+                        .any(|m| m.id == id && !self.is_live(m));
                 if let Some(trace) = self.traces.get_mut(&id) {
                     trace.loading = false;
                     match result {
                         Ok(list) => {
-                            trace.loaded = true;
+                            trace.loaded = !finished_during_request;
                             for event in list.events {
                                 if event.kind == "summary" {
                                     trace.summaries.insert(
@@ -682,6 +785,9 @@ impl Chat {
                             trace.events.sort_by(|a, b| {
                                 (a.created_at_ms, &a.id).cmp(&(b.created_at_ms, &b.id))
                             });
+                            if finished_during_request {
+                                return self.refresh_traces(client);
+                            }
                         }
                         Err(e) => self.error = e,
                     }
@@ -717,7 +823,7 @@ impl Chat {
         });
         self.following = true;
         self.error.clear();
-        self.send_pending(&id, client)
+        self.send_pending(&id, client, true)
     }
     pub fn recover_voice(&mut self, text: &str) {
         if text.is_empty() {
@@ -763,6 +869,7 @@ impl Chat {
         let Some(trace) = self.traces.get(&message.id) else {
             return space().into();
         };
+        let text_column = iced::padding::left(REPLY_TEXT_INSET);
         let status = if message.active && message.run_id == self.state.run_id {
             locale.tr(status_label(&self.state.run_status))
         } else {
@@ -777,41 +884,69 @@ impl Chat {
                         Icon::Right
                     }
                     .view(),
-                    text(status).size(12)
+                    text(match message.action_receipts.last() {
+                        Some(receipt) => format!(
+                            "{status} · #{} {} · {}",
+                            message.action_receipts.len(),
+                            locale.tr(&receipt.title),
+                            locale.tr("已送达"),
+                        ),
+                        None => status.to_owned(),
+                    })
+                    .size(12)
                 ]
-                .spacing(6)
+                .spacing(DISCLOSURE_GAP)
             )
             .style(style::quiet)
             .on_press(Message::Trace(message.id.clone()))
         ]
         .spacing(8);
         if trace.expanded {
-            let calls: Vec<_> = trace
+            let (calls, model_ms) = trace
                 .events
                 .iter()
                 .filter_map(|e| e.model_timing.as_ref())
-                .collect();
-            if !calls.is_empty() {
-                let label = format!(
-                    "{} 次模型调用 · 模型 {:.2}s",
-                    calls.len(),
-                    calls.iter().map(|t| t.model_ms).sum::<u64>() as f64 / 1000.
+                .filter(|t| t.request_bytes > 0)
+                .fold((0, 0u64), |(n, ms), t| (n + 1, ms + t.model_ms));
+            if calls > 0 {
+                let count = locale
+                    .tr("{count} 次模型调用")
+                    .replace("{count}", &calls.to_string());
+                let label = format!("{count} · {:.2}s", model_ms as f64 / 1000.);
+                body = body.push(
+                    container(text(label).size(12).style(style::muted_text)).padding(text_column),
                 );
-                body = body.push(text(label).size(12).style(style::muted_text));
             }
+            let steps: HashMap<_, _> = message
+                .action_receipts
+                .iter()
+                .enumerate()
+                .map(|(i, receipt)| (receipt.id.as_str(), i + 1))
+                .collect();
             for event in &trace.events {
                 if event.kind == "summary" {
                     if let Some(items) = trace.summaries.get(&event.id) {
                         body = body.push(
-                            markdown::view(
-                                items,
-                                markdown::Settings::with_text_size(14, theme.clone()),
+                            container(
+                                markdown::view(
+                                    items,
+                                    markdown::Settings::with_text_size(14, theme.clone()),
+                                )
+                                .map(Message::Link),
                             )
-                            .map(Message::Link),
+                            .padding(text_column),
                         );
                     }
-                } else if event.kind == "tool" || event.kind == "audit" {
-                    let elapsed = if event.finished_at_ms > 0 {
+                } else if matches!(event.kind.as_str(), "tool" | "audit" | "model") {
+                    let step = steps.get(event.id.as_str());
+                    let title = match event.kind.as_str() {
+                        "model" => locale.tr("模型"),
+                        "audit" => locale.tr("完成核验"),
+                        _ => locale.tr(&event.title),
+                    };
+                    let elapsed = if let Some(timing) = &event.model_timing {
+                        format!("{:.2}s", timing.model_ms as f64 / 1000.)
+                    } else if event.finished_at_ms > 0 {
                         format!(
                             "{:.2}s",
                             event.finished_at_ms.saturating_sub(event.created_at_ms) as f64 / 1000.
@@ -828,14 +963,24 @@ impl Chat {
                                     Icon::Right
                                 }
                                 .view(),
-                                text(&event.title).size(13),
+                                text(
+                                    step.map_or_else(
+                                        || title.to_owned(),
+                                        |n| format!("#{n} {title}")
+                                    )
+                                )
+                                .size(13),
                                 space::horizontal(),
-                                text(locale.tr(status_label(&event.status)))
-                                    .size(12)
-                                    .style(style::muted_text),
+                                text(locale.tr(if step.is_some() && event.status == "running" {
+                                    "已送达"
+                                } else {
+                                    status_label(&event.status)
+                                }))
+                                .size(12)
+                                .style(style::muted_text),
                                 text(elapsed).size(12).style(style::muted_text)
                             ]
-                            .spacing(6)
+                            .spacing(DISCLOSURE_GAP)
                             .align_y(iced::Alignment::Center),
                         )
                         .width(Length::Fill)
@@ -843,15 +988,21 @@ impl Chat {
                         .on_press(Message::TraceDetail(event.id.clone())),
                     );
                     if self.expanded.contains(&event.id) {
-                        body = body.push(container(text(&event.content).size(12)).padding([8, 16]));
+                        body = body.push(
+                            container(text(&event.content).size(12))
+                                .padding(text_column.right(10).top(8).bottom(8)),
+                        );
                     }
                 }
             }
             if !trace.loaded && trace.loading {
                 body = body.push(
-                    text(locale.tr("读取过程…"))
-                        .size(12)
-                        .style(style::muted_text),
+                    container(
+                        text(locale.tr("读取过程…"))
+                            .size(12)
+                            .style(style::muted_text),
+                    )
+                    .padding(text_column),
                 );
             }
         }
@@ -869,7 +1020,6 @@ impl Chat {
         &'a self,
         modes: &'a modes::Modes,
         locale: crate::locale::Locale,
-        device_name: &'a str,
         width: f32,
         reduced_motion: bool,
     ) -> Element<'a, Message> {
@@ -884,7 +1034,8 @@ impl Chat {
                         container::Style {
                             background: Some(iced::Color::from_rgb8(242, 242, 242).into()),
                             border: iced::Border {
-                                radius: iced::border::Radius::new(14.).bottom_right(4.),
+                                radius: iced::border::Radius::new(style::PANEL_RADIUS)
+                                    .bottom_right(style::CONTROL_RADIUS * 0.5),
                                 ..Default::default()
                             },
                             ..Default::default()
@@ -924,10 +1075,14 @@ impl Chat {
                 item = item.push(self.attachments(&message.attachments));
             }
             if let Some(items) = self.markdown.get(&message.id) {
-                item = item.push(
+                let body =
                     markdown::view(items, markdown::Settings::with_text_size(14, theme.clone()))
-                        .map(Message::Link),
-                );
+                        .map(Message::Link);
+                item = if message.role == "assistant" {
+                    item.push(container(body).padding(iced::padding::left(REPLY_TEXT_INSET)))
+                } else {
+                    item.push(body)
+                };
             }
             if !message.text.is_empty() || message.has_activity || !message.attachments.is_empty() {
                 messages = messages.push(if message.role == "user" {
@@ -957,6 +1112,15 @@ impl Chat {
             item = item.push(delivery);
             messages = messages.push(bubble(item));
         }
+        let host_permission = matches!(self.host, crate::host_desktop::Permission::Confirm).then(|| {
+            column![
+                text(locale.tr("本次任务可跨应用操作你的整个桌面。屏幕画面会发给当前模型，并保存在本地任务记录中。")).size(13),
+                row![
+                    text_button(locale.tr("取消")).on_press(Message::HostToggle),
+                    text_button(locale.tr("允许本次任务")).style(style::primary).on_press(Message::HostAllow)
+                ].spacing(8).align_y(iced::Center)
+            ].spacing(6)
+        });
         let editor = text_editor(&self.draft)
             .placeholder(locale.tr("发送消息…"))
             .height(72.)
@@ -1034,33 +1198,65 @@ impl Chat {
             });
         submit = submit.push(
             button(container(send).center(Length::Fill))
-                .width(36)
-                .height(36)
+                .width(style::CONTROL_HEIGHT)
+                .height(style::CONTROL_HEIGHT)
                 .padding(0)
                 .style(style::primary)
                 .on_press_maybe(can_send.then_some(Message::Send)),
         );
+        use crate::host_desktop::Permission;
+        let host_button: Option<Element<'_, Message>> = match self.host {
+            Permission::Disabled => None,
+            Permission::Armed | Permission::Active { .. } => Some(
+                text_button(locale.tr("结束本机协作"))
+                    .on_press(Message::HostToggle)
+                    .into(),
+            ),
+            _ => Some(
+                iced::widget::tooltip(
+                    icon_button(Icon::Screen, Some(Message::HostToggle)),
+                    text(locale.tr("本机协作")).size(12),
+                    iced::widget::tooltip::Position::Top,
+                )
+                .into(),
+            ),
+        };
+        let panel_button = |icon: Icon, active: bool, open: fn(bool) -> Message| {
+            iced::widget::mouse_area(
+                button(container(icon.view()).center(Length::Fill))
+                    .width(style::CONTROL_HEIGHT)
+                    .height(style::CONTROL_HEIGHT)
+                    .padding(0)
+                    .style(move |theme, status| {
+                        let mut button = style::quiet(theme, status);
+                        if active {
+                            button.background = Some(style::ACCENT.into());
+                        }
+                        button
+                    })
+                    .on_press(open(true)),
+            )
+            .on_enter(open(false))
+        };
         let actions = row![
             row![
-                iced::widget::mouse_area(icon_button(Icon::Todos, Some(Message::Todos(true))))
-                    .on_enter(Message::Todos(false)),
+                panel_button(Icon::Todos, false, Message::Todos),
+                panel_button(Icon::Target, modes.goal_active(), Message::Goal),
                 icon_button(Icon::Paperclip, Some(Message::Pick)),
-                modes.liberty_button().map(Message::Mode),
             ]
-            .spacing(4)
+            .extend(host_button)
+            .push(modes.liberty_button().map(Message::Mode))
+            .spacing(COMPOSER_ACTION_GAP)
             .align_y(iced::Center),
-            container(
-                right_actions
-                    .push(submit)
-                    .wrap()
-                    .align_x(iced::alignment::Horizontal::Right)
-                    .vertical_spacing(6),
-            )
-            .width(Length::Fill)
-            .align_x(iced::Right),
+            container(right_actions.push(submit),)
+                .width(Length::Fill)
+                .align_x(iced::Right),
         ]
-        .spacing(4);
-        let mut composer = column![].spacing(3);
+        .spacing(4)
+        .align_y(iced::Center);
+        let mut composer = column![]
+            .spacing(3)
+            .extend(host_permission.map(Element::from));
         for upload in &self.uploads {
             composer = composer.push(
                 row![
@@ -1087,21 +1283,7 @@ impl Chat {
             composer = composer.push(container(text(modes.transcript()).size(13)).padding([6, 10]));
         }
         composer = composer.push(editor).push(actions);
-        let agent_name = if self.state.agent_name.is_empty() {
-            "Agent"
-        } else {
-            &self.state.agent_name
-        };
         column![
-            container(
-                row![
-                    style::section_title(device_name),
-                    text(agent_name).size(12).style(style::muted_text)
-                ]
-                .spacing(8)
-                .align_y(iced::Center)
-            )
-            .height(28),
             scrollable(container(messages).padding([12, 2]))
                 .direction(scrollable::Direction::Vertical(
                     scrollable::Scrollbar::new().width(4).scroller_width(4)
@@ -1109,17 +1291,24 @@ impl Chat {
                 .id("shared-chat")
                 .on_scroll(|v| Message::Scroll(v.relative_offset().y > 0.98))
                 .height(Length::Fill),
-            container(composer.spacing(8))
-                .padding(12)
-                .style(move |_| container::Style {
-                    background: Some(iced::Color::WHITE.into()),
-                    border: iced::Border {
-                        color: iced::Color::from_rgb8(222, 222, 222),
-                        width: 1.,
-                        radius: style::PANEL_RADIUS.into()
-                    },
-                    ..Default::default()
-                }),
+            container(
+                stack![container(composer.spacing(8)).padding(COMPOSER_PADDING)].push_under(
+                    container(
+                        modes.voice_strip(self.state.run_status == "running", reduced_motion)
+                    )
+                    .align_bottom(Length::Fill)
+                    .padding(iced::Padding::ZERO.left(8.).right(8.).bottom(1.))
+                )
+            )
+            .style(move |_| container::Style {
+                background: Some(iced::Color::WHITE.into()),
+                border: iced::Border {
+                    color: iced::Color::from_rgb8(222, 222, 222),
+                    width: 1.,
+                    radius: style::PANEL_RADIUS.into()
+                },
+                ..Default::default()
+            }),
         ]
         .into()
     }
@@ -1276,6 +1465,22 @@ mod tests {
         running.run_id = "run".into();
         running.run_status = "running".into();
         let _ = chat.accept(running.clone(), &client, true);
+        for id in ["tap-1", "tap-2"] {
+            let earlier = running.clone();
+            running.messages[0]
+                .action_receipts
+                .push(wire::ChatActionReceipt {
+                    id: id.into(),
+                    title: "点击控件".into(),
+                    ..Default::default()
+                });
+            let _ = chat.accept(running.clone(), &client, true);
+            let _ = chat.accept(earlier, &client, true);
+        }
+        assert_eq!(
+            chat.state.messages[0].action_receipts,
+            running.messages[0].action_receipts
+        );
         assert_eq!(
             iced::advanced::subscription::into_recipes(chat.subscription()).len(),
             1
@@ -1288,6 +1493,10 @@ mod tests {
         let _ = chat.accept(running, &client, true);
         assert!(iced::advanced::subscription::into_recipes(chat.subscription()).is_empty());
         assert!(!chat.is_live(&chat.state.messages[0]));
+        assert!(chat.traces["active"].loading);
+        assert!(!chat.traces["active"].loaded);
+        let prior_fetch = Message::TraceLoaded("active".into(), true, Ok(Default::default()));
+        let _ = chat.update(prior_fetch, &client, "phone");
         assert!(chat.traces["active"].loading);
         assert!(!chat.traces["active"].loaded);
     }

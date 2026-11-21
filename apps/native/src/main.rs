@@ -11,6 +11,7 @@ mod deployment;
 mod devices;
 mod files;
 mod host;
+mod host_desktop;
 mod knowledge;
 mod layout;
 mod loading;
@@ -26,7 +27,6 @@ mod spring_slider;
 mod style;
 mod surface;
 mod todos;
-#[cfg(target_os = "macos")]
 mod uninstall;
 mod updates;
 use ai_phone_api::wire;
@@ -48,7 +48,7 @@ use std::{
 const APP_ID: &str = "dev.aimanity.native";
 const SETUP_SIZE: Size = Size::new(680., 600.);
 const WORKBENCH_ASPECT: Size = Size::new(8., 5.);
-const WORKBENCH: Size = Size::new(1440., 900.);
+use layout::WORKBENCH;
 const WORKBENCH_MIN: Size = Size::new(960., 600.);
 const DESKTOP_DOUBLE_CLICK: Duration = Duration::from_millis(320);
 
@@ -57,7 +57,7 @@ enum Message {
     Host(host::Event),
     Setup(deployment::Message),
     Connected(Result<Box<connection::Session>, String>),
-    Frame(usize, Result<Frame, String>),
+    Frame(usize, connection::LatestFrame),
     PollAgentPointers,
     AgentPointers(Box<[Option<wire::DeviceCursor>; 2]>),
     Chat(Result<wire::ChatState, String>),
@@ -65,6 +65,8 @@ enum Message {
     Agents(agents::Message),
     Devices(devices::Message),
     CloseDevices,
+    OpenDevices,
+    HostAccess(bool),
     Audio(usize, audio::Message),
     Files(Box<files::Message>),
     Todos(todos::Message),
@@ -93,6 +95,7 @@ enum Message {
     PanelLeft,
     ClosePanel,
     PanelSize(iced::Size),
+    DevicePanelSize(iced::Size),
     PanelFocus,
     ClosedPaneInput,
     Link,
@@ -101,9 +104,7 @@ enum Message {
     LinkSnapshot(Result<wire::DeviceLinkState, String>),
     Rotate,
     Update(updates::Message),
-    #[cfg(target_os = "macos")]
     Uninstall,
-    #[cfg(target_os = "macos")]
     UninstallPrepared(Result<Option<uninstall::Plan>, String>),
 }
 #[derive(Clone, Debug)]
@@ -172,8 +173,9 @@ struct App {
     stop: Option<tokio::sync::oneshot::Sender<()>>,
     host_home: std::path::PathBuf,
     updates: updates::State,
-    #[cfg(target_os = "macos")]
     uninstall: Option<uninstall::Plan>,
+    #[cfg(windows)]
+    instance_guard: Option<std::os::windows::io::OwnedHandle>,
     phase: String,
     after_stop: Option<AfterStop>,
     connection: Option<Connection>,
@@ -226,6 +228,8 @@ struct App {
     from_panel: Size,
     popup_transition: Option<Instant>,
     child: Option<ChildWindow>,
+    agent_list_height: f32,
+    device_panel_height: f32,
     agent_add_height: f32,
     panel_leave_pending: bool,
     started: Instant,
@@ -239,8 +243,9 @@ impl App {
             stop: None,
             host_home: std::path::PathBuf::new(),
             updates: Default::default(),
-            #[cfg(target_os = "macos")]
             uninstall: None,
+            #[cfg(windows)]
+            instance_guard: host::windows_guard().ok(),
             phase: String::new(),
             after_stop: None,
             connection: None,
@@ -293,11 +298,17 @@ impl App {
             from_panel: Size::new(400., 140.),
             popup_transition: None,
             child: None,
+            agent_list_height: 232.,
+            device_panel_height: 320.,
             agent_add_height: 505.,
             panel_leave_pending: false,
             started: Instant::now(),
             input_started: None,
         };
+        #[cfg(windows)]
+        if app.instance_guard.is_none() {
+            return (app, iced::exit());
+        }
         let task = if let Some(path) = std::env::args().nth(1) {
             app.start(host::Host::load(&path))
         } else {
@@ -336,6 +347,7 @@ impl App {
                 self.error.clear();
                 self.started = Instant::now();
                 self.host_home = host.home.clone();
+                self.chat.host = host_desktop::Permission::load(&host.home);
                 self.location.set_root(&host.home);
                 let locale = self
                     .setup
@@ -412,13 +424,19 @@ impl App {
         }
     }
     fn finish_exit(&mut self) -> Task<Message> {
-        #[cfg(target_os = "macos")]
-        if let Some(plan) = self.uninstall.take()
-            && let Err(error) = plan.launch()
-        {
-            self.phase.clear();
-            self.error = error;
-            return window::latest().and_then(|id| window::set_mode(id, window::Mode::Windowed));
+        if let Some(plan) = self.uninstall.take() {
+            #[cfg(windows)]
+            drop(self.instance_guard.take());
+            if let Err(error) = plan.launch() {
+                #[cfg(windows)]
+                {
+                    self.instance_guard = host::windows_guard().ok();
+                }
+                self.phase.clear();
+                self.error = error;
+                return window::latest()
+                    .and_then(|id| window::set_mode(id, window::Mode::Windowed));
+            }
         }
         iced::exit()
     }
@@ -596,10 +614,7 @@ impl App {
                         _ => {}
                     },
                     Err(error) => {
-                        #[cfg(target_os = "macos")]
-                        {
-                            self.uninstall = None;
-                        }
+                        self.uninstall = None;
                         self.error = error;
                         if action == Some(AfterStop::Exit) {
                             return window::latest()
@@ -616,10 +631,17 @@ impl App {
                         links,
                     } = *session;
                     let packaged = self.setup.is_some();
-                    if let Some(setup) = self.setup.take()
-                        && let Err(error) = setup.bundle.mark_installed()
-                    {
-                        self.error = error;
+                    if let Some(mut setup) = self.setup.take() {
+                        if let Err(error) = setup.bundle.mark_installed().and_then(|()| {
+                            if setup.request.reconfigure {
+                                setup.request.reconfigure = false;
+                                setup.request.store(&setup.bundle.home)?;
+                            }
+                            Ok(())
+                        }) {
+                            self.error = error;
+                        }
+                        self.device_admin.applied = Some(setup.request);
                     }
                     self.devices = std::array::from_fn(|i| {
                         registry
@@ -720,11 +742,9 @@ impl App {
                     self.updates.error = error;
                 }
             },
-            #[cfg(target_os = "macos")]
             Message::Uninstall if self.after_stop.is_none() && self.updates.progress.is_none() => {
-                return Task::perform(uninstall::prepare(), Message::UninstallPrepared);
+                return Task::perform(uninstall::prepare(self.locale), Message::UninstallPrepared);
             }
-            #[cfg(target_os = "macos")]
             Message::UninstallPrepared(result)
                 if self.after_stop.is_none() && self.updates.progress.is_none() =>
             {
@@ -737,8 +757,8 @@ impl App {
                     Err(error) => self.error = error,
                 }
             }
-            Message::Frame(index, result) => match result {
-                Ok(frame) => {
+            Message::Frame(index, pending) => match pending.take() {
+                Some(Ok(frame)) => {
                     let resized = self.frames[index]
                         .as_ref()
                         .is_none_or(|old| old.width != frame.width || old.height != frame.height);
@@ -754,7 +774,8 @@ impl App {
                         self.rearrange();
                     }
                 }
-                Err(error) => self.frame_errors[index] = error,
+                Some(Err(error)) => self.frame_errors[index] = error,
+                None => {}
             },
             Message::PollAgentPointers if !self.pointer_polling && self.after_stop.is_none() => {
                 if let Some(client) = self.connection.clone() {
@@ -826,6 +847,9 @@ impl App {
             Message::Conversation(chat::Message::Todos(click)) => {
                 return self.update(Message::OpenPanel(Panel::Todos, click));
             }
+            Message::Conversation(chat::Message::Goal(click)) => {
+                return self.update(Message::OpenPanel(Panel::Goal, click));
+            }
             Message::Todos(message) => {
                 if let Some(client) = &self.connection {
                     let before = self.todos.rows_height();
@@ -847,7 +871,7 @@ impl App {
                     self.keyboard_target = None;
                     self.input_started = Some(Instant::now());
                 }
-                if matches!(message, chat::Message::Attachment(_)) {
+                if matches!(message, chat::Message::Pick | chat::Message::Attachment(_)) {
                     self.set_popup(false);
                     self.pinned = false;
                     self.keyboard_target = None;
@@ -997,6 +1021,23 @@ impl App {
                     self.reflow_popup();
                 }
             }
+            Message::Agents(agents::Message::ListMeasured(height)) => {
+                if self.agent_list_height != height {
+                    self.agent_list_height = height;
+                    if self.popup && self.panel == Panel::Agent {
+                        self.reflow_popup();
+                        self.reflow_child();
+                    }
+                }
+            }
+            Message::DevicePanelSize(size) => {
+                let height = size.height.ceil();
+                if self.show_devices && self.device_panel_height != height {
+                    self.device_panel_height = height;
+                    self.reflow_popup();
+                    self.reflow_child();
+                }
+            }
             Message::Agents(agents::Message::Measured(size)) if self.agents.adding() => {
                 let height = size.height.ceil().min(505.);
                 if self.agent_add_height != height {
@@ -1004,8 +1045,14 @@ impl App {
                     self.reflow_child();
                 }
             }
-            Message::Agents(agents::Message::Devices) => {
+            Message::HostAccess(enabled) => {
+                if let Err(error) = self.chat.host.configure(&self.host_home, enabled) {
+                    self.error = error.to_string();
+                }
+            }
+            Message::OpenDevices => {
                 self.show_devices = true;
+                self.reflow_popup();
                 self.reflow_child();
                 if let Some(device) = &self.devices[self.focus] {
                     return self.update(Message::Devices(devices::Message::Choose(
@@ -1015,7 +1062,30 @@ impl App {
             }
             Message::CloseDevices => {
                 self.show_devices = false;
+                self.reflow_popup();
                 self.reflow_child();
+            }
+            Message::Devices(devices::Message::Restart) => {
+                if let Some(mut request) = self.device_admin.resources.clone()
+                    && self.stop.is_some()
+                    && self.after_stop.is_none()
+                {
+                    request.reconfigure = true;
+                    let bundle = deployment::Bundle::load().and_then(|bundle| {
+                        bundle.host(&request)?;
+                        request.store(&bundle.home)?;
+                        Ok(bundle)
+                    });
+                    match bundle {
+                        Ok(bundle) => {
+                            self.setup = Some(deployment::Setup::new(bundle, Some(request), true));
+                            self.set_popup(false);
+                            self.show_devices = false;
+                            return self.update(Message::Setup(deployment::Message::Start));
+                        }
+                        Err(error) => self.error = error,
+                    }
+                }
             }
             Message::Devices(message) => {
                 if let Some(client) = &self.connection {
@@ -1189,16 +1259,13 @@ impl App {
                 return platform::content_size(id).map(Message::Viewport);
             }
             Message::Viewport(size) if size.width > 0. && size.height > 0. => {
-                self.ui_scale = (size.width / WORKBENCH.width).min(size.height / WORKBENCH.height);
-                self.canvas_origin = iced::Vector::new(
-                    ((size.width / self.ui_scale - WORKBENCH.width) * 0.5).max(0.),
-                    ((size.height / self.ui_scale - WORKBENCH.height) * 0.5).max(0.),
-                );
+                (self.ui_scale, self.canvas_origin) = layout::fit_workbench(size);
             }
             Message::Event(Event::Window(window::Event::Focused)) => {
                 self.reduced_motion = platform::reduced_motion();
             }
             Message::Quit | Message::Event(Event::Window(window::Event::CloseRequested)) => {
+                self.chat.host.close();
                 let stopping = self.after_stop.replace(AfterStop::Exit).is_some();
                 self.connection = None;
                 self.streams = None;
@@ -1397,8 +1464,11 @@ impl App {
                     && self.panel == Panel::Files
                     && self.popup_rect().contains(self.cursor)
                 {
-                    let message = self.files.local_drop(self.cursor, self.popup_rect(), path);
-                    return self.update(Message::Files(Box::new(message)));
+                    let body = surface::tool_content_rect(self.popup_rect(), WORKBENCH.width);
+                    return match self.files.local_drop(self.cursor, body, path) {
+                        Some(message) => self.update(Message::Files(Box::new(message))),
+                        None => Task::none(),
+                    };
                 }
                 return self.update(Message::Conversation(chat::Message::Files(vec![path])));
             }
@@ -1527,7 +1597,20 @@ impl App {
                     + padding.bottom;
                 (400., height.min(430.), false)
             }
-            Panel::Agent => (680., 600., false),
+            Panel::Agent => {
+                let editing = self.agents.editor().is_some_and(|(id, _)| !id.is_empty());
+                (
+                    680.,
+                    if self.show_devices {
+                        self.device_panel_height.min(600.)
+                    } else if editing {
+                        600.
+                    } else {
+                        self.agent_list_height.min(600.)
+                    },
+                    false,
+                )
+            }
             Panel::Language => (280., 480., false),
             Panel::Skills => (650., 560., true),
             Panel::Knowledge => (850., 590., false),
@@ -1552,7 +1635,7 @@ impl App {
     }
     fn panel_bounds(&self, size: Size) -> Rectangle {
         let anchor = self.panel_anchor(self.panel);
-        if self.panel != Panel::Todos {
+        if !matches!(self.panel, Panel::Todos | Panel::Goal) {
             return surface::tool_rect(WORKBENCH, anchor, size, false);
         }
         let height = size.height.min(anchor.y - 26.);
@@ -1566,25 +1649,29 @@ impl App {
             Size::new(size.width, height),
         )
     }
-    const NAV_PANELS: [Panel; 8] = [
+    const NAV_PANELS: [Panel; 7] = [
         Panel::Language,
         Panel::Skills,
         Panel::Location,
         Panel::Proxy,
         Panel::Knowledge,
         Panel::Files,
-        Panel::Goal,
         Panel::Agent,
     ];
     fn panel_anchor(&self, panel: Panel) -> Rectangle {
-        if panel == Panel::Todos {
+        if matches!(panel, Panel::Todos | Panel::Goal) {
             let chat = self.layout.chat;
             let [vertical, horizontal] = layout::CHAT_PADDING;
             let size = style::CONTROL_HEIGHT;
+            let goal_offset = if panel == Panel::Goal {
+                size + chat::COMPOSER_ACTION_GAP
+            } else {
+                0.
+            };
             return Rectangle::new(
                 iced::Point::new(
-                    chat.x + horizontal + 12.,
-                    chat.y + chat.height - vertical - 12. - size,
+                    chat.x + horizontal + chat::COMPOSER_PADDING.left + goal_offset,
+                    chat.y + chat.height - vertical - chat::COMPOSER_PADDING.bottom - size,
                 ),
                 Size::new(size, size),
             );
@@ -1623,6 +1710,9 @@ impl App {
     }
     fn within_panel_corridor(&self, position: iced::Point) -> bool {
         let anchor = self.panel_anchor(self.panel);
+        if matches!(self.panel, Panel::Todos | Panel::Goal) && position.y >= anchor.y {
+            return anchor.contains(position);
+        }
         let panel = self.popup_rect();
         let left = anchor.x.min(panel.x);
         let right = (anchor.x + anchor.width).max(panel.x + panel.width);
@@ -1919,23 +2009,26 @@ impl App {
                 .preview_view(id, name, bounds)
                 .map(Message::Conversation),
             ChildPane::Devices => scrollable(
-                container(
-                    column![
-                        row![
-                            controls::icon_button(
-                                controls::Icon::Back,
-                                Some(Message::CloseDevices)
-                            ),
-                            text(locale.tr("设备")).size(14)
+                sensor(
+                    container(
+                        column![
+                            row![
+                                controls::icon_button(
+                                    controls::Icon::Back,
+                                    Some(Message::CloseDevices)
+                                ),
+                                text(locale.tr("设备")).size(14)
+                            ]
+                            .align_y(iced::Center),
+                            self.device_admin
+                                .view(&self.agents.registry, locale, self.reduced_motion)
+                                .map(Message::Devices)
                         ]
-                        .align_y(iced::Center),
-                        self.device_admin
-                            .view(&self.agents.registry, locale)
-                            .map(Message::Devices)
-                    ]
-                    .spacing(12),
+                        .spacing(12),
+                    )
+                    .padding(surface::tool_padding(WORKBENCH.width)),
                 )
-                .padding(surface::tool_padding(WORKBENCH.width)),
+                .on_resize(Message::DevicePanelSize),
             )
             .direction(surface::tool_scroll())
             .height(Length::Fill)
@@ -1947,10 +2040,27 @@ impl App {
         let width = WORKBENCH.width;
         let padding = surface::tool_padding(width);
         if self.panel == Panel::Agent {
-            return self
-                .agents
-                .view(locale, None, width, self.reduced_motion)
-                .map(Message::Agents);
+            let action = |label, message| controls::text_button(locale.tr(label)).on_press(message);
+            let settings = row![
+                action("设备", Message::OpenDevices).padding(iced::Padding::ZERO.right(12)),
+                iced::widget::toggler(self.chat.host.enabled())
+                    .label(locale.tr("允许本机协作"))
+                    .text_size(13)
+                    .on_toggle(Message::HostAccess),
+                space::horizontal(),
+                action("卸载 AImanity", Message::Uninstall).padding(iced::Padding::ZERO.left(12))
+            ]
+            .spacing(14)
+            .align_y(iced::Center);
+            return column![
+                self.agents
+                    .view(locale, None, width, self.reduced_motion)
+                    .map(Message::Agents),
+                container(column![iced::widget::rule::horizontal(1), settings].spacing(13))
+                    .padding(padding.top(0))
+                    .width(Length::Fill)
+            ]
+            .into();
         }
         let title = match self.panel {
             Panel::Todos => locale.tr("待办"),
@@ -1982,10 +2092,6 @@ impl App {
                 Some(Message::ClosePanel),
             )),
         );
-        let body_height = self.panel_target().height
-            - style::window_insets(width).2
-            - padding.top
-            - padding.bottom;
         let language_row_inset = 12.;
         let language_border_inset = 1.;
         let content = match self.panel {
@@ -1998,7 +2104,10 @@ impl App {
             Panel::Todos => self.todos.view(locale).map(Message::Todos),
             Panel::Files => self
                 .files
-                .view(body_height, locale)
+                .view(
+                    surface::tool_content_rect(Rectangle::with_size(self.panel_target()), width),
+                    locale,
+                )
                 .map(|m| Message::Files(Box::new(m))),
             Panel::Location => self.location.view(locale).map(Message::Location),
             Panel::Proxy => self.proxy.view(locale).map(Message::Proxy),
@@ -2073,31 +2182,24 @@ impl App {
                         .push(
                             row![
                                 space::horizontal(),
-                                button(text(locale.tr("保存图片")).size(14))
-                                    .padding([10, 0])
-                                    .on_press(Message::SaveCapture)
-                                    .style(style::quiet),
-                                button(
-                                    container(text(locale.tr("附到对话")).size(14))
-                                        .center_y(Length::Fill)
-                                )
-                                .height(style::CONTROL_HEIGHT)
-                                .padding([0, 16])
-                                .on_press(Message::AttachCapture)
-                                .style(|theme, status| {
-                                    let mut appearance = style::quiet(theme, status);
-                                    let fill = if matches!(
-                                        status,
-                                        iced::widget::button::Status::Hovered
-                                            | iced::widget::button::Status::Pressed
-                                    ) {
-                                        style::ACCENT
-                                    } else {
-                                        iced::Color::from_rgb8(0xf2, 0xf2, 0xf2)
-                                    };
-                                    appearance.background = Some(fill.into());
-                                    appearance
-                                })
+                                controls::text_button(locale.tr("保存图片"))
+                                    .on_press(Message::SaveCapture),
+                                controls::text_button(locale.tr("附到对话"))
+                                    .on_press(Message::AttachCapture)
+                                    .style(|theme, status| {
+                                        let mut appearance = style::quiet(theme, status);
+                                        let fill = if matches!(
+                                            status,
+                                            iced::widget::button::Status::Hovered
+                                                | iced::widget::button::Status::Pressed
+                                        ) {
+                                            style::ACCENT
+                                        } else {
+                                            iced::Color::from_rgb8(0xf2, 0xf2, 0xf2)
+                                        };
+                                        appearance.background = Some(fill.into());
+                                        appearance
+                                    })
                             ]
                             .spacing(18)
                             .align_y(iced::Center),
@@ -2113,7 +2215,7 @@ impl App {
         };
         let padded = container(content).padding(padding).width(Length::Fill);
         let body: Element<'_, Message> = match self.panel {
-            Panel::Knowledge => padded.height(Length::Fill).into(),
+            Panel::Knowledge | Panel::Files => padded.height(Length::Fill).into(),
             Panel::Language => container(
                 scrollable(
                     padded.padding(
@@ -2148,7 +2250,7 @@ impl App {
             .padding(language_border_inset)
             .height(Length::Fill)
             .into(),
-            Panel::Files | Panel::Todos => scrollable(padded)
+            Panel::Todos => scrollable(padded)
                 .direction(surface::tool_scroll())
                 .height(Length::Fill)
                 .into(),
@@ -2193,10 +2295,9 @@ impl App {
             );
         }
         use controls::{Icon, sized_icon_button};
-        let tr = |key: &'static str| self.locale.tr(key);
         let popup = self.popup_rect();
         let child_popup = self.child_rect();
-        let (mode_effects, mode_motion, microphone) = self.modes.effects(self.reduced_motion);
+        let (mode_effects, mode_motion) = self.modes.effects(self.reduced_motion);
         let scene = scene::Scene {
             layout: self.layout,
             size: WORKBENCH,
@@ -2219,7 +2320,6 @@ impl App {
                 }),
             mode_effects,
             mode_motion,
-            microphone,
             keyboard_target: self.keyboard_target,
             agent_pointers: std::array::from_fn(|i| {
                 self.agent_traces[i]
@@ -2278,8 +2378,7 @@ impl App {
                 Panel::Proxy => (Icon::Network, self.proxy.enabled()),
                 Panel::Knowledge => (Icon::Book, false),
                 Panel::Files => (Icon::Folder, false),
-                Panel::Goal => (Icon::Target, self.modes.goal_active()),
-                Panel::Capture(_) | Panel::Update | Panel::Todos => unreachable!(),
+                Panel::Capture(_) | Panel::Update | Panel::Todos | Panel::Goal => unreachable!(),
             };
             let click = self
                 .connection
@@ -2370,11 +2469,6 @@ impl App {
                 continue;
             }
             let rect = self.layout.toolbars[index];
-            let name = self.devices[index]
-                .as_ref()
-                .map(|d| d.name.as_str())
-                .unwrap_or(tr(if index == 0 { "手机" } else { "电脑" }));
-            let name = style::section_title(name);
             let mut tools = row![
                 self.audio[index]
                     .view(self.connection.is_some(), self.reduced_motion)
@@ -2383,28 +2477,23 @@ impl App {
             .align_y(iced::Center);
             if index == 0 {
                 let landscape = self.aspects()[0] > 1.;
-                tools = tools.push(controls::sized_icon_button(
+                tools = tools.push(surface::tool_action(
                     if landscape {
                         Icon::PhoneLandscape
                     } else {
                         Icon::PhonePortrait
                     },
                     self.frames[0].as_ref().map(|_| Message::Rotate),
-                    32.,
-                    34.,
                 ));
             }
-            tools = tools.push(controls::sized_icon_button(
+            tools = tools.push(surface::tool_action(
                 Icon::Camera,
                 self.frames[index]
                     .as_ref()
                     .map(|_| Message::OpenPanel(Panel::Capture(index), true)),
-                32.,
-                34.,
             ));
-            let toolbar = row![name, tools].spacing(8).align_y(iced::Center);
             stage.push(
-                pin(container(toolbar)
+                pin(container(tools)
                     .width(rect.width)
                     .height(rect.height)
                     .align_y(iced::Center)
@@ -2415,17 +2504,12 @@ impl App {
             );
         }
         let r = self.layout.chat;
-        let device_name = self.devices[self.focus]
-            .as_ref()
-            .map(|device| device.name.as_str())
-            .unwrap_or(tr(if self.focus == 0 { "手机" } else { "电脑" }));
         stage.push(
             pin(container(
                 self.chat
                     .view(
                         &self.modes,
                         self.locale,
-                        device_name,
                         r.width - 2. * layout::CHAT_PADDING[1],
                         self.reduced_motion,
                     )
@@ -2545,10 +2629,6 @@ fn main() -> iced::Result {
         }
         return Ok(());
     }
-    #[cfg(windows)]
-    let Ok(_uninstall_guard) = host::windows_guard() else {
-        return Ok(());
-    };
     iced::application(App::boot, App::update, App::view)
         .title(|app: &App| {
             if app.connection.is_some() {

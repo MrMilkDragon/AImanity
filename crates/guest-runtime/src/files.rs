@@ -39,3 +39,47 @@ fn file_record(entry: &std::fs::DirEntry, root: &Path) -> Result<Value> {
         "bytes": metadata.len(),
     }))
 }
+
+pub(crate) fn applications(home: &Path) -> Result<Value> {
+    let mut ids = std::collections::BTreeSet::new();
+    for folder in [
+        PathBuf::from("/usr/share/applications"),
+        PathBuf::from("/usr/local/share/applications"),
+        home.join(".local/share/applications"),
+    ] {
+        let entries = match std::fs::read_dir(folder) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            other => other?,
+        };
+        for entry in entries {
+            let path = entry?.path();
+            if path.extension().is_none_or(|ext| ext != "desktop") {
+                continue;
+            }
+            let contents = std::fs::read_to_string(&path)?;
+            let mut fields = contents
+                .lines()
+                .skip_while(|line| line.trim() != "[Desktop Entry]")
+                .skip(1)
+                .take_while(|line| !line.starts_with('['));
+            if !fields.clone().any(|line| line.trim() == "Type=Application")
+                || fields
+                    .clone()
+                    .any(|line| matches!(line.trim(), "NoDisplay=true" | "Hidden=true"))
+            {
+                continue;
+            }
+            let id = fields
+                .find_map(|line| {
+                    line.strip_prefix("StartupWMClass=")
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                })
+                .or_else(|| path.file_stem()?.to_str());
+            if let Some(id) = id {
+                ids.insert(id.to_ascii_lowercase());
+            }
+        }
+    }
+    Ok(json!(ids))
+}

@@ -73,7 +73,7 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
                 .await
                 .map(Response::Json),
             "action" => self
-                .perform_action(args)
+                .perform_action(args, || Ok(()))
                 .await
                 .map(|frame| Response::Bytes(frame.encode_to_vec())),
             "run" => self.run(args).await.map(Response::Json),
@@ -90,6 +90,7 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
                 .map(|frame| Response::Bytes(frame.encode_to_vec())),
             "zoom" => imaging::zoom(args).map(Response::Json),
             "files" => self.files(args).map(Response::Json),
+            "applications" => crate::files::applications(&self.settings.home).map(Response::Json),
             _ => Err("未知操作".into()),
         }
     }
@@ -103,7 +104,11 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
         files::list(&self.settings.home, &request.path)
     }
 
-    async fn perform_action(&self, args: Value) -> Result<DesktopBridgeFrame> {
+    pub async fn perform_action(
+        &self,
+        args: Value,
+        received: impl FnOnce() -> Result<()>,
+    ) -> Result<DesktopBridgeFrame> {
         let receipt_only = args["receipt_only"] == true;
         let baseline = if args["wait_for_paint"] == true {
             let image = self.screen.capture()?;
@@ -118,6 +123,7 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
             None
         };
         let input = actions::execute(&self.screen, &self.runner, &self.settings, args).await?;
+        received()?;
         if let Some((before, focus, mousepad_text)) = baseline {
             let frame = paint::after(&self.screen, before, &focus, mousepad_text).await?;
             if input == actions::InputEvidence::PasteDispatched
@@ -156,6 +162,9 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
                 window.process_id,
                 window.application_class,
                 format!("{:x}", Sha512::digest(window.title.trim().as_bytes())),
+                self.screen
+                    .attention_content(window.window_id)
+                    .unwrap_or_default(),
             ]);
         }
         Ok(feed)

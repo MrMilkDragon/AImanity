@@ -22,6 +22,7 @@ use tonic::transport::{Channel, Endpoint};
 mod actions;
 #[cfg(target_os = "macos")]
 mod avo;
+mod cue;
 mod desktop;
 mod grpc;
 mod hub;
@@ -29,7 +30,7 @@ mod phone;
 pub(super) use phone::adb_png;
 pub const CONTRACT: &str = "ai-phone-media-v1";
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-fn now() -> u64 {
+pub(super) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -89,15 +90,25 @@ impl Media {
             .and_then(|s| s.chars().next())
             .and_then(|c| c.to_digit(10))
             .ok_or("display orientation unavailable")?;
+        let frame = view
+            .split_once("logicalFrame=[")
+            .and_then(|(_, v)| v.split_once(']'))
+            .ok_or("logical display bounds unavailable")?
+            .0;
+        let mut edges = frame.split(',').map(|v| v.trim().parse::<u32>());
+        let mut edge = || {
+            edges
+                .next()
+                .ok_or("incomplete display bounds")
+                .and_then(|v| v.map_err(|_| "invalid display bounds"))
+        };
+        let (left, top, right, bottom) = (edge()?, edge()?, edge()?, edge()?);
+        if right <= left + 1 || bottom <= top + 1 {
+            return Err("invalid display bounds".into());
+        }
         self.rotation.store(rotation, Ordering::Relaxed);
-        self.width.store(
-            if rotation % 2 == 1 { 1440 } else { 720 },
-            Ordering::Relaxed,
-        );
-        self.height.store(
-            if rotation % 2 == 1 { 720 } else { 1440 },
-            Ordering::Relaxed,
-        );
+        self.width.store(right - left, Ordering::Relaxed);
+        self.height.store(bottom - top, Ordering::Relaxed);
         self.orientation_at.store(now(), Ordering::Relaxed);
         Ok(rotation)
     }
@@ -268,6 +279,7 @@ pub async fn run(adb_media: bool) -> Result<()> {
         .route("/status", get(status))
         .route("/screen", get(screen))
         .route("/snapshot", get(snapshot))
+        .route("/action-cue", post(cue::watch))
         .route("/audio", get(audio))
         .route("/cursor", get(cursor))
         .route("/action", post(action))

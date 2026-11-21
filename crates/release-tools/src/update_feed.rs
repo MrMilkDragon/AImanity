@@ -4,7 +4,12 @@ use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha512};
-use std::{ffi::OsString, fs::File, io, path::Path};
+use std::{
+    ffi::OsString,
+    fs::File,
+    io::{self, Read},
+    path::Path,
+};
 
 #[derive(Deserialize)]
 struct Policy {
@@ -25,7 +30,14 @@ struct Artifact {
     sha512: String,
 }
 
-fn artifact(file: &Path, version: &str, os: &str, arch: &str, suffix: &str) -> Result<Artifact> {
+fn artifact(
+    file: &Path,
+    version: &str,
+    os: &str,
+    arch: &str,
+    suffix: &str,
+    from_stdin: bool,
+) -> Result<Artifact> {
     let filename = format!("AImanity-{version}-{suffix}");
     if file.file_name().and_then(|name| name.to_str()) != Some(filename.as_str()) {
         return Err("Wrong installer filename".into());
@@ -72,13 +84,16 @@ fn artifact(file: &Path, version: &str, os: &str, arch: &str, suffix: &str) -> R
             return Err("Windows installer requires its offline guest and release layer".into());
         }
     }
-    let mut file = File::open(file)?;
-    let size = file.metadata()?.len();
+    let bytes: Box<dyn Read> = if from_stdin {
+        Box::new(io::stdin().lock())
+    } else {
+        Box::new(File::open(file)?)
+    };
+    let mut hash = Sha512::new();
+    let size = io::copy(&mut bytes.take(1 << 31), &mut hash)?;
     if !(1..1 << 31).contains(&size) {
         return Err("Installer exceeds the release asset limit".into());
     }
-    let mut hash = Sha512::new();
-    io::copy(&mut file, &mut hash)?;
     let sha512 = STANDARD.encode(hash.finalize());
     if receipt["sha512"] != sha512 {
         return Err("Installer differs from its build receipt".into());
@@ -87,6 +102,13 @@ fn artifact(file: &Path, version: &str, os: &str, arch: &str, suffix: &str) -> R
 }
 
 pub(super) fn sign(arguments: &[OsString]) -> Result<()> {
+    let (stdin_platform, arguments) = match arguments {
+        [flag, platform, rest @ ..] if flag == "--stdin" => match platform.to_str() {
+            Some(os @ ("macos" | "windows")) => (Some(os), rest),
+            _ => return Err("--stdin expects macos or windows".into()),
+        },
+        rest => (None, rest),
+    };
     let [key, mac, windows, output] = arguments else {
         return Err(
             "sign-update requires the private key, macOS DMG, Windows EXE and feed output".into(),
@@ -124,6 +146,7 @@ pub(super) fn sign(arguments: &[OsString]) -> Result<()> {
         "macos",
         "arm64",
         "macos-arm64.dmg",
+        stdin_platform == Some("macos"),
     )?;
     let windows_x64 = artifact(
         Path::new(windows),
@@ -131,6 +154,7 @@ pub(super) fn sign(arguments: &[OsString]) -> Result<()> {
         "windows",
         "x64",
         "windows-x64-setup.exe",
+        stdin_platform == Some("windows"),
     )?;
     let manifest = serde_json::to_string(&json!({
         "format": 2, "version": version, "name": release_name.trim(), "notes": release_notes.trim(),

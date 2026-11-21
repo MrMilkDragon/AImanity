@@ -49,6 +49,7 @@ pub(super) async fn start<E: Execute>(
     home: &Path,
     user: &Path,
     resource: &Path,
+    reconfigure: bool,
 ) -> Result<()> {
     let root = backend.root;
     let folder = root.join("runtime/container-host");
@@ -72,9 +73,42 @@ pub(super) async fn start<E: Execute>(
     let status = std::str::from_utf8(&body)
         .map_err(|_| Error::Invalid("container_host_status"))?
         .trim();
+    let desktop_sizes = || -> Result<(u32, u32)> {
+        let profile: Value =
+            serde_json::from_slice(&fs::read(root.join("data/deployment/profile.json"))?)
+                .map_err(|_| Error::Invalid("host_profile"))?;
+        let memory = serde_json::from_value(profile["desktop"]["memory_mb"].clone())
+            .map_err(|_| Error::Invalid("host_profile"))?;
+        let storage =
+            serde_json::from_value::<Option<u32>>(profile["desktop"]["storage_gb"].clone())
+                .map_err(|_| Error::Invalid("host_profile"))?
+                .unwrap_or(64);
+        Ok((memory, storage))
+    };
     match status {
         "Running" => {}
         "Stopped" => {
+            if reconfigure {
+                let (memory, storage) = desktop_sizes()?;
+                let memory = (crate::desktop_host_memory_mib(memory) / 1024).to_string();
+                backend
+                    .checked(
+                        backend.command(
+                            &command,
+                            [
+                                "edit",
+                                "--tty=false",
+                                "--memory",
+                                &memory,
+                                "--disk",
+                                &storage.to_string(),
+                                "ai-phone",
+                            ],
+                        ),
+                        vec![],
+                    )
+                    .await?;
+            }
             backend
                 .checked(
                     backend.command(&command, ["start", "--tty=false", "ai-phone"]),
@@ -87,15 +121,7 @@ pub(super) async fn start<E: Execute>(
                 serde_json::from_slice(&fs::read(root.join("config/container-host-runtime.json"))?)
                     .map_err(|_| Error::Invalid("container_host_policy"))?;
             let policy = &policies["hosts"]["macos-arm64"];
-            let profile: Value =
-                serde_json::from_slice(&fs::read(root.join("data/deployment/profile.json"))?)
-                    .map_err(|_| Error::Invalid("host_profile"))?;
-            let memory = serde_json::from_value(profile["desktop"]["memory_mb"].clone())
-                .map_err(|_| Error::Invalid("host_profile"))?;
-            let storage =
-                serde_json::from_value::<Option<u32>>(profile["desktop"]["storage_gb"].clone())
-                    .map_err(|_| Error::Invalid("host_profile"))?
-                    .unwrap_or(64);
+            let (memory, storage) = desktop_sizes()?;
             let file = home.join("container-host.yaml");
             filesystem::publish_private(
                 home,

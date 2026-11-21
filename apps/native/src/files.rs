@@ -1,11 +1,11 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, icon_button, sized_icon_button},
+    controls::{Icon, action_button, form_input, icon_button, sized_icon_button},
     style,
 };
 use ai_phone_api::wire::{self, FileLocation, FileOperation};
 use iced::{
-    Color, Element, Length, Padding, Task,
+    Color, Element, Length, Padding, Rectangle, Task,
     widget::{
         button, checkbox, column, container, mouse_area, row, rule, scrollable, space, text,
         text_input,
@@ -200,23 +200,54 @@ impl Files {
             move |r| Message::Finished(Some(operation), r),
         )
     }
+    fn pane_regions(&self, body: Rectangle) -> [Rectangle; 3] {
+        let notice = if self.busy || !self.error.is_empty() {
+            style::FIELD_LINE.0 + DEVICE_GAP
+        } else {
+            0.
+        };
+        let footer = if self.edit.is_some() {
+            style::CONTROL_HEIGHT + DEVICE_GAP
+        } else {
+            0.
+        };
+        let available = (body.height - notice - footer - DEVICE_GAP).max(0.);
+        let workspace = Rectangle {
+            y: body.y + notice,
+            height: (available * 0.36).round(),
+            ..body
+        };
+        let device = Rectangle {
+            x: body.x,
+            y: workspace.y + workspace.height + DEVICE_GAP,
+            width: (body.width - DEVICE_GAP) / 2.,
+            height: available - workspace.height,
+        };
+        [
+            workspace,
+            device,
+            Rectangle {
+                x: device.x + device.width + DEVICE_GAP,
+                ..device
+            },
+        ]
+    }
+
     pub fn local_drop(
         &self,
         point: iced::Point,
-        bounds: iced::Rectangle,
+        body: Rectangle,
         path: PathBuf,
-    ) -> Message {
-        let index = if point.y < bounds.y + 74. + ((bounds.height - 120.) / 2.).clamp(170., 300.) {
-            0
-        } else if point.x < bounds.center_x() {
-            1
-        } else {
-            2
-        };
-        Message::Upload(
+    ) -> Option<Message> {
+        let index = self
+            .pane_regions(body)
+            .iter()
+            .position(|region| region.contains(point))?;
+        self.panes[index].device.as_ref()?;
+        Some(Message::Upload(
             self.panes[index].location(&self.panes[index].path),
             vec![path],
-        )
+        ))
     }
     pub fn update(&mut self, message: Message, client: &Connection) -> Task<Message> {
         match message {
@@ -493,8 +524,8 @@ impl Files {
         }
         Task::none()
     }
-    pub fn view(&self, height: f32, locale: crate::locale::Locale) -> Element<'_, Message> {
-        let mut body = column![].spacing(16);
+    pub fn view(&self, bounds: Rectangle, locale: crate::locale::Locale) -> Element<'_, Message> {
+        let mut body = column![].spacing(DEVICE_GAP);
         if self.busy || !self.error.is_empty() {
             body = body.push(
                 text(if self.busy {
@@ -503,6 +534,8 @@ impl Files {
                     &self.error
                 })
                 .size(12)
+                .line_height(style::FIELD_LINE)
+                .wrapping(text::Wrapping::None)
                 .color(if self.busy {
                     style::MUTED
                 } else {
@@ -510,12 +543,11 @@ impl Files {
                 }),
             );
         }
-        let workspace_height = (height * 0.36).max(150.);
-        let devices_height = (height - workspace_height - DEVICE_GAP).max(150.);
-        body = body.push(self.pane(0, workspace_height, locale)).push(
+        let [workspace, phone, desktop] = self.pane_regions(bounds);
+        body = body.push(self.pane(0, workspace.height, locale)).push(
             row![
-                self.pane(1, devices_height, locale),
-                self.pane(2, devices_height, locale)
+                self.pane(1, phone.height, locale),
+                self.pane(2, desktop.height, locale)
             ]
             .spacing(DEVICE_GAP),
         );
@@ -529,21 +561,17 @@ impl Files {
             let mut form = row![text(title).size(13)].spacing(8).align_y(iced::Center);
             if !delete {
                 form = form.push(
-                    text_input(locale.tr("名称"), &edit.name)
-                        .style(style::input)
+                    form_input(locale.tr("名称"), &edit.name)
                         .on_input(Message::Name)
                         .on_submit(Message::Confirm),
                 );
             }
             body = body.push(
-                form.push(
-                    action_button(
-                        locale.tr("确认"),
-                        (!self.busy && (delete || !edit.name.trim().is_empty()))
-                            .then_some(Message::Confirm),
-                    )
-                    .width(70),
-                )
+                form.push(action_button(
+                    locale.tr("确认"),
+                    (!self.busy && (delete || !edit.name.trim().is_empty()))
+                        .then_some(Message::Confirm),
+                ))
                 .push(icon_button(Icon::Close, Some(Message::Cancel))),
             );
         }
@@ -553,7 +581,14 @@ impl Files {
         let pane = &self.panes[i];
         let enabled = !self.busy && pane.device.is_some();
         let selected = !pane.selected.is_empty();
-        let control = |icon, message| sized_icon_button(icon, message, 36., 36.);
+        let control = |icon, message| {
+            sized_icon_button(
+                icon,
+                message,
+                style::COMPACT_CONTROL,
+                style::COMPACT_CONTROL,
+            )
+        };
         let op = |icon, message| control(icon, enabled.then_some(message));
         let device_icon = [Icon::Folder, Icon::PhonePortrait, Icon::Screen][i];
         let header = row![
@@ -610,7 +645,8 @@ impl Files {
                             appearance
                         })
                         .size(12)
-                        .padding([9, 4]),
+                        .line_height(style::FIELD_LINE)
+                        .padding([8, 4]),
                 );
         }
         if self.clipboard.is_some() {
@@ -820,4 +856,55 @@ async fn copy_file(
         return Err(item.error);
     }
     item.target.ok_or_else(|| "服务未返回目标文件".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iced::Point;
+
+    #[test]
+    fn editing_reserves_the_footer_and_keeps_drops_in_the_displayed_pane() {
+        let mut files = Files::default();
+        files.panes[1].device = Some("phone".into());
+        files.edit = Some(Edit {
+            index: 0,
+            operation: FileOperation::Mkdir,
+            name: "Example".into(),
+            sources: vec![],
+        });
+        let body = Rectangle {
+            x: 24.,
+            y: 80.,
+            width: 640.,
+            height: 420.,
+        };
+        let [work, phone, computer] = files.pane_regions(body);
+        assert_eq!(work.y, body.y);
+        assert_eq!(work.y + work.height + DEVICE_GAP, phone.y);
+        assert_eq!(phone.y, computer.y);
+        assert_eq!(phone.height, computer.height);
+        assert_eq!(computer.x + computer.width, body.x + body.width);
+        assert_eq!(
+            phone.y + phone.height + DEVICE_GAP + style::CONTROL_HEIGHT,
+            body.y + body.height
+        );
+
+        let drop_at = |point| files.local_drop(point, body, PathBuf::from("example.txt"));
+        for (point, device) in [(work.center(), ""), (phone.center(), "phone")] {
+            let Some(Message::Upload(target, _)) = drop_at(point) else {
+                panic!("visible pane did not receive the drop")
+            };
+            assert_eq!(target.device_id, device);
+        }
+        assert!(drop_at(computer.center()).is_none());
+        assert!(
+            drop_at(Point::new(
+                phone.x + phone.width + DEVICE_GAP / 2.,
+                phone.center_y()
+            ))
+            .is_none()
+        );
+        assert!(drop_at(Point::new(work.center_x(), body.y + body.height - 1.)).is_none());
+    }
 }

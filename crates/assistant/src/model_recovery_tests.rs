@@ -389,17 +389,25 @@ async fn repeated_model_switches_and_image_compaction_preserve_boundary_and_ledg
     database_case(|app| async move {
         let mut run=FixtureRun::start(&app,"保留原始工具记录").await;
         for i in 0..6 {
+            let pixels = image::GrayImage::from_pixel(1, 1, image::Luma([i / 2]));
+            let mut png = std::io::Cursor::new(Vec::new());
+            pixels.write_to(&mut png, image::ImageFormat::Png).unwrap();
+            let image_url = format!("data:image/png;base64,{}", STANDARD.encode(png.into_inner()));
             run.context.extend([
                 json!({"type":"reasoning","encrypted_content":format!("OLD_{i}")}),
                 json!({"type":"function_call","call_id":format!("observe-{i}"),"name":"phone_observe","arguments":"{}","provider_native":true}),
-                json!({"type":"function_call_output","call_id":format!("observe-{i}"),"output":[{"type":"input_text","text":json!({"observation_id":format!("obs-{i}"),"device_id":"phone-local-01"}).to_string()},{"type":"input_image","image_url":"data:image/png;base64,aGVsbG8="}]})
+                json!({"type":"function_call_output","call_id":format!("observe-{i}"),"output":[{"type":"input_text","text":json!({"observation_id":format!("obs-{i}"),"device_id":"phone-local-01"}).to_string()},{"type":"input_image","image_url":image_url}]})
             ]);
         }
         let original_len=run.context.len();
         checkpoint(&app,run.id,&mut run.context,&run.pending,&run.answer,2,&run.state).await.unwrap();
         assert_eq!(run.context.len(),original_len,"image compaction cannot shift the trusted raw-context boundary");
         assert!(serde_json::to_string(&run.context).unwrap().contains(crate::agent_loop::ARCHIVED_OBSERVATION), "fixture must exercise actual image archival");
-        assert_eq!(run.context.iter().filter_map(|item|item["output"].as_array()).flatten().filter(|part|part["type"]=="input_image").count(),2);
+        let retained: Vec<_> = run.context.iter().filter_map(|item| {
+            let parts = item["output"].as_array()?;
+            parts.iter().any(|part| part["type"] == "input_image").then(|| item["call_id"].as_str().unwrap())
+        }).collect();
+        assert_eq!(retained, ["observe-3", "observe-5"]);
         let raw=run.context.clone();
         pause(&app,run.id).await;replace_model(&app,run.id,"second-model","second-key").await;
         assert_eq!(resume(&app,run.id).await.0,StatusCode::OK);
@@ -456,7 +464,7 @@ async fn resumed_provider_request_uses_saved_key_and_strips_previous_protocol_me
             assert_eq!(resume(&app,run.id).await.0,StatusCode::OK);
             claim_due_run(&app).await.unwrap().unwrap();
             let state:Value=sqlx::query_scalar("SELECT loop_state FROM runs WHERE id=$1").bind(run.id).fetch_one(&app.db).await.unwrap();
-            let error=respond(&app,run.id,&run.context,&CancellationToken::new(),("low",false),state["model_replay_boundary"].as_u64().unwrap() as usize,&mut crate::model_timing::Timing::default()).await.unwrap_err();
+            let error=respond(&app,run.id,&run.context,&CancellationToken::new(),("low",ModelTools::All),state["model_replay_boundary"].as_u64().unwrap() as usize,&mut crate::model_timing::Timing::default()).await.unwrap_err();
             assert!(error.contains("HTTP 402"),"loopback fixture must receive a correctly encoded request");
             {
             let seen=captured.lock().unwrap();let (headers,body)=seen.last().unwrap();

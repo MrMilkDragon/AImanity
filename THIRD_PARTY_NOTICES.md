@@ -14,8 +14,11 @@ See [distribution requirements](docs/public/distribution-requirements.md) for th
 
 | Component | Source / licence evidence | Distribution scope and obligations |
 | --- | --- | --- |
+| Rhai 1.27.0 | [Upstream](https://github.com/rhaiscript/rhai), [MIT licence](docs/public/licenses/native/rhai-LICENSE-MIT.txt) | Embedded interpreter for application MCP tools. |
 | Iced 0.14.0 | [Upstream](https://github.com/iced-rs/iced/tree/0.14.0), [MIT licence](docs/public/licenses/native-ui/iced-LICENSE) | Native workbench UI; locked dependencies in apps/native/Cargo.lock |
 | Cryoglyph 0.1.0 | [Upstream](https://github.com/iced-rs/cryoglyph), [licences](apps/native/vendor/cryoglyph) | Native GPU text renderer. The bundled source uses lru 0.18 for its glyph cache. |
+| Enigo 0.6.1 | [Upstream](https://github.com/enigo-rs/enigo), [MIT licence](docs/public/licenses/native-ui/enigo-LICENSE) | User-authorized native desktop input |
+| XCap 0.9.10 | [Upstream](https://github.com/nashaofu/xcap), [Apache-2.0 licence](docs/public/licenses/native-ui/xcap-LICENSE) | On-demand desktop observations |
 | rfd 0.15.4 | [Upstream](https://github.com/PolyMeilex/rfd), [MIT licence](docs/public/licenses/native-ui/rfd-LICENSE) | Native attachment open/save dialogs |
 | Rodio 0.21.1 | [Upstream](https://github.com/RustAudio/rodio/tree/v0.21.1), [MIT licence](docs/public/licenses/native-ui/rodio-LICENSE.MIT) | Native device audio mixing and resampling |
 | CPAL 0.16.0 | [Upstream](https://github.com/RustAudio/cpal/tree/0.16.0), [Apache-2.0 licence](docs/public/licenses/native-ui/cpal-LICENSE.APACHE) | System speaker and microphone access |
@@ -43,6 +46,7 @@ See [distribution requirements](docs/public/distribution-requirements.md) for th
 | Go 1.26.9 factory compiler | [Go source / BSD-3-Clause and notices](https://go.googlesource.com/go/+/refs/tags/go1.26.9/LICENSE) | Maintainer-only private compiler; never a global user prerequisite. Preserve Go/runtime/module notices in the resulting Lima distribution |
 | Extra Android apps | Separately installed APKs | No APK redistribution in source bundles; pin source, version, signature and licence before automating downloads |
 | Debian guest packages | [Debian source archive](https://sources.debian.org/) | The shared root filesystem and Windows offline tools include distribution copyright files and package inventory. |
+| Linux guest application appearance | [Ubuntu Yaru](https://github.com/ubuntu/yaru), [GNOME Files](https://gitlab.gnome.org/GNOME/nautilus), [GNOME Text Editor](https://gitlab.gnome.org/GNOME/gnome-text-editor), [LibreOffice Breeze icons](https://github.com/LibreOffice/core/tree/master/icon-themes/breeze) | The guest includes Debian's Yaru Blue GTK 3 assets with their package copyright in `/usr/share/doc/yaru-theme-gtk/`. Files, Text Editor and Breeze icons retain their Debian package notices. |
 | Dunst and libnotify | [Dunst / BSD-3-Clause](https://github.com/dunst-project/dunst), [libnotify / LGPL-2.1-or-later](https://gitlab.gnome.org/GNOME/libnotify) | Included in the Linux desktop image for notifications. Retain distribution copyright files and applicable source/redistribution obligations |
 | Redis 8 | [Redis licences](https://redis.io/legal/licenses/) | macOS installs the bundled Alpine package. The Windows guest includes Redis from Debian, with the package copyright and version in its offline inventory. |
 | Mihomo v1.19.33 | [Corresponding source and GPLv3 licence](https://github.com/MetaCubeX/mihomo/tree/v1.19.33), [platform pins and licence](config/mihomo-release.json) | The offline macOS and Windows runtime bundles include the unmodified Darwin ARM64 and Linux x64 cores respectively. The workbench proxy starts its core on demand. |
@@ -94,3 +98,13 @@ The Linux phone bridge includes a verbatim AOSP `emulator_controller.proto` sche
 The [native service licence collection](docs/public/native-services-licenses.txt) and [inventory](docs/public/native-services-license-inventory.json) identify the locked Rust service dependencies, full terms, copyright notices and source references. The Linux guest image retains these materials under `/usr/share/doc/ai-phone/`.
 
 Image processing enables PNG in image 0.25.10. The x11rb protocol bindings retain the separate xcb-proto copyright and permission notice. The host archive decoder links liblzma through xz2 and lzma-sys; the collection preserves the vendored XZ terms separately from the Rust wrapper licences. XZ command-line programs and shell utilities are not part of this static library build. This software includes code from [XZ Utils](https://tukaani.org/xz/).
+
+## Development Skill references
+
+The offline Skill library includes selected MIT-licensed Markdown references from the following projects. Each corresponding Skill directory includes its upstream copyright notice and license.
+
+- GSAP guides from [GreenSock](https://github.com/greensock/gsap-skills) for animation.
+- Backend and PostgreSQL guides from [Everything Claude Code](https://github.com/affaan-m/ECC).
+- Interface critique and typography references from [Hallmark](https://github.com/Nutlope/hallmark) and [UI UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill).
+- Interaction and spring references from UI Interaction Kit by ChangerXu.
+- Code review references from [simplify-codebase](https://github.com/tt-a1i/simplify-codebase).

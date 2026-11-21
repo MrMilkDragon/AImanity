@@ -7,6 +7,7 @@ The toolbar contains one cable toggle: grey is disconnected, black is connected.
 - Drag files or directories between panes to copy. Dropping onto a folder copies into that folder. Existing destinations are preserved; collisions return an error. A move deletes its source only after the copy succeeds.
 - Browser uploads and chat attachments enter the workspace. A device download also leaves a work copy. Harness-created files already use the same workspace. Chat attachment originals remain separate from editable work copies.
 - Files delivered from a completed phone or computer task appear as attachments in that reply and as editable copies in Work Files. The original stays on the device.
+- For a document on your own computer, choose **Use this computer** beside the attachment button and allow the current task. The Agent can switch between local applications and save edits. Add the saved document to the shared chat to make it available to Android and Linux.
 - Direct phone–computer transfers require the cable. After interruption, inspect the transfer result before retrying. Each Agent keeps its own GUI permissions.
 
 Lists include filename, size and last modification time. Directories can be copied recursively. Symbolic-link directories can be opened; copying special files or symbolic links is reported as unsupported. Download individual files from a directory.
@@ -34,5 +35,7 @@ macOS development validation covers real Android and Linux guest roots, nested d
 新上传附件、设备取回的文件和 Harness 产物使用同一工作区。聊天原始附件与可编辑的工作副本分开保留。三个面板分别显示工作区、手机文件和电脑文件。列表显示名称、大小和修改时间。
 
 手机或电脑任务交付的文件会出现在该条助手回复里，也会在「工作文件」里留一份可编辑的副本。设备上的原文件照常保留。
+
+处理本机文档时，在附件旁打开「本机协作」，允许本次任务。Agent 可以在本机应用间切换并保存修改。把保存后的文件附到共享对话，即可交给 Android 和 Linux。
 
 接口与 Agent 共用 Rust 实现，普通业务请求使用 protobuf，上传和下载流式传输。Agent 可管理工作区和本任务绑定的设备。跨 Agent 连接数据线后，用 `device_files` 查看共享目录，用 `device_transfer` 复制文件。复制支持普通文件和目录，可进入符号链接指向的目录，下载目录内容时逐个下载文件。实测环境为 macOS 宿主及 Android、Linux 客体。

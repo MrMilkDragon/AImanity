@@ -38,6 +38,9 @@ jobs:
         run: cargo build --locked
       - name: Test native workbench
         run: cargo test --locked
+      - name: Exercise Windows desktop input in Notepad
+        if: runner.os == 'Windows'
+        run: cargo test --locked windows_notepad_receives_host_input -- --ignored --nocapture
       - name: Test native host runtime
         working-directory: .
         run: cargo test -p ai-phone-host-runtime --lib --locked

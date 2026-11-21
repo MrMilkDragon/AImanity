@@ -59,6 +59,35 @@ fn desktop_admin(arguments: &[&str]) -> Result<tokio::process::Command> {
     ai_phone_host_runtime::desktop_bridge::administration(Path::new(&root), arguments).map_err(err)
 }
 
+pub(crate) async fn desktop_file_version(
+    path: &str,
+    previous: Option<&str>,
+) -> Result<Option<String>> {
+    if !path.starts_with('/') {
+        return Err("交付文件需要绝对路径".into());
+    }
+    let script = r#"
+version() {
+    if [ -f "$1" ] && [ ! -L "$1" ]; then
+        stat --printf='%d:%i:%s:%y' -- "$1"
+    elif [ -e "$1" ] || [ -L "$1" ]; then
+        echo 'Expected a regular file' >&2; return 1
+    fi
+}
+current=$(version "$1") || exit 1
+for delay in .04 .08 .16 .32 .64; do
+    [ "$#" = 2 ] && { [ -z "$current" ] || [ "$current" = "$2" ]; } || break
+    sleep "$delay"
+    current=$(version "$1") || exit 1
+done
+printf '%s' "$current""#;
+    let mut args = vec!["sh", "-c", script, "sh", path];
+    args.extend(previous);
+    let bytes = crate::desktop::process(desktop_admin(&args)?, vec![], 256, 5).await?;
+    let version = String::from_utf8(bytes).map_err(err)?;
+    Ok((!version.is_empty() && Some(version.as_str()) != previous).then_some(version))
+}
+
 async fn desktop_tar(arguments: &[&str], input: Stdio, output: Stdio) -> Result<()> {
     let child = desktop_admin(arguments)?
         .stdin(input)
@@ -369,6 +398,12 @@ impl Store {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
         Box::pin(async move {
             match self {
+                Self::Workspace(_) if regular_file => {
+                    fs::copy(self.local(source).await?, target)
+                        .await
+                        .map_err(err)?;
+                    Ok(())
+                }
                 Self::Workspace(_) => copy_local(&self.local(source).await?, target).await,
                 Self::Desktop => {
                     if regular_file {
@@ -377,14 +412,29 @@ impl Store {
                             .await
                             .map_err(|_| "请选择实际生成的普通文件".to_string())?;
                     }
-                    let archive = tempfile::tempfile().map_err(err)?;
                     let (folder, name) = file_parts(Path::new(source))?;
-                    desktop_tar(
-                        &["tar", "-cf", "-", "-C", folder, "--", name],
-                        Stdio::null(),
-                        Stdio::from(archive.try_clone().map_err(err)?),
-                    )
-                    .await?;
+                    let mut retry_save = regular_file;
+                    let archive = loop {
+                        let archive = tempfile::tempfile().map_err(err)?;
+                        match desktop_tar(
+                            &["tar", "-cf", "-", "-C", folder, "--", name],
+                            Stdio::null(),
+                            Stdio::from(archive.try_clone().map_err(err)?),
+                        )
+                        .await
+                        {
+                            Ok(()) => break archive,
+                            Err(error)
+                                if retry_save
+                                    && error.trim_end()
+                                        == format!("tar: {name}: file changed as we read it") =>
+                            {
+                                retry_save = false;
+                                tokio::time::sleep(Duration::from_millis(60)).await;
+                            }
+                            Err(error) => return Err(error),
+                        }
+                    };
                     let (name, target) = (name.to_owned(), target.to_owned());
                     tokio::task::spawn_blocking(move || unpack_desktop(archive, &name, &target))
                         .await
@@ -755,6 +805,13 @@ pub async fn upload(
     }
 }
 
+async fn authorize_location(app: &App, run: Uuid, device_id: &str) -> Result<()> {
+    if !device_id.is_empty() {
+        crate::desktop::authorized(app, run, device_id).await?;
+    }
+    Ok(())
+}
+
 pub async fn tool(
     app: &App,
     run: Uuid,
@@ -770,15 +827,9 @@ pub async fn tool(
             path: v["path"].as_str().ok_or("缺少path")?.into(),
         })
     }
-    async fn authorize(app: &App, run: Uuid, location: &wire::FileLocation) -> Result<()> {
-        if !location.device_id.is_empty() {
-            crate::desktop::authorized(app, run, &location.device_id).await?;
-        }
-        Ok(())
-    }
     if name == "device_file_list" {
         let l = location(args)?;
-        authorize(app, run, &l).await?;
+        authorize_location(app, run, &l.device_id).await?;
         let result = list(app, l).await?;
         return Ok(
             serde_json::json!({"success":true,"path":result.location.map(|l|l.path),"files":result.entries.into_iter().map(|e|serde_json::json!({"name":e.name,"path":e.path,"directory":e.directory,"bytes":e.size_bytes,"modified_at_ms":e.modified_at_ms,"symlink":e.symlink})).collect::<Vec<_>>()}),
@@ -800,7 +851,7 @@ pub async fn tool(
         .collect::<Result<Vec<_>>>()?;
     let target = location(&args["target"])?;
     for l in sources.iter().chain(std::iter::once(&target)) {
-        authorize(app, run, l).await?;
+        authorize_location(app, run, &l.device_id).await?;
     }
     let result = manage(
         app,
@@ -820,9 +871,63 @@ pub async fn tool(
 pub async fn archive_attachment(app: &App, id: Uuid, name: &str, bytes: &[u8]) -> Result<()> {
     let folder = app.root.join("data/workspaces/admin/uploads");
     fs::create_dir_all(&folder).await.map_err(err)?;
-    fs::write(folder.join(format!("{}-{name}", id.simple())), bytes)
+    fs::write(folder.join(upload_filename(id, name)), bytes)
         .await
         .map_err(err)
+}
+
+pub(crate) fn upload_filename(id: Uuid, name: &str) -> String {
+    format!("{}-{name}", id.simple())
+}
+
+pub(crate) fn document_type(bytes: &[u8], name: &str) -> Option<&'static str> {
+    let ext = Path::new(name).extension()?.to_str()?.to_ascii_lowercase();
+    if ext == "pdf" && bytes.starts_with(b"%PDF-") {
+        return Some("application/pdf");
+    }
+    if !bytes.starts_with(b"PK\x03\x04") {
+        return None;
+    }
+    Some(match ext.as_str() {
+        "ods" => "application/vnd.oasis.opendocument.spreadsheet",
+        "odt" => "application/vnd.oasis.opendocument.text",
+        "odp" => "application/vnd.oasis.opendocument.presentation",
+        "odg" => "application/vnd.oasis.opendocument.graphics",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        _ => return None,
+    })
+}
+
+pub(crate) async fn attachment_input(
+    file: &Path,
+    id: Uuid,
+    name: &str,
+    media: &str,
+) -> io::Result<serde_json::Value> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use serde_json::json;
+    if media.starts_with("image/") {
+        let bytes = fs::read(file).await?;
+        return Ok(
+            json!({"type":"input_image","image_url":format!("data:{media};base64,{}",STANDARD.encode(bytes))}),
+        );
+    }
+    let text = if media.starts_with("text/") {
+        let bytes = fs::read(file).await?;
+        let text: String = String::from_utf8_lossy(&bytes)
+            .chars()
+            .take(24000)
+            .collect();
+        format!("附件 {name}：\n{text}")
+    } else {
+        format!(
+            "附件 {name}，工作文件路径 /uploads/{}",
+            upload_filename(id, name)
+        )
+    };
+    Ok(json!({"type":"input_text","text":text}))
 }
 
 pub(crate) fn image_type(bytes: &[u8]) -> Option<&'static str> {
@@ -848,9 +953,11 @@ struct OutputLocation {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) struct PreparedOutput {
     id: Uuid,
-    name: String,
+    pub(crate) name: String,
     media_type: String,
-    size_bytes: i64,
+    pub(crate) size_bytes: i64,
+    #[serde(default)]
+    from_workspace: bool,
 }
 
 pub(crate) async fn prepare_outputs(
@@ -875,9 +982,9 @@ pub(crate) async fn prepare_outputs(
         let file = folder.join(&key);
         let editable = staging.join(&key);
         let result: Result<PreparedOutput> = async {
-            crate::desktop::authorized(app, run, &location.device_id).await?;
+            authorize_location(app, run, &location.device_id).await?;
             if !location.path.starts_with('/') {
-                return Err("交付文件需要设备内的绝对路径".into());
+                return Err("交付文件需要绝对路径".into());
             }
             let source = path(&location.path)?;
             let leaf = Path::new(&source)
@@ -899,14 +1006,19 @@ pub(crate) async fn prepare_outputs(
                 .read_exact(&mut header[..count])
                 .await
                 .map_err(err)?;
-            fs::copy(&file, &editable).await.map_err(err)?;
+            let from_workspace = location.device_id.is_empty();
+            if !from_workspace {
+                fs::copy(&file, &editable).await.map_err(err)?;
+            }
             Ok(PreparedOutput {
                 id,
                 name,
                 media_type: image_type(&header[..count])
+                    .or_else(|| document_type(&header[..count], leaf))
                     .unwrap_or("application/octet-stream")
                     .into(),
                 size_bytes: metadata.len() as i64,
+                from_workspace,
             })
         }
         .await;
@@ -945,13 +1057,15 @@ pub(crate) async fn publish_outputs(
     fs::create_dir_all(&workspace).await.map_err(err)?;
     for output in outputs {
         let key = output.id.to_string();
-        let pending = staging.join(&key);
-        let visible = workspace.join(format!("{}-{}", &key[24..], output.name));
-        if fs::try_exists(&pending).await.map_err(err)? {
-            fs::rename(pending, visible).await.map_err(err)?;
-        } else {
-            // The recorded finish can resume after rename and before the SQL commit.
-            fs::metadata(visible).await.map_err(err)?;
+        if !output.from_workspace {
+            let pending = staging.join(&key);
+            let visible = workspace.join(format!("{}-{}", &key[24..], output.name));
+            if fs::try_exists(&pending).await.map_err(err)? {
+                fs::rename(pending, visible).await.map_err(err)?;
+            } else {
+                // The recorded finish can resume after rename and before the SQL commit.
+                fs::metadata(visible).await.map_err(err)?;
+            }
         }
         sqlx::query(
             "INSERT INTO attachments(id,name,media_type,size_bytes,storage_key) VALUES($1,$2,$3,$4,$5)",
@@ -1061,9 +1175,52 @@ pub async fn qualify_devices() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     fn folder() -> PathBuf {
         std::env::temp_dir().join(format!("aiphone-files-{}", Uuid::now_v7()))
     }
+    #[tokio::test]
+    #[ignore = "requires disposable PostgreSQL"]
+    async fn workspace_output_attaches_an_immutable_snapshot_once() {
+        crate::worker::steering_regressions::database_case(|app| async move {
+            let workspace = app.root.join("data/workspaces/admin");
+            let source = workspace.join("report.txt");
+            let token = CancellationToken::new();
+            let written = crate::workbench::invoke(
+                &app,
+                "workspace_write",
+                &json!({"path":"report.txt","content":"first"}),
+                &token,
+            )
+            .await
+            .unwrap();
+            let listed = crate::workbench::invoke(&app, "workspace_list", &json!({}), &token)
+                .await
+                .unwrap();
+            assert_eq!(written["path"], "report.txt");
+            assert_eq!(
+                written["location"],
+                json!({"device_id":"","path":"/report.txt"})
+            );
+            assert_eq!(listed[0]["location"], written["location"]);
+            let outputs = prepare_outputs(&app, Uuid::now_v7(), json!([written["location"]]))
+                .await
+                .unwrap();
+            let mut tx = app.db.begin().await.unwrap();
+            let ids = publish_outputs(&app, &mut tx, &outputs).await.unwrap();
+            tx.commit().await.unwrap();
+            fs::write(&source, b"edited").await.unwrap();
+            assert_eq!(std::fs::read_dir(workspace).unwrap().count(), 1);
+            assert_eq!(
+                fs::read(app.root.join("data/attachments").join(ids[0].to_string()))
+                    .await
+                    .unwrap(),
+                b"first"
+            );
+        })
+        .await;
+    }
+
     #[tokio::test]
     async fn workspace_lists_and_copies_without_overwrite() {
         let root = folder();

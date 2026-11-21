@@ -9,6 +9,9 @@ use std::{
 #[serde(rename_all = "snake_case")]
 pub(super) enum Stage {
     InstallUnknown,
+    ReplaceUnknown,
+    MigrateWindows,
+    RestoreWindowsRoles,
     Configure,
 }
 #[derive(Deserialize, Serialize)]

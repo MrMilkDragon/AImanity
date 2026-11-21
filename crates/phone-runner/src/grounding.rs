@@ -6,6 +6,7 @@ use std::{
 
 const MAX_TARGETS: usize = 160;
 const MAX_AGE: Duration = Duration::from_secs(60);
+pub(super) const CUE_MAX_AGE: Duration = Duration::from_millis(250);
 struct Target {
     element: wire::PhoneElement,
     key: String,
@@ -19,7 +20,12 @@ struct Snapshot {
     height: u32,
     created: Instant,
     targets: Arc<Vec<Target>>,
-    ocr: Option<OcrEvidence>,
+    evidence: Evidence,
+}
+enum Evidence {
+    Controls(Option<OcrEvidence>),
+    Frame(Arc<[u8]>),
+    Cue(wire::device_action_request::Action),
 }
 struct OcrEvidence {
     png: Vec<u8>,
@@ -43,6 +49,14 @@ pub struct GroundingState {
     snapshots: VecDeque<Arc<Snapshot>>,
     pending_scroll: Option<ScrollAttempt>,
     blocked: Option<ScrollAttempt>,
+}
+impl GroundingState {
+    fn remember(&mut self, snapshot: Snapshot) {
+        if self.snapshots.len() == 4 {
+            self.snapshots.pop_front();
+        }
+        self.snapshots.push_back(Arc::new(snapshot));
+    }
 }
 fn bounds(text: &str, width: u32, height: u32) -> Option<wire::PhoneBounds> {
     let mut parts = text.split(['[', ']', ',']).filter(|part| !part.is_empty());
@@ -382,36 +396,99 @@ pub async fn observe(
     if request.metadata_only {
         return Err("控件定位需要实际截图".into());
     }
-    if !["", "auto", "always", "only"].contains(&request.ocr_mode.as_str()) {
+    if !["", "auto", "always", "only", "motion", "sequence"].contains(&request.ocr_mode.as_str()) {
         return Err("无效OCR模式".into());
     }
     let (epoch, revision) = {
         let ledger = runner.ledger.lock().await;
         (ledger.epoch, ledger.revision)
     };
-    let app = foreground(runner).await?;
-    let xml = if request.ocr_mode != "only" {
-        capture_ui_tree(runner).await
+    let sequence = request.ocr_mode == "sequence";
+    let motion = sequence || request.ocr_mode == "motion";
+    let mut capture_started = Instant::now();
+    let mut earlier_jpeg = Vec::new();
+    let mut motion_tracks = Vec::new();
+    let mut sample_interval_ms = 0;
+    let (app, xml, (png, width, height)) = if motion {
+        let (app, mut frame) = tokio::try_join!(foreground(runner), capture_frame(runner))?;
+        if sequence {
+            let (earlier, w, h) = frame;
+            let area = wire::PhoneBounds {
+                left: 0,
+                top: 0,
+                right: w,
+                bottom: h,
+            };
+            let preview = tokio::task::spawn_blocking(move || -> Result<_, String> {
+                let image = image::load_from_memory_with_format(&earlier, image::ImageFormat::Png)
+                    .map_err(|e| e.to_string())?
+                    .into_rgb8();
+                let grid =
+                    crate::motion::Grid::sample(area, w.max(h), |x, y| image.get_pixel(x, y).0);
+                let image = image::DynamicImage::ImageRgb8(image).thumbnail(420, 580);
+                let mut jpeg = Vec::new();
+                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 83)
+                    .encode_image(&image)
+                    .map_err(|e| e.to_string())?;
+                Ok((jpeg, grid))
+            });
+            tokio::time::sleep_until((capture_started + Duration::from_millis(100)).into()).await;
+            let started = Instant::now();
+            sample_interval_ms = (started - capture_started).as_millis() as u32;
+            capture_started = started;
+            frame = capture_frame(runner).await?;
+            if (w, h) != (frame.1, frame.2) {
+                return Err("采样期间屏幕方向已改变，请重新观察".into());
+            }
+            let (jpeg, old) = preview.await.map_err(|e| e.to_string())??;
+            earlier_jpeg = jpeg;
+            (frame.0, motion_tracks) = tokio::task::spawn_blocking(move || -> Result<_, String> {
+                let png = frame.0;
+                let image = image::load_from_memory_with_format(&png, image::ImageFormat::Png)
+                    .map_err(|e| e.to_string())?
+                    .into_rgb8();
+                let current =
+                    crate::motion::Grid::sample(area, w.max(h), |x, y| image.get_pixel(x, y).0);
+                Ok((png, current.tracks(&old)))
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+        }
+        (app, String::new(), frame)
     } else {
-        String::new()
+        let app = foreground(runner).await?;
+        let xml = if request.ocr_mode == "only" {
+            String::new()
+        } else {
+            capture_ui_tree(runner).await
+        };
+        (app, xml, capture_frame(runner).await?)
     };
-    let (png, width, height) = capture_frame(runner).await?;
     let mut targets = parse_native(&xml, &app, width, height);
-    let mut ocr_evidence = None;
+    let mut evidence = Evidence::Controls(None);
     let mut note = String::new();
-    if !native_content_available(&targets, height)
+    if motion {
+        evidence = Evidence::Frame(Arc::from(png.as_slice()));
+        note = "可点击仍在原处的目标，或滑动、拖动。对即将出现的目标，在 phone_tap 或 phone_swipe 中设置 when。"
+            .into();
+    } else if !native_content_available(&targets, height)
         || ["always", "only"].contains(&request.ocr_mode.as_str())
     {
         match ocr(runner, &png, width, height).await {
             Ok((mut recognized, visual)) => {
-                ocr_evidence = Some(OcrEvidence {
+                evidence = Evidence::Controls(Some(OcrEvidence {
                     png: png.clone(),
                     grid: visual,
-                });
+                }));
                 targets.append(&mut recognized);
                 note = "OCR文字仅为可见文字区域，不保证是按钮".into();
             }
-            Err(error) => note = error,
+            Err(error) => {
+                if !has_native_targets(&targets) {
+                    evidence = Evidence::Frame(Arc::from(png.as_slice()));
+                }
+                note = error;
+            }
         }
     }
     if foreground(runner).await? != app {
@@ -452,20 +529,21 @@ pub async fn observe(
         );
     }
     let elements = targets.iter().map(|t| t.element.clone()).collect();
-    cache.snapshots.push_back(Arc::new(Snapshot {
+    cache.remember(Snapshot {
         id: id.clone(),
         epoch,
         revision,
         app: app.clone(),
         width,
         height,
-        created: Instant::now(),
+        created: if motion {
+            capture_started
+        } else {
+            Instant::now()
+        },
         targets: Arc::new(targets),
-        ocr: ocr_evidence,
-    }));
-    while cache.snapshots.len() > 4 {
-        cache.snapshots.pop_front();
-    }
+        evidence,
+    });
     Ok(wire::DeviceObservation {
         phone_id: runner.phone_id.clone(),
         width,
@@ -478,6 +556,7 @@ pub async fn observe(
         },
         screen_sequence: ledger.sequence,
         control_epoch: epoch,
+        last_manual_control_epoch: ledger.last_manual_control_epoch,
         controller: ledger.controller.clone(),
         root_identity: if runner.root_ready.load(Ordering::Acquire) {
             "0".into()
@@ -489,6 +568,9 @@ pub async fn observe(
         foreground_app: app,
         grounding_note: note,
         scroll_feedback: feedback,
+        earlier_jpeg,
+        sample_interval_ms,
+        motion_tracks,
     })
 }
 fn validate_snapshot(snapshot: &Snapshot, epoch: u64, revision: u64) -> Result<(), String> {
@@ -499,6 +581,76 @@ fn validate_snapshot(snapshot: &Snapshot, epoch: u64, revision: u64) -> Result<(
         return Err("stale_target:观察已过期或手机已操作，请重新观察后选择控件".into());
     }
     Ok(())
+}
+pub(super) async fn watch_action(
+    runner: &Runner,
+    mut request: wire::ActionCueRequest,
+) -> Result<wire::ActionCueMatch, String> {
+    let (epoch, revision) = {
+        let ledger = runner.ledger.lock().await;
+        if ledger.epoch != request.control_epoch || ledger.controller != "agent" {
+            return Err("stale_control".into());
+        }
+        (ledger.epoch, ledger.revision)
+    };
+    let source = runner
+        .grounding
+        .lock()
+        .await
+        .snapshots
+        .iter()
+        .find(|s| s.id == request.observation_id)
+        .cloned()
+        .ok_or("缺少当前手机观察")?;
+    validate_snapshot(&source, epoch, revision)?;
+    let area = request.region.ok_or("缺少观察区域")?;
+    use wire::{action_cue_request::Gesture, device_action_request::Action};
+    let action = match request.gesture.ok_or("缺少触发动作")? {
+        Gesture::Swipe(swipe) => Action::Swipe(swipe),
+        Gesture::Tap(tap) => Action::Tap(tap),
+    };
+    if matches!(source.evidence, Evidence::Cue(_))
+        || area.right > source.width
+        || area.bottom > source.height
+    {
+        return Err("观察区域必须来自当前手机截图".into());
+    }
+    (request.source_width, request.source_height) = (source.width, source.height);
+    let reply = runner
+        .local
+        .post(format!("{}/action-cue", runner.media_url))
+        .bearer_auth(&runner.token)
+        .header("content-type", MEDIA)
+        .body(request.encode_to_vec())
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    let mut hit = wire::ActionCueMatch::decode(reply.bytes().await.map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    if hit.matched {
+        if (hit.width, hit.height) != (source.width, source.height) {
+            return Err("stale_target:画面方向或尺寸已变化".into());
+        }
+        let age = Duration::from_millis(media::now().saturating_sub(hit.observed_at_ms));
+        if age > CUE_MAX_AGE {
+            return Err("stale_target:画面触发信号已过期".into());
+        }
+        hit.observation_id = Uuid::new_v4().to_string();
+        runner.grounding.lock().await.remember(Snapshot {
+            id: hit.observation_id.clone(),
+            epoch,
+            revision,
+            app: source.app.clone(),
+            width: hit.width,
+            height: hit.height,
+            created: Instant::now() - age,
+            targets: Arc::default(),
+            evidence: Evidence::Cue(action),
+        });
+    }
+    Ok(hit)
 }
 fn scroll_gesture(b: &wire::PhoneBounds, direction: &str) -> Result<wire::SwipeAction, String> {
     let w = b.right.saturating_sub(b.left);
@@ -562,6 +714,46 @@ pub async fn resolve(
     }
     .ok_or("stale_target:观察记录不存在或服务已重启，请重新观察")?;
     validate_snapshot(&snapshot, epoch, revision)?;
+    let Evidence::Controls(ocr) = &snapshot.evidence else {
+        let action = request.action.as_ref().ok_or("缺少动作")?;
+        match (&snapshot.evidence, action) {
+            (Evidence::Frame(_), Action::Tap(_) | Action::Swipe(_) | Action::Drag(_)) => {}
+            (Evidence::Cue(expected), actual) if expected == actual => {}
+            _ => return Err("stale_target:动作与当前画面依据不符，请重新观察".into()),
+        }
+        let (app, size) = tokio::join!(foreground(runner), dimensions(runner));
+        if app? != snapshot.app || size != (snapshot.width, snapshot.height) {
+            return Err("stale_target:前台应用或显示尺寸已改变".into());
+        }
+        if snapshot.created.elapsed() > CUE_MAX_AGE {
+            let Evidence::Frame(original) = &snapshot.evidence else {
+                return Err("stale_target:画面触发信号已过期".into());
+            };
+            let (png, w, h) = capture_frame(runner).await?;
+            if (w, h) != size {
+                return Err("stale_target:前台显示尺寸已改变".into());
+            }
+            let current = if png.as_slice() == original.as_ref() {
+                true
+            } else if let Action::Tap(tap) = action {
+                let (x, y) = (tap.x, tap.y);
+                let previous = Arc::clone(original);
+                tokio::task::spawn_blocking(move || same_tap_target(&previous, &png, x, y))
+                    .await
+                    .map_err(|e| e.to_string())?
+            } else {
+                false
+            };
+            if !current || foreground(runner).await? != snapshot.app {
+                return Err("stale_target:动态画面已改变，请重新观察或用 when 等待新帧".into());
+            }
+        }
+        return Ok(Some(ResolvedAction {
+            action: action.clone(),
+            scroll: None,
+            dimensions: size,
+        }));
+    };
     if foreground(runner).await? != snapshot.app {
         return Err("stale_target:前台应用已变化，请重新观察".into());
     }
@@ -576,9 +768,12 @@ pub async fn resolve(
         .transpose()?;
     let requires_ocr = target
         .map(|t| t.element.source == "ocr")
-        .unwrap_or(snapshot.ocr.is_some() || !has_native_targets(&snapshot.targets));
+        .unwrap_or(ocr.is_some() || !has_native_targets(&snapshot.targets));
     if requires_ocr {
-        validate_ocr(runner, &snapshot, target).await?;
+        let original = ocr
+            .as_ref()
+            .ok_or("stale_target:没有可复查的OCR画面，请重新观察")?;
+        validate_ocr(runner, &snapshot, original, target).await?;
     } else {
         let fresh = parse_native(
             &capture_ui_tree(runner).await,
@@ -683,15 +878,47 @@ pub async fn resolve(
     }))
 }
 
+fn same_tap_target(before: &[u8], after: &[u8], x: u32, y: u32) -> bool {
+    let decode = |png| image::load_from_memory_with_format(png, image::ImageFormat::Png);
+    let (Ok(a), Ok(b)) = (decode(before), decode(after)) else {
+        return false;
+    };
+    let (a, b) = (a.into_rgb8(), b.into_rgb8());
+    let (w, h) = a.dimensions();
+    if b.dimensions() != (w, h) || x >= w || y >= h {
+        return false;
+    }
+    let stable = |x, y| {
+        a.get_pixel(x, y)
+            .0
+            .into_iter()
+            .zip(b.get_pixel(x, y).0)
+            .all(|(left, right)| left.abs_diff(right) <= 24)
+    };
+    let step = (w.min(h) / 96).max(1) as i32;
+    let target = (-2..=2)
+        .flat_map(|dy| (-2..=2).map(move |dx| (dx, dy)))
+        .filter(|(dx, dy)| {
+            stable(
+                x.saturating_add_signed(dx * step).min(w - 1),
+                y.saturating_add_signed(dy * step).min(h - 1),
+            )
+        })
+        .count();
+    target >= 21
+        && (0..16)
+            .flat_map(|row| (0..12).map(move |col| (row, col)))
+            .filter(|(row, col)| stable((2 * col + 1) * w / 24, (2 * row + 1) * h / 32))
+            .count()
+            >= 144
+}
+
 async fn validate_ocr(
     runner: &Runner,
     snapshot: &Snapshot,
+    previous: &OcrEvidence,
     target: Option<&Target>,
 ) -> Result<(), String> {
-    let previous = snapshot
-        .ocr
-        .as_ref()
-        .ok_or("stale_target:没有可复查的OCR画面，请重新观察")?;
     let (png, width, height) = capture_frame(runner).await?;
     if (width, height) != (snapshot.width, snapshot.height) {
         return Err("stale_target:画面已变化，请重新观察".into());
@@ -938,7 +1165,7 @@ mod tests {
             height: 1440,
             created: Instant::now(),
             targets: Arc::new(vec![]),
-            ocr: None,
+            evidence: Evidence::Controls(None),
         };
         assert!(validate_snapshot(&s, 3, 4).is_ok());
         assert!(validate_snapshot(&s, 4, 4).is_err());
@@ -973,6 +1200,28 @@ mod tests {
         }
         assert!(scroll_gesture(&b, "diagonal").is_err());
     }
+    #[test]
+    fn a_canvas_tap_survives_unrelated_animation_but_requires_its_target() {
+        let still = image::RgbImage::from_fn(192, 256, |x, y| image::Rgb([x as u8, y as u8, 120]));
+        let png = |im: image::RgbImage| {
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            im.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+            bytes.into_inner()
+        };
+        let before = png(still.clone());
+        let mut changed = still;
+        for pixel in changed.rows_mut().take(12).flatten() {
+            *pixel = image::Rgb([0; 3]);
+        }
+        assert!(same_tap_target(&before, &png(changed.clone()), 75, 100));
+        for y in 92..109 {
+            for x in 67..84 {
+                changed.put_pixel(x, y, image::Rgb([255; 3]));
+            }
+        }
+        assert!(!same_tap_target(&before, &png(changed), 75, 100));
+    }
+
     #[test]
     fn ocr_visual_guard_tolerates_small_noise_but_rejects_changed_content() {
         let a = vec![120; 2048];

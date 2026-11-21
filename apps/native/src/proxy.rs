@@ -1,12 +1,12 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, icon_button},
+    controls::{Icon, action_button, form_input, form_select, icon_button},
     style,
 };
 use ai_phone_api::wire;
 use iced::{
     Element, Length, Task,
-    widget::{checkbox, column, pick_list, row, space, text, text_input},
+    widget::{checkbox, column, row, space, text},
 };
 
 #[derive(Clone, Debug)]
@@ -81,7 +81,7 @@ impl Proxy {
         if let Some(state) = &self.state {
             let import = (!self.busy && !self.url.trim().is_empty()).then_some(Message::Import);
             let mut subscription = row![
-                text_input(
+                form_input(
                     if state.has_subscription {
                         locale.tr("已保存")
                     } else {
@@ -90,13 +90,9 @@ impl Proxy {
                     &self.url
                 )
                 .secure(true)
-                .style(style::input)
-                .size(14)
-                .line_height(iced::Pixels(20.))
-                .padding([10, 12])
                 .on_input_maybe((!self.busy).then_some(Message::Edit))
                 .on_submit_maybe(import.clone()),
-                action_button(locale.tr("导入"), import).width(60),
+                action_button(locale.tr("导入"), import),
             ]
             .spacing(8)
             .align_y(iced::Center);
@@ -129,15 +125,10 @@ impl Proxy {
                 body = body.push(
                     column![
                         text(&group.name).size(12).color(style::MUTED),
-                        pick_list(&group.nodes[..], Some(&group.selected), |node| {
+                        form_select(&group.nodes[..], Some(&group.selected), |node| {
                             Message::Select(group.name.clone(), node)
                         })
                         .width(Length::Fill)
-                        .style(style::select)
-                        .menu_style(style::menu)
-                        .text_size(14)
-                        .text_line_height(iced::Pixels(20.))
-                        .padding([10, 12])
                         .menu_height(260)
                     ]
                     .spacing(6),

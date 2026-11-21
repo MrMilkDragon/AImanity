@@ -8,9 +8,9 @@
   </menu>
   <menu id="root-menu" label="Desktop">
     <item label="Browser"><action name="Execute"><command>/usr/local/bin/ai-phone-browser</command></action></item>
-    <item label="Files"><action name="Execute"><command>pcmanfm /home/ai/Files</command></action></item>
+    <item label="Files"><action name="Execute"><command>nautilus /home/ai/Files</command></action></item>
     <item label="Terminal"><action name="Execute"><command>xterm</command></action></item>
-    <item label="Text Editor"><action name="Execute"><command>mousepad</command></action></item>
+    <item label="Text Editor"><action name="Execute"><command>gnome-text-editor</command></action></item>
     <menu id="office-menu" />
     <separator />
     <item label="Desktop Settings"><action name="Execute"><command>pcmanfm --desktop-pref</command></action></item>

@@ -34,8 +34,10 @@ After verifying both installers, sign the update manifest on the release maintai
 
 ```sh
 cargo run --quiet --locked -p ai-phone-release-tools -- sign-update /path/to/offline-key \
-  AImanity-0.0.4-macos-arm64.dmg AImanity-0.0.4-windows-x64-setup.exe native-stable.json
+  AImanity-0.0.5-macos-arm64.dmg AImanity-0.0.5-windows-x64-setup.exe native-stable.json
 ```
+
+For sequential builds, keep both installer receipts and one installer locally. Pipe the other installer into `sign-update --stdin macos` or `sign-update --stdin windows` before the four usual arguments. The streamed installer filename locates its adjacent receipt. Publish the shared update feed after both downloads are live.
 
 Attach the DMG and EXE to the GitHub release. Publish the signed `native-stable.json` on the `update-feed` branch. To move from Calcium to Dysprosium, first uninstall 0.0.3, then download and install 0.0.4 from Releases. The updater handles later releases from the Dysprosium installation.
 

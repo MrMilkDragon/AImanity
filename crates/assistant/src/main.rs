@@ -19,6 +19,7 @@ use uuid::Uuid;
 mod agent_loop;
 mod anthropic_messages;
 mod app_learning;
+mod app_mcp;
 mod application_identity;
 mod auth;
 mod backup;
@@ -37,6 +38,7 @@ mod harness_proxy;
 mod harness_proxy_devices;
 mod history_window;
 
+mod host_desktop;
 mod http;
 mod location;
 mod location_devices;
@@ -237,6 +239,13 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
     let root = std::env::var_os("AI_PHONE_PROJECT_ROOT")
         .map(PathBuf::from)
         .unwrap_or(std::env::current_dir()?);
+    if let [flag, app_id] = arguments.as_slice()
+        && flag == "--app-mcp"
+    {
+        let app_id = app_id.to_str().ok_or("invalid application ID")?;
+        let db = database::connect(&root, false).await?;
+        return app_mcp::stdio(&db, app_id).await;
+    }
     if arguments
         .first()
         .is_some_and(|argument| argument == "--prepare-database")
@@ -333,6 +342,7 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
         }
         tokio::spawn(worker::work(tasks.clone()));
         tokio::spawn(proactive::work(tasks.clone()));
+        tokio::spawn(app_mcp::work(tasks.clone()));
         tokio::spawn(device_exchange::work(tasks));
     });
     tokio::spawn(location::work(app.clone()));
@@ -357,6 +367,10 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
         .route("/v1/session", post(auth::session))
         .route("/v1/logout", post(auth::logout))
         .route("/v1/history", post(http::history))
+        .route(
+            "/v1/host/desktop/{request}",
+            axum::routing::get(host_desktop::connect),
+        )
         .route("/v1/chat/events", axum::routing::get(run_signals::events))
         .route("/v1/send", post(http::send))
         .route("/v1/run", post(http::run_state))

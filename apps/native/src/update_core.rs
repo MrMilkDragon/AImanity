@@ -346,8 +346,8 @@ mod tests {
 
     #[test]
     fn stable_alias_offers_only_a_newer_signed_release_and_its_platform_installer() {
-        let current = Version::new(0, 1, 6);
-        let version = Version::new(0, 1, 7);
+        let current = Version::new(0, 0, 4);
+        let version = Version::new(0, 0, 5);
         let document = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
         let key = Ed25519KeyPair::from_pkcs8(document.as_ref()).unwrap();
         let mac = serde_json::json!({"size":17,"sha512":STANDARD.encode([1; SHA512_OUTPUT_LEN])});

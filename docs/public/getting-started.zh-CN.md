@@ -48,4 +48,4 @@ cargo run --quiet --locked -p ai-phone-release-tools -- source package dist
 
 ## Liberty（开发中运行时）
 
-在共享对话中开启 Liberty，Agent 可跨设备选择活动、形成和调整目标。右上角的「任务与目标」可设置、修订或关闭明确目标，运行时会暂停 Liberty。Agent 可以在核验后保存可复用的方法。见 [Liberty](autonomous-exploration.md) 和[通知工作流](notification-workflows.md)。
+在共享对话中开启 Liberty，Agent 可跨设备选择活动、形成和调整目标。附件按钮左侧的「任务与目标」可设置、修订或关闭明确目标，运行时会暂停 Liberty。Agent 可以在核验后保存可复用的方法。见 [Liberty](autonomous-exploration.md) 和[通知工作流](notification-workflows.md)。

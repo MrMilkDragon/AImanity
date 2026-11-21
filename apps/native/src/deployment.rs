@@ -96,8 +96,8 @@ impl Capacity {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-struct Guest {
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub(crate) struct Guest {
     cpus: u8,
     memory_mb: u16,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -105,6 +105,8 @@ struct Guest {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Request {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) reconfigure: bool,
     locale: String,
     phone: Guest,
     desktop: Guest,
@@ -112,6 +114,7 @@ pub struct Request {
 impl Default for Request {
     fn default() -> Self {
         Self {
+            reconfigure: false,
             locale: "zh-CN".into(),
             phone: Guest {
                 cpus: 2,
@@ -124,6 +127,40 @@ impl Default for Request {
                 storage_gb: Some(32),
             },
         }
+    }
+}
+
+impl Guest {
+    pub(crate) fn storage(self, desktop: bool) -> u16 {
+        self.storage_gb
+            .map(u16::from)
+            .unwrap_or(if desktop { 64 } else { 16 })
+    }
+}
+
+impl Request {
+    pub(crate) fn guest(&self, desktop: bool) -> Guest {
+        if desktop { self.desktop } else { self.phone }
+    }
+
+    pub(crate) fn set(&mut self, desktop: bool, field: Field, value: u16) {
+        let guest = if desktop {
+            &mut self.desktop
+        } else {
+            &mut self.phone
+        };
+        match field {
+            Field::Cpu => guest.cpus = value as u8,
+            Field::Memory => guest.memory_mb = value,
+            Field::Storage => guest.storage_gb = Some(value as u8),
+        }
+    }
+
+    pub(crate) fn store(&self, home: &Path) -> Result<(), String> {
+        write_atomic(
+            &home.join("request.json"),
+            &serde_json::to_vec(self).map_err(|e| e.to_string())?,
+        )
     }
 }
 
@@ -276,8 +313,7 @@ impl Bundle {
         }
         fs::create_dir_all(&self.home).map_err(|e| e.to_string())?;
         if !admitted {
-            let bytes = serde_json::to_vec(request).map_err(|e| e.to_string())?;
-            write_atomic(&path, &bytes)?;
+            request.store(&self.home)?;
         }
         let images = if cfg!(windows) {
             self.inventory.get("qemu/manifest.json")
@@ -370,16 +406,7 @@ impl Setup {
             }
             Message::RefreshCapacity => self.capacity = self.bundle.capacity(false),
             Message::Set(desktop, field, value) => {
-                let guest = if desktop {
-                    &mut self.request.desktop
-                } else {
-                    &mut self.request.phone
-                };
-                match field {
-                    Field::Cpu => guest.cpus = value as u8,
-                    Field::Memory => guest.memory_mb = value,
-                    Field::Storage => guest.storage_gb = Some(value as u8),
-                }
+                self.request.set(desktop, field, value);
             }
             Message::Start | Message::Stop => {}
         }
@@ -709,61 +736,10 @@ impl Setup {
         reduced_motion: bool,
     ) -> Element<'static, Message> {
         let tr = |key: &'static str| locale.tr(key);
-        let specs: [(&str, Field, &'static [u16], u16); 3] = [
-            (tr("处理器"), Field::Cpu, &[1, 2, 4], guest.cpus.into()),
-            (
-                tr("内存"),
-                Field::Memory,
-                if desktop {
-                    &[2048, 2560, 3072, 4096]
-                } else {
-                    &[1536, 2048, 3072, 4096]
-                },
-                guest.memory_mb,
-            ),
-            (
-                tr("存储"),
-                Field::Storage,
-                if desktop {
-                    &[16, 32, 64]
-                } else {
-                    &[16, 24, 32]
-                },
-                guest
-                    .storage_gb
-                    .unwrap_or(if desktop { 32 } else { 16 })
-                    .into(),
-            ),
-        ];
-        let fields = row(specs.into_iter().map(|(label, field, values, current)| {
-            let value = match field {
-                Field::Cpu => current.to_string(),
-                Field::Memory => format!("{} GB", f32::from(current) / 1024.),
-                Field::Storage => format!("{current} GB"),
-            };
-            let selected = values
-                .iter()
-                .position(|&value| value == current)
-                .unwrap_or(0);
-            column![
-                container(
-                    row![
-                        text(label).size(12).style(style::muted_text),
-                        space::horizontal(),
-                        text(value).size(14).font(SETUP_TITLE)
-                    ]
-                    .spacing(6)
-                )
-                .height(21)
-                .align_y(iced::Center),
-                SpringSlider::new(values.len() as u8 - 1, selected as u8, move |index| {
-                    Message::Set(desktop, field, values[usize::from(index)])
-                })
-                .reduce_motion(reduced_motion),
-            ]
-            .into()
-        }))
-        .spacing(18);
+        let fields =
+            resource_controls(desktop, guest, None, locale, reduced_motion, move |f, v| {
+                Message::Set(desktop, f, v)
+            });
         row![
             row![
                 if desktop {
@@ -785,4 +761,77 @@ impl Setup {
         .align_y(iced::Center)
         .into()
     }
+}
+
+pub(crate) fn resource_controls<M: Clone + 'static>(
+    desktop: bool,
+    guest: Guest,
+    existing: Option<u16>,
+    locale: Locale,
+    reduced_motion: bool,
+    change: impl Fn(Field, u16) -> M + Copy + 'static,
+) -> Element<'static, M> {
+    let tr = |key: &'static str| locale.tr(key);
+    let specs: [(&str, Field, &'static [u16], u16); 3] = [
+        (tr("处理器"), Field::Cpu, &[1, 2, 4], guest.cpus.into()),
+        (
+            tr("内存"),
+            Field::Memory,
+            if desktop {
+                &[2048, 2560, 3072, 4096]
+            } else {
+                &[1536, 2048, 3072, 4096]
+            },
+            guest.memory_mb,
+        ),
+        (
+            tr("存储"),
+            Field::Storage,
+            if desktop {
+                &[16, 32, 64]
+            } else {
+                &[16, 24, 32]
+            },
+            guest.storage(desktop),
+        ),
+    ];
+    row(specs.into_iter().map(|(label, field, values, current)| {
+        let value = match field {
+            Field::Cpu => current.to_string(),
+            Field::Memory => format!("{} GB", f32::from(current) / 1024.),
+            Field::Storage => format!("{current} GB"),
+        };
+        let values = match (field, existing) {
+            (Field::Storage, Some(_)) if !desktop => &values[..0],
+            (Field::Storage, Some(minimum)) => &values[values.partition_point(|n| *n < minimum)..],
+            _ => values,
+        };
+        let selected = values
+            .iter()
+            .position(|&value| value == current)
+            .unwrap_or(0);
+        let mut control = column![
+            container(
+                row![
+                    text(label).size(12).style(style::muted_text),
+                    space::horizontal(),
+                    text(value).size(14).font(SETUP_TITLE)
+                ]
+                .spacing(6)
+            )
+            .height(21)
+            .align_y(iced::Center)
+        ];
+        if values.len() > 1 {
+            control = control.push(
+                SpringSlider::new(values.len() as u8 - 1, selected as u8, move |index| {
+                    change(field, values[usize::from(index)])
+                })
+                .reduce_motion(reduced_motion),
+            );
+        }
+        control.into()
+    }))
+    .spacing(18)
+    .into()
 }

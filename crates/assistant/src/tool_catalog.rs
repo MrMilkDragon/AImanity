@@ -15,6 +15,22 @@ pub(crate) fn function(
 }
 
 pub(crate) fn tools() -> Value {
+    let visual_condition = json!({"type":"object","properties":{
+                    "region":{"type":"array","description":"最近截图中的 [左,上,右,下] 像素","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
+                    "sample_points":{"type":"array","description":"在最近真实截图中点选目标特征色 [x,y]，与 colors 合计一至四个","items":{"type":"array","items":{"type":"integer","minimum":0},"minItems":2,"maxItems":2},"minItems":1,"maxItems":4},
+                    "colors":{"type":"array","description":"已知的 #RRGGBB 颜色，也可只用 sample_points","items":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"minItems":1,"maxItems":4},
+                    "clear_region":{"type":"array","description":"目标区域 [左,上,右,下]，有阻挡时等待","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
+                    "avoid_points":{"type":"array","description":"从最近截图的其他阻挡物取色，clear_region 会同时检查触发色和这些颜色","items":{"type":"array","items":{"type":"integer","minimum":0},"minItems":2,"maxItems":2},"minItems":1,"maxItems":4},
+                    "any_color":{"type":"boolean","description":"任意一种颜色达标时响应，默认要求每种达标"},
+                    "coverage_percent":{"type":"integer","description":"每种颜色分别占区域的最小百分比","minimum":1,"maximum":100},
+                    "motion_direction":{"type":"string","enum":["left","right","up","down"],"description":"被跟踪物体在屏幕中的运动方向，与手势方向分别选择。背景也会移动时，用目标的颜色和 coverage_percent 一起限定。"},
+                    "track_from":{"type":"array","description":"当前截图中目标的辨识性小区域 [左,上,右,下]。跟踪同一物体向 region 移动，需要 motion_direction。","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
+                    "lead_ms":{"type":"integer","description":"按实测速度预测目标进入 region，可提前的毫秒数。","minimum":0,"maximum":500},
+                    "on_appearance":{"type":"boolean","description":"先看到条件不成立，首次观察到条件成立时执行"},
+                    "start_tap":{"type":"object","description":"可选。若当前屏幕有启动、播放或继续控件，先点它，再由设备在新信号出现时执行已规划的动作。须 on_appearance=true、已知颜色或运动方向。传当前 element_id，或画布上的 x、y、fallback_reason。",
+                        "properties":{"element_id":{"type":"string"},"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"fallback_reason":{"type":"string"}},"additionalProperties":false},
+                    "timeout_ms":{"type":"integer","minimum":100,"maximum":15000}
+                },"required":["region","timeout_ms"],"additionalProperties":false});
     let mut catalog = vec![
         function(
             "todo_list",
@@ -54,14 +70,14 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "skill_read",
-            "读取Skill完整正文、启用状态和content_version。每个手机任务必须先读phone-use；停用Skill可读取供编辑。",
-            json!({"name":{"type":"string"}}),
+            "按名称读取 Skill 正文、启用状态和版本。resource 可读取正文引用的相对资料文件。手机操作先读 phone-use；停用项仅供管理。",
+            json!({"name":{"type":"string"},"resource":{"type":"string"}}),
             vec!["name"],
         ),
         function(
             "phone_observe",
-            "读取当前手机画面、前台应用及控件ID。找不到文字时用 ocr_mode=always 补充识别。",
-            json!({"include_ui_tree":{"type":"boolean"},"ocr_mode":{"type":"string","enum":["auto","always"]}}),
+            "读取当前手机画面、前台应用及控件ID。always 补充文字。motion 看当前画面，sequence 按时间顺序返回两帧，用来判断目标位移、方向和界面是否稳定。",
+            json!({"include_ui_tree":{"type":"boolean"},"ocr_mode":{"type":"string","enum":["auto","always","motion","sequence"]}}),
             vec![],
         ),
         function(
@@ -78,8 +94,8 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_tap",
-            "点击无匹配控件ID的图标或画布，说明使用坐标的原因。",
-            json!({"x":{"type":"integer"},"y":{"type":"integer"},"fallback_reason":{"type":"string"}}),
+            "点击图标或画布。如果目标将随画面变化出现，提前提交 when；本机命中后立即点击一次。",
+            json!({"x":{"type":"integer"},"y":{"type":"integer"},"fallback_reason":{"type":"string"},"when":visual_condition}),
             vec!["x", "y", "fallback_reason"],
         ),
         function(
@@ -96,8 +112,9 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_swipe",
-            "仅无原生可滚动容器时使用可见区域坐标滑动；说明fallback_reason。有滚动容器时必须phone_scroll。",
-            json!({"x1":{"type":"integer"},"y1":{"type":"integer"},"x2":{"type":"integer"},"y2":{"type":"integer"},"duration_ms":{"type":"integer"},"fallback_reason":{"type":"string"}}),
+            "在可见画布上滑动。预测将出现的信号时提前提交 when，本机命中条件即滑动一次。列表用 phone_scroll。",
+            json!({"x1":{"type":"integer"},"y1":{"type":"integer"},"x2":{"type":"integer"},"y2":{"type":"integer"},"duration_ms":{"type":"integer"},"fallback_reason":{"type":"string"},
+                "when":visual_condition}),
             vec!["x1", "y1", "x2", "y2", "duration_ms", "fallback_reason"],
         ),
         function(
@@ -145,8 +162,8 @@ pub(crate) fn tools() -> Value {
         json!({"type":"function","name":"app_experience_save","description":"保存/修订本轮应用使用心得候选。同一应用标识+标题替代旧草稿，原稿保留。提供可复现方法、真实边界与本轮观察ID；verified至少2次同应用观察且有动作后复查。结束审计通过后汇入Skill。","parameters":experience_schema()}),
         function(
             "skill_list",
-            "列出Skill、启用状态、内置标记和content_version；先检查避免重复创建。",
-            json!({}),
+            "按关键词查找 Skill 名称和简介，省略 query 列出目录。编程、设计、数据库等工作按需搜索，再用 skill_read 读取。",
+            json!({"query":{"type":"string"}}),
             vec![],
         ),
         function(
@@ -199,7 +216,7 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "workspace_list",
-            "列出独立工作目录文件和下载链接。",
+            "列出独立工作目录。交付文件时将对应的 location 放入 task_finish.files。",
             json!({"path":{"type":"string"}}),
             vec![],
         ),
@@ -211,13 +228,13 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "workspace_write",
-            "在工作目录写入文本、代码或报告，并返回真实下载链接。",
+            "在工作目录写入文本、代码或报告。交付文件时将返回的 location 放入 task_finish.files。",
             json!({"path":{"type":"string"},"content":{"type":"string"}}),
             vec!["path", "content"],
         ),
         function(
             "workspace_fetch",
-            "读取公开HTTPS网页或下载文件到工作目录，使用部署的网络配置。",
+            "读取公开HTTPS网页或下载文件到工作目录，使用部署的网络配置。保存文件时返回可放入 task_finish.files 的 location。",
             json!({"url":{"type":"string"},"path":{"type":"string"}}),
             vec!["url"],
         ),
@@ -247,8 +264,8 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "task_finish",
-            "结束任务。交付文件时，files 填设备ID及绝对路径，系统会存入工作文件并附到回复。",
-            json!({"status":{"type":"string","enum":["completed","needs_input"]},"summary":{"type":"string","description":"给用户的一至三句交付结果：成果文件、关键核验结论或真实阻碍。"},"files":{"type":"array","items":{"type":"object","properties":{"device_id":{"type":"string"},"path":{"type":"string"}},"required":["device_id","path"],"additionalProperties":false}}}),
+            "结束任务。用 files 附上工作文件或设备产物的绝对路径。",
+            json!({"status":{"type":"string","enum":["completed","needs_input"]},"summary":{"type":"string","description":"给用户的一至三句交付结果：成果文件、关键核验结论或真实阻碍。"},"notification_only":{"type":"boolean","description":"仅登记安卓系统状态已读时为 true。"},"files":{"type":"array","items":{"type":"object","properties":{"device_id":{"type":"string","description":"工作文件用空字符串；设备文件用设备 ID。"},"path":{"type":"string"}},"required":["device_id","path"],"additionalProperties":false}}}),
             vec!["status", "summary"],
         ),
         function(
@@ -264,13 +281,16 @@ pub(crate) fn tools() -> Value {
         let report_intent = ["phone_", "computer_", "device_"]
             .into_iter()
             .any(|prefix| name.starts_with(prefix));
-        if matches!(name, "phone_tap_element" | "computer_type") {
+        if matches!(
+            name,
+            "phone_tap_element" | "phone_tap" | "phone_swipe" | "computer_type"
+        ) {
             let description = item["description"].as_str().unwrap();
             item["description"] = json!(format!(
                 "{description} 这一次动作即可完成整个目标时填写 completion_summary。"
             ));
             item["parameters"]["properties"]["completion_summary"] = json!({"type":"string","maxLength":400,
-                "description":"核验通过后发给用户的一句结果。"});
+                "description":"最后一步填写预期结果；如需读回屏幕文字或数值，写清要读什么。核验使用动作后的真实画面。"});
         }
         if report_intent {
             item["parameters"]["properties"]["intent"] = json!({"type":"string"});
@@ -285,6 +305,20 @@ pub(crate) fn tools() -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn visual_conditions_are_shared_by_tap_and_swipe() {
+        let tools = super::tools();
+        let condition = |name: &str| {
+            &tools
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|tool| tool["name"] == name)
+                .unwrap()["parameters"]["properties"]["when"]
+        };
+        assert!(condition("phone_tap").is_object());
+        assert_eq!(condition("phone_tap"), condition("phone_swipe"));
+    }
     use super::*;
     #[test]
     fn model_tool_catalog_is_unambiguous_and_requires_visible_device_intent() {

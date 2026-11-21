@@ -223,7 +223,8 @@ impl Copilot {
             return Task::none();
         }
         for reply in self.replies.values_mut() {
-            let rest = &reply.text[reply.offset..];
+            let rest = reply.text[reply.offset..].trim_start();
+            reply.offset = reply.text.len() - rest.len();
             if rest.is_empty() {
                 continue;
             }
@@ -232,9 +233,6 @@ impl Copilot {
             };
             let phrase = rest[..count].trim();
             reply.offset += count;
-            if phrase.is_empty() {
-                continue;
-            }
             self.speech_index += 1;
             let index = self.speech_index;
             let (stop, cancel) = tokio::sync::oneshot::channel();
@@ -275,6 +273,16 @@ fn reply_complete(message: &wire::ChatMessage, chat: &wire::ChatState) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn speech_keeps_versions_and_starts_at_a_spoken_clause() {
+        let prefix = "库存表 0.0.5 已经保存，";
+        assert_eq!(speaker::phrase_len("库存表 0.", false), None);
+        assert_eq!(speaker::phrase_len(prefix, false), Some(prefix.len()));
+        let complete = format!("{prefix}接下来核对交接记录。");
+        assert_eq!(speaker::phrase_len(&complete, true), Some(complete.len()));
+        assert_eq!(speaker::readable("[交接记录](https://"), "交接记录");
+    }
 
     #[test]
     fn final_utterance_remains_bound_to_device_and_agent_at_speech_start() {

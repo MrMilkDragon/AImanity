@@ -17,6 +17,9 @@ pub trait Screen: Send + Sync {
     fn capture(&self) -> Result<RgbImage>;
     fn title(&self) -> Result<String>;
     fn window(&self) -> Result<WindowIdentity>;
+    fn attention_content(&self, _window: u32) -> Result<String> {
+        Ok(String::new())
+    }
     fn paint_focus(&self) -> Result<PaintFocus> {
         let window = self.window()?;
         Ok(PaintFocus {
@@ -224,6 +227,54 @@ impl Screen for NativeScreen {
                 window_id: window,
                 process_id: process,
             })
+        })
+    }
+    fn attention_content(&self, window: u32) -> Result<String> {
+        self.with(|display| {
+            let conn = &display.connection;
+            let geometry = conn.get_geometry(window)?;
+            let origin = conn
+                .translate_coordinates(window, display.root, 0, 0)?
+                .reply()?;
+            let geometry = geometry.reply()?;
+            let x = i32::from(origin.dst_x);
+            let y = i32::from(origin.dst_y);
+            let left = x.clamp(0, i32::from(display.width));
+            let top = y.clamp(0, i32::from(display.height));
+            let right = (x + i32::from(geometry.width)).clamp(left, i32::from(display.width));
+            let bottom = (y + i32::from(geometry.height)).clamp(top, i32::from(display.height));
+            let width = (right - left) as u16;
+            if width == 0 {
+                return Ok(String::new());
+            }
+            let mut rows = Vec::new();
+            for y in ((top + 3)..bottom).step_by(8) {
+                rows.push(conn.get_image(
+                    ImageFormat::Z_PIXMAP,
+                    display.root,
+                    left as i16,
+                    y as i16,
+                    width,
+                    1,
+                    u32::MAX,
+                )?);
+            }
+            conn.flush()?;
+            let bpp = usize::from(display.format.bits_per_pixel) / 8;
+            let mut content = String::with_capacity(rows.len() * usize::from(width).div_ceil(24));
+            for row in rows {
+                let row = row.reply()?;
+                for tile in row.data[..usize::from(width) * bpp].chunks(24 * bpp) {
+                    use std::hash::Hasher;
+                    let mut hash = std::collections::hash_map::DefaultHasher::new();
+                    hash.write(tile);
+                    content.push(
+                        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+                            [(hash.finish() & 63) as usize] as char,
+                    );
+                }
+            }
+            Ok(content)
         })
     }
     fn paint_focus(&self) -> Result<PaintFocus> {

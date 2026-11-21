@@ -1,6 +1,6 @@
 use super::{Result, now};
 use axum::body::{Body, Bytes};
-use futures_util::stream;
+use futures_util::{Stream, StreamExt, stream};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, AtomicUsize, Ordering},
@@ -8,13 +8,20 @@ use std::sync::{
 use tokio::sync::{Notify, watch};
 
 #[derive(Clone)]
-pub enum Frame {
+pub(super) enum Frame {
     Waiting,
-    Image(Bytes),
+    Image(Picture),
     End,
 }
+#[derive(Clone)]
+pub(super) struct Picture {
+    packet: Bytes,
+    pub jpeg: Bytes,
+    pub captured: u64,
+    pub published: std::time::Instant,
+}
 pub struct Hub {
-    pub frames: watch::Sender<Frame>,
+    pub(super) frames: watch::Sender<Frame>,
     pub viewers: AtomicUsize,
     pub changed: Notify,
     pub sequence: AtomicU64,
@@ -34,15 +41,28 @@ impl Hub {
         let verified = now();
         let sequence = self.sequence.fetch_add(1, Ordering::Relaxed) + 1;
         let mut packet = format!("--phone\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\nX-Capture-Time: {captured}\r\nX-Verified-Time: {verified}\r\nX-Frame-Sequence: {sequence}\r\n\r\n",jpeg.len()).into_bytes();
+        let start = packet.len();
         packet.extend_from_slice(jpeg);
         packet.extend(b"\r\n");
+        let packet = Bytes::from(packet);
         self.verified.store(verified, Ordering::Relaxed);
-        self.frames.send_replace(Frame::Image(packet.into()));
+        self.frames.send_replace(Frame::Image(Picture {
+            jpeg: packet.slice(start..start + jpeg.len()),
+            packet,
+            captured,
+            published: std::time::Instant::now(),
+        }));
     }
     pub fn end(&self) {
         self.frames.send_replace(Frame::End);
     }
     pub fn body(self: &Arc<Self>) -> Body {
+        Body::from_stream(
+            self.pictures()
+                .map(|frame| Ok::<_, std::io::Error>(frame.packet)),
+        )
+    }
+    pub(super) fn pictures(self: &Arc<Self>) -> impl Stream<Item = Picture> + use<> {
         struct Viewer(Arc<Hub>);
         impl Drop for Viewer {
             fn drop(&mut self) {
@@ -57,7 +77,7 @@ impl Hub {
         }
         self.changed.notify_one();
         let receiver = self.frames.subscribe();
-        Body::from_stream(stream::unfold(
+        stream::unfold(
             (receiver, Viewer(self.clone()), true),
             |(mut receiver, viewer, first)| async move {
                 if !first {
@@ -66,18 +86,13 @@ impl Hub {
                 loop {
                     let frame = receiver.borrow_and_update().clone();
                     match frame {
-                        Frame::Image(bytes) => {
-                            return Some((
-                                Ok::<_, std::io::Error>(bytes),
-                                (receiver, viewer, false),
-                            ));
-                        }
+                        Frame::Image(frame) => return Some((frame, (receiver, viewer, false))),
                         Frame::End => return None,
                         Frame::Waiting => receiver.changed().await.ok()?,
                     }
                 }
             },
-        ))
+        )
     }
     pub async fn demand(&self) {
         while self.viewers.load(Ordering::Relaxed) == 0 {

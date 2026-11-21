@@ -4,6 +4,8 @@ use xxhash_rust::xxh3::Xxh3;
 
 pub const SLICE_TURNS: i32 = 8;
 pub const ARCHIVED_OBSERVATION: &str = "AI_PHONE_VALIDATED_OBSERVATION_ARCHIVED:";
+pub const UNCHANGED_DESKTOP: &str =
+    "桌面与上次观察一致。目标可见时直接用本次观察操作；若仍在加载，用 task_wait 等待变化。";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolOutcome {
     Completed,
@@ -79,25 +81,46 @@ impl LoopState {
                 false
             };
         }
-        let identity = metadata
-            .filter(|_| crate::app_learning::observation_tool(name))
-            .and_then(|value| {
-                Some((
-                    value["device_id"].as_str()?,
-                    value["observation_id"].as_str()?,
-                ))
-            })
-            .map_or_else(
-                || result.to_string(),
-                |(device, observation)| format!("{device}\n{observation}"),
-            );
         let mut fingerprint = Xxh3::new();
-        for value in [name, arguments, identity.as_str()] {
+        let mut feed = |value: &str| {
             fingerprint.update(value.as_bytes());
             fingerprint.update(b"\n");
-        }
+        };
+        feed(name);
+        let desktop = metadata.filter(|receipt| {
+            name == "computer_observe" || (name == "host_desktop" && receipt["kind"] == "observe")
+        });
+        let is_desktop_frame = if let Some(receipt) = desktop
+            && let Some(parts) = result.as_array()
+            && let Some(image) = parts.iter().find_map(|part| part["image_url"].as_str())
+        {
+            feed(receipt["host_session"].as_str().unwrap_or(""));
+            feed(receipt["device_id"].as_str().unwrap_or(""));
+            feed(receipt["title"].as_str().unwrap_or(""));
+            if let Some(window) = receipt["window_id"].as_u64() {
+                fingerprint.update(&window.to_le_bytes());
+            }
+            fingerprint.update(image.as_bytes());
+            true
+        } else {
+            feed(arguments);
+            if let Some(receipt) = metadata.filter(|_| crate::app_learning::observation_tool(name))
+                && let (Some(device), Some(observation)) = (
+                    receipt["device_id"].as_str(),
+                    receipt["observation_id"].as_str(),
+                )
+            {
+                feed(device);
+                feed(observation);
+            } else {
+                feed(&result.to_string());
+            }
+            false
+        };
         let signature = format!("{:032x}", fingerprint.digest128());
-        if self.recent_results.contains(&signature) {
+        if is_desktop_frame && self.recent_results.last() == Some(&signature) {
+            self.no_progress(UNCHANGED_DESKTOP)
+        } else if !is_desktop_frame && self.recent_results.contains(&signature) {
             self.no_progress("重复取得相同工具结果，没有观察到新进展")
         } else {
             self.stalls = 0;
@@ -140,15 +163,20 @@ pub fn wake_at(now_ms: u64, seconds: u64) -> Result<u64, String> {
     Ok(now_ms.saturating_add(seconds * 1000))
 }
 pub fn compact_observations(context: &mut [Value]) {
-    let mut keep = std::collections::HashMap::<String, usize>::new();
-    for item in context.iter_mut().rev() {
+    fn images(parts: &[Value]) -> impl Iterator<Item = &Value> {
+        parts.iter().filter(|part| part["type"] == "input_image")
+    }
+
+    let mut keep = std::collections::HashMap::<String, Vec<&[Value]>>::new();
+    let mut archive = Vec::new();
+    for (index, item) in context.iter().enumerate().rev() {
         if item["type"] != "function_call_output" {
             continue;
         }
-        let Some(parts) = item["output"].as_array_mut() else {
+        let Some(parts) = item["output"].as_array() else {
             continue;
         };
-        if !parts.iter().any(|part| part["type"] == "input_image") {
+        if images(parts).next().is_none() {
             continue;
         }
         let device = parts
@@ -156,11 +184,13 @@ pub fn compact_observations(context: &mut [Value]) {
             .filter_map(|part| part["text"].as_str())
             .find_map(|text| {
                 let data: Value = serde_json::from_str(text).ok()?;
-                if data["observation_id"].is_string() {
-                    data["device_id"].as_str().map(str::to_string)
+                data["observation_id"].as_str()?;
+                let frames = if data["host_session"].is_string() {
+                    1
                 } else {
-                    None
-                }
+                    2
+                };
+                Some((data["device_id"].as_str()?.to_owned(), frames))
             })
             .or_else(|| {
                 parts
@@ -170,17 +200,23 @@ pub fn compact_observations(context: &mut [Value]) {
                             .as_str()
                             .is_some_and(|t| t.starts_with("真实手机屏幕 "))
                     })
-                    .then(|| "phone-local-01".into())
+                    .then(|| ("phone-local-01".into(), 2))
             });
-        let Some(device) = device else {
+        let Some((device, frames)) = device else {
             continue;
         };
-        let left = keep.entry(device).or_insert(2);
-        if *left > 0 {
-            *left -= 1;
-            continue;
+        let recent = keep.entry(device).or_default();
+        let used: usize = recent.iter().map(|parts| images(parts).count()).sum();
+        if used + images(parts).count() <= frames
+            && !recent.iter().any(|prior| images(prior).eq(images(parts)))
+        {
+            recent.push(parts);
+        } else {
+            archive.push(index);
         }
-        for part in parts.iter_mut() {
+    }
+    for index in archive {
+        for part in context[index]["output"].as_array_mut().unwrap() {
             if part["type"] == "input_image" {
                 *part = serde_json::json!({"type":"input_text","text":format!("{ARCHIVED_OBSERVATION}（本轮已验证观察；原图保存在执行记录）")});
             }
@@ -191,6 +227,85 @@ pub fn compact_observations(context: &mut [Value]) {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn latest_temporal_pair_uses_the_phone_image_budget() {
+        let mut history: Vec<_> = [["old-a", "old-b"], ["earlier", "current"]]
+            .into_iter()
+            .map(|frames| {
+                let mut parts = vec![json!({"type":"input_text","text":"真实手机屏幕 720×1440"})];
+                parts.extend(frames.map(|s| json!({"type":"input_image","image_url":s})));
+                json!({"type":"function_call_output","output":parts})
+            })
+            .collect();
+        compact_observations(&mut history);
+        assert_eq!(
+            history[0]["output"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|p| p["type"] == "input_image")
+                .count(),
+            0
+        );
+        assert_eq!(history[1]["output"][2]["image_url"], "current");
+    }
+    #[test]
+    fn desktop_reads_compare_visible_state_across_fresh_observation_ids() {
+        let mut state = LoopState::default();
+        let mut read = |window, image: &str, id: &str| {
+            let receipt = json!({"device_id":"desktop","window_id":window,"observation_id":id,"title":"Report"});
+            let parts = json!([{"type":"input_text","text":receipt.to_string()},
+                {"type":"input_image","image_url":image}]);
+            state.tool_result(
+                "computer_observe",
+                id,
+                &parts,
+                Some(&receipt),
+                ToolOutcome::Completed,
+            );
+            state.last_issue.clone()
+        };
+        assert_eq!(read(1, "sheet", "a"), "");
+        assert_eq!(read(1, "sheet", "b"), UNCHANGED_DESKTOP);
+        assert_eq!(read(2, "sheet", "c"), "");
+        assert_eq!(read(2, "dialog", "d"), "");
+        assert_eq!(read(2, "sheet", "e"), "");
+    }
+
+    #[test]
+    fn repeated_host_screens_keep_the_latest_image_and_each_action_receipt() {
+        let mut state = LoopState::default();
+        let mut history = Vec::new();
+        for (index, frame) in ["same", "same", "same", "same", "changed"]
+            .into_iter()
+            .enumerate()
+        {
+            let receipt = json!({"kind":"observe","host_session":"grant","device_id":"host-display-1",
+                "action_id":index.to_string(),"observation_id":format!("view-{index}")});
+            let parts = json!([{"type":"input_text","text":receipt.to_string()},
+                {"type":"input_image","image_url":frame}]);
+            assert_eq!(
+                state.tool_result(
+                    "host_desktop",
+                    &format!("look {index}"),
+                    &parts,
+                    Some(&receipt),
+                    ToolOutcome::Completed
+                ),
+                index == 3
+            );
+            history.push(json!({"type":"function_call_output","output":parts}));
+        }
+        compact_observations(&mut history);
+        for (index, item) in history.iter().enumerate() {
+            assert_eq!(item["output"][1]["type"] == "input_image", index == 4);
+            let receipt: Value =
+                serde_json::from_str(item["output"][0]["text"].as_str().unwrap()).unwrap();
+            assert_eq!(receipt["action_id"], index.to_string());
+        }
+        assert_eq!(state.stalls, 0);
+    }
+
     #[test]
     fn exploration_windows_preserve_activity_and_errors_across_restart_and_long_waits() {
         let mut state = LoopState {

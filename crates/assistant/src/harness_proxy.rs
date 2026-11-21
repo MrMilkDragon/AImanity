@@ -336,7 +336,15 @@ pub async fn resume(app: Shared) {
         && start(&app, &mut runtime, &secret).await.is_ok()
     {
         proxy.set_enabled(true);
-        if let Err(error) = harness_proxy_devices::apply(&app, true).await {
+        drop(runtime);
+        if let Err(error) = crate::device_setup::wait_for_runtime(&app.root).await {
+            eprintln!("Workbench proxy device readiness unavailable: {error}");
+            return;
+        }
+        let _runtime = proxy.runtime.lock().await;
+        if proxy.enabled()
+            && let Err(error) = harness_proxy_devices::apply(&app, true).await
+        {
             eprintln!("Workbench proxy devices were not restored: {error}");
         }
     }

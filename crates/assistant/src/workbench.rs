@@ -3,6 +3,7 @@ use crate::*;
 pub(crate) mod knowledge_images;
 #[path = "skill_resources.rs"]
 mod skill_resources;
+pub(crate) use skill_resources::commit as commit_skill;
 
 #[cfg(test)]
 #[path = "persistence_tests.rs"]
@@ -17,6 +18,9 @@ use std::{
 
 fn workspace(app: &App) -> PathBuf {
     app.root.join("data/workspaces/admin")
+}
+fn workspace_location(relative: &str) -> Value {
+    json!({"device_id":"","path": format!("/{relative}")})
 }
 async fn safe_path(base: &FilePath, path: &str, write: bool) -> Result<PathBuf, String> {
     if path.len() > 500
@@ -71,7 +75,7 @@ async fn safe_path(base: &FilePath, path: &str, write: bool) -> Result<PathBuf, 
 }
 async fn ensure_workspace(app: &App) -> Result<(), String> {
     let mut ready = app.workspace_init.lock().await;
-    skill_resources::reconcile(&app.db, &app.root).await?;
+    skill_resources::reconcile(&app.db, &app.root, false).await?;
     if !*ready {
         tokio::fs::create_dir_all(workspace(app).join(".home"))
             .await
@@ -170,15 +174,27 @@ fn validate_skill(content: &str, fallback: &str) -> Result<(String, String), Str
 }
 async fn skill_set_enabled(
     app: &App,
-    id: &str,
-    enabled: bool,
-    remove: bool,
+    request: wire::SkillUpdateRequest,
+    from_menu: bool,
 ) -> Result<wire::RuntimeSkill, String> {
-    let row = sqlx::query("UPDATE runtime_skills SET enabled=$2,deleted_at=CASE WHEN $3 THEN now() ELSE NULL END WHERE id=$1 AND builtin=false RETURNING *")
-        .bind(id).bind(enabled && !remove).bind(remove).fetch_optional(&app.db).await.map_err(|e|e.to_string())?;
-    row.as_ref()
-        .map(skill)
-        .ok_or_else(|| "Skill不存在或内置Skill不可修改".into())
+    let row = sqlx::query(
+        "UPDATE runtime_skills SET enabled=$2,deleted_at=CASE WHEN $3 THEN now() ELSE NULL END
+        WHERE id=$1 AND (NOT builtin OR ($4 AND source='catalog' AND NOT $3)) RETURNING *",
+    )
+    .bind(&request.id)
+    .bind(request.enabled && !request.remove)
+    .bind(request.remove)
+    .bind(from_menu)
+    .fetch_optional(&app.db)
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or("Skill不存在或此操作不可用")?;
+    if row.get("builtin") {
+        return Ok(skill(
+            &skill_resources::publish(&app.db, &app.root, &request.id).await?,
+        ));
+    }
+    Ok(skill(&row))
 }
 async fn skill_edit(
     app: &App,
@@ -196,6 +212,9 @@ async fn skill_edit(
     let previous = skill(&row);
     if previous.builtin {
         return Err("内置Skill不可修改".into());
+    }
+    if previous.source == "agent-mcp" {
+        crate::app_mcp::verify_document(&input.content)?;
     }
     if !crate::request_digest::matches(
         &input.expected_content_version,
@@ -218,16 +237,54 @@ async fn skill_edit(
     Ok(skill(&row))
 }
 pub async fn initialize(db: &PgPool, root: &std::path::Path) -> Result<(), String> {
-    for builtin in crate::builtin_guides::SKILLS {
-        let id = builtin.id;
-        let content = tokio::fs::read_to_string(root.join(format!("skills/builtin/{id}/SKILL.md")))
+    let mut entries = tokio::fs::read_dir(root.join("skills/builtin"))
+        .await
+        .map_err(|e| e.to_string())?;
+    let (mut ids, mut descriptions, mut contents) = (Vec::new(), Vec::new(), Vec::new());
+    while let Some(entry) = entries.next_entry().await.map_err(|e| e.to_string())? {
+        if !entry.file_type().await.map_err(|e| e.to_string())?.is_dir() {
+            continue;
+        }
+        let path = entry.path().join("SKILL.md");
+        let content = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| e.to_string())?;
-        let (name, description) = metadata(&content, id);
-        sqlx::query("INSERT INTO runtime_skills(id,name,description,source,content,builtin) VALUES($1,$2,$3,'builtin',$4,true) ON CONFLICT(id) DO UPDATE SET content=excluded.content,description=excluded.description")
-            .bind(id).bind(name).bind(description).bind(content).execute(db).await.map_err(|e|e.to_string())?;
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let (name, description) = validate_skill(&content, "")?;
+        if entry.file_name().to_str() != Some(&name) {
+            return Err(format!("Skill 名称与目录不匹配：{}", path.display()));
+        }
+        ids.push(name);
+        descriptions.push(description);
+        contents.push(content);
     }
-    skill_resources::reconcile(db, root).await
+    let required: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            matches!(
+                id.as_str(),
+                "autonomous-learning"
+                    | "browser-android"
+                    | "calc"
+                    | "computer-use"
+                    | "device-transfer"
+                    | "draw"
+                    | "files-android"
+                    | "impress"
+                    | "phone-use"
+                    | "wechat"
+                    | "writer"
+                    | "xiaohongshu"
+            )
+        })
+        .collect();
+    sqlx::query("INSERT INTO runtime_skills AS s (id,name,description,source,content,builtin,enabled)
+        SELECT id,id,description,CASE WHEN required THEN 'builtin' ELSE 'catalog' END,content,true,required
+        FROM unnest($1::text[],$2::text[],$3::text[],$4::bool[]) AS entry(id,description,content,required)
+        ON CONFLICT (id) DO UPDATE SET description=excluded.description,content=excluded.content,source=excluded.source,
+            enabled=CASE WHEN s.source=excluded.source THEN s.enabled ELSE excluded.enabled END
+        WHERE s.builtin AND (s.description,s.content,s.source) IS DISTINCT FROM (excluded.description,excluded.content,excluded.source)")
+        .bind(ids).bind(descriptions).bind(contents).bind(required).execute(db).await.map_err(|e| e.to_string())?;
+    skill_resources::reconcile(db, root, true).await
 }
 async fn skill_import(
     app: &App,
@@ -374,15 +431,16 @@ async fn skill_import(
     Ok(skill(&row))
 }
 fn skill(row: &sqlx::postgres::PgRow) -> wire::RuntimeSkill {
+    let content: String = row.get("content");
     wire::RuntimeSkill {
         id: row.get("id"),
         name: row.get("name"),
         description: row.get("description"),
         source: row.get("source"),
-        content: row.get("content"),
         enabled: row.get("enabled"),
         builtin: row.get("builtin"),
-        content_version: content_version(&row.get::<String, _>("content")),
+        content_version: content_version(&content),
+        content,
     }
 }
 fn document(row: &sqlx::postgres::PgRow) -> wire::KnowledgeDocument {
@@ -819,7 +877,7 @@ pub async fn route(
         }
         "skill-update" => {
             let input = request!(wire::SkillUpdateRequest);
-            if let Err(e) = skill_set_enabled(&app, &input.id, input.enabled, input.remove).await {
+            if let Err(e) = skill_set_enabled(&app, input, true).await {
                 return issue(e);
             }
             match skills(&app).await {
@@ -899,7 +957,7 @@ pub async fn route(
             let Ok(after) = i64::try_from(input.after_ms) else {
                 return issue("时间范围无效".into());
             };
-            let rows=match sqlx::query("SELECT e.id,e.message_id,e.kind,e.title,e.content,e.status,CASE WHEN e.kind='model' THEN e.result ELSE NULL END model_timing,((extract(epoch FROM e.created_at)*1000)::bigint) at_ms,COALESCE((extract(epoch FROM e.finished_at)*1000)::bigint,0) end_ms FROM harness_events e JOIN runs r ON r.id=e.run_id JOIN conversations c ON c.id=r.conversation_id WHERE e.run_id=$1 AND c.owner_id='local-user' AND (e.kind='task' OR (($2::uuid IS NULL OR e.message_id=$2) AND (extract(epoch FROM GREATEST(e.created_at,COALESCE(e.finished_at,e.created_at)))*1000)>$3)) ORDER BY e.created_at,e.id").bind(id).bind(message).bind(after).fetch_all(&app.db).await{Ok(v)=>v,Err(e)=>return issue(e.to_string())};
+            let rows=match sqlx::query("SELECT e.id,e.message_id,e.kind,e.title,e.content,e.status,CASE WHEN e.kind IN ('model','audit') THEN e.result END model_timing,((extract(epoch FROM e.created_at)*1000)::bigint) at_ms,COALESCE((extract(epoch FROM e.finished_at)*1000)::bigint,0) end_ms FROM harness_events e JOIN runs r ON r.id=e.run_id JOIN conversations c ON c.id=r.conversation_id WHERE e.run_id=$1 AND c.owner_id='local-user' AND (e.kind='task' OR (($2::uuid IS NULL OR e.message_id=$2) AND (extract(epoch FROM GREATEST(e.created_at,COALESCE(e.finished_at,e.created_at)))*1000)>$3)) ORDER BY e.created_at,e.id").bind(id).bind(message).bind(after).fetch_all(&app.db).await{Ok(v)=>v,Err(e)=>return issue(e.to_string())};
             pb(
                 StatusCode::OK,
                 wire::HarnessEventList {
@@ -998,20 +1056,46 @@ pub(crate) async fn upload_knowledge_image(
         Err(error) => issue(error),
     }
 }
-pub async fn skill_text(app: &App, name: &str) -> Result<String, String> {
-    let id: String = sqlx::query_scalar(
-        "SELECT id FROM runtime_skills WHERE (id=$1 OR lower(name)=lower($1))
-         AND deleted_at IS NULL ORDER BY builtin DESC,created_at LIMIT 1",
+async fn read_skill_row(app: &App, name: &str) -> Result<sqlx::postgres::PgRow, String> {
+    let row = sqlx::query(
+        "SELECT * FROM runtime_skills WHERE (id=$1 OR lower(name)=lower($1))
+         AND deleted_at IS NULL AND (source<>'catalog' OR enabled) ORDER BY builtin DESC,created_at LIMIT 1",
     )
     .bind(name)
     .fetch_optional(&app.db)
     .await
     .map_err(|error| error.to_string())?
-    .ok_or("Skill不存在")?;
-    let row = skill_resources::publish(&app.db, &app.root, &id).await?;
-    let item = skill(&row);
+    .ok_or_else(|| "Skill不存在".to_owned())?;
+    if row.get("builtin") {
+        Ok(row)
+    } else {
+        skill_resources::publish(&app.db, &app.root, row.get("id")).await
+    }
+}
+
+pub(super) async fn skill_reference(
+    app: &App,
+    name: &str,
+    resource: &str,
+) -> Result<String, String> {
+    let row = read_skill_row(app, name).await?;
+    let id: &str = row.get("id");
+    let base = if row.get("builtin") {
+        app.root.join("skills/builtin")
+    } else {
+        app.root.join("data/runtime-skills")
+    };
+    let path = safe_path(&base.join(id), resource, false).await?;
+    let content = tokio::fs::read_to_string(path)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(format!("Skill resource {id}/{resource}\n\n{content}"))
+}
+
+pub async fn skill_text(app: &App, name: &str) -> Result<String, String> {
+    let item = skill(&read_skill_row(app, name).await?);
     Ok(format!(
-        "Skill id={}，name={}，enabled={}，content_version={}\n\n{}\n\n资源目录：/skills/{}（只读，可通过workspace_run读取或在隔离环境执行；停用的Skill仅供管理，不应作为当前任务指令）。",
+        "Skill id={}，name={}，enabled={}，content_version={}\n\n{}\n\n工作区正文：/skills/{}/SKILL.md。附属资料用 skill_read(resource) 按需读取。",
         item.id, item.name, item.enabled, item.content_version, item.content, item.id
     ))
 }
@@ -1035,13 +1119,15 @@ pub(crate) async fn invoke_tool(
     let string = |key: &str| args[key].as_str().unwrap_or("").to_string();
     match name {
         "skill_list" => {
-            let list = skills(app).await?;
-            Ok(json!(
-                list.skills
-                    .iter()
-                    .map(|s| json!({"id":s.id,"name":s.name,"description":s.description,"enabled":s.enabled,"builtin":s.builtin,"content_version":s.content_version}))
-                    .collect::<Vec<_>>()
-            ))
+            let rows: Vec<(String,String,String,bool,bool,String)> = sqlx::query_as(
+                "SELECT id,name,description,enabled,builtin,encode(sha512(convert_to(content,'UTF8')),'hex')
+                 FROM runtime_skills WHERE deleted_at IS NULL AND (source<>'catalog' OR enabled) AND
+                 (strpos(lower(name),lower($1))>0 OR strpos(lower(description),lower($1))>0)
+                 ORDER BY builtin DESC,lower(name),id")
+                .bind(string("query").trim()).fetch_all(&app.db).await.map_err(|e| e.to_string())?;
+            Ok(json!(rows.into_iter().map(|(id,name,description,enabled,builtin,version)|
+                json!({"id":id,"name":name,"description":description,"enabled":enabled,"builtin":builtin,"content_version":version})
+            ).collect::<Vec<_>>()))
         }
         "skill_install" => {
             let item = skill_import(app, &string("source"), "", "").await?;
@@ -1080,7 +1166,16 @@ pub(crate) async fn invoke_tool(
         }
         "skill_set_enabled" => {
             let enabled = args["enabled"].as_bool().ok_or("enabled必须为布尔值")?;
-            let item = skill_set_enabled(app, &string("id"), enabled, false).await?;
+            let item = skill_set_enabled(
+                app,
+                wire::SkillUpdateRequest {
+                    id: string("id"),
+                    enabled,
+                    remove: false,
+                },
+                false,
+            )
+            .await?;
             Ok(
                 json!({"id":item.id,"name":item.name,"enabled":item.enabled,"content_version":item.content_version}),
             )
@@ -1149,7 +1244,15 @@ pub(crate) async fn invoke_tool(
         }
         "workspace_list" => {
             let list = files(app, &string("path")).await?;
-            Ok(json!(list.files.iter().map(|f|json!({"path":f.path,"directory":f.directory,"bytes":f.size_bytes,"download":format!("/api/workbench/file?path={}",f.path)})).collect::<Vec<_>>()))
+            Ok(json!(
+                list.files
+                    .iter()
+                    .map(|f| json!({
+                        "path": f.path, "directory": f.directory, "bytes": f.size_bytes,
+                        "location": workspace_location(&f.path)
+                    }))
+                    .collect::<Vec<_>>()
+            ))
         }
         "workspace_read" => {
             let file = safe_path(&workspace(app), &string("path"), false).await?;
@@ -1174,7 +1277,7 @@ pub(crate) async fn invoke_tool(
             tokio::fs::write(file, content)
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(json!({"path":path,"download":format!("/api/workbench/file?path={path}")}))
+            Ok(json!({"path":path,"location": workspace_location(&path)}))
         }
         "workspace_fetch" => {
             let url = string("url");
@@ -1189,9 +1292,7 @@ pub(crate) async fn invoke_tool(
                 tokio::fs::write(file, &data)
                     .await
                     .map_err(|e| e.to_string())?;
-                Ok(
-                    json!({"path":path,"bytes":data.len(),"download":format!("/api/workbench/file?path={path}")}),
-                )
+                Ok(json!({"path":path,"bytes":data.len(),"location":workspace_location(&path)}))
             }
         }
         "workspace_run" => {

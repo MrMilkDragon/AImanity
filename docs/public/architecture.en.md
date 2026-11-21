@@ -46,6 +46,8 @@ Repeated model turns reuse HTTP connection pools by proxy route. Each request su
 
 PostgreSQL owns committed Skill text. Each installation serializes its file projection with a per-Skill operating-system lock, then atomically publishes `SKILL.md` and synchronizes it to disk. The blocking writer retains the lock until file operations finish, including after cancellation of its async caller. File I/O holds no database transaction; reads and startup reconcile the projection from durable text while preserving auxiliary resources.
 
+After installation or first observed use, the idle Agent can write an application-specific MCP tool. Its Rhai program runs in an embedded Rust interpreter on supplied data or recorded device controls. Two distinct examples must pass before the tool appears in Skills. Foreground work preempts authoring. An MCP client can connect over stdio with `ai-phone-assistant --app-mcp <application-id>` and the installation's `AI_PHONE_PROJECT_ROOT`. Disabling or deleting the Skill takes effect on the next call.
+
 ## Devices and exchange
 
 The default is one phone and one computer. Root and sudo apply inside the guests. A persistent device link gates file exchange, with device/direction/path/hash checks; disconnecting rejects new transfers. Removing an existing link checks its persisted ownership without requiring either runtime to be online. Reconnecting still requires ready runtimes. Both devices share one conversation, one draft and one selected Agent. Each run keeps its device identity.

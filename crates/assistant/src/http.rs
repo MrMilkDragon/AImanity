@@ -1,5 +1,6 @@
 use crate::*;
 use axum::extract::{Multipart, Path, State};
+#[cfg(test)]
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use sqlx::Row;
@@ -53,7 +54,10 @@ async fn message_rows(
     SELECT jsonb_agg(jsonb_build_object('id',a.id,'name',a.name,'media_type',a.media_type,'size_bytes',a.size_bytes) ORDER BY ref.ordinal)
     FROM unnest(m.attachment_ids) WITH ORDINALITY ref(id,ordinal)
     JOIN attachments a ON a.id=ref.id AND a.owner_id='local-user'
-) END files FROM messages m LEFT JOIN chat_voice_inputs v ON v.message_id=m.id LEFT JOIN runs r ON r.assistant_message_id=m.id LEFT JOIN runs source ON source.id=COALESCE(m.run_id,r.id) WHERE m.conversation_id=$1";
+) END files, (SELECT jsonb_agg(jsonb_build_array(e.id,e.title,(extract(epoch FROM e.input_received_at)*1000)::bigint)
+                ORDER BY e.input_received_at,e.id) FROM harness_events e
+              WHERE e.message_id=m.id AND e.input_received_at IS NOT NULL) action_receipts
+    FROM messages m LEFT JOIN chat_voice_inputs v ON v.message_id=m.id LEFT JOIN runs r ON r.assistant_message_id=m.id LEFT JOIN runs source ON source.id=COALESCE(m.run_id,r.id) WHERE m.conversation_id=$1";
     let statement = match selected {
         MessageSelection::All => format!("{PROJECTION} ORDER BY m.ordinal"),
         MessageSelection::Ids(_) => format!("{PROJECTION} AND m.id=ANY($2) ORDER BY m.ordinal"),
@@ -117,6 +121,18 @@ pub(crate) async fn chat_messages(
                 ordinal: r.get::<i64, _>("ordinal") as u64,
                 active: r.get("active"),
                 has_activity: r.get("has_activity"),
+                action_receipts: r
+                    .get::<Option<sqlx::types::Json<Vec<(String, String, u64)>>>, _>(
+                        "action_receipts",
+                    )
+                    .into_iter()
+                    .flat_map(|rows| rows.0)
+                    .map(|(id, title, received_at_ms)| wire::ChatActionReceipt {
+                        id,
+                        title,
+                        received_at_ms,
+                    })
+                    .collect(),
                 voice: crate::voice_input::from_row(r),
                 role,
                 text,
@@ -330,6 +346,7 @@ async fn send_input(
     };
     // Response shape does not participate in the durable input identity.
     let receipt_only = std::mem::take(&mut request.receipt_only);
+    let use_host_desktop = std::mem::take(&mut request.use_host_desktop);
     let request_bytes = request.encode_to_vec();
     let fingerprint = crate::request_digest::encode(&request_bytes);
     let result: Result<Uuid, sqlx::Error> = async {
@@ -387,7 +404,7 @@ async fn send_input(
         if attachments.len() != files.len() || total > 12*1024*1024 || attachments.iter().any(|r|r.get::<i64,_>("size_bytes") < 0) {
             return Err(sqlx::Error::Protocol("invalid_attachments".into()));
         }
-        let active = sqlx::query("SELECT id,status,agent_id FROM runs WHERE conversation_id=$1 AND
+        let active = sqlx::query("SELECT id,status,agent_id,origin FROM runs WHERE conversation_id=$1 AND
             ((origin='user' AND status IN ('queued','running','paused'))
              OR ($2 AND origin='notification' AND status='running' AND NOT background_read_only))
             ORDER BY (origin='user') DESC,created_at,id LIMIT 1 FOR UPDATE")
@@ -407,6 +424,7 @@ async fn send_input(
             .bind(user).bind(id).bind(&request.text).bind(&files).bind(request_id).execute(&mut *tx).await?;
         if let Some(voice) = &voice {voice.persist(&mut tx, id, user, request_id).await?;}
 
+        let local_run = active.as_ref().is_none_or(|r| r.get::<&str,_>("origin") == "user");
         let run = if let Some(active) = active {
             let run = active.get::<Uuid,_>("id");
             if active.get::<String,_>("status") == "paused" {
@@ -441,7 +459,9 @@ async fn send_input(
                 .bind(&request.text).bind(run).execute(&mut *tx).await?;
         }
         tx.commit().await?;
+        if local_run { app.run_signals.host.bind(request_id, run, use_host_desktop); }
         app.run_signals.queue.notify_one();
+        app.run_signals.app_tools_activity.send_replace(());
         app.run_signals.input.notify_waiters();
         if let Some(voice) = &voice {
             voice.release_activity(&app.run_signals.speech, id);
@@ -568,6 +588,9 @@ async fn send_receipt(
     })
 }
 
+pub(crate) const REPLACES_GOAL: &str =
+    "以下是用户更新后的完整目标，替换原目标。保留已经核验且仍适用的执行成果。";
+
 /// Build the exact model input before accepting a steering request. Files remain owner-scoped.
 async fn steering_input(
     app: &App,
@@ -579,7 +602,7 @@ async fn steering_input(
     let invalid = || sqlx::Error::Protocol("invalid_attachments".into());
     let mut content = Vec::new();
     if replaces_goal {
-        content.push(json!({"type":"input_text","text":"以下是用户更新后的完整目标，替换原目标。保留已经核验且仍适用的执行成果。"}));
+        content.push(json!({"type":"input_text","text":REPLACES_GOAL}));
     }
     if !request.text.is_empty() {
         content.push(json!({"type":"input_text","text":crate::voice_input::model_text(&request.text, &request.request_id, request.voice.as_ref())}));
@@ -616,17 +639,16 @@ async fn steering_input(
         if !metadata.is_file() || actual_total > 12 * 1024 * 1024 {
             return Err(invalid());
         }
-        let bytes = tokio::fs::read(file).await.map_err(|_| invalid())?;
-        let media: String = row.get("media_type");
-        if media.starts_with("image/") {
-            content.push(json!({"type":"input_image","image_url":format!("data:{media};base64,{}",STANDARD.encode(bytes))}));
-        } else {
-            let text = String::from_utf8_lossy(&bytes)
-                .chars()
-                .take(24000)
-                .collect::<String>();
-            content.push(json!({"type":"input_text","text":format!("附件 {}：\n{}",row.get::<String,_>("name"),text)}));
-        }
+        content.push(
+            crate::files::attachment_input(
+                &file,
+                *attachment_id,
+                row.get("name"),
+                row.get("media_type"),
+            )
+            .await
+            .map_err(|_| invalid())?,
+        );
     }
     Ok(json!({"role":"user","content":content}))
 }
@@ -789,7 +811,7 @@ fn media_type(bytes: &[u8], name: &str) -> Option<&'static str> {
     {
         Some("text/plain; charset=utf-8")
     } else {
-        None
+        crate::files::document_type(bytes, name)
     }
 }
 pub async fn upload(
@@ -825,7 +847,7 @@ pub async fn upload(
         return error(
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
             "unsupported_file",
-            "支持PNG、JPEG、WebP、GIF及UTF-8文本文件",
+            "支持图片、文本、PDF、Office 和 OpenDocument 文件",
         );
     };
     let id = Uuid::now_v7();

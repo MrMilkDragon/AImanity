@@ -1,13 +1,15 @@
 use crate::{
     agents::Tab,
     connection::Connection,
-    controls::{Icon, action_button, field, icon_button, tab_button},
+    controls::{
+        Icon, action_button, field, form_input, form_select, icon_button, tab_button, text_button,
+    },
     style,
 };
 use ai_phone_api::wire;
 use iced::{
     Element, Length, Subscription, Task, keyboard,
-    widget::{button, column, image, pick_list, row, space, text, text_editor},
+    widget::{column, image, row, space, text, text_editor},
 };
 
 #[derive(Clone, Debug)]
@@ -546,36 +548,37 @@ impl Details {
                     }
                     if let Some(binding) = binding.filter(|b| !b.pairing_command.is_empty()) {
                         body = body.push(
-                            button(locale.tr("复制配对指令"))
-                                .style(style::quiet)
+                            text_button(locale.tr("复制配对指令"))
                                 .on_press(Message::CopyPair(binding.pairing_command.clone())),
                         );
                     }
                     let enabled = self.channels_loaded && !self.channels_busy;
                     if self.channel == "whatsapp" && binding.is_some_and(|b| b.configured) {
                         body = body.push(
-                            button(locale.tr("重新扫码"))
-                                .style(style::quiet)
+                            text_button(locale.tr("重新扫码"))
                                 .on_press_maybe(enabled.then_some(Message::Bind(true))),
                         );
                     }
-                    body = body.push(row![
-                        action_button(locale.tr("连接"), enabled.then_some(Message::Bind(false)))
-                            .width(80),
-                        button(locale.tr("配对"))
-                            .style(style::quiet)
-                            .height(40)
-                            .on_press_maybe(
+                    body = body.push(
+                        row![
+                            action_button(
+                                locale.tr("连接"),
+                                enabled.then_some(Message::Bind(false))
+                            ),
+                            text_button(locale.tr("配对")).on_press_maybe(
                                 (enabled && binding.is_some_and(|b| b.configured))
                                     .then_some(Message::Pair)
                             ),
-                        space::horizontal(),
-                        icon_button(
-                            Icon::Trash,
-                            (enabled && binding.is_some_and(|b| b.configured))
-                                .then_some(Message::Unbind)
-                        )
-                    ]);
+                            space::horizontal(),
+                            icon_button(
+                                Icon::Trash,
+                                (enabled && binding.is_some_and(|b| b.configured))
+                                    .then_some(Message::Unbind)
+                            )
+                        ]
+                        .align_y(iced::Center)
+                        .spacing(8),
+                    );
                 }
             }
             Tab::Voice => {
@@ -590,12 +593,8 @@ impl Details {
                         column![
                             text("API Key").size(12).color(style::MUTED),
                             row![
-                                iced::widget::text_input("", &self.voice.api_key)
+                                form_input("", &self.voice.api_key)
                                     .secure(!self.voice_visible)
-                                    .size(14)
-                                    .line_height(iced::Pixels(20.))
-                                    .padding([10, 12])
-                                    .style(style::input)
                                     .on_input(|v| Message::VoiceField(VoiceField::Key, v)),
                                 icon_button(
                                     if self.voice_visible {
@@ -618,17 +617,12 @@ impl Details {
                     .push(
                         column![
                             text(locale.tr("输入协议")).size(12).color(style::MUTED),
-                            pick_list(
+                            form_select(
                                 protocols,
                                 Some(VoiceProtocol(self.voice.input_protocol())),
                                 |v| Message::VoiceProtocol(v.0)
                             )
                             .width(Length::Fill)
-                            .padding([10, 12])
-                            .text_size(14)
-                            .text_line_height(iced::Pixels(20.))
-                            .style(style::select)
-                            .menu_style(style::menu)
                         ]
                         .spacing(6),
                     )
@@ -638,11 +632,7 @@ impl Details {
                         |v| Message::VoiceField(VoiceField::Recognition, v),
                         self.voice_loaded && !self.voice_busy,
                     ))
-                    .push(
-                        button(text(locale.tr("高级")).size(12))
-                            .style(style::quiet)
-                            .on_press(Message::VoiceAdvanced),
-                    );
+                    .push(text_button(locale.tr("高级")).on_press(Message::VoiceAdvanced));
                 if self.voice_advanced {
                     body = body
                         .push(field(
@@ -669,8 +659,7 @@ impl Details {
                         locale.tr("保存"),
                         (self.voice_loaded && !self.voice_busy)
                             .then_some(Message::VoiceSave(false))
-                    )
-                    .width(80),
+                    ),
                     space::horizontal(),
                     icon_button(
                         Icon::Trash,

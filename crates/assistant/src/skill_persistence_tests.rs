@@ -105,6 +105,134 @@ async fn skill_materialization_failure_retains_committed_edit_and_repairs_on_rea
     .await;
 }
 
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn development_skills_are_searchable_and_readable_offline() {
+    database_case(|app| {
+        Box::pin(async move {
+            crate::builtin_guides::test_files(&app.root);
+            initialize(&app.db, &app.root).await.unwrap();
+            let cancel = tokio_util::sync::CancellationToken::new();
+            let menu = skills(app).await.unwrap().skills;
+            let initial = invoke(app, "skill_list", &json!({}), &cancel)
+                .await
+                .unwrap();
+            let catalog: Vec<_> = menu
+                .iter()
+                .filter(|skill| skill.source == "catalog")
+                .collect();
+            assert!(catalog.iter().any(|skill| skill.id == "interface-copy-layout"));
+            assert!(catalog.iter().all(|skill| !skill.enabled));
+            assert_eq!(
+                initial.as_array().unwrap().len() + catalog.len(),
+                menu.len()
+            );
+            let id = "interface-copy-layout";
+            let dir = app.root.join("data/runtime-skills").join(id);
+            sqlx::query("UPDATE runtime_skills SET source='builtin',enabled=true WHERE id=$1")
+                .bind(id)
+                .execute(&app.db)
+                .await
+                .unwrap();
+            std::fs::create_dir(&dir).unwrap();
+            std::fs::write(dir.join("SKILL.md"), "old projection").unwrap();
+            initialize(&app.db, &app.root).await.unwrap();
+            assert!(!dir.exists());
+            assert!(skill_text(app, id).await.is_err());
+            assert!(skill_reference(app, id, "SKILL.md").await.is_err());
+            let source = &menu.iter().find(|s| s.id == id).unwrap().content;
+            assert!(!skill_import(app, "", source, id).await.unwrap().enabled);
+            assert!(
+                invoke(
+                    app,
+                    "skill_set_enabled",
+                    &json!({"id": id,"enabled":true}),
+                    &cancel
+                )
+                .await
+                .is_err()
+            );
+            let toggle = |id: &str, enabled| {
+                skill_set_enabled(app, wire::SkillUpdateRequest { id: id.into(), enabled, remove: false }, true)
+            };
+            for item in catalog {
+                toggle(&item.id, true).await.unwrap();
+            }
+            initialize(&app.db, &app.root).await.unwrap();
+            assert!(dir.join("SKILL.md").is_file());
+            let list = invoke(app, "skill_list", &json!({}), &cancel)
+                .await
+                .unwrap();
+            let rows = list.as_array().unwrap();
+            let shipped = app.root.join("skills/builtin");
+            assert_eq!(
+                rows.len(),
+                std::fs::read_dir(&shipped)
+                    .unwrap()
+                    .filter_map(Result::ok)
+                    .filter(|e| e.path().is_dir())
+                    .count()
+            );
+            let mut references = 0;
+            for row in rows {
+                let id = row["id"].as_str().unwrap();
+                assert!(row.get("content").is_none());
+                let content = std::fs::read_to_string(shipped.join(id).join("SKILL.md")).unwrap();
+                assert_eq!(row["content_version"], content_version(&content));
+                assert!(skill_text(app, id).await.unwrap().contains(&content));
+                for path in content.lines().filter_map(|line| {
+                    line.split_once("](references/")
+                        .and_then(|(_, file)| file.strip_suffix(')'))
+                }) {
+                    let path = format!("references/{path}");
+                    let reference = skill_reference(app, id, &path).await.unwrap();
+                    assert!(
+                        reference.ends_with(
+                            &std::fs::read_to_string(shipped.join(id).join(path)).unwrap()
+                        )
+                    );
+                    references += 1;
+                }
+            }
+            for (query, id) in [
+                ("营销小字", "interface-copy-layout"),
+                ("POSTGRES", "postgres-patterns"),
+                ("动画", "gsap-core"),
+            ] {
+                let results = invoke(app, "skill_list", &json!({"query":query}), &cancel)
+                    .await
+                    .unwrap();
+                assert!(
+                    results
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|row| row["id"] == id)
+                );
+            }
+            assert!(references > 0);
+            toggle(id, false).await.unwrap();
+            initialize(&app.db, &app.root).await.unwrap();
+            assert!(!dir.exists());
+            assert!(
+                invoke(app, "skill_list", &json!({"query":id}), &cancel)
+                    .await
+                    .unwrap()
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(skill_text(app, "postgres-patterns").await.is_ok());
+            assert!(toggle("phone-use", false).await.is_err());
+            println!(
+                "{} shipped skills; {} enabled by default; {references} offline references; skill_list {} → {} bytes",
+                rows.len(), initial.as_array().unwrap().len(), list.to_string().len(), initial.to_string().len()
+            );
+        })
+    })
+    .await;
+}
+
 #[derive(Clone)]
 enum PostgresReplyFault {
     DropCommitAck(std::sync::Arc<std::sync::atomic::AtomicBool>),

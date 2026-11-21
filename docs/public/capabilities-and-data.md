@@ -16,11 +16,19 @@ The browser and file Skills came from real Android runs and independent review. 
 
 知识库初始为空。操作知识由内置 Skill 提供，用户积累的经验保存在自己的服务器。
 
+## Development and design Skills
+
+Open Skills and select the development or design guides you want to use. Search by name or topic, such as `typography`, `Postgres` or `营销小字`. The Agent finds selected guides through `skill_list(query)` and reads their instructions and references through `skill_read`.
+
+For a form redesign, start with `interface-copy-layout` to decide which labels to keep, align the fields and check the result at a short window height. For a slow query, use `postgres-patterns` to compare plans for the same data and parameters. The library also covers motion, code review, browser verification and creating games and visual assets. The guides and bundled references are available offline.
+
+开发与设计 Skill 默认关闭。在「Skill」里按名称或任务搜索，勾选后 Agent 即可使用。界面审查可选 `interface-copy-layout`，后端和数据库可选 `backend-patterns`、`postgres-patterns`。
+
 ## 数据 / Data
 
 Model keys, revisions, chat, device disks, contacts, channel secrets, memory, attachments and screenshots are private user state. Model API requests necessarily send relevant text/images/tool results to the configured provider; selected channels receive authorized replies and screenshots. [Data and privacy](../../PRIVACY.md)
 
-Android root and Linux sudo apply inside their respective guests. Host actions use the project services and isolated workspace. Device profiles set the model name and display properties.
+Android and Linux share one active Agent and conversation. Android root and Linux sudo apply inside their respective guests. Host desktop control requires enabling it in Settings and authorizing the task. Device profiles set the hardware model and display properties.
 
 ## 使用边界 / Responsible use
 

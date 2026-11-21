@@ -27,10 +27,21 @@ fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 pub(crate) async fn process(
+    command: Command,
+    input: Vec<u8>,
+    limit: usize,
+    seconds: u64,
+) -> Result<Vec<u8>> {
+    process_output(command, input, limit, seconds, None).await
+}
+type InputReceipt<'a> = (&'a App, Uuid, Uuid);
+
+async fn process_output(
     mut command: Command,
     input: Vec<u8>,
     limit: usize,
     seconds: u64,
+    receipt: Option<InputReceipt<'_>>,
 ) -> Result<Vec<u8>> {
     command
         .stdin(std::process::Stdio::piped())
@@ -39,7 +50,7 @@ pub(crate) async fn process(
         .kill_on_drop(true);
     let mut child = command.spawn().map_err(|e| e.to_string())?;
     let mut stdin = child.stdin.take().unwrap();
-    let stdout = child.stdout.take().unwrap();
+    let mut stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
     let work = async {
         let write = async {
@@ -49,6 +60,22 @@ pub(crate) async fn process(
         };
         let read = async {
             let mut data = vec![];
+            if let Some((app, run, action)) = receipt {
+                let expected = wire::DesktopInputReceipt {
+                    action_id: action.to_string(),
+                }
+                .encode_length_delimited_to_vec();
+                (&mut stdout)
+                    .take(expected.len() as u64)
+                    .read_to_end(&mut data)
+                    .await?;
+                if data == expected {
+                    data.clear();
+                    if let Err(e) = crate::worker::acknowledge_input(app, run, action).await {
+                        eprintln!("Desktop input receipt {action}: {e}");
+                    }
+                }
+            }
             stdout
                 .take((limit + 1) as u64)
                 .read_to_end(&mut data)
@@ -90,21 +117,26 @@ pub(crate) async fn process(
         .await
         .map_err(|_| "操作超时，结果可能未知，请先观察或核对文件".to_string())?
 }
-async fn helper_bytes(op: &str, args: Value) -> Result<Vec<u8>> {
+async fn helper_bytes(op: &str, args: Value, receipt: Option<InputReceipt<'_>>) -> Result<Vec<u8>> {
     let c = ai_phone_host_runtime::desktop_bridge::operation(&[op]).map_err(|e| e.to_string())?;
-    process(
+    process_output(
         c,
         args.to_string().into_bytes(),
         12 * 1024 * 1024,
         if op == "run" { 95 } else { 15 },
+        receipt,
     )
     .await
 }
-async fn helper(op: &str, args: Value) -> Result<Value> {
-    serde_json::from_slice(&helper_bytes(op, args).await?).map_err(|e| e.to_string())
+pub(crate) async fn helper(op: &str, args: Value) -> Result<Value> {
+    serde_json::from_slice(&helper_bytes(op, args, None).await?).map_err(|e| e.to_string())
 }
-async fn helper_frame(op: &str, args: Value) -> Result<wire::DesktopBridgeFrame> {
-    let bytes = helper_bytes(op, args).await?;
+async fn helper_frame(
+    op: &str,
+    args: Value,
+    receipt: Option<InputReceipt<'_>>,
+) -> Result<wire::DesktopBridgeFrame> {
+    let bytes = helper_bytes(op, args, receipt).await?;
     let frame = wire::DesktopBridgeFrame::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
     if frame.png.is_empty() {
         return Err("电脑没有返回画面".into());
@@ -121,7 +153,7 @@ pub(crate) async fn notification_feed(
     include_window: bool,
 ) -> Result<(
     wire::PhoneNotificationList,
-    Option<(u32, u32, String, String)>,
+    Option<crate::proactive::screen_attention::Sample>,
 )> {
     available(app, device).await?;
     let value = helper("notifications", json!({"include_window":include_window})).await?;
@@ -295,7 +327,7 @@ pub async fn observe(
     take: bool,
 ) -> Result<wire::DesktopObservation> {
     let epoch = control(app, device, run, take).await?;
-    let frame = helper_frame("observe", json!({})).await?;
+    let frame = helper_frame("observe", json!({}), None).await?;
     save_observation(app, device, epoch, frame).await
 }
 fn validate_pointer(r: &wire::DesktopActionRequest) -> Result<()> {
@@ -550,7 +582,7 @@ pub async fn action(
     let receipt_only = run.is_none() && !r.wait_for_paint && r.kind != "text";
     let result = if receipt_only {
         input["receipt_only"] = json!(true);
-        helper_bytes("action", input)
+        helper_bytes("action", input, None)
             .await
             .map(|_| wire::DesktopObservation {
                 device_id: r.device_id.clone(),
@@ -558,7 +590,10 @@ pub async fn action(
                 ..Default::default()
             })
     } else {
-        match helper_frame("action", input).await {
+        if run.is_some() {
+            input["report_input"] = true.into();
+        }
+        match helper_frame("action", input, run.map(|run| (app, run, id))).await {
             Ok(frame) => save_observation(app, &r.device_id, r.epoch as i64, frame).await,
             Err(e) => Err(e),
         }
@@ -1111,8 +1146,38 @@ pub async fn route(
     .await;
     result.unwrap_or_else(|e| error(StatusCode::CONFLICT, "device_operation", &e))
 }
-fn blocks(o: wire::DesktopObservation) -> Value {
-    json!([{"type":"input_text","text":observation_meta(&o).to_string()},{"type":"input_image","image_url":format!("data:image/png;base64,{}",STANDARD.encode(o.png))}])
+fn blocks(o: wire::DesktopObservation, meta: Value) -> Value {
+    json!([{"type":"input_text","text":meta.to_string()},{"type":"input_image","image_url":format!("data:image/png;base64,{}",STANDARD.encode(o.png))}])
+}
+async fn open_document_path(app: &App, o: &wire::DesktopObservation) -> Option<String> {
+    let title = o.title.trim_start_matches('*').trim_start();
+    let file = title.split_once(" — ").map_or(title, |(name, _)| name);
+    if o.process_id == 0 || std::path::Path::new(file).extension().is_none() {
+        return None;
+    }
+    let directory = format!("/proc/{}/fd", o.process_id);
+    let mut command = ai_phone_host_runtime::desktop_bridge::administration(
+        &app.root,
+        &["/usr/sbin/runuser", "-u", "ai", "--", "find", &directory],
+    )
+    .ok()?;
+    command.args([
+        "-maxdepth",
+        "1",
+        "-type",
+        "l",
+        "-xtype",
+        "f",
+        "-printf",
+        "%l\\0",
+    ]);
+    let links = process(command, vec![], 64 * 1024, 2).await.ok()?;
+    let mut matches = links
+        .split(|b| *b == 0)
+        .filter_map(|link| std::str::from_utf8(link).ok())
+        .filter(|link| link.starts_with('/') && link.rsplit('/').next() == Some(file));
+    let path = matches.next()?;
+    matches.all(|other| other == path).then(|| path.to_owned())
 }
 fn plain(value: Value) -> Value {
     json!([{"type":"input_text","text":value.to_string()}])
@@ -1234,9 +1299,14 @@ pub async fn tool(app: &App, run: Uuid, call: &Value, args: &Value) -> Result<Va
         if source.as_ref().is_some_and(|(_, manual)| *manual) {
             return Err("用户正在操作电脑，画面检查已跳过。".into());
         }
-        return Ok(blocks(
-            observe(app, device, Some(run), source.is_none()).await?,
-        ));
+        let observed = observe(app, device, Some(run), source.is_none()).await?;
+        let mut meta = observation_meta(&observed);
+        if source.is_none()
+            && let Some(path) = open_document_path(app, &observed).await
+        {
+            meta["document_path"] = json!(path);
+        }
+        return Ok(blocks(observed, meta));
     }
     if name == "computer_run" {
         control(app, device, Some(run), true).await?;
@@ -1299,8 +1369,34 @@ async fn tool_action(
         wait_for_paint: true,
         replace: args["replace"].as_bool().unwrap_or(false),
     };
+    let file = if name == "computer_key"
+        && let Some(path) = args["reply_file"].as_str()
+    {
+        file_authorized(app, run, device).await?;
+        Some((
+            path,
+            crate::files::desktop_file_version(path, None)
+                .await?
+                .unwrap_or_default(),
+        ))
+    } else {
+        None
+    };
     match action(app, r, Some(run)).await {
-        Ok(observation) => Ok(blocks(observation)),
+        Ok(observation) => {
+            let mut meta = observation_meta(&observation);
+            if let Some((path, before)) = file {
+                match crate::files::desktop_file_version(path, Some(&before)).await {
+                    Ok(Some(_)) => meta["saved_file"] = json!(path),
+                    Ok(None) => {
+                        meta["file_feedback"] =
+                            json!("已发送按键，尚未检测到该文件写入。请检查当前画面和文件。")
+                    }
+                    Err(error) => meta["file_feedback"] = json!(error),
+                }
+            }
+            Ok(blocks(observation, meta))
+        }
         Err(error) => input_rejection(&error).map(plain).ok_or(error),
     }
 }
@@ -1331,10 +1427,10 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "device_location_set",
-            "本任务获准控制全部受影响设备时可启用和调整模拟位置。先读取device_location_state，使用返回的revision作为expected_revision。point用指定模拟坐标启用静态位置；route启用路线并指定模拟路线点、speed_kph和repeat；pause暂停当前路线。坐标只用于客体模拟，不查询真实位置。",
+            "先读取device_location_state，把revision传入expected_revision。point设置设备模拟坐标，route按路线、speed_kph和repeat移动，pause暂停路线，off关闭模拟并恢复设备定位。",
             json!({
                 "expected_revision":{"type":"integer","minimum":0},
-                "mode":{"type":"string","enum":["point","route","pause"]},
+                "mode":{"type":"string","enum":["point","route","pause","off"]},
                 "point":coordinate,
                 "route":{"type":"array","minItems":2,"maxItems":200,"items":coordinate},
                 "speed_kph":{"type":"number","minimum":0.5,"maximum":500},
@@ -1350,13 +1446,13 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "device_file_manage",
-            "批量管理文件。sources和target含device_id/path；空device_id为工作文件，非空设备须有本任务的控制授权。目标是目录，name为空沿用文件名。跨设备需device_link；向另一Agent设备交接共享文件用device_transfer。不覆盖已有文件；文件到达不代表社交软件发送成功。",
+            "批量管理文件。sources和target含device_id/path；空device_id为工作文件，非空设备须有本任务的控制授权。目标是目录，name为空沿用文件名。跨设备需device_link；向已连接设备的共享目录交付文件用device_transfer。不覆盖已有文件；文件到达不代表社交软件发送成功。",
             json!({"operation":{"type":"string","enum":["copy","move","delete","mkdir","rename"]},"sources":{"type":"array","items":location},"target":location,"name":id}),
             vec!["operation", "sources", "target", "name"],
         ),
         function(
             "device_message",
-            "向已连线的另一设备Agent交接一项工作，包含预期结果和已核对的文件路径。对方空闲时自动唤醒；可用task_wait让出运行，返回结果会唤醒原任务。排队不是完成。",
+            "向已连接设备交接任务，写明结果要求和实际文件路径。task_wait 可等待回执，交接完成会唤醒原任务。",
             json!({"source_device_id":id,"target_device_id":id,"text":id}),
             vec!["source_device_id", "target_device_id", "text"],
         ),
@@ -1393,7 +1489,8 @@ pub fn catalog() -> Vec<Value> {
         function(
             "computer_click",
             "点击当前电脑画面中的目标；双击clicks=2，右键button=3。动作后自动返回新截图。",
-            json!({"device_id":id,"observation_id":id,"x":num,"y":num,"button":num,"clicks":num}),
+            json!({"device_id":id,"observation_id":id,"x":num,"y":num,"button":num,"clicks":num,
+                "finish":{"type":"boolean","description":"最后一步填 true，由核验读回原任务要求的结果。"}}),
             vec!["device_id", "observation_id", "x", "y"],
         ),
         function(
@@ -1405,7 +1502,7 @@ pub fn catalog() -> Vec<Value> {
         function(
             "computer_key",
             "发送Linux按键，如Return、ctrl+l、ctrl+s、Alt+F4。不能替代观察。",
-            json!({"device_id":id,"observation_id":id,"key":id}),
+            json!({"device_id":id,"observation_id":id,"key":id,"reply_file":{"type":"string","description":"本键为最后保存操作且需将文件附到当前对话时，填写观察返回的 document_path 或已确认的目标绝对路径。系统会读回保存件和画面。"}}),
             vec!["device_id", "observation_id", "key"],
         ),
         function(
@@ -1434,7 +1531,7 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "device_link",
-            "连接或断开主人已安装的手机与电脑，本任务至少控制一端。文件通道不改变GUI控制归属；另一Agent的设备用device_message交接。",
+            "连接或断开主人已安装的手机与电脑，本任务至少控制一端。GUI 操作仍需对应设备的控制权限。",
             json!({"source_device_id":id,"target_device_id":id,"connected":{"type":"boolean"}}),
             vec!["source_device_id", "target_device_id", "connected"],
         ),
@@ -1535,7 +1632,7 @@ async fn install(app: &App, id: Uuid) -> Result<()> {
     .await?;
     install_step(app, id, "验证画面与控制").await?;
     for attempt in 1..=30 {
-        match helper_frame("observe", json!({})).await {
+        match helper_frame("observe", json!({}), None).await {
             Ok(_) => break,
             Err(error) if attempt == 30 => return Err(format!("桌面没有返回可验证画面 · {error}")),
             Err(_) => tokio::time::sleep(Duration::from_secs(1)).await,
