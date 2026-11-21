@@ -2,7 +2,6 @@ use crate::{
     Message,
     connection::{DeviceInput, Frame, Press},
     layout::Layout,
-    modes::MicrophoneLevels,
     style,
 };
 use ai_phone_api::wire;
@@ -23,7 +22,6 @@ pub struct Scene {
     pub popup_opacity: f32,
     pub child_popup: Rectangle,
     pub child_popup_opacity: f32,
-    pub microphone: MicrophoneLevels,
     pub mode_effects: [f32; 4],
     pub mode_motion: [f32; 4],
     pub keyboard_target: Option<usize>,
@@ -453,7 +451,6 @@ impl shader::Program<Message> for Scene {
                 mode_effects: self.mode_effects,
                 mode_motion: self.mode_motion,
                 agent_pointers: self.agent_pointers,
-                microphone: self.microphone,
             },
             frames: self.frames.clone(),
         }
@@ -489,7 +486,6 @@ pub struct Uniforms {
     mode_effects: [f32; 4],
     mode_motion: [f32; 4],
     agent_pointers: [[[f32; 4]; 5]; 2],
-    microphone: MicrophoneLevels,
 }
 
 #[derive(PartialEq)]
@@ -501,8 +497,6 @@ struct BackdropKey {
     background: [f32; 3],
     blur: f32,
     goal: f32,
-    voice_scale: f32,
-    microphone: MicrophoneLevels,
     pointers: [[[f32; 3]; 5]; 2],
     sequences: [u64; 2],
 }
@@ -518,13 +512,7 @@ impl BackdropKey {
             radii_and_clip: scene.radii_and_clip,
             background: [red, green, blue],
             blur: scene.material[2],
-            goal: if scene.mode_effects[3] > 0. {
-                0.
-            } else {
-                scene.mode_effects[2]
-            },
-            voice_scale: scene.mode_effects[3],
-            microphone: scene.microphone,
+            goal: scene.mode_effects[2],
             pointers: scene.agent_pointers.map(|device| {
                 device.map(|[x, y, opacity, _]| {
                     if opacity > 0. {
@@ -831,7 +819,6 @@ impl shader::Primitive for Primitive {
                 }
             }
         }
-        let copilot_active = self.uniforms.mode_effects[3] > 0.;
         if resized {
             pipeline.group = Pipeline::group(
                 device,
@@ -840,12 +827,6 @@ impl shader::Primitive for Primitive {
                 &pipeline.textures,
                 &pipeline.sampler,
             );
-        }
-        let needs_glass = !copilot_active
-            || (self.uniforms.popup[2] > 0. && self.uniforms.size[3] > 0.)
-            || self.uniforms.child_popup[2] > 0.;
-        if !needs_glass {
-            return;
         }
         let backdrop = BackdropKey::new(&self.uniforms, pipeline.sequences);
         if pipeline.glass_key.as_ref() == Some(&backdrop) {

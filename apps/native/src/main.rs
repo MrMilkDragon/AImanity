@@ -48,7 +48,7 @@ use std::{
 const APP_ID: &str = "dev.aimanity.native";
 const SETUP_SIZE: Size = Size::new(680., 600.);
 const WORKBENCH_ASPECT: Size = Size::new(8., 5.);
-const WORKBENCH: Size = Size::new(1440., 900.);
+use layout::WORKBENCH;
 const WORKBENCH_MIN: Size = Size::new(960., 600.);
 const DESKTOP_DOUBLE_CLICK: Duration = Duration::from_millis(320);
 
@@ -835,6 +835,9 @@ impl App {
             Message::Conversation(chat::Message::Todos(click)) => {
                 return self.update(Message::OpenPanel(Panel::Todos, click));
             }
+            Message::Conversation(chat::Message::Goal(click)) => {
+                return self.update(Message::OpenPanel(Panel::Goal, click));
+            }
             Message::Todos(message) => {
                 if let Some(client) = &self.connection {
                     let before = self.todos.rows_height();
@@ -856,7 +859,7 @@ impl App {
                     self.keyboard_target = None;
                     self.input_started = Some(Instant::now());
                 }
-                if matches!(message, chat::Message::Attachment(_)) {
+                if matches!(message, chat::Message::Pick | chat::Message::Attachment(_)) {
                     self.set_popup(false);
                     self.pinned = false;
                     self.keyboard_target = None;
@@ -1203,11 +1206,7 @@ impl App {
                 return platform::content_size(id).map(Message::Viewport);
             }
             Message::Viewport(size) if size.width > 0. && size.height > 0. => {
-                self.ui_scale = (size.width / WORKBENCH.width).min(size.height / WORKBENCH.height);
-                self.canvas_origin = iced::Vector::new(
-                    ((size.width / self.ui_scale - WORKBENCH.width) * 0.5).max(0.),
-                    ((size.height / self.ui_scale - WORKBENCH.height) * 0.5).max(0.),
-                );
+                (self.ui_scale, self.canvas_origin) = layout::fit_workbench(size);
             }
             Message::Event(Event::Window(window::Event::Focused)) => {
                 self.reduced_motion = platform::reduced_motion();
@@ -1570,7 +1569,7 @@ impl App {
     }
     fn panel_bounds(&self, size: Size) -> Rectangle {
         let anchor = self.panel_anchor(self.panel);
-        if self.panel != Panel::Todos {
+        if !matches!(self.panel, Panel::Todos | Panel::Goal) {
             return surface::tool_rect(WORKBENCH, anchor, size, false);
         }
         let height = size.height.min(anchor.y - 26.);
@@ -1584,25 +1583,29 @@ impl App {
             Size::new(size.width, height),
         )
     }
-    const NAV_PANELS: [Panel; 8] = [
+    const NAV_PANELS: [Panel; 7] = [
         Panel::Language,
         Panel::Skills,
         Panel::Location,
         Panel::Proxy,
         Panel::Knowledge,
         Panel::Files,
-        Panel::Goal,
         Panel::Agent,
     ];
     fn panel_anchor(&self, panel: Panel) -> Rectangle {
-        if panel == Panel::Todos {
+        if matches!(panel, Panel::Todos | Panel::Goal) {
             let chat = self.layout.chat;
             let [vertical, horizontal] = layout::CHAT_PADDING;
             let size = style::CONTROL_HEIGHT;
+            let goal_offset = if panel == Panel::Goal {
+                size + chat::COMPOSER_ACTION_GAP
+            } else {
+                0.
+            };
             return Rectangle::new(
                 iced::Point::new(
-                    chat.x + horizontal + 12.,
-                    chat.y + chat.height - vertical - 12. - size,
+                    chat.x + horizontal + chat::COMPOSER_PADDING.left + goal_offset,
+                    chat.y + chat.height - vertical - chat::COMPOSER_PADDING.bottom - size,
                 ),
                 Size::new(size, size),
             );
@@ -1641,6 +1644,9 @@ impl App {
     }
     fn within_panel_corridor(&self, position: iced::Point) -> bool {
         let anchor = self.panel_anchor(self.panel);
+        if matches!(self.panel, Panel::Todos | Panel::Goal) && position.y >= anchor.y {
+            return anchor.contains(position);
+        }
         let panel = self.popup_rect();
         let left = anchor.x.min(panel.x);
         let right = (anchor.x + anchor.width).max(panel.x + panel.width);
@@ -2222,7 +2228,7 @@ impl App {
         use controls::{Icon, sized_icon_button};
         let popup = self.popup_rect();
         let child_popup = self.child_rect();
-        let (mode_effects, mode_motion, microphone) = self.modes.effects(self.reduced_motion);
+        let (mode_effects, mode_motion) = self.modes.effects(self.reduced_motion);
         let scene = scene::Scene {
             layout: self.layout,
             size: WORKBENCH,
@@ -2245,7 +2251,6 @@ impl App {
                 }),
             mode_effects,
             mode_motion,
-            microphone,
             keyboard_target: self.keyboard_target,
             agent_pointers: std::array::from_fn(|i| {
                 self.agent_traces[i]
@@ -2304,8 +2309,7 @@ impl App {
                 Panel::Proxy => (Icon::Network, self.proxy.enabled()),
                 Panel::Knowledge => (Icon::Book, false),
                 Panel::Files => (Icon::Folder, false),
-                Panel::Goal => (Icon::Target, self.modes.goal_active()),
-                Panel::Capture(_) | Panel::Update | Panel::Todos => unreachable!(),
+                Panel::Capture(_) | Panel::Update | Panel::Todos | Panel::Goal => unreachable!(),
             };
             let click = self
                 .connection

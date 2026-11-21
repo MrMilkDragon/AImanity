@@ -436,11 +436,12 @@ pub async fn verify(
     } else {
         "只按本轮工具回执、截图和用户目标核验。动作、数量、界面事实及交付均有证据才通过；缺证时直接指出下一步。文件传输认设备回执，外发认原应用记录。通知预览、发送记录与对方确认分别核对。经验的步骤和适用范围由操作前后证据支持。截图归档后缺证就重新观察。反馈只写可核对的结论，不含凭据。"
     };
-    let body = json!({"input":[
+    let mut body = json!({"input":[
         {"role":"system","content":[{"type":"input_text","text":instructions}]},
-        {"role":"user","content":audit_input}
+        {"role":"user"}
     ],"tools":[tool],"tool_choice":{"type":"function","name":"audit_result"},"parallel_tool_calls":false,
         "reasoning":{"effort":"none"},"max_output_tokens":if compact {192} else {1200},"stream":false,"store":false});
+    body["input"][1]["content"] = Value::Array(audit_input);
 
     let audit = async {
         let config = crate::settings::for_run(app, run).await?;

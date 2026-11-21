@@ -2,6 +2,12 @@
 
 See [release status](release-status.md) for downloads and platform requirements.
 
+## Europium 0.0.5
+
+Finish the native workbench and audit device actions, interruptions, recovery and response time against 0.0.4. Build installers after the application code is complete. Verify clean installation and in-app updates with existing devices, profiles and conversations before publishing.
+
+Linux targets Debian and Red Hat distributions. Android, iPhone and iPad are research targets for running both guests locally. The mobile workbench uses the same landscape canvas scaled to the available screen. Hardware qualification and measured performance determine availability.
+
 ## Complete local installation
 
 - Include clean Android and Linux baselines, matching emulators, prebuilt services and their execution environments in each distribution.

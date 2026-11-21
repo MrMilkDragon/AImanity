@@ -323,8 +323,8 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 55757,
-      "sha256": "329fd878d0070e38da136d1913e19630232cd2d4fdc934049d6839919dea3375"
+      "size": 56849,
+      "sha256": "eb32cbad92d244d0f33eb7ef89a64acf3a84d7a9f1f1a44ae5f0951e386b759d"
     },
     {
       "path": "apps/native/src/connection.rs",
@@ -378,8 +378,8 @@
     },
     {
       "path": "apps/native/src/layout.rs",
-      "size": 8651,
-      "sha256": "54df52c5702ad2b663334ec79f19dd2986b89661aaa8c70a78f141e5fcc4f182"
+      "size": 9052,
+      "sha256": "b72d0d65640e3b02b31e37171ffe657f9432dff315448ba7ef340b7725ee7037"
     },
     {
       "path": "apps/native/src/loading.rs",
@@ -398,13 +398,13 @@
     },
     {
       "path": "apps/native/src/main.rs",
-      "size": 104863,
-      "sha256": "5c6f302f7f6037c5210541257db7c5ac24a20ee992432bd6ca871293a8fe1f95"
+      "size": 105052,
+      "sha256": "4f5105b64a769c78e83b8f0b390c071ab54480d4f610a1ac640570f29a231f1b"
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
-      "size": 12463,
-      "sha256": "6a66a3485192300ce77942048209a04d8371f8679d03ae8395c8030ff0c0896a"
+      "size": 12215,
+      "sha256": "43b20ba9b71776fd82c7797239196f226868f4337b9267019db0ab50d8f0e4af"
     },
     {
       "path": "apps/native/src/modes/speech/speaker.rs",
@@ -417,9 +417,14 @@
       "sha256": "44d59e6ab0adf88743f70ac94e0666dc6039d64dc3acadcc6b73d402b2be92df"
     },
     {
+      "path": "apps/native/src/modes/voice_particles.rs",
+      "size": 5978,
+      "sha256": "05117f3a4e7474fa37890dfa6b629137f8429a19f8919a749190fdf44dd69095"
+    },
+    {
       "path": "apps/native/src/modes.rs",
-      "size": 18001,
-      "sha256": "1b869ffd5b8ddf1f4714363d784c5e0c027e7c423ba9a92149a8a3f26e4dade7"
+      "size": 18344,
+      "sha256": "5b5778a66f3a5a59d7ddca6356cd306c3c4ae9da8ef28b193ce3cf1144014f81"
     },
     {
       "path": "apps/native/src/occlude.rs",
@@ -438,13 +443,13 @@
     },
     {
       "path": "apps/native/src/scene.rs",
-      "size": 33396,
-      "sha256": "53be9e73cf6f349e27d45c36f206f1e4679a9c32995f565b880e8b6b0cc60598"
+      "size": 32714,
+      "sha256": "f1eb5c3feb090746b463fa0fa012642e58665f8d4fd6602883bc1073f643e594"
     },
     {
       "path": "apps/native/src/scene.wgsl",
-      "size": 12837,
-      "sha256": "0f1aef7e80044c15ef3e12e88570311f945e372c06f307fd99ec7efb618b1628"
+      "size": 11587,
+      "sha256": "8528b736bae692cde02f26b8cfae041ffeca964b88c19337f8000c7107a65464"
     },
     {
       "path": "apps/native/src/skills.rs",
@@ -1138,8 +1143,8 @@
     },
     {
       "path": "crates/assistant/src/completion_audit.rs",
-      "size": 50522,
-      "sha256": "0481afb71d11173a80b7f127caa11c0aa7d7aa997870cc752d90ed4aa3491f5a"
+      "size": 50565,
+      "sha256": "fa9f9a2d39551f61962b5cfbf64288221b846dd1db22c93a4ff8c9b529a82919"
     },
     {
       "path": "crates/assistant/src/database/bootstrap.rs",
@@ -1518,8 +1523,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 263720,
-      "sha256": "fd8ad916e70ffe0f89ee9e0e876a9c9718a3e1376d425811cfa3353dba6bfd30"
+      "size": 263773,
+      "sha256": "d57a54f658f91b69dae505e9b61748a1871250b390b10d54b9f9ce6b8abef43b"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -2518,8 +2523,8 @@
     },
     {
       "path": "docs/public/copilot-voice.md",
-      "size": 2347,
-      "sha256": "0d9994428778ef1b022ff61a2ce1ccbec403557cb5f07a83978821a57f0e5868"
+      "size": 2620,
+      "sha256": "b5d66e52151cc967be5fd79aff73870245ce4d09fd36144fcb418847df3b786a"
     },
     {
       "path": "docs/public/database-roles.md",
@@ -2658,8 +2663,8 @@
     },
     {
       "path": "docs/public/getting-started.zh-CN.md",
-      "size": 3653,
-      "sha256": "6c130a47765aff476e4d18956a6911dfb36f3ce5403c9ed28896bec6058f5f22"
+      "size": 3662,
+      "sha256": "8f182af1c75516ce88edc6a796e4faa990afa3be866d0c543aaf2b902784c045"
     },
     {
       "path": "docs/public/index.md",
@@ -3138,13 +3143,13 @@
     },
     {
       "path": "docs/public/native-client.en.md",
-      "size": 3895,
-      "sha256": "20506c82d347d9479415f48ed1bbef0a21ea0a994161879829ab202ccd34b7f1"
+      "size": 3952,
+      "sha256": "04915afabc5573094ea25c1c7a5151313d48afdd1ab10b646fe1e83c7acb3682"
     },
     {
       "path": "docs/public/native-client.zh-CN.md",
-      "size": 3347,
-      "sha256": "c1ea0b03574cdfbcf4bc75c90c8e3067cdfa718ea42ef907e0e121c4e816f2a4"
+      "size": 3404,
+      "sha256": "bdb2fa530f4c2d407c5088c2d6c808a77fe356d0963ed518a475124dc788caff"
     },
     {
       "path": "docs/public/native-services-license-inventory.json",
@@ -3213,13 +3218,13 @@
     },
     {
       "path": "docs/public/release-roadmap.en.md",
-      "size": 3910,
-      "sha256": "21a5fe118d63ba59fd3dfac8ca6ad40d8564f7deb3c5f145e92de385112b9c4b"
+      "size": 4496,
+      "sha256": "8b5fb312daae92ba0dfaf78f1d46736bcdd35932d4526792408bc92e49afdbfc"
     },
     {
       "path": "docs/public/release-roadmap.zh-CN.md",
-      "size": 3190,
-      "sha256": "f30069ca169621654a88d46beaa81c21f56491b7c7ac571e11786933753caeca"
+      "size": 3671,
+      "sha256": "2f03ce0475b7e4ac899be31ac8e944879c3bf6150117d7243f7c6f406545ea30"
     },
     {
       "path": "docs/public/release-status.md",

@@ -1,5 +1,16 @@
 use iced::{Point, Rectangle, Size};
 
+pub const WORKBENCH: Size = Size::new(1440., 900.);
+
+pub fn fit_workbench(window: Size) -> (f32, iced::Vector) {
+    let scale = (window.width / WORKBENCH.width).min(window.height / WORKBENCH.height);
+    let origin = iced::Vector::new(
+        ((window.width / scale - WORKBENCH.width) * 0.5).max(0.),
+        ((window.height / scale - WORKBENCH.height) * 0.5).max(0.),
+    );
+    (scale, origin)
+}
+
 const PERSPECTIVE: f32 = 1800.;
 pub const STAGE_TOP: f32 = 60.;
 pub const SIDE_INSET: f32 = 24.;

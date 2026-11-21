@@ -20,9 +20,18 @@ use std::{
     sync::Arc,
 };
 
+pub const COMPOSER_PADDING: iced::Padding = iced::Padding {
+    top: 12.,
+    right: 12.,
+    bottom: 16.,
+    left: 12.,
+};
+pub const COMPOSER_ACTION_GAP: f32 = 4.;
+
 #[derive(Clone, Debug)]
 pub enum Message {
     Todos(bool),
+    Goal(bool),
     HostToggle,
     HostAllow,
     HostGranted(Result<(), String>),
@@ -391,7 +400,7 @@ impl Chat {
                 self.display_after = self.state.messages.last().map(|m| m.ordinal);
                 self.following = true;
             }
-            Message::Mode(_) | Message::Todos(_) => {}
+            Message::Mode(_) | Message::Todos(_) | Message::Goal(_) => {}
             Message::Edit(action) => self.draft.perform(action),
             Message::Send => {
                 if !self.can_send() {
@@ -1146,25 +1155,36 @@ impl Chat {
                 .into(),
             ),
         };
+        let panel_button = |icon: Icon, active: bool, open: fn(bool) -> Message| {
+            iced::widget::mouse_area(
+                button(container(icon.view()).center(Length::Fill))
+                    .width(style::CONTROL_HEIGHT)
+                    .height(style::CONTROL_HEIGHT)
+                    .padding(0)
+                    .style(move |theme, status| {
+                        let mut button = style::quiet(theme, status);
+                        if active {
+                            button.background = Some(style::ACCENT.into());
+                        }
+                        button
+                    })
+                    .on_press(open(true)),
+            )
+            .on_enter(open(false))
+        };
         let actions = row![
             row![
-                iced::widget::mouse_area(icon_button(Icon::Todos, Some(Message::Todos(true))))
-                    .on_enter(Message::Todos(false)),
+                panel_button(Icon::Todos, false, Message::Todos),
+                panel_button(Icon::Target, modes.goal_active(), Message::Goal),
                 icon_button(Icon::Paperclip, Some(Message::Pick)),
             ]
             .extend(host_button)
             .push(modes.liberty_button().map(Message::Mode))
-            .spacing(4)
+            .spacing(COMPOSER_ACTION_GAP)
             .align_y(iced::Center),
-            container(
-                right_actions
-                    .push(submit)
-                    .wrap()
-                    .align_x(iced::alignment::Horizontal::Right)
-                    .vertical_spacing(6),
-            )
-            .width(Length::Fill)
-            .align_x(iced::Right),
+            container(right_actions.push(submit),)
+                .width(Length::Fill)
+                .align_x(iced::Right),
         ]
         .spacing(4)
         .align_y(iced::Center);
@@ -1205,17 +1225,24 @@ impl Chat {
                 .id("shared-chat")
                 .on_scroll(|v| Message::Scroll(v.relative_offset().y > 0.98))
                 .height(Length::Fill),
-            container(composer.spacing(8))
-                .padding(12)
-                .style(move |_| container::Style {
-                    background: Some(iced::Color::WHITE.into()),
-                    border: iced::Border {
-                        color: iced::Color::from_rgb8(222, 222, 222),
-                        width: 1.,
-                        radius: style::PANEL_RADIUS.into()
-                    },
-                    ..Default::default()
-                }),
+            container(
+                stack![container(composer.spacing(8)).padding(COMPOSER_PADDING)].push_under(
+                    container(
+                        modes.voice_strip(self.state.run_status == "running", reduced_motion)
+                    )
+                    .align_bottom(Length::Fill)
+                    .padding(iced::Padding::ZERO.left(8.).right(8.).bottom(1.))
+                )
+            )
+            .style(move |_| container::Style {
+                background: Some(iced::Color::WHITE.into()),
+                border: iced::Border {
+                    color: iced::Color::from_rgb8(222, 222, 222),
+                    width: 1.,
+                    radius: style::PANEL_RADIUS.into()
+                },
+                ..Default::default()
+            }),
         ]
         .into()
     }

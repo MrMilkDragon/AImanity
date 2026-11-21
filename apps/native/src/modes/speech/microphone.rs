@@ -18,6 +18,7 @@ use tokio::sync::watch;
 
 const RATE: u32 = 16_000;
 const FRAME: usize = RATE as usize / 50;
+const MIN_VOICE_RMS: f32 = 0.008;
 
 pub fn events(
     model: PathBuf,
@@ -147,26 +148,14 @@ type Frame = [i16; FRAME];
 type Sender = mpsc::SyncSender<Result<(Frame, f32), String>>;
 
 fn measure(frame: &Frame, levels: &watch::Sender<MicrophoneLevels>) -> f32 {
-    let (mut high, mut low, mut power) = (0_i16, 0_i16, 0_f32);
-    for &sample in frame {
-        high = high.max(sample);
-        low = low.min(sample);
-        power += f32::from(sample).powi(2);
-    }
+    let power: f32 = frame.iter().map(|&sample| f32::from(sample).powi(2)).sum();
     let rms = (power / FRAME as f32).sqrt() / 32768.;
-    let encode = |unit: f32| (unit.sqrt() * 255.).round() as u8;
-    let point = if rms < 0.0025 {
+    let point = if rms <= MIN_VOICE_RMS {
         0
     } else {
-        u32::from_le_bytes([
-            encode(f32::from(high) / 32768.),
-            encode(-f32::from(low) / 32768.),
-            encode(rms),
-            0,
-        ])
+        (rms.sqrt() * 255.).round() as u8
     };
-    levels.send_if_modified(|history| {
-        let bins = history.as_flattened_mut();
+    levels.send_if_modified(|bins| {
         if bins.iter().all(|&bin| bin == point) {
             return false;
         }
@@ -261,7 +250,7 @@ impl Segment {
         level: f32,
         decoder: &mut LocalSpeech,
     ) -> Result<Option<Event>, String> {
-        let voiced = level > (self.floor * 3.).max(0.008);
+        let voiced = level > (self.floor * 3.).max(MIN_VOICE_RMS);
         if voiced {
             self.quiet = 0;
             self.voice += FRAME;
@@ -336,6 +325,10 @@ mod tests {
         let (levels, mut updates) = watch::channel(MicrophoneLevels::default());
         let silence = [0; FRAME];
         assert_eq!(measure(&silence, &levels), 0.);
+        for peak in [120_i16, 180, 250] {
+            let room_noise = std::array::from_fn(|i| if i % 2 == 0 { peak } else { -peak });
+            assert!(measure(&room_noise, &levels) < MIN_VOICE_RMS);
+        }
         assert!(!updates.has_changed().unwrap());
         let quiet = std::array::from_fn(|i| if i % 2 == 0 { 1024 } else { -512 });
         let loud = quiet.map(|sample| sample * 8);
@@ -344,13 +337,11 @@ mod tests {
         assert!((loud_rms / soft_rms - 8.).abs() < 0.001);
         {
             let history = updates.borrow_and_update();
-            let bins = history.as_flattened();
-            let soft = bins[bins.len() - 2].to_le_bytes();
-            let loud = bins[bins.len() - 1].to_le_bytes();
-            assert!(loud[0] > loud[1]);
-            assert!((0..3).all(|i| soft[i] > 0 && loud[i] > soft[i]));
+            let soft = history[history.len() - 2];
+            let loud = history[history.len() - 1];
+            assert!(loud > soft && soft > 0);
         }
-        for _ in 0..MicrophoneLevels::default().as_flattened().len() {
+        for _ in 0..MicrophoneLevels::default().len() {
             measure(&silence, &levels);
         }
         assert_eq!(*updates.borrow_and_update(), MicrophoneLevels::default());

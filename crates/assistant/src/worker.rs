@@ -1264,19 +1264,21 @@ fn phone_gesture(name: &str) -> bool {
     )
 }
 
+fn confirmed_input(value: &Value) -> bool {
+    value["success"] == true
+        && value["not_executed"] != true
+        && value["result_unknown"] != true
+        && !value["error"].is_string()
+}
+
 fn queue_post_action_observation(
     call: &Value,
     receipt: Option<&Value>,
     context: &mut Vec<Value>,
     pending: &mut Vec<Value>,
 ) -> bool {
-    let confirmed = receipt.is_some_and(|value| {
-        value["success"] == true
-            && value["not_executed"] != true
-            && value["result_unknown"] != true
-            && !value["error"].is_string()
-    });
-    if !phone_gesture(call["name"].as_str().unwrap_or("")) || !confirmed {
+    if !phone_gesture(call["name"].as_str().unwrap_or("")) || !receipt.is_some_and(confirmed_input)
+    {
         return false;
     }
     // Respect an already queued observation. Its output is still needed before
@@ -3685,12 +3687,13 @@ async fn recorded_tool(
         output.chars().take(96000).collect::<String>()
     );
     let receipt = (status == "completed"
-        && phone_gesture(name)
+        && (phone_gesture(name) || execution_policy::visible_action(name))
         && result
             .as_ref()
             .ok()
             .and_then(tool_value)
-            .is_some_and(|value| value["success"] == true))
+            .as_ref()
+            .is_some_and(confirmed_input))
     .then(|| format!("{title} · 已执行"));
     let conversation = sqlx::query_scalar::<_, Uuid>(
         "WITH finished AS (
