@@ -993,8 +993,8 @@
     },
     {
       "path": "crates/assistant/src/agent_loop.rs",
-      "size": 16947,
-      "sha256": "2342e79757d20b85ced87e30f2dedecf2f5aabd2e578f1920e93124dbe7327b7"
+      "size": 17009,
+      "sha256": "fa6ff49b440a75c95cde41f1437ac3fb3230d842c3fe521bd4c387038d117ecf"
     },
     {
       "path": "crates/assistant/src/anthropic_messages.rs",

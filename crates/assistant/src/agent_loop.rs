@@ -90,7 +90,7 @@ impl LoopState {
         let desktop = metadata.filter(|receipt| {
             name == "computer_observe" || (name == "host_desktop" && receipt["kind"] == "observe")
         });
-        if let Some(receipt) = desktop
+        let is_desktop_frame = if let Some(receipt) = desktop
             && let Some(parts) = result.as_array()
             && let Some(image) = parts.iter().find_map(|part| part["image_url"].as_str())
         {
@@ -101,6 +101,7 @@ impl LoopState {
                 fingerprint.update(&window.to_le_bytes());
             }
             fingerprint.update(image.as_bytes());
+            true
         } else {
             feed(arguments);
             if let Some(receipt) = metadata.filter(|_| crate::app_learning::observation_tool(name))
@@ -114,11 +115,12 @@ impl LoopState {
             } else {
                 feed(&result.to_string());
             }
-        }
+            false
+        };
         let signature = format!("{:032x}", fingerprint.digest128());
-        if frame.is_some() && self.recent_results.last() == Some(&signature) {
+        if is_desktop_frame && self.recent_results.last() == Some(&signature) {
             self.no_progress(UNCHANGED_DESKTOP)
-        } else if frame.is_none() && self.recent_results.contains(&signature) {
+        } else if !is_desktop_frame && self.recent_results.contains(&signature) {
             self.no_progress("重复取得相同工具结果，没有观察到新进展")
         } else {
             self.stalls = 0;
