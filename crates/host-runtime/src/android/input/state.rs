@@ -10,6 +10,8 @@ use std::{
 pub(super) enum Stage {
     InstallUnknown,
     ReplaceUnknown,
+    MigrateWindows,
+    RestoreWindowsRoles,
     Configure,
 }
 #[derive(Deserialize, Serialize)]

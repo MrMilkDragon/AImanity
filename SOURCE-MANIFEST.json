@@ -1733,18 +1733,23 @@
     },
     {
       "path": "crates/host-runtime/src/android/input/state.rs",
-      "size": 3327,
-      "sha256": "787219702c3f195818512c74e621cc668bbbec79138268a6e74484f2aa2174b0"
+      "size": 3372,
+      "sha256": "084b24e62164956641b719fc642491ae8a9e2c7758e5cae0da6cf2438abbae55"
     },
     {
       "path": "crates/host-runtime/src/android/input/tests.rs",
-      "size": 22113,
-      "sha256": "07450b91d4cae20685cb211f852c8ccb97d0514ad20ab79396d7e01e99e1dd95"
+      "size": 22218,
+      "sha256": "ae57f22dfa135984770fe80c4a78a34f9aef6058d096b4681e073c06bbe1afb4"
+    },
+    {
+      "path": "crates/host-runtime/src/android/input/windows_migration.rs",
+      "size": 2781,
+      "sha256": "60d4d3c6cab1036e4228a559b27c4d55dc0b4952ce8411249683f6f26486c1ea"
     },
     {
       "path": "crates/host-runtime/src/android/input.rs",
-      "size": 12978,
-      "sha256": "c5dbdd3961b1bd8394ab0a3d19de46fa939eeec0a054c9426196c996436a5222"
+      "size": 13688,
+      "sha256": "32b23cf1434f62bae81a8e45ea48d2a167cee9b774e75973feb2c706e2436ea1"
     },
     {
       "path": "crates/host-runtime/src/android/launch.rs",
