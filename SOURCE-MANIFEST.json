@@ -993,8 +993,8 @@
     },
     {
       "path": "crates/assistant/src/agent_loop.rs",
-      "size": 17052,
-      "sha256": "8f58a53306634a008a7e4fa60bd872e65f3e6715d8771ddb24154304b9f74827"
+      "size": 16947,
+      "sha256": "2342e79757d20b85ced87e30f2dedecf2f5aabd2e578f1920e93124dbe7327b7"
     },
     {
       "path": "crates/assistant/src/anthropic_messages.rs",
@@ -1153,8 +1153,8 @@
     },
     {
       "path": "crates/assistant/src/completion_audit.rs",
-      "size": 66756,
-      "sha256": "049baef4b7432468ca2e004dc8501997bf61f38d9649b7a37faf204417fe451e"
+      "size": 66754,
+      "sha256": "87f5d1b71f91305db3ce3f08d3df4c81c2c8ae33013c8ce407b9679c25957cbf"
     },
     {
       "path": "crates/assistant/src/database/bootstrap.rs",
@@ -1513,8 +1513,8 @@
     },
     {
       "path": "crates/assistant/src/worker/action_cue.rs",
-      "size": 9877,
-      "sha256": "3ddd82fded9794c48fc2193992af8cac7073c81baa7d263cf5b362004310afd6"
+      "size": 9848,
+      "sha256": "bbe452060a43eac13372b014b93a04ab0817510ebe59b13fffa1c46e6584cddf"
     },
     {
       "path": "crates/assistant/src/worker/execution_policy.rs",

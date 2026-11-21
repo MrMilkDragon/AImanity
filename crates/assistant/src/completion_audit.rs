@@ -794,7 +794,7 @@ fn compact_phone_trees(evidence: &mut [Value]) {
             continue;
         };
         for part in parts {
-            if part["type"] != "input_text" || !part.as_object().is_some_and(|p| p.len() == 2) {
+            if part["type"] != "input_text" || part.as_object().is_none_or(|p| p.len() != 2) {
                 continue;
             }
             let Some(text) = part["text"].as_str().filter(|s| s.contains("\"elements\"")) else {

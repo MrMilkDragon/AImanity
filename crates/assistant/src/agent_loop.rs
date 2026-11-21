@@ -90,13 +90,10 @@ impl LoopState {
         let desktop = metadata.filter(|receipt| {
             name == "computer_observe" || (name == "host_desktop" && receipt["kind"] == "observe")
         });
-        let frame = desktop.and_then(|receipt| {
-            result
-                .as_array()
-                .and_then(|parts| parts.iter().find_map(|part| part["image_url"].as_str()))
-                .map(|image| (receipt, image))
-        });
-        if let Some((receipt, image)) = frame {
+        if let Some(receipt) = desktop
+            && let Some(parts) = result.as_array()
+            && let Some(image) = parts.iter().find_map(|part| part["image_url"].as_str())
+        {
             feed(receipt["host_session"].as_str().unwrap_or(""));
             feed(receipt["device_id"].as_str().unwrap_or(""));
             feed(receipt["title"].as_str().unwrap_or(""));

@@ -59,7 +59,7 @@ pub(super) fn validate_followup(context: &[Value], generated: usize) -> Result<(
     if !tap["local_start_for"].is_string()
         || tap["local_start_for"] != context[generated]["local_action_id"]
         || read["local_after_action"] != tap["call_id"]
-        || !output_position(context, tap).is_some_and(|n| n > generated)
+        || output_position(context, tap).is_none_or(|n| n <= generated)
         || !tool_output(context, tap)
             .and_then(tool_value)
             .is_some_and(|r| r["success"] == true)
@@ -68,9 +68,7 @@ pub(super) fn validate_followup(context: &[Value], generated: usize) -> Result<(
     }
     let before = latest_grounding(earlier).ok_or("启动点击之前缺少实景")?;
     let now = latest_grounding(context).ok_or("启动后缺少实景")?;
-    if !before["foreground_app"]
-        .as_str()
-        .is_some_and(|app| !app.is_empty())
+    if before["foreground_app"].as_str().is_none_or(str::is_empty)
         || before["foreground_app"] != now["foreground_app"]
         || before["device_id"] != now["device_id"]
         || before["width"].as_u64().is_none()
