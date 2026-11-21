@@ -408,20 +408,30 @@ pub async fn observe(
     let motion = sequence || request.ocr_mode == "motion";
     let mut capture_started = Instant::now();
     let mut earlier_jpeg = Vec::new();
+    let mut motion_tracks = Vec::new();
     let mut sample_interval_ms = 0;
     let (app, xml, (png, width, height)) = if motion {
         let (app, mut frame) = tokio::try_join!(foreground(runner), capture_frame(runner))?;
         if sequence {
             let (earlier, w, h) = frame;
-            let preview = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
+            let area = wire::PhoneBounds {
+                left: 0,
+                top: 0,
+                right: w,
+                bottom: h,
+            };
+            let preview = tokio::task::spawn_blocking(move || -> Result<_, String> {
                 let image = image::load_from_memory_with_format(&earlier, image::ImageFormat::Png)
                     .map_err(|e| e.to_string())?
-                    .thumbnail(420, 580);
+                    .into_rgb8();
+                let grid =
+                    crate::motion::Grid::sample(area, w.max(h), |x, y| image.get_pixel(x, y).0);
+                let image = image::DynamicImage::ImageRgb8(image).thumbnail(420, 580);
                 let mut jpeg = Vec::new();
                 image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 83)
                     .encode_image(&image)
                     .map_err(|e| e.to_string())?;
-                Ok(jpeg)
+                Ok((jpeg, grid))
             });
             tokio::time::sleep_until((capture_started + Duration::from_millis(100)).into()).await;
             let started = Instant::now();
@@ -431,7 +441,19 @@ pub async fn observe(
             if (w, h) != (frame.1, frame.2) {
                 return Err("采样期间屏幕方向已改变，请重新观察".into());
             }
-            earlier_jpeg = preview.await.map_err(|e| e.to_string())??;
+            let (jpeg, old) = preview.await.map_err(|e| e.to_string())??;
+            earlier_jpeg = jpeg;
+            (frame.0, motion_tracks) = tokio::task::spawn_blocking(move || -> Result<_, String> {
+                let png = frame.0;
+                let image = image::load_from_memory_with_format(&png, image::ImageFormat::Png)
+                    .map_err(|e| e.to_string())?
+                    .into_rgb8();
+                let current =
+                    crate::motion::Grid::sample(area, w.max(h), |x, y| image.get_pixel(x, y).0);
+                Ok((png, current.tracks(&old)))
+            })
+            .await
+            .map_err(|e| e.to_string())??;
         }
         (app, String::new(), frame)
     } else {
@@ -544,6 +566,7 @@ pub async fn observe(
         scroll_feedback: feedback,
         earlier_jpeg,
         sample_interval_ms,
+        motion_tracks,
     })
 }
 fn validate_snapshot(snapshot: &Snapshot, epoch: u64, revision: u64) -> Result<(), String> {

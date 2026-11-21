@@ -15,15 +15,41 @@ pub(super) struct Cue {
     palette: Vec<[u8; 3]>,
     percent: u32,
     any_color: bool,
+    moving: bool,
+}
+
+pub(super) enum Sample {
+    Color(bool),
+    Motion(crate::motion::Grid, bool),
 }
 
 impl Cue {
-    pub(super) fn matches(&self, size: (u32, u32), pixel: impl Fn(u32, u32) -> [u8; 3]) -> bool {
-        let (w, h) = size;
-        if u64::from(w) * u64::from(self.source.1) != u64::from(h) * u64::from(self.source.0) {
-            return false;
+    pub(super) fn sample(&self, size: (u32, u32), pixel: impl Fn(u32, u32) -> [u8; 3]) -> Sample {
+        if u64::from(size.0) * u64::from(self.source.1)
+            != u64::from(size.1) * u64::from(self.source.0)
+        {
+            return Sample::Color(false);
         }
-        self.occupied(self.region, size, &pixel, &self.palette, self.any_color)
+        let appearance = self.matches(size, &pixel);
+        if self.moving {
+            let grid = crate::motion::Grid::sample(
+                self.region,
+                self.source.0.max(self.source.1),
+                |x, y| {
+                    pixel(
+                        (u64::from(x) * u64::from(size.0) / u64::from(self.source.0)) as u32,
+                        (u64::from(y) * u64::from(size.1) / u64::from(self.source.1)) as u32,
+                    )
+                },
+            );
+            Sample::Motion(grid, appearance)
+        } else {
+            Sample::Color(appearance)
+        }
+    }
+    pub(super) fn matches(&self, size: (u32, u32), pixel: impl Fn(u32, u32) -> [u8; 3]) -> bool {
+        (self.palette.is_empty()
+            || self.occupied(self.region, size, &pixel, &self.palette, self.any_color))
             && self
                 .clear_region
                 .as_ref()
@@ -71,7 +97,7 @@ impl Cue {
     }
 }
 
-pub(super) type Samples<'a> = BoxStream<'a, super::Result<(bool, Instant)>>;
+pub(super) type Samples<'a> = BoxStream<'a, super::Result<(Sample, Instant)>>;
 
 fn samples<'a>(media: &'a Media, cue: Arc<Cue>, on_appearance: bool) -> Samples<'a> {
     #[cfg(target_os = "macos")]
@@ -100,7 +126,7 @@ fn samples<'a>(media: &'a Media, cue: Arc<Cue>, on_appearance: bool) -> Samples<
                         )?
                         .into_rgb8();
                         Ok((
-                            cue.matches(image.dimensions(), |x, y| image.get_pixel(x, y).0),
+                            cue.sample(image.dimensions(), |x, y| image.get_pixel(x, y).0),
                             frame.published,
                         ))
                     })
@@ -130,7 +156,14 @@ pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Respo
                     || r.right > request.source_width
                     || r.bottom > request.source_height
             })
-        || !(1..=4).contains(&request.rgb.len())
+        || !matches!(
+            request.motion_direction.as_str(),
+            "" | "left" | "right" | "up" | "down"
+        )
+        || request.rgb.len() > 4
+        || (request.rgb.is_empty() && request.motion_direction.is_empty())
+        || (!request.rgb.is_empty() && !(1..=100).contains(&request.coverage_percent))
+        || (request.clear_region.is_some() && request.rgb.is_empty())
         || request.avoid_rgb.len() > 4
         || (!request.avoid_rgb.is_empty() && request.clear_region.is_none())
         || request
@@ -138,7 +171,6 @@ pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Respo
             .iter()
             .chain(&request.avoid_rgb)
             .any(|v| *v > 0xffffff)
-        || !(1..=100).contains(&request.coverage_percent)
         || !(100..=15000).contains(&request.timeout_ms)
     {
         return StatusCode::BAD_REQUEST.into_response();
@@ -165,25 +197,52 @@ pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Respo
         palette,
         percent: request.coverage_percent,
         any_color: request.any_color,
+        moving: !request.motion_direction.is_empty(),
     });
     let started = Instant::now();
     let mut result = wire::ActionCueMatch::default();
-    let mut frames = samples(&media, cue, request.on_appearance);
+    let edge = request.on_appearance || !request.motion_direction.is_empty();
+    let mut frames = samples(&media, cue, edge);
     let observe = async {
         let mut previous = None;
+        let mut reference: Option<(crate::motion::Grid, Instant)> = None;
         let max_age = crate::grounding::CUE_MAX_AGE;
         while let Some(sample) = frames.next().await {
-            let (matched, at) = sample?;
+            let (sample, at) = sample?;
             if at.elapsed() > max_age {
                 previous = None;
                 continue;
             }
             result.frames += 1;
+            let matched = match sample {
+                Sample::Color(matched) => matched,
+                Sample::Motion(grid, appearance) => {
+                    if reference.as_ref().is_some_and(|(_, prior)| {
+                        at.saturating_duration_since(*prior) < Duration::from_millis(65)
+                    }) {
+                        continue;
+                    }
+                    let track = reference
+                        .as_ref()
+                        .filter(|(_, prior)| {
+                            appearance && at.saturating_duration_since(*prior) <= max_age
+                        })
+                        .and_then(|(old, _)| {
+                            grid.tracks(old)
+                                .into_iter()
+                                .next()
+                                .filter(|t| crate::motion::direction(t) == request.motion_direction)
+                        });
+                    reference = Some((grid, at));
+                    result.motion = track;
+                    result.motion.is_some()
+                }
+            };
             if request.on_appearance && result.frames == 1 && matched {
                 result.already_present = true;
                 return Ok(());
             }
-            let first = if request.on_appearance {
+            let first = if edge {
                 Some(at)
             } else {
                 previous.filter(|&prior| at.saturating_duration_since(prior) <= max_age)
@@ -228,6 +287,7 @@ mod tests {
             palette: vec![[255, 0, 0], [0, 0, 255]],
             percent: 50,
             any_color: true,
+            moving: false,
         };
         let window = |x, _| if x < 4 { [255, 0, 0] } else { [0, 0, 0] };
         assert!(cue.matches((8, 8), window));

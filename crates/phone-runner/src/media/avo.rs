@@ -314,12 +314,12 @@ impl Display {
         self.map.sequence(48)
     }
 
-    fn matches(&self, cue: &Cue, sequence: u64, rotation: u32) -> bool {
+    fn matches(&self, cue: &Cue, sequence: u64, rotation: u32) -> super::cue::Sample {
         let (w, h) = (self.width, self.height);
         let rotation = if w < h || rotation == 2 { rotation } else { 0 };
         let size = if rotation % 2 == 1 { (h, w) } else { (w, h) };
         let start = FRAME_HEADER + (sequence % 3) as usize * self.buffer;
-        cue.matches(size, |x, y| {
+        cue.sample(size, |x, y| {
             let (x, y) = match rotation {
                 1 => (w - 1 - y, x),
                 2 => (w - 1 - x, h - 1 - y),

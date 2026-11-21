@@ -8,9 +8,11 @@ version: 0.10.0
 
 控件定位：phone_observe默认返回本次observation_id、前台应用、elements和真实截图。点击优先phone_tap_element(observation_id,element_id)；列表浏览优先phone_scroll(observation_id,原生scrollable控件ID,direction)。down表示看下方内容（手指向上），up相反。控件ID仅属于这次画面，不能跨动作、横竖屏、手动接管或服务重启复用；执行前会再次核对应用、控件位置与状态，stale_target时重新观察，不连续重试旧ID。单纯文字和非交互容器不能当成原生按钮。
 
-要判断对象的方向、落点或界面是否稳定，用 `phone_observe(ocr_mode="sequence")`。两张图按时间排序。对照固定参照物确认对象在最后一帧的位置，分清通道在障碍上方还是下方。动作后看对象与参照物的实际相对位移。
+用 `phone_observe(ocr_mode="sequence")` 查运动。两张图按时间排序，`motion_tracks` 给出纹理块在后一帧的位置 `bounds` 及两帧之间的 `dx,dy`（向右、向下为正，单位为截图像素）。结合物体轮廓、周围参照物和目标区域判断方向；滚屏时多个物体会一起移动。
 
-对持续变化的画面先用 `phone_observe(ocr_mode="sequence")` 判断对象、运动方向和可执行动作。如果能预见下一状态，在信号出现前一次提交 `phone_tap.when` 或 `phone_swipe.when`。给出最近截图坐标中的 `region`、一到四个特征色（`sample_points` 或 `colors`）、覆盖比例 `coverage_percent` 和等待期限 `timeout_ms`（100–15000）。用前后两帧比较同一区域，选只在目标出现时才有的色块；取多个颜色时，每个颜色都要能达到各自的覆盖比例。等待新出现的信号用 `on_appearance=true`；本机先看见区域没有目标，首次看到目标即执行一次。如果布防时已经满足条件，工具立即返回，可以重新选区。不同特征色都可触发时用 `any_color`；移动落点有阻挡时用 `clear_region` 和 `avoid_points`。超时后重新观察。已经看清的滑动直接操作，普通列表使用控件滚动。
+对即将发生的状态，可以提前提交一次 `phone_tap.when` 或 `phone_swipe.when`。用 `region` 框住对象将经过的位置，`motion_direction` 选 left、right、up 或 down，`timeout_ms` 设为 100–15000。背景或场景也在移动时，从实景选取能区分目标外观的 `colors` 或 `sample_points` 和 `coverage_percent`，让外观与方向同时命中。固定状态变色时只提交颜色条件和 `on_appearance=true`。返回已出现时重新观察。可替代的特征色用 `any_color`，避开受阻落点用 `clear_region` 和 `avoid_points`。普通列表优先控件滚动。
+
+最后一次点击或滑动附上 `completion_summary`，说明动作后要读回哪项结果。如需当前分数、界面名称或新状态，交由动作后的真实观察和核验读回。
 
 跑酷从角色脚下沿轨道看向远处，结合车头、车窗及轨道判断车辆位置。坡道和可走的车顶可以直行。先看栏杆上下的通行空间，再选跳跃、下滑或向空轨变道。变道后从新画面确认角色实际落在哪条轨道、是否还在车顶，再决定下一步。
 

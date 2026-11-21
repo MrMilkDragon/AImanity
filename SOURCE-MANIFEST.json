@@ -1113,8 +1113,8 @@
     },
     {
       "path": "crates/assistant/src/completion_audit.rs",
-      "size": 49388,
-      "sha256": "76fa22782d9049718a3716f9a5318781f173ebce28c883986593330f1cf96c39"
+      "size": 49925,
+      "sha256": "27785bb2e2863c9d63c6e6e20c2df9e179bd5675da48a7832ab718ef058ffa1a"
     },
     {
       "path": "crates/assistant/src/database/bootstrap.rs",
@@ -1453,8 +1453,8 @@
     },
     {
       "path": "crates/assistant/src/tool_catalog.rs",
-      "size": 20655,
-      "sha256": "df11c7a510c1b81c6ea91f79bd3d7b3a4ef2578b08561650a8b886f9074cf75a"
+      "size": 21027,
+      "sha256": "0a81cde592dd27a01b68f30fe050ebcb5269aa5be6a1ee3c81fc77edc1f2ed10"
     },
     {
       "path": "crates/assistant/src/voice_input.rs",
@@ -1473,8 +1473,8 @@
     },
     {
       "path": "crates/assistant/src/worker/action_cue.rs",
-      "size": 4900,
-      "sha256": "68068077ec23ddccb1718fdfd85c2e252d953ddce3e1004a7edf1fa852072afd"
+      "size": 5369,
+      "sha256": "a8433d5ba6961cfc65bc2f9607a7702bab32911ea5503612cf6998d69f8d487c"
     },
     {
       "path": "crates/assistant/src/worker/execution_policy.rs",
@@ -1493,8 +1493,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 260147,
-      "sha256": "9d97a1e069518ad45c0a1217d7b20541d26664692daa11f6efb01fa42885f2a6"
+      "size": 262228,
+      "sha256": "4f74c45223cb6c94b748c78a6aa4b3c976ca93b27daad5cb61d9b8f86045de61"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -2168,8 +2168,8 @@
     },
     {
       "path": "crates/phone-runner/src/grounding.rs",
-      "size": 45462,
-      "sha256": "51ea2f3954e7cfe6b6d692fae9e599eac51b391cbd4a75b4189df2a1015cceef"
+      "size": 46489,
+      "sha256": "0d772da86b3e60c535b536b1168c781e7b39fd0af066930e0bbae91c7596558c"
     },
     {
       "path": "crates/phone-runner/src/location.rs",
@@ -2178,8 +2178,8 @@
     },
     {
       "path": "crates/phone-runner/src/main.rs",
-      "size": 72182,
-      "sha256": "468ebe39ccd240e4e8c4d62e019d5946b414f4b665fd9fb2f650b570ef1d0e9c"
+      "size": 72194,
+      "sha256": "428c1b715a6c07fe9114e26adfd81244f0be65fd93d96ec501307638bdb22f54"
     },
     {
       "path": "crates/phone-runner/src/media/actions.rs",
@@ -2193,13 +2193,13 @@
     },
     {
       "path": "crates/phone-runner/src/media/avo.rs",
-      "size": 15160,
-      "sha256": "d52a42c64d96a78b104a0f97a31e19d2f1e81d08e4b8cee412a33e114e5c608a"
+      "size": 15173,
+      "sha256": "40340180d8593c7a0ffe1f7b84172e4bfedd4cbb794e1ad1f24bfbe20e5d7fb2"
     },
     {
       "path": "crates/phone-runner/src/media/cue.rs",
-      "size": 9206,
-      "sha256": "d00b53c2a7bc30440cadb91627bf9ad058827719d82b32cbe73aff114829f5cc"
+      "size": 11674,
+      "sha256": "d5709aa499bbb2443022241d0078b6d3780e83a7c90e588341a8b30c7edaed90"
     },
     {
       "path": "crates/phone-runner/src/media/desktop.rs",
@@ -2225,6 +2225,11 @@
       "path": "crates/phone-runner/src/media.rs",
       "size": 10272,
       "sha256": "f8f1423a5c60e89857e7bb757a6e836919833d03c27d4e3b761de8774935c4b3"
+    },
+    {
+      "path": "crates/phone-runner/src/motion.rs",
+      "size": 7178,
+      "sha256": "4c92833c32fb1a797a9bcb4270acfbf2b82c7d8b6cfd5f0d5b4b4f01db88cb2c"
     },
     {
       "path": "crates/phone-runner/src/native_tree.rs",
@@ -3408,8 +3413,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/phone_runtime.proto",
-      "size": 5475,
-      "sha256": "b13f1cf52a2220e2efdd8927e4152e08ccf2380edbb3e80a07e2faf59b7134be"
+      "size": 5655,
+      "sha256": "90abb738f3face5814939286c8ebab62b30aa1fc40d5afb832af0723df93a818"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/proactive.proto",
@@ -3623,8 +3628,8 @@
     },
     {
       "path": "skills/builtin/phone-use/SKILL.md",
-      "size": 11171,
-      "sha256": "2e77bea006e02ab02c17f0ad6d8713bdbf781283f141ad3bc0f4cc54e8509190"
+      "size": 11072,
+      "sha256": "ce68f33c00279ffd6eec7448e914f509735abb27b93646132d54b9e6554ad660"
     },
     {
       "path": "skills/builtin/wechat/SKILL.md",

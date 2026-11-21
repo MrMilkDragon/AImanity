@@ -23,8 +23,9 @@ pub(crate) fn tools() -> Value {
                     "avoid_points":{"type":"array","description":"从最近截图的其他阻挡物取色，clear_region 会同时检查触发色和这些颜色","items":{"type":"array","items":{"type":"integer","minimum":0},"minItems":2,"maxItems":2},"minItems":1,"maxItems":4},
                     "any_color":{"type":"boolean","description":"任意一种颜色达标时响应，默认要求每种达标"},
                     "coverage_percent":{"type":"integer","description":"每种颜色分别占区域的最小百分比","minimum":1,"maximum":100},
+                    "motion_direction":{"type":"string","enum":["left","right","up","down"],"description":"区域内的主要纹理沿此方向移动时执行。背景也会移动时，用目标的颜色和 coverage_percent 一起限定。"},
                     "on_appearance":{"type":"boolean","description":"先看到条件不成立，首次观察到条件成立时执行"},"timeout_ms":{"type":"integer","minimum":100,"maximum":15000}
-                },"required":["region","coverage_percent","timeout_ms"],"additionalProperties":false});
+                },"required":["region","timeout_ms"],"additionalProperties":false});
     let mut catalog = vec![
         function(
             "todo_list",
@@ -275,13 +276,16 @@ pub(crate) fn tools() -> Value {
         let report_intent = ["phone_", "computer_", "device_"]
             .into_iter()
             .any(|prefix| name.starts_with(prefix));
-        if matches!(name, "phone_tap_element" | "computer_type") {
+        if matches!(
+            name,
+            "phone_tap_element" | "phone_tap" | "phone_swipe" | "computer_type"
+        ) {
             let description = item["description"].as_str().unwrap();
             item["description"] = json!(format!(
                 "{description} 这一次动作即可完成整个目标时填写 completion_summary。"
             ));
             item["parameters"]["properties"]["completion_summary"] = json!({"type":"string","maxLength":400,
-                "description":"核验通过后发给用户的一句结果。"});
+                "description":"最后一步填写预期结果；如需读回屏幕文字或数值，写清要读什么。核验使用动作后的真实画面。"});
         }
         if report_intent {
             item["parameters"]["properties"]["intent"] = json!({"type":"string"});

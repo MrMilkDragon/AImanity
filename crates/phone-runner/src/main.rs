@@ -30,6 +30,7 @@ mod gestures;
 mod grounding;
 mod location;
 mod media;
+mod motion;
 mod native_tree;
 
 const OWNER: &str = "local-user";

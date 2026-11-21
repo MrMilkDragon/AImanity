@@ -18,6 +18,9 @@ struct Condition {
     any_color: bool,
     #[serde(default)]
     on_appearance: bool,
+    #[serde(default)]
+    motion_direction: String,
+    #[serde(default)]
     coverage_percent: u32,
     timeout_ms: u32,
 }
@@ -27,7 +30,9 @@ pub(super) async fn visual_condition(
     context: &[Value],
 ) -> Result<wire::ActionCueRequest, String> {
     let cue = Condition::deserialize(value).map_err(|_| "视觉触发条件格式无效")?;
-    if !(1..=4).contains(&(cue.colors.len() + cue.sample_points.len())) {
+    let motion = !cue.motion_direction.is_empty();
+    let colors = cue.colors.len() + cue.sample_points.len();
+    if colors > 4 || (colors == 0 && (!motion || cue.clear_region.is_some())) {
         return Err("请从当前画面选一至四个取色点或颜色".into());
     }
     if cue.avoid_points.len() > 4 || (!cue.avoid_points.is_empty() && cue.clear_region.is_none()) {
@@ -94,7 +99,8 @@ pub(super) async fn visual_condition(
         rgb,
         avoid_rgb,
         any_color: cue.any_color,
-        on_appearance: cue.on_appearance,
+        on_appearance: motion || cue.on_appearance,
+        motion_direction: cue.motion_direction,
         coverage_percent: cue.coverage_percent,
         timeout_ms: cue.timeout_ms,
         ..Default::default()
@@ -120,6 +126,10 @@ mod tests {
         let request = visual_condition(&cue, &history).await.unwrap();
         assert_eq!(request.avoid_rgb, [0]);
         assert_eq!(request.rgb, [0x010203, 0x1786c1]);
+        cue["motion_direction"] = json!("right");
+        let moving = visual_condition(&cue, &history).await.unwrap();
+        assert_eq!(moving.motion_direction, "right");
+        assert_eq!(moving.rgb, request.rgb);
         assert!(visual_condition(&cue, &[]).await.is_err());
         cue["sample_points"] = json!([[3, 2]]);
         assert!(visual_condition(&cue, &history).await.is_err());

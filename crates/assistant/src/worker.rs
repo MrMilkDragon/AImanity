@@ -1094,6 +1094,11 @@ fn output_position(context: &[Value], call: &Value) -> Option<usize> {
         item["type"] == "function_call_output" && item["call_id"] == call["call_id"]
     })
 }
+fn motion_evidence(track: &wire::MotionTrack) -> Option<Value> {
+    let b = track.bounds?;
+    Some(json!({"bounds":[b.left,b.top,b.right,b.bottom],"dx":track.dx,"dy":track.dy}))
+}
+
 fn grounding_metadata(observation: &wire::DeviceObservation) -> Value {
     json!({"device_id":observation.phone_id,"observation_id":observation.observation_id,"foreground_app":observation.foreground_app,
         "grounding_note":observation.grounding_note,"scroll_feedback":observation.scroll_feedback,
@@ -1229,8 +1234,9 @@ fn coordinate_grounding(context: &[Value], name: &str, arguments: &Value) -> Res
     }
     let observation = latest_grounding(context)
         .ok_or_else(|| phone_plan_rejection("请先phone_observe取得带控件定位的当前画面"))?;
-    let future_target =
-        matches!(name, "phone_tap" | "phone_swipe") && arguments["when"]["on_appearance"] == true;
+    let future_target = matches!(name, "phone_tap" | "phone_swipe")
+        && (arguments["when"]["on_appearance"] == true
+            || arguments["when"]["motion_direction"].is_string());
     if !future_target && let Some(element) = coordinate_interception(&observation, name, arguments)
     {
         return Err(phone_plan_rejection(format!(
@@ -1245,35 +1251,36 @@ fn coordinate_grounding(context: &[Value], name: &str, arguments: &Value) -> Res
     }
     Ok(observation["observation_id"].as_str().unwrap().into())
 }
+fn phone_gesture(name: &str) -> bool {
+    matches!(
+        name,
+        "phone_tap"
+            | "phone_swipe"
+            | "phone_input"
+            | "phone_key"
+            | "phone_long_press"
+            | "phone_drag"
+            | "phone_tap_element"
+            | "phone_scroll"
+            | "phone_gesture"
+            | "phone_shake"
+            | "phone_rotate"
+    )
+}
+
 fn queue_post_action_observation(
     call: &Value,
     receipt: Option<&Value>,
     context: &mut Vec<Value>,
     pending: &mut Vec<Value>,
 ) -> bool {
-    let gui_action = matches!(
-        call["name"].as_str(),
-        Some(
-            "phone_tap"
-                | "phone_swipe"
-                | "phone_input"
-                | "phone_key"
-                | "phone_long_press"
-                | "phone_drag"
-                | "phone_tap_element"
-                | "phone_scroll"
-                | "phone_gesture"
-                | "phone_shake"
-                | "phone_rotate"
-        )
-    );
     let confirmed = receipt.is_some_and(|value| {
         value["success"] == true
             && value["not_executed"] != true
             && value["result_unknown"] != true
             && !value["error"].is_string()
     });
-    if !gui_action || !confirmed {
+    if !phone_gesture(call["name"].as_str().unwrap_or("")) || !confirmed {
         return false;
     }
     // Respect an already queued observation. Its output is still needed before
@@ -1297,10 +1304,15 @@ fn queue_post_action_observation(
     let surface_gesture = matches!(call["name"].as_str(), Some("phone_swipe" | "phone_drag"));
     let last_mode = latest_phone_observation(context)
         .and_then(|read| serde_json::from_str::<Value>(read["arguments"].as_str()?).ok());
+    let completion = call["arguments"]
+        .as_str()
+        .and_then(|args| serde_json::from_str::<Value>(args).ok())
+        .is_some_and(|args| args["completion_summary"].is_string());
     let arguments = match last_mode
         .as_ref()
         .and_then(|args| args["ocr_mode"].as_str())
     {
+        _ if completion => "{}",
         Some("sequence") if surface_gesture => r#"{"ocr_mode":"sequence"}"#,
         Some("motion") if surface_gesture => r#"{"ocr_mode":"motion"}"#,
         _ if receipt.is_some_and(|v| v["cue"]["matched"] == true) => r#"{"ocr_mode":"motion"}"#,
@@ -1876,11 +1888,20 @@ fn phone_completion_proposal(context: &[Value], output: &[Value], summary: &str)
     {
         return None;
     }
-    completed_settings_tap(context)?;
+    let (action, frame) = completed_phone_gesture(context)?;
+    if action["name"] != "phone_tap_element"
+        || !tool_value(&frame["output"]).is_some_and(|v| {
+            v["foreground_app"]
+                .as_str()
+                .is_some_and(|app| app.starts_with("com.android.settings/"))
+        })
+    {
+        return None;
+    }
     Some(completion_proposal(summary))
 }
 
-fn completed_settings_tap(context: &[Value]) -> Option<&Value> {
+fn completed_phone_gesture(context: &[Value]) -> Option<(&Value, &Value)> {
     let recent = &context[evidence_start(context)..];
     let frame = recent.last()?;
     if frame["type"] != "function_call_output" {
@@ -1897,18 +1918,16 @@ fn completed_settings_tap(context: &[Value]) -> Option<&Value> {
     });
     let action = actions.next()?;
     if actions.next().is_some()
-        || action["name"] != "phone_tap_element"
+        || !matches!(
+            action["name"].as_str(),
+            Some("phone_tap_element" | "phone_tap" | "phone_swipe")
+        )
         || action["call_id"] != action_id
-        || !tool_value(&frame["output"]).is_some_and(|grounding| {
-            grounding["foreground_app"]
-                .as_str()
-                .is_some_and(|app| app.starts_with("com.android.settings/"))
-        })
         || !phone_action_verified(context)
     {
         return None;
     }
-    Some(action)
+    Some((action, frame))
 }
 
 fn completion_proposal(summary: &str) -> Value {
@@ -1927,7 +1946,7 @@ fn hinted_device_completion(context: &[Value]) -> Option<Value> {
         .rev()
         .find(|item| item["type"] == "function_call" && item["call_id"] == id)?;
     let action = match call["name"].as_str()? {
-        "phone_observe" => completed_settings_tap(context)?,
+        "phone_observe" => completed_phone_gesture(context)?.0,
         "computer_type"
             if tool_value(&receipt["output"]).is_some_and(|value| {
                 value["success"] == true && value["observation_id"].is_string()
@@ -1950,6 +1969,9 @@ fn hinted_device_completion(context: &[Value]) -> Option<Value> {
         return None;
     }
     let mut proposal = completion_proposal(summary);
+    if call["name"] == "phone_observe" {
+        proposal["local_readback"] = json!(true);
+    }
     proposal["local_action_id"] = json!(Uuid::now_v7().to_string());
     Some(proposal)
 }
@@ -3650,18 +3672,35 @@ async fn recorded_tool(
         "输入\n{input}\n\n输出\n{}",
         output.chars().take(96000).collect::<String>()
     );
-    sqlx::query(
-        "UPDATE harness_events SET content=$2,status=$3,result=$4,finished_at=now()
-         WHERE id=$1 AND run_id=$5 AND kind='tool'",
+    let receipt = (status == "completed"
+        && phone_gesture(name)
+        && result
+            .as_ref()
+            .ok()
+            .and_then(tool_value)
+            .is_some_and(|value| value["success"] == true))
+    .then(|| format!("{title} · 已执行"));
+    let conversation = sqlx::query_scalar::<_, Uuid>(
+        "WITH finished AS (
+           UPDATE harness_events SET content=$2,status=$3,result=$4,finished_at=now()
+           WHERE id=$1 AND run_id=$5 AND kind='tool' RETURNING message_id,run_id
+         ) UPDATE messages m SET text=$6 FROM finished f JOIN runs r ON r.id=f.run_id
+           WHERE $6::text IS NOT NULL AND m.id=f.message_id AND m.id=r.assistant_message_id
+             AND r.status='running' AND r.origin='user'
+           RETURNING m.conversation_id",
     )
     .bind(id)
     .bind(content)
     .bind(status)
     .bind(result.as_ref().ok())
     .bind(run)
-    .execute(&app.db)
+    .bind(receipt)
+    .fetch_optional(&app.db)
     .await
     .map_err(|e| e.to_string())?;
+    if let Some(conversation) = conversation {
+        app.run_signals.chat_changed(conversation);
+    }
     if status == "completed"
         && let Ok(output) = &result
     {
@@ -3889,7 +3928,7 @@ async fn tool(
     }
     if name == "task_finish" {
         let status = text("status");
-        let summary = text("summary").trim().to_string();
+        let mut summary = text("summary").trim().to_string();
         if summary.is_empty() || summary.len() > 12000 {
             return Err("结束任务需要具体且有界的结果或阻碍说明".into());
         }
@@ -4110,6 +4149,9 @@ async fn tool(
                     result.feedback
                 ));
             }
+            if call["local_readback"] == true {
+                summary = result.feedback;
+            }
         }
         if status == "completed" && !screen_attention {
             crate::app_learning::promote(app, run).await?;
@@ -4276,6 +4318,12 @@ async fn tool(
             json!({"type":"input_text","text":grounding_metadata(&observation).to_string()}),
         ];
         if !observation.earlier_jpeg.is_empty() {
+            let tracks: Vec<_> = observation
+                .motion_tracks
+                .iter()
+                .filter_map(motion_evidence)
+                .collect();
+            parts.push(json!({"type":"input_text","text":json!({"motion_tracks":tracks,"interval_ms":observation.sample_interval_ms}).to_string()}));
             parts.push(json!({"type":"input_text","text":format!("两帧按时间排序，采样起点相隔 {} ms。最后一张对应当前 observation_id。", observation.sample_interval_ms)}));
             parts.push(json!({"type":"input_image","image_url":format!("data:image/jpeg;base64,{}",STANDARD.encode(observation.earlier_jpeg))}));
         }
@@ -4410,8 +4458,11 @@ async fn tool(
                 "布防时区域已经满足条件。重新观察，选择在等待画面和目标画面之间有明显变化的区域。",
             ));
         }
-        let sample = json!({"matched":hit.matched,"frames":hit.frames,"wait_ms":hit.elapsed_ms,
+        let mut sample = json!({"matched":hit.matched,"frames":hit.frames,"wait_ms":hit.elapsed_ms,
             "first_match_at_ms":hit.first_match_at_ms,"confirmed_at_ms":hit.observed_at_ms});
+        if let Some(track) = hit.motion.as_ref().and_then(motion_evidence) {
+            sample["motion"] = track;
+        }
         if !hit.matched || has_steering(app, run).await? || cancel.is_cancelled() {
             return Ok(
                 json!([{"type":"input_text","text":json!({"success":false,"not_executed":true,"cue":sample}).to_string()}]),

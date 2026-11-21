@@ -375,9 +375,18 @@ pub async fn verify(
         None
     };
     let compact = compact_visuals.is_some();
+    let readback = context
+        .last()
+        .is_some_and(|call| call["local_readback"] == true);
+    if readback && compact_allowed {
+        evidence.retain(|receipt| receipt["tool"] != "skill_read");
+    }
     let mut audit_input = vec![
         json!({"type":"input_text","text":json!({"request":request_text,"proposed_completion":summary,"needs_input":needs_input,"tool_evidence":evidence,"handoff_receipts":handoff_receipts}).to_string()}),
     ];
+    if readback {
+        audit_input.push(json!({"type":"input_text","text":"这是本轮的最终读回。按用户原始要求核对操作和动作后截图。通过时用 feedback 直接回答用户，带上用户要求的页面、文字或具体数值；还有步骤或结果看不清时指出缺什么。"}));
+    }
     if !notifications.is_empty() {
         let reply: bool = sqlx::query_scalar("SELECT autonomous_reply FROM proactive_state")
             .fetch_one(&app.db)
