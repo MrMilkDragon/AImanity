@@ -1,0 +1,90 @@
+name: Stage the signed Europium DMG
+on:
+  push:
+    branches: [codex/europium-stage-mac-draft]
+permissions: {}
+concurrency:
+  group: europium-stage-mac-draft
+  cancel-in-progress: false
+env:
+  EXPECTED_SOURCE: 56a7568ecb1fd00defe46bc7ef513c5b567f6d80
+  FACTORY_RUN: '44941576681'
+  FACTORY_COMMIT: c3f8f2395002f0b7fca72815c8beffa322704658
+  ARTIFACT_ID: '14721814337'
+  DRAFT_ID: '453945300'
+  FILE: AImanity-0.0.5-macos-arm64.dmg
+jobs:
+  stage:
+    runs-on: macos-26
+    timeout-minutes: 35
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Verify the factory run and the exact draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = MrMilkDragon/AImanity
+          repo="repos/$GITHUB_REPOSITORY"
+          gh api "$repo/actions/runs/$FACTORY_RUN" | jq -e --arg ref "$FACTORY_COMMIT" '.head_sha == $ref and .status == "completed" and .conclusion == "success"'
+          gh api "$repo/actions/artifacts/$ARTIFACT_ID" | jq -e --argjson run "$FACTORY_RUN" '.name == "europium-complete-macos-candidate" and .workflow_run.id == $run and (.expired|not)'
+          gh api "$repo/releases/$DRAFT_ID" | jq -e --arg target "$EXPECTED_SOURCE" '.tag_name == "v0.0.5" and .draft == true and .target_commitish == $target'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.FACTORY_RUN }}
+          artifact-ids: ${{ env.ARTIFACT_ID }}
+          path: candidate
+      - name: Verify the receipt, the signed DMG and its signed app
+        run: |
+          set -euo pipefail
+          cd candidate
+          manifest="$FILE.manifest.json"
+          test -s "$FILE"
+          jq -e --arg source "$EXPECTED_SOURCE" --arg file "$FILE" --argjson size "$(stat -f %z "$FILE")" '
+            .version == "0.0.5" and .source_commit == $source and .builder_commit == $source and
+            .os == "macos" and .arch == "arm64" and .signing == "ad-hoc" and .complete_device_bundle and
+            .runtime_payload_complete and .installer_delivery.single_file and .installer_delivery.github_asset_eligible and
+            .installer_delivery.file == $file and .installer_delivery.size == $size
+          ' "$manifest"
+          digest=$(openssl dgst -sha512 -binary "$FILE" | openssl base64 -A)
+          test "$digest" = "$(jq -er .sha512 "$manifest")"
+          sha=$(jq -er .sha256 "$manifest")
+          echo "$sha  $FILE" | shasum -a 256 -c -
+          jq -e --arg source "$EXPECTED_SOURCE" --arg file "$FILE" --arg sha "$sha" '
+            .source_commit == $source and .artifact.file == $file and .artifact.sha256 == $sha and .artifact.delivery.complete_device_bundle
+          ' macos-full-factory-report.json
+          codesign --verify --strict "$FILE"
+          mount="$RUNNER_TEMP/europium-dmg"
+          mkdir "$mount"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$FILE"
+          trap 'hdiutil detach "$mount" >/dev/null' EXIT
+          app="$mount/AImanity.app"
+          codesign --verify --strict --deep "$app"
+          test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = dev.aimanity.native
+          test "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")" = 0.0.5
+          jq -c '{version,source_commit,arch,os,signing,sha256,sha512,installer_delivery}' "$manifest"
+      - name: Upload the sole installer to the verified draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd candidate
+          repo="repos/$GITHUB_REPOSITORY"
+          gh api "$repo/releases/$DRAFT_ID" | jq -e --arg target "$EXPECTED_SOURCE" '.draft and .tag_name == "v0.0.5" and .target_commitish == $target'
+          sha="sha256:$(jq -er .sha256 "$FILE.manifest.json")"
+          size=$(stat -f %z "$FILE")
+          results="$RUNNER_TEMP/draft-asset.json"
+          gh api "$repo/releases/$DRAFT_ID/assets" | jq --arg name "$FILE" '[.[]|select(.name==$name)][0] // empty' > "$results"
+          if ! test -s "$results"; then
+            curl --fail-with-body --silent --show-error --max-time 1100 \
+              -H "Authorization: Bearer $GH_TOKEN" -H 'Content-Type: application/octet-stream' \
+              --request POST --upload-file "$FILE" "https://uploads.github.com/$repo/releases/$DRAFT_ID/assets?name=$FILE" -o "$results"
+          fi
+          jq -e --arg name "$FILE" --arg digest "$sha" --argjson size "$size" '
+            .name == $name and .state == "uploaded" and .digest == $digest and .size == $size
+          ' "$results"
+          gh api "$repo/releases/$DRAFT_ID" | jq -e --arg target "$EXPECTED_SOURCE" '.draft and .tag_name == "v0.0.5" and .target_commitish == $target'
+          jq -c '{id,name,state,size,digest}' "$results"
