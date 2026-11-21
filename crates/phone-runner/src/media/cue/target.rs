@@ -225,7 +225,11 @@ mod tests {
         };
         let pattern = |x: u32, y: u32| {
             [
-                if (x / 2 + y / 2) % 2 == 0 { 180 } else { 22 },
+                if (x / 2 + y / 2).is_multiple_of(2) {
+                    180
+                } else {
+                    22
+                },
                 (x * 22) as u8,
                 (y * 18) as u8,
             ]
