@@ -1202,9 +1202,7 @@ mod tests {
     }
     #[test]
     fn a_canvas_tap_survives_unrelated_animation_but_requires_its_target() {
-        let still = image::RgbImage::from_fn(192, 256, |x, y| {
-            image::Rgb([x as u8, y as u8, 120])
-        });
+        let still = image::RgbImage::from_fn(192, 256, |x, y| image::Rgb([x as u8, y as u8, 120]));
         let png = |im: image::RgbImage| {
             let mut bytes = std::io::Cursor::new(Vec::new());
             im.write_to(&mut bytes, image::ImageFormat::Png).unwrap();

@@ -2208,8 +2208,8 @@
     },
     {
       "path": "crates/phone-runner/src/grounding.rs",
-      "size": 49304,
-      "sha256": "ccefa6d8f6f9eba52cb644c82ea86777fbc98384d491cbf7fcc6b8d99c41db11"
+      "size": 49280,
+      "sha256": "dcdb88a55b73491927eba06f716becaaeecaca687e8099121d356ba752d48c28"
     },
     {
       "path": "crates/phone-runner/src/location.rs",
