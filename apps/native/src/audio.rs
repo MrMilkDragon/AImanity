@@ -1,8 +1,4 @@
-use crate::{
-    connection::Connection,
-    controls::{Icon, sized_icon_button},
-    spring_slider::SpringSlider,
-};
+use crate::{connection::Connection, controls::Icon, spring_slider::SpringSlider};
 use iced::{Element, Task, widget::row};
 use rodio::{OutputStreamBuilder, Source};
 use std::{
@@ -178,11 +174,9 @@ impl Playback {
             0
         };
         let muted = volume == 0;
-        let button = sized_icon_button(
+        let button = crate::surface::tool_action(
             if muted { Icon::Muted } else { Icon::Volume },
             enabled.then_some(Message::Toggle),
-            32.,
-            34.,
         );
         let range = SpringSlider::new(100, volume, Message::Volume)
             .width(60)

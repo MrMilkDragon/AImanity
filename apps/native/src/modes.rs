@@ -408,18 +408,14 @@ impl Modes {
                     self.locale.tr("关闭目标"),
                     (!self.saving).then_some(Message::SetGoal(true)),
                 )
-                .style(style::quiet)
-                .width(92),
+                .style(style::quiet),
             );
         }
         if !active || self.state.as_ref().is_some_and(|s| value != s.goal) {
-            actions = actions.push(
-                action_button(
-                    self.locale.tr(if active { "更新目标" } else { "激活" }),
-                    can_save.then_some(Message::SetGoal(false)),
-                )
-                .width(92),
-            );
+            actions = actions.push(action_button(
+                self.locale.tr(if active { "更新目标" } else { "激活" }),
+                can_save.then_some(Message::SetGoal(false)),
+            ));
         }
         let error = if value.len() > 12000 {
             self.locale.tr("目标内容不能超过 12 KB")

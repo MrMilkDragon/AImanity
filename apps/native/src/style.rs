@@ -30,6 +30,9 @@ pub const GLASS_OPACITY: f32 = 0.35;
 pub const GLASS_BLUR: f32 = 18.;
 pub const BORDER_WIDTH: f32 = 0.75;
 pub const CONTROL_HEIGHT: f32 = 40.;
+pub const COMPACT_CONTROL: f32 = 36.;
+pub const TOOL_CONTROL: f32 = 32.;
+pub const FIELD_LINE: iced::Pixels = iced::Pixels(20.);
 pub const MOTION_DEVICE: f32 = 0.56;
 pub const WINDOW_ENTER: f32 = 0.46;
 pub const WINDOW_EXIT: f32 = 0.24;
@@ -37,7 +40,6 @@ pub const NAV_ICON_WIDTH: f32 = 36.;
 pub const NAVIGATION: [f32; 3] = [11., 5., 38.];
 pub const NAV_TOOL_GAP: f32 = 3.;
 pub const NAV_SEPARATOR: f32 = 19.;
-pub const REGISTRY_CONTROL: f32 = 44.;
 
 pub fn tool_title(label: &str) -> iced::widget::Text<'_> {
     heading(label, 15., 22., iced::font::Weight::Semibold)

@@ -1,6 +1,6 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, sized_icon_button},
+    controls::{Icon, action_button, form_input, sized_icon_button},
     locale::Locale,
     style,
     surface::tool_action,
@@ -8,7 +8,7 @@ use crate::{
 use ai_phone_api::wire;
 use iced::{
     Element, Font, Length, Padding, Task,
-    widget::{button, checkbox, column, container, row, rule, text, text_input},
+    widget::{button, checkbox, column, container, row, rule, text},
 };
 use std::path::PathBuf;
 
@@ -229,13 +229,9 @@ impl Skills {
             content = content.push(
                 row![
                     Icon::Link.view(),
-                    text_input(locale.tr("GitHub / SKILL.md 网址"), &self.source)
+                    form_input(locale.tr("GitHub / SKILL.md 网址"), &self.source)
                         .on_input_maybe((!self.busy).then_some(Message::Source))
                         .on_submit_maybe(submit.clone())
-                        .padding([10, 12])
-                        .size(14)
-                        .line_height(iced::Pixels(20.))
-                        .style(style::input)
                         .width(Length::Fill),
                     action_button(
                         if self.busy {
@@ -244,8 +240,7 @@ impl Skills {
                             locale.tr("导入")
                         },
                         submit
-                    )
-                    .width(76),
+                    ),
                 ]
                 .spacing(10)
                 .align_y(iced::Alignment::Center),
@@ -269,10 +264,12 @@ impl Skills {
                     .view()
                     .width(15)
                     .height(15),
-                style::section_title(&skill.name),
+                container(style::section_title(&skill.name))
+                    .width(Length::Fill)
+                    .clip(true),
             ]
             .spacing(8)
-            .height(36)
+            .height(style::COMPACT_CONTROL)
             .align_y(iced::Alignment::Center);
             let mut heading = row![
                 button(label)
@@ -294,8 +291,8 @@ impl Skills {
                     .push(sized_icon_button(
                         Icon::Trash,
                         (!self.busy).then(|| Message::Remove(skill.id.clone())),
-                        36.,
-                        36.,
+                        style::COMPACT_CONTROL,
+                        style::COMPACT_CONTROL,
                     ));
             }
             let mut article = column![heading];
@@ -336,12 +333,12 @@ impl Skills {
         content = content.push(list);
         if self.removed.is_some() {
             content = content.push(
-                button(
+                crate::controls::content_button(
                     row![Icon::Undo.view(), text(locale.tr("撤销移除")).size(13)]
                         .spacing(8)
                         .align_y(iced::Alignment::Center),
+                    style::CONTROL_HEIGHT,
                 )
-                .style(style::quiet)
                 .on_press_maybe((!self.busy).then_some(Message::Undo)),
             );
         }

@@ -1412,8 +1412,11 @@ impl App {
                     && self.panel == Panel::Files
                     && self.popup_rect().contains(self.cursor)
                 {
-                    let message = self.files.local_drop(self.cursor, self.popup_rect(), path);
-                    return self.update(Message::Files(Box::new(message)));
+                    let body = surface::tool_content_rect(self.popup_rect(), WORKBENCH.width);
+                    return match self.files.local_drop(self.cursor, body, path) {
+                        Some(message) => self.update(Message::Files(Box::new(message))),
+                        None => Task::none(),
+                    };
                 }
                 return self.update(Message::Conversation(chat::Message::Files(vec![path])));
             }
@@ -1962,20 +1965,15 @@ impl App {
         let width = WORKBENCH.width;
         let padding = surface::tool_padding(width);
         if self.panel == Panel::Agent {
-            let action = |label, message| {
-                button(text(locale.tr(label)).size(13))
-                    .height(style::REGISTRY_CONTROL)
-                    .style(style::quiet)
-                    .on_press(message)
-            };
+            let action = |label, message| controls::text_button(locale.tr(label)).on_press(message);
             let settings = row![
-                action("设备", Message::OpenDevices),
+                action("设备", Message::OpenDevices).padding(iced::Padding::ZERO.right(12)),
                 iced::widget::toggler(self.chat.host.enabled())
                     .label(locale.tr("允许本机协作"))
                     .text_size(13)
                     .on_toggle(Message::HostAccess),
                 space::horizontal(),
-                action("卸载 AImanity", Message::Uninstall)
+                action("卸载 AImanity", Message::Uninstall).padding(iced::Padding::ZERO.left(12))
             ]
             .spacing(14)
             .align_y(iced::Center);
@@ -2019,10 +2017,6 @@ impl App {
                 Some(Message::ClosePanel),
             )),
         );
-        let body_height = self.panel_target().height
-            - style::window_insets(width).2
-            - padding.top
-            - padding.bottom;
         let language_row_inset = 12.;
         let language_border_inset = 1.;
         let content = match self.panel {
@@ -2035,7 +2029,10 @@ impl App {
             Panel::Todos => self.todos.view(locale).map(Message::Todos),
             Panel::Files => self
                 .files
-                .view(body_height, locale)
+                .view(
+                    surface::tool_content_rect(Rectangle::with_size(self.panel_target()), width),
+                    locale,
+                )
                 .map(|m| Message::Files(Box::new(m))),
             Panel::Location => self.location.view(locale).map(Message::Location),
             Panel::Proxy => self.proxy.view(locale).map(Message::Proxy),
@@ -2110,31 +2107,24 @@ impl App {
                         .push(
                             row![
                                 space::horizontal(),
-                                button(text(locale.tr("保存图片")).size(14))
-                                    .padding([10, 0])
-                                    .on_press(Message::SaveCapture)
-                                    .style(style::quiet),
-                                button(
-                                    container(text(locale.tr("附到对话")).size(14))
-                                        .center_y(Length::Fill)
-                                )
-                                .height(style::CONTROL_HEIGHT)
-                                .padding([0, 16])
-                                .on_press(Message::AttachCapture)
-                                .style(|theme, status| {
-                                    let mut appearance = style::quiet(theme, status);
-                                    let fill = if matches!(
-                                        status,
-                                        iced::widget::button::Status::Hovered
-                                            | iced::widget::button::Status::Pressed
-                                    ) {
-                                        style::ACCENT
-                                    } else {
-                                        iced::Color::from_rgb8(0xf2, 0xf2, 0xf2)
-                                    };
-                                    appearance.background = Some(fill.into());
-                                    appearance
-                                })
+                                controls::text_button(locale.tr("保存图片"))
+                                    .on_press(Message::SaveCapture),
+                                controls::text_button(locale.tr("附到对话"))
+                                    .on_press(Message::AttachCapture)
+                                    .style(|theme, status| {
+                                        let mut appearance = style::quiet(theme, status);
+                                        let fill = if matches!(
+                                            status,
+                                            iced::widget::button::Status::Hovered
+                                                | iced::widget::button::Status::Pressed
+                                        ) {
+                                            style::ACCENT
+                                        } else {
+                                            iced::Color::from_rgb8(0xf2, 0xf2, 0xf2)
+                                        };
+                                        appearance.background = Some(fill.into());
+                                        appearance
+                                    })
                             ]
                             .spacing(18)
                             .align_y(iced::Center),
@@ -2150,7 +2140,7 @@ impl App {
         };
         let padded = container(content).padding(padding).width(Length::Fill);
         let body: Element<'_, Message> = match self.panel {
-            Panel::Knowledge => padded.height(Length::Fill).into(),
+            Panel::Knowledge | Panel::Files => padded.height(Length::Fill).into(),
             Panel::Language => container(
                 scrollable(
                     padded.padding(
@@ -2185,7 +2175,7 @@ impl App {
             .padding(language_border_inset)
             .height(Length::Fill)
             .into(),
-            Panel::Files | Panel::Todos => scrollable(padded)
+            Panel::Todos => scrollable(padded)
                 .direction(surface::tool_scroll())
                 .height(Length::Fill)
                 .into(),
@@ -2414,24 +2404,20 @@ impl App {
             .align_y(iced::Center);
             if index == 0 {
                 let landscape = self.aspects()[0] > 1.;
-                tools = tools.push(controls::sized_icon_button(
+                tools = tools.push(surface::tool_action(
                     if landscape {
                         Icon::PhoneLandscape
                     } else {
                         Icon::PhonePortrait
                     },
                     self.frames[0].as_ref().map(|_| Message::Rotate),
-                    32.,
-                    34.,
                 ));
             }
-            tools = tools.push(controls::sized_icon_button(
+            tools = tools.push(surface::tool_action(
                 Icon::Camera,
                 self.frames[index]
                     .as_ref()
                     .map(|_| Message::OpenPanel(Panel::Capture(index), true)),
-                32.,
-                34.,
             ));
             stage.push(
                 pin(container(tools)

@@ -125,7 +125,12 @@ pub fn tool_padding(viewport_width: f32) -> iced::Padding {
 }
 
 pub fn tool_action<'a, M: Clone + 'a>(icon: Icon, message: Option<M>) -> Element<'a, M> {
-    sized_icon_button(icon, message, 32., 32.)
+    sized_icon_button(icon, message, style::TOOL_CONTROL, style::TOOL_CONTROL)
+}
+
+pub fn tool_content_rect(panel: Rectangle, viewport_width: f32) -> Rectangle {
+    let padding = tool_padding(viewport_width);
+    panel.shrink(padding.top(padding.top + style::window_insets(viewport_width).2))
 }
 
 pub fn tool_scroll() -> scrollable::Direction {

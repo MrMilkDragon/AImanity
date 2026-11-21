@@ -1,6 +1,6 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, icon_button},
+    controls::{Icon, icon_button, text_button},
     modes,
     platform::{self, ClipboardContent},
     style,
@@ -1041,9 +1041,9 @@ impl Chat {
             column![
                 text(locale.tr("本次任务可跨应用操作你的整个桌面。屏幕画面会发给当前模型，并保存在本地任务记录中。")).size(13),
                 row![
-                    button(text(locale.tr("取消")).size(13)).style(style::quiet).on_press(Message::HostToggle),
-                    button(text(locale.tr("允许本次任务")).size(13)).style(style::primary).on_press(Message::HostAllow)
-                ].spacing(8)
+                    text_button(locale.tr("取消")).on_press(Message::HostToggle),
+                    text_button(locale.tr("允许本次任务")).style(style::primary).on_press(Message::HostAllow)
+                ].spacing(8).align_y(iced::Center)
             ].spacing(6)
         });
         let editor = text_editor(&self.draft)
@@ -1123,8 +1123,8 @@ impl Chat {
             });
         submit = submit.push(
             button(container(send).center(Length::Fill))
-                .width(36)
-                .height(36)
+                .width(style::CONTROL_HEIGHT)
+                .height(style::CONTROL_HEIGHT)
                 .padding(0)
                 .style(style::primary)
                 .on_press_maybe(can_send.then_some(Message::Send)),
@@ -1133,8 +1133,7 @@ impl Chat {
         let host_button: Option<Element<'_, Message>> = match self.host {
             Permission::Disabled => None,
             Permission::Armed | Permission::Active { .. } => Some(
-                button(text(locale.tr("结束本机协作")).size(12))
-                    .style(style::quiet)
+                text_button(locale.tr("结束本机协作"))
                     .on_press(Message::HostToggle)
                     .into(),
             ),
@@ -1167,7 +1166,8 @@ impl Chat {
             .width(Length::Fill)
             .align_x(iced::Right),
         ]
-        .spacing(4);
+        .spacing(4)
+        .align_y(iced::Center);
         let mut composer = column![]
             .spacing(3)
             .extend(host_permission.map(Element::from));

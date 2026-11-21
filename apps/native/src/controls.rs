@@ -1,8 +1,9 @@
 use crate::style;
 use iced::{
     Element, Length,
-    widget::{button, column, container, rule, svg, text, text_input},
+    widget::{button, column, container, pick_list, rule, svg, text, text_input},
 };
+use std::borrow::Borrow;
 
 #[derive(Clone, Copy)]
 pub enum Icon {
@@ -21,6 +22,7 @@ pub enum Icon {
     Up,
     Grip,
     Plus,
+    Minus,
     Back,
     Edit,
     Trash,
@@ -52,15 +54,38 @@ pub enum Icon {
     Mic,
     MicOff,
 }
+pub fn content_button<'a, M: Clone + 'a>(
+    content: impl Into<Element<'a, M>>,
+    height: f32,
+) -> button::Button<'a, M> {
+    button(container(content).center_y(Length::Fill))
+        .height(height)
+        .padding([0, 12])
+        .style(style::quiet)
+}
+
+fn button_label(label: &str) -> text::Text<'_> {
+    text(label)
+        .size(13)
+        .line_height(style::FIELD_LINE)
+        .wrapping(text::Wrapping::None)
+}
+
+pub fn text_button<'a, M: Clone + 'a>(label: &'a str) -> button::Button<'a, M> {
+    content_button(button_label(label), style::CONTROL_HEIGHT)
+}
+
 pub fn action_button<'a, M: Clone + 'a>(
     label: &'a str,
     action: Option<M>,
 ) -> button::Button<'a, M> {
-    button(container(text(label).size(13)).center(Length::Fill))
-        .width(Length::Fill)
-        .height(style::CONTROL_HEIGHT)
-        .style(style::primary)
-        .on_press_maybe(action)
+    content_button(
+        container(button_label(label)).center_x(Length::Fill),
+        style::CONTROL_HEIGHT,
+    )
+    .width(Length::Shrink)
+    .style(style::primary)
+    .on_press_maybe(action)
 }
 
 pub fn tab_button<'a, M: Clone + 'a>(
@@ -137,6 +162,7 @@ impl Icon {
                 "<path d='M9 5h.1M15 5h.1M9 12h.1m6 0h.1M9 19h.1m6 0h.1' stroke-width='3'/>"
             }
             Self::Plus => "<path d='M12 5v14M5 12h14'/>",
+            Self::Minus => "<path d='M5 12h14'/>",
             Self::Back => "<path d='m12 19-7-7 7-7M5 12h14'/>",
             Self::Edit => "<path d='m16 3 5 5L8 21H3v-5ZM14 5l5 5'/>",
             Self::Trash => "<path d='M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7'/>",
@@ -224,6 +250,38 @@ pub fn sized_icon_button<'a, M: Clone + 'a>(
     .style(style::quiet)
     .into()
 }
+const FIELD_PADDING: [f32; 2] = [(style::CONTROL_HEIGHT - style::FIELD_LINE.0) / 2., 12.];
+
+pub fn form_input<'a, M: Clone + 'a>(
+    placeholder: &str,
+    value: &str,
+) -> text_input::TextInput<'a, M> {
+    text_input(placeholder, value)
+        .size(14)
+        .line_height(style::FIELD_LINE)
+        .padding(FIELD_PADDING)
+        .style(style::input)
+}
+
+pub fn form_select<'a, T, L, V, M>(
+    options: L,
+    selected: Option<V>,
+    on_select: impl Fn(T) -> M + 'a,
+) -> pick_list::PickList<'a, T, L, V, M>
+where
+    T: ToString + PartialEq + Clone + 'a,
+    L: Borrow<[T]> + 'a,
+    V: Borrow<T> + 'a,
+    M: Clone + 'a,
+{
+    pick_list(options, selected, on_select)
+        .text_size(14)
+        .text_line_height(style::FIELD_LINE)
+        .padding(FIELD_PADDING)
+        .style(style::select)
+        .menu_style(style::menu)
+}
+
 pub fn field<'a, M: Clone + 'a>(
     label: &'a str,
     value: &'a str,
@@ -232,13 +290,30 @@ pub fn field<'a, M: Clone + 'a>(
 ) -> Element<'a, M> {
     column![
         text(label).size(12).style(style::muted_text),
-        text_input("", value)
-            .on_input_maybe(enabled.then_some(on_input))
-            .size(14)
-            .line_height(iced::Pixels(20.))
-            .padding([10, 12])
-            .style(style::input)
+        form_input("", value).on_input_maybe(enabled.then_some(on_input))
     ]
     .spacing(6)
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workbench_actions_keep_the_same_height_for_long_and_short_labels() {
+        let actions: [Element<'_, ()>; 5] = [
+            text_button("设备").into(),
+            action_button("Save and reconnect", Some(())).into(),
+            action_button("Speichern und erneut verbinden", None).into(),
+            icon_button(Icon::Plus, Some(())),
+            tab_button("Model", true, Some(())),
+        ];
+        for action in actions {
+            assert_eq!(
+                action.as_widget().size().height,
+                Length::Fixed(style::CONTROL_HEIGHT)
+            );
+        }
+    }
 }

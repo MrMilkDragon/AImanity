@@ -1,15 +1,13 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, field, icon_button},
+    controls::{Icon, action_button, content_button, field, form_select, icon_button, text_button},
     style,
 };
 use ai_phone_api::wire::{self, GeoPoint, LocationState};
 use iced::{
     Color, Element, Event, Length, Point, Rectangle, Renderer, Size, Subscription, Task, Theme,
     Vector, mouse,
-    widget::{
-        button, canvas, column, container, image, pick_list, row, space, stack, svg, text, toggler,
-    },
+    widget::{canvas, column, container, image, row, space, stack, svg, text, toggler},
 };
 use std::{
     collections::HashMap,
@@ -329,10 +327,9 @@ impl Location {
         if enabled {
             body = body.push(
                 row![
-                    button(locale.tr("跟随宿主位置"))
-                        .style(style::quiet)
+                    text_button(locale.tr("跟随宿主位置"))
                         .on_press_maybe(editable.then_some(Message::Follow)),
-                    button(locale.tr("路线"))
+                    text_button(locale.tr("路线"))
                         .style(if self.edit {
                             style::primary
                         } else {
@@ -344,7 +341,8 @@ impl Location {
                         (editable && self.edit && !self.route.is_empty()).then_some(Message::Undo)
                     )
                 ]
-                .spacing(6),
+                .spacing(6)
+                .align_y(iced::Center),
             );
             if self.state.as_ref().is_some_and(|s| s.source == "network") && !self.dirty {
                 body = body.push(
@@ -377,12 +375,11 @@ impl Location {
                     )
                     .push(
                         row![
-                            button(text("© OpenStreetMap").size(11))
-                                .style(style::quiet)
+                            content_button(text("© OpenStreetMap").size(11), style::TOOL_CONTROL)
                                 .on_press(Message::Attribution),
                             space::horizontal(),
-                            button("−").style(style::quiet).on_press(Message::Zoom(-1)),
-                            button("+").style(style::quiet).on_press(Message::Zoom(1))
+                            crate::surface::tool_action(Icon::Minus, Some(Message::Zoom(-1))),
+                            crate::surface::tool_action(Icon::Plus, Some(Message::Zoom(1)))
                         ]
                         .spacing(4)
                         .align_y(iced::Center),
@@ -414,7 +411,6 @@ impl Location {
                         (editable && (self.dirty || !self.error.is_empty()))
                             .then_some(Message::Apply)
                     )
-                    .width(64)
                 ]
                 .spacing(8)
                 .align_y(iced::Bottom),
@@ -428,7 +424,7 @@ impl Location {
                             Message::Speed,
                             editable
                         ),
-                        pick_list(
+                        form_select(
                             [locale.tr("单次"), locale.tr("循环")],
                             Some(if self.repeat {
                                 locale.tr("循环")
@@ -436,10 +432,7 @@ impl Location {
                                 locale.tr("单次")
                             }),
                             move |v| Message::Repeat(v == locale.tr("循环"))
-                        )
-                        .padding([10, 12])
-                        .style(style::select)
-                        .menu_style(style::menu),
+                        ),
                         icon_button(
                             if moving { Icon::Pause } else { Icon::Play },
                             (!self.saving && self.route.len() >= 2).then_some(Message::Move)
@@ -457,14 +450,9 @@ impl Location {
                 .style(|_, _| svg::Style {
                     color: Some(style::MUTED),
                 });
-            let enable = button(
-                text(locale.tr("开启"))
-                    .size(14)
-                    .line_height(iced::Pixels(20.)),
-            )
-            .padding([8, 16])
-            .style(style::primary)
-            .on_press_maybe((!self.saving).then_some(Message::Enabled(true)));
+            let enable = text_button(locale.tr("开启"))
+                .style(style::primary)
+                .on_press_maybe((!self.saving).then_some(Message::Enabled(true)));
             body = body.push(
                 container(column![locate, enable].spacing(24).align_x(iced::Center))
                     .width(Length::Fill)

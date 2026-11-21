@@ -133,14 +133,13 @@ impl Todos {
         let mut rows = column![].spacing(GAP);
         if !self.error.is_empty() {
             rows = rows.push(
-                button(
+                crate::controls::content_button(
                     text(locale.tr(&self.error))
                         .size(13)
                         .style(style::muted_text),
+                    ROW,
                 )
-                .height(ROW)
-                .on_press(Message::Load)
-                .style(style::quiet),
+                .on_press(Message::Load),
             );
         } else if self.items.is_empty() {
             rows = rows.push(

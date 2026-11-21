@@ -1,16 +1,15 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, sized_icon_button, tab_button},
+    controls::{
+        Icon, action_button, content_button, form_input, form_select, sized_icon_button, tab_button,
+    },
     style,
     surface::{tool_action, tool_header, tool_padding, tool_scroll},
 };
 use ai_phone_api::wire;
 use iced::{
     Border, Element, Length, Size, Task,
-    widget::{
-        button, column, container, pick_list, row, rule, scrollable, sensor, space, text,
-        text_input,
-    },
+    widget::{button, column, container, row, rule, scrollable, sensor, space, text},
 };
 use std::collections::HashMap;
 
@@ -406,7 +405,7 @@ impl Agents {
     ) -> Element<'a, Message> {
         let adding = editing_tab.is_some_and(|(id, _)| id.is_empty());
         let editing = editing_tab.is_some();
-        let control = style::REGISTRY_CONTROL;
+        let control = style::CONTROL_HEIGHT;
         let (_, _, header_height) = style::window_insets(width);
         let padding = tool_padding(width);
         let title = if adding {
@@ -433,13 +432,10 @@ impl Agents {
         let model_field = |label: &'a str, value: &'a str, field| {
             column![
                 text(label).size(12).style(style::muted_text),
-                text_input("", value)
+                form_input("", value)
                     .on_input_maybe(
                         (!self.busy).then_some(move |value| Message::Field(field, value))
                     )
-                    .size(14)
-                    .line_height(iced::Pixels(20.))
-                    .padding([12, 12])
                     .style(style::registry_input),
             ]
             .spacing(6)
@@ -496,14 +492,10 @@ impl Agents {
                     .cloned();
                 let provider = column![
                     text(locale.tr("服务商")).size(12).color(style::MUTED),
-                    pick_list(self.providers.clone(), selected, Message::Provider)
+                    form_select(self.providers.clone(), selected, Message::Provider)
                         .placeholder(locale.tr("兼容服务"))
                         .width(Length::Fill)
-                        .padding([12, 12])
-                        .text_size(14)
-                        .text_line_height(iced::Pixels(20.))
                         .style(style::registry_select)
-                        .menu_style(style::menu)
                 ]
                 .spacing(6);
                 body = body
@@ -523,7 +515,7 @@ impl Agents {
                         column![
                             text("API Key").size(12).color(style::MUTED),
                             row![
-                                text_input(
+                                form_input(
                                     if editor.draft.use_saved_key {
                                         locale.tr("已保存")
                                     } else {
@@ -532,9 +524,6 @@ impl Agents {
                                     &editor.draft.api_key
                                 )
                                 .secure(!editor.visible)
-                                .size(14)
-                                .line_height(iced::Pixels(20.))
-                                .padding([12, 12])
                                 .style(style::registry_input)
                                 .on_input_maybe(
                                     (!self.busy).then_some(|v| Message::Field(Field::Key, v))
@@ -555,7 +544,7 @@ impl Agents {
                         .spacing(6),
                     )
                     .push(
-                        button(
+                        content_button(
                             row![
                                 if editor.advanced {
                                     Icon::Down
@@ -565,9 +554,10 @@ impl Agents {
                                 .view(),
                                 text(locale.tr("高级")).size(12)
                             ]
-                            .spacing(6),
+                            .spacing(6)
+                            .align_y(iced::Center),
+                            control,
                         )
-                        .style(style::quiet)
                         .on_press(Message::Advanced),
                     );
                 if editor.advanced {
@@ -580,15 +570,11 @@ impl Agents {
                         .push(
                             column![
                                 text(locale.tr("协议")).size(12).color(style::MUTED),
-                                pick_list(protocols, Some(editor.draft.protocol.clone()), |v| {
+                                form_select(protocols, Some(editor.draft.protocol.clone()), |v| {
                                     Message::Field(Field::Protocol, v)
                                 })
                                 .width(Length::Fill)
-                                .padding([12, 12])
-                                .text_size(14)
-                                .text_line_height(iced::Pixels(20.))
                                 .style(style::registry_select)
-                                .menu_style(style::menu)
                             ]
                             .spacing(6),
                         )
@@ -662,13 +648,11 @@ impl Agents {
                             locale.tr("取消"),
                             (!self.busy).then_some(Message::CancelDelete)
                         )
-                        .style(style::quiet)
-                        .width(64),
+                        .style(style::quiet),
                         action_button(
                             locale.tr("删除"),
                             (!self.busy).then_some(Message::ConfirmDelete)
                         )
-                        .width(64)
                         .style(|theme, status| {
                             let mut s = button::danger(theme, status);
                             s.border.radius = style::CONTROL_RADIUS.into();
@@ -722,15 +706,14 @@ impl Agents {
                 body = body
                     .push(
                         row![
-                            button(
+                            content_button(
                                 row![mark, label]
                                     .spacing(12)
-                                    .align_y(iced::Alignment::Center)
+                                    .align_y(iced::Alignment::Center),
+                                64.,
                             )
                             .width(Length::Fill)
-                            .height(64)
-                            .padding([10, 0])
-                            .style(style::quiet)
+                            .padding(0)
                             .on_press_maybe(
                                 (!self.busy).then_some(Message::Select(agent.id.clone()))
                             ),

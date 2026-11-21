@@ -1,13 +1,13 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, field, icon_button},
+    controls::{Icon, action_button, content_button, field, form_select, icon_button, text_button},
     locale::Locale,
     style,
 };
 use ai_phone_api::wire;
 use iced::{
     Element, Length, Subscription, Task,
-    widget::{button, column, pick_list, row, space, text},
+    widget::{column, container, row, space, text},
 };
 use std::time::Duration;
 
@@ -217,14 +217,18 @@ impl Devices {
         let mut list = column![].spacing(4);
         for d in &registry.devices {
             list = list.push(
-                button(
-                    row![Icon::Screen.view(), text(&d.name).size(13)]
-                        .spacing(8)
-                        .align_y(iced::Center),
+                content_button(
+                    row![
+                        Icon::Screen.view(),
+                        container(text(&d.name).size(13).wrapping(text::Wrapping::None))
+                            .width(Length::Fill)
+                            .clip(true)
+                    ]
+                    .spacing(8)
+                    .align_y(iced::Center),
+                    style::CONTROL_HEIGHT,
                 )
                 .width(Length::Fill)
-                .height(40)
-                .style(style::quiet)
                 .on_press_maybe((!self.busy).then(|| Message::Choose(d.id.clone()))),
             );
         }
@@ -260,7 +264,7 @@ impl Devices {
             form = form
                 .push(text(tr("系统")).size(12).color(style::MUTED))
                 .push(
-                    pick_list(
+                    form_select(
                         choices,
                         Some(if draft.kind == "phone" {
                             phone
@@ -271,10 +275,7 @@ impl Devices {
                             Message::Kind(if label == phone { "phone" } else { "desktop" }.into())
                         },
                     )
-                    .width(Length::Fill)
-                    .style(style::select)
-                    .menu_style(style::menu)
-                    .padding([10, 12]),
+                    .width(Length::Fill),
                 );
         } else if let Some(device) = device {
             form = form.push(
@@ -291,30 +292,31 @@ impl Devices {
                         row![
                             column![
                                 text(tr("处理器")).size(12),
-                                pick_list([1, 2, 4], Some(self.cpus), Message::Cpu)
-                                    .style(style::select)
+                                form_select([1, 2, 4], Some(self.cpus), Message::Cpu)
                                     .width(Length::Fill)
                             ],
                             column![
                                 text(tr("内存")).size(12),
-                                pick_list(
+                                form_select(
                                     [2048, 2560, 3072, 4096],
                                     Some(self.memory),
                                     Message::Memory
                                 )
-                                .style(style::select)
                                 .width(Length::Fill)
                             ]
                         ]
                         .spacing(8),
                     )
-                    .push(action_button(
-                        self.job
-                            .as_ref()
-                            .filter(|_| self.running())
-                            .map_or(tr("安装系统"), |j| j.stage.as_str()),
-                        (!self.busy && !self.running()).then_some(Message::Install),
-                    ));
+                    .push(
+                        action_button(
+                            self.job
+                                .as_ref()
+                                .filter(|_| self.running())
+                                .map_or(tr("安装系统"), |j| j.stage.as_str()),
+                            (!self.busy && !self.running()).then_some(Message::Install),
+                        )
+                        .width(Length::Fill),
+                    );
             }
         }
         if !self.error.is_empty() {
@@ -326,14 +328,11 @@ impl Devices {
         let actions = if let Some(draft) = draft {
             row![
                 space::horizontal(),
-                button(tr("撤销"))
-                    .style(style::quiet)
-                    .on_press_maybe((!self.busy).then_some(Message::Discard)),
+                text_button(tr("撤销")).on_press_maybe((!self.busy).then_some(Message::Discard)),
                 action_button(
                     tr("保存"),
                     (!self.busy && !draft.name.trim().is_empty()).then_some(Message::Save)
                 )
-                .width(80)
             ]
             .align_y(iced::Center)
             .spacing(8)

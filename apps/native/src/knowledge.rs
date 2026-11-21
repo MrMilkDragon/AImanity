@@ -2,7 +2,7 @@ mod graph;
 
 use crate::{
     connection::Connection,
-    controls::{Icon, field, icon_button},
+    controls::{Icon, content_button, field, icon_button, text_button},
     locale::Locale,
     style,
 };
@@ -10,8 +10,8 @@ use ai_phone_api::wire;
 use iced::{
     Element, Length, Point, Subscription, Task, keyboard,
     widget::{
-        button, canvas, column, container, image as picture, markdown, row, rule, scrollable,
-        space, text, text_editor, text_input,
+        canvas, column, container, image as picture, markdown, row, rule, scrollable, space, text,
+        text_editor, text_input,
     },
 };
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -713,8 +713,7 @@ impl Knowledge {
                                 .size(13)
                                 .style(style::muted_text),
                             space::horizontal(),
-                            button(text(locale.tr("放弃草稿")).size(13))
-                                .style(style::quiet)
+                            text_button(locale.tr("放弃草稿"))
                                 .on_press_maybe((!self.busy).then_some(Message::Reload))
                         ]
                         .align_y(iced::Alignment::Center),
@@ -813,17 +812,17 @@ impl Knowledge {
         .spacing(6);
         for related in &draft.related {
             content = content.push(
-                button(
+                content_button(
                     row![
-                        text(&related.title).size(13),
-                        space::horizontal(),
+                        container(text(&related.title).size(13).wrapping(text::Wrapping::None))
+                            .width(Length::Fill)
+                            .clip(true),
                         Icon::Right.view()
                     ]
                     .align_y(iced::Alignment::Center),
+                    style::CONTROL_HEIGHT,
                 )
                 .width(Length::Fill)
-                .height(40)
-                .style(style::quiet)
                 .on_press(Message::Select(related.id.clone(), None)),
             );
         }
@@ -851,17 +850,17 @@ impl Knowledge {
                 count += 1;
                 let linked = draft.document.related_ids.contains(&option.id);
                 options = options.push(
-                    button(
+                    content_button(
                         row![
-                            text(&option.title).size(13),
-                            space::horizontal(),
+                            container(text(&option.title).size(13).wrapping(text::Wrapping::None))
+                                .width(Length::Fill)
+                                .clip(true),
                             if linked { Icon::Check } else { Icon::Link }.view()
                         ]
                         .align_y(iced::Alignment::Center),
+                        style::CONTROL_HEIGHT,
                     )
                     .width(Length::Fill)
-                    .height(40)
-                    .style(style::quiet)
                     .on_press_maybe((!self.busy).then(|| Message::Link(option.id.clone()))),
                 );
             }
