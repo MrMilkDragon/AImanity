@@ -1483,8 +1483,8 @@
     },
     {
       "path": "crates/assistant/src/tool_catalog.rs",
-      "size": 21616,
-      "sha256": "9c08f55041cc3ff79939b1b3268501cdb3c47af24a32b83b37bd523f335689ed"
+      "size": 21635,
+      "sha256": "8551a3e5c829e75f5539f83b21241287cc1abe32394bf0f4c067adea134c5a84"
     },
     {
       "path": "crates/assistant/src/voice_input.rs",
@@ -1523,8 +1523,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 263773,
-      "sha256": "d57a54f658f91b69dae505e9b61748a1871250b390b10d54b9f9ce6b8abef43b"
+      "size": 266921,
+      "sha256": "fa64e3a2f576374c8d516244ed91f358db4a6d37668f44ffc145e366e8d32a8b"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -3938,8 +3938,8 @@
     },
     {
       "path": "skills/builtin/phone-use/SKILL.md",
-      "size": 11120,
-      "sha256": "bba2a482c1aabb26d039a92792c15227a6c89513236fbf975281312af8611184"
+      "size": 10968,
+      "sha256": "60cf5d16c9634141bbebaa9b3629b598ba91a3845901c71f6fa46e84ef8b2cbb"
     },
     {
       "path": "skills/builtin/playwright/SKILL.md",

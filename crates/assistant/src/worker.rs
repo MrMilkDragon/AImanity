@@ -1885,50 +1885,68 @@ fn phone_completion_proposal(context: &[Value], output: &[Value], summary: &str)
     if summary.is_empty()
         || summary.len() > 12000
         || output.iter().any(|item| item["type"] == "function_call")
+        || summary
+            .split(['。', '；', '，', '！', '.', ';', ',', '!', '\n'])
+            .any(progress_intent)
         || phone_claim(context, summary) != PhoneClaim::Action
     {
         return None;
     }
-    let (action, frame) = completed_phone_gesture(context)?;
-    if action["name"] != "phone_tap_element"
-        || !tool_value(&frame["output"]).is_some_and(|v| {
-            v["foreground_app"]
-                .as_str()
-                .is_some_and(|app| app.starts_with("com.android.settings/"))
-        })
-    {
+    let (action, single) = completed_phone_gesture(context)?;
+    if !single || action["name"] != "phone_tap_element" {
         return None;
     }
     Some(completion_proposal(summary))
 }
 
-fn completed_phone_gesture(context: &[Value]) -> Option<(&Value, &Value)> {
+fn completed_phone_gesture(context: &[Value]) -> Option<(&Value, bool)> {
     let recent = &context[evidence_start(context)..];
     let frame = recent.last()?;
     if frame["type"] != "function_call_output" {
         return None;
     }
-    let observe = recent
-        .iter()
-        .rev()
-        .find(|call| call["call_id"] == frame["call_id"] && phone_observation(call, context))?;
+    let readback_index = recent.iter().rposition(|call| {
+        call["call_id"] == frame["call_id"] && phone_observation(call, context)
+    })?;
+    let (before, readback) = recent.split_at(readback_index);
+    let observe = &readback[0];
     let action_id = observe["local_after_action"].as_str()?;
-    let mut actions = recent.iter().filter(|call| {
+    let mut actions = before.iter().filter(|call| {
         call["type"] == "function_call"
             && !matches!(call["name"].as_str(), Some("skill_read" | "phone_observe"))
     });
-    let action = actions.next()?;
-    if actions.next().is_some()
-        || !matches!(
-            action["name"].as_str(),
-            Some("phone_tap_element" | "phone_tap" | "phone_swipe")
-        )
-        || action["call_id"] != action_id
+    let action = actions.next_back()?;
+    if !matches!(
+        action["name"].as_str(),
+        Some("phone_tap_element" | "phone_tap" | "phone_swipe")
+    ) || action["call_id"] != action_id
+        || !tool_output(before, action)
+            .and_then(tool_value)
+            .as_ref()
+            .is_some_and(confirmed_input)
         || !phone_action_verified(context)
     {
         return None;
     }
-    Some((action, frame))
+    let source = latest_grounding(before)?;
+    let device = source["device_id"].as_str().filter(|id| !id.is_empty())?;
+    let target = latest_grounding(recent)?;
+    if target["device_id"] != device || target["observation_id"] == source["observation_id"] {
+        return None;
+    }
+    let mut single = true;
+    for preceding in actions {
+        if !phone_gesture(preceding["name"].as_str()?)
+            || !tool_output(before, preceding)
+                .and_then(tool_value)
+                .as_ref()
+                .is_some_and(confirmed_input)
+        {
+            return None;
+        }
+        single = false;
+    }
+    Some((action, single))
 }
 
 fn completion_proposal(summary: &str) -> Value {
@@ -1948,17 +1966,21 @@ fn hinted_device_completion(context: &[Value]) -> Option<Value> {
         .find(|item| item["type"] == "function_call" && item["call_id"] == id)?;
     let action = match call["name"].as_str()? {
         "phone_observe" => completed_phone_gesture(context)?.0,
-        "computer_type"
-            if tool_value(&receipt["output"]).is_some_and(|value| {
-                value["success"] == true && value["observation_id"].is_string()
-            }) && recent.iter().all(|item| {
-                item["type"] != "function_call"
-                    || matches!(
-                        item["name"].as_str(),
-                        Some("skill_read" | "device_list" | "computer_observe")
-                    )
-                    || item["call_id"] == id
-            }) =>
+        "computer_type" | "computer_click"
+            if receipt["output"]
+                .as_array()
+                .is_some_and(|parts| has_live_png(parts))
+                && tool_value(&receipt["output"]).is_some_and(|value| {
+                    value["success"] == true && value["observation_id"].is_string()
+                })
+                && recent.iter().all(|item| {
+                    item["type"] != "function_call"
+                        || matches!(
+                            item["name"].as_str(),
+                            Some("skill_read" | "device_list" | "computer_observe")
+                        )
+                        || item["call_id"] == id
+                }) =>
         {
             call
         }
@@ -1970,11 +1992,33 @@ fn hinted_device_completion(context: &[Value]) -> Option<Value> {
         return None;
     }
     let mut proposal = completion_proposal(summary);
-    if call["name"] == "phone_observe" {
+    if matches!(
+        call["name"].as_str(),
+        Some("phone_observe" | "computer_click")
+    ) {
         proposal["local_readback"] = json!(true);
     }
     proposal["local_action_id"] = json!(Uuid::now_v7().to_string());
     Some(proposal)
+}
+
+fn progress_intent(text: &str) -> bool {
+    let text = text.trim();
+    [
+        "先",
+        "接下来",
+        "下一步",
+        "我会",
+        "我先",
+        "准备",
+        "计划",
+        "将",
+        "继续检查",
+        "继续操作",
+        "继续核对",
+    ]
+    .iter()
+    .any(|prefix| text.starts_with(prefix))
 }
 
 fn progress_is_verified(context: &[Value], text: &str) -> bool {
@@ -1983,23 +2027,7 @@ fn progress_is_verified(context: &[Value], text: &str) -> bool {
     if matches!(claim, PhoneClaim::Action | PhoneClaim::Observe) {
         return false;
     }
-    if phone_task(context)
-        && ![
-            "先",
-            "接下来",
-            "下一步",
-            "我会",
-            "我先",
-            "准备",
-            "计划",
-            "将",
-            "继续检查",
-            "继续操作",
-            "继续核对",
-        ]
-        .iter()
-        .any(|prefix| text.trim().starts_with(prefix))
-    {
+    if phone_task(context) && !progress_intent(text) {
         return false;
     }
     if !fresh_phone_evidence(context, claim) {
@@ -4702,22 +4730,20 @@ mod verification_tests {
         assert!(!confirmed_file_delivery(&task, &json!([file])));
     }
     #[test]
-    fn text_completion_after_a_settings_tap_queues_normal_finish_only_once() {
-        let mut context = request("在真实安卓手机的系统设置中点击进入电池页面，再简短回复。");
+    fn text_completion_after_one_confirmed_tap_queues_normal_finish_only_once() {
+        let mut context = request("在手机上点开收藏页面，再简短回复。");
         context.extend(read_skill());
-        context.extend(observe("before"));
+        context.extend(device_frame("before", "phone"));
         context.extend(action(
             "tap",
             "phone_tap_element",
-            json!({"element_id":"battery"}),
+            json!({"element_id":"saved"}),
         ));
-        let mut after = observe("after");
+        let mut after = device_frame("after", "phone");
         after[0]["local_after_action"] = json!("tap");
-        after[1]["output"].as_array_mut().unwrap().push(json!({"type":"input_text",
-            "text":"{\"device_id\":\"phone\",\"observation_id\":\"battery\",\"foreground_app\":\"com.android.settings/.BatterySettings\"}"}));
         context.extend(after);
 
-        let summary = "已点击并进入电池页面。";
+        let summary = "已点击并进入收藏页面。";
         let proposal = phone_completion_proposal(&context, &[], summary).unwrap();
         assert_eq!(proposal["name"], "task_finish");
         assert_eq!(
@@ -4732,11 +4758,21 @@ mod verification_tests {
             )
             .is_none()
         );
-        assert!(phone_completion_proposal(&context, &[], "接下来检查电池页面。 ").is_none());
+        assert!(phone_completion_proposal(&context, &[], "已点击收藏，接下来检查详情。").is_none());
         context.extend(action("finish", "task_finish", json!({})));
         assert!(phone_completion_proposal(&context, &[], summary).is_none());
         context.extend(request("改为打开显示页面"));
         assert!(phone_completion_proposal(&context, &[], summary).is_none());
+    }
+
+    fn device_frame(id: &str, device: &str) -> Vec<Value> {
+        let mut events = observe(id);
+        let metadata = json!({"observation_id":id, "device_id":device});
+        events[1]["output"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"type":"input_text","text":metadata.to_string()}));
+        events
     }
 
     #[test]
@@ -4744,7 +4780,7 @@ mod verification_tests {
         let summary = "已进入电池页面。";
         let mut context = request("在手机系统设置中点击进入电池页面。");
         context.extend(read_skill());
-        context.extend(observe("before"));
+        context.extend(device_frame("before", "phone"));
         context.extend(action(
             "tap",
             "phone_tap_element",
@@ -4752,11 +4788,9 @@ mod verification_tests {
                 "element_id":"battery", "completion_summary":summary
             }),
         ));
-        let mut after = observe("after");
+        let mut after = device_frame("after", "phone");
         after[0]["local_after_action"] = json!("tap");
         assert!(hinted_device_completion(&context).is_none());
-        after[1]["output"].as_array_mut().unwrap().push(json!({"type":"input_text",
-            "text":"{\"device_id\":\"phone\",\"observation_id\":\"battery\",\"foreground_app\":\"com.android.settings/.BatterySettings\"}"}));
         context.extend(after);
         let finish = hinted_device_completion(&context).unwrap();
         assert_eq!(finish["name"], "task_finish");
@@ -4782,8 +4816,57 @@ mod verification_tests {
         assert!(hinted_device_completion(&context).is_none());
         let confirmed = json!({"success":true,"observation_id":"new-frame"});
         context.last_mut().unwrap()["output"][0]["text"] = json!(confirmed.to_string());
+        assert!(hinted_device_completion(&context).is_none());
+        context.last_mut().unwrap()["output"].as_array_mut().unwrap().push(
+            json!({"type":"input_image","image_url":"data:image/png;base64,real-desktop-frame-test"})
+        );
         assert!(hinted_device_completion(&context).is_some());
+        let mut click = context.clone();
+        click[1]["name"] = json!("computer_click");
+        assert_eq!(
+            hinted_device_completion(&click).unwrap()["local_readback"],
+            true
+        );
         context.extend(action("another", "computer_click", json!({})));
+        assert!(hinted_device_completion(&context).is_none());
+    }
+    #[test]
+    fn terminal_phone_hint_uses_the_last_confirmed_gesture_in_the_current_task() {
+        let mut context = request("在手机上打开列表，再点收藏。");
+        context.extend(read_skill());
+        context.extend(device_frame("initial", "phone"));
+        context.extend(action(
+            "open",
+            "phone_tap_element",
+            json!({"element_id":"list"}),
+        ));
+        context.extend(device_frame("list", "phone"));
+        context.extend(action(
+            "save",
+            "phone_tap_element",
+            json!({"element_id":"save","completion_summary":"已点击收藏。"}),
+        ));
+        let mut frame = device_frame("saved", "phone");
+        frame[0]["local_after_action"] = json!("save");
+        let finish = |frame: &[Value]| {
+            let mut all = context.clone();
+            all.extend_from_slice(frame);
+            hinted_device_completion(&all)
+        };
+        assert_eq!(finish(&frame).unwrap()["local_readback"], true);
+        let mut stale = frame.clone();
+        stale[0]["local_after_action"] = json!("open");
+        assert!(finish(&stale).is_none());
+        let mut other = device_frame("saved", "other");
+        other[0]["local_after_action"] = json!("save");
+        assert!(finish(&other).is_none());
+        let mut steered = context.clone();
+        steered.extend(request("改成打开另一个页面"));
+        steered.extend_from_slice(&frame);
+        assert!(hinted_device_completion(&steered).is_none());
+        context.last_mut().unwrap()["output"][0]["text"] =
+            json!(r#"{"success":true,"result_unknown":true}"#);
+        context.extend(frame);
         assert!(hinted_device_completion(&context).is_none());
     }
     #[test]
