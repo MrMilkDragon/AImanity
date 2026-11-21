@@ -3,6 +3,7 @@ mod applications;
 mod device;
 mod policy;
 mod state;
+mod windows_migration;
 use crate::{Error, Result, filesystem, native_ipc};
 use ai_phone_api::wire::{NativeAndroidInputReady, NativeAndroidInputSetup};
 use device::Device;
@@ -344,11 +345,6 @@ async fn configure(
 ) -> Result<bool> {
     let installed = package_version(adb).await?;
     let current = installed.is_some_and(|version| version >= VERSION);
-    if (pending.is_some() && installed.is_none())
-        || (pending == Some(Stage::ReplaceUnknown) && !current)
-    {
-        return Err(Error::Invalid("phone_input_install_unknown"));
-    }
     if adb
         .execute(&["shell", "am", "get-current-user"], 10)
         .await?
@@ -357,7 +353,23 @@ async fn configure(
         return Err(Error::Invalid("phone_input_user"));
     }
     let mut changed = false;
-    if !current {
+    let migrate = pending == Some(Stage::MigrateWindows)
+        || (!observe && installed == Some(0) && windows_migration::matches(adb).await?);
+    let restore_roles = migrate || pending == Some(Stage::RestoreWindowsRoles);
+    if migrate {
+        if observe {
+            return Err(Error::Invalid("phone_input_not_ready"));
+        }
+        let apk = resource(apk, 16 * 1024 * 1024)?;
+        state.save(Stage::MigrateWindows)?;
+        windows_migration::transfer(adb, installed, apk).await?;
+        state.save(Stage::RestoreWindowsRoles)?;
+        changed = true;
+    } else if (pending.is_some() && installed.is_none())
+        || (pending == Some(Stage::ReplaceUnknown) && !current)
+    {
+        return Err(Error::Invalid("phone_input_install_unknown"));
+    } else if !current {
         if observe {
             return Err(Error::Invalid("phone_input_not_ready"));
         }
@@ -382,13 +394,16 @@ async fn configure(
         }
         changed = true;
     }
-    if !observe && pending != Some(Stage::Configure) {
+    if !observe && !restore_roles && pending != Some(Stage::Configure) {
         state.save(Stage::Configure)?;
     }
     registration(adb).await?;
     changed |= ime(adb, observe).await?;
     changed |= services(adb, observe).await?;
     if !observe {
+        if restore_roles {
+            windows_migration::finish(adb).await?;
+        }
         state.finish()?;
     }
     Ok(changed)

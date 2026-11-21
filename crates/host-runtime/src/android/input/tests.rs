@@ -114,6 +114,8 @@ impl Device for Phone {
             } else {
                 String::new()
             }
+        } else if args == ["shell", "sh", "-c", windows_migration::IDENTITY] {
+            String::new()
         } else if args == ["shell", "am", "get-current-user"] {
             self.user.clone()
         } else if args.first() == Some(&"install") {
