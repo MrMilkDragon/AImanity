@@ -238,6 +238,7 @@ async fn initialize(
     }
     crate::desktop_bridge::require_rootfs(&root, args.images.as_deref())?;
     let resources = profile::phone_resources(&root, template, &args.request)?;
+    let reconfigure = args.request.reconfigure;
     progress("android", "running", "")?;
     let android = args.resource.join("android.payload");
     let identity = args.android;
@@ -250,7 +251,12 @@ async fn initialize(
             None
         };
         let prepared = match cached {
-            Some(prepared) => prepared,
+            Some(prepared) => {
+                if reconfigure {
+                    prepared.configure(&resources)?;
+                }
+                prepared
+            }
             None => installation.prepare_android(
                 &android,
                 &identity,
@@ -309,7 +315,7 @@ async fn initialize(
     {
         let linux = async {
             progress("engine", "running", "")?;
-            engine::start(&mut backend, &home, &user, &args.resource).await?;
+            engine::start(&mut backend, &home, &user, &args.resource, reconfigure).await?;
             progress("services", "running", "")?;
             backend.start(&user).await
         };

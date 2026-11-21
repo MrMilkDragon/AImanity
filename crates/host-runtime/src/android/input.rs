@@ -10,6 +10,7 @@ use state::{Stage, State};
 use std::{ffi::OsString, path::Path, time::Duration};
 use tokio::sync::watch;
 const PACKAGE: &str = "dev.aiphone.input";
+const VERSION: u64 = include!("../../../../apps/android-input/version-code.txt");
 const IME: &str = "dev.aiphone.input/.UnicodeIme";
 const ATTENTION: &str = "dev.aiphone.input/.PhoneAttention";
 const ACCESSIBILITY_SERVICES: &str = "enabled_accessibility_services";
@@ -85,15 +86,38 @@ pub async fn setup(request: NativeAndroidInputSetup, stop: watch::Receiver<bool>
     }
     Ok(changed)
 }
-async fn package(adb: &mut impl Device) -> Result<bool> {
-    policy::package(
-        &adb.execute(
-            &["shell", "pm", "list", "packages", "--user", "0", PACKAGE],
+async fn package_version(adb: &mut impl Device) -> Result<Option<u64>> {
+    let packages = adb
+        .execute(
+            &[
+                "shell",
+                "pm",
+                "list",
+                "packages",
+                "--show-versioncode",
+                "--user",
+                "0",
+                PACKAGE,
+            ],
             10,
         )
-        .await?,
-        PACKAGE,
-    )
+        .await?;
+    for row in packages.lines() {
+        let (package, version) = row
+            .split_once(" versionCode:")
+            .ok_or(Error::Invalid("phone_input_observation"))?;
+        if package
+            .strip_prefix("package:")
+            .ok_or(Error::Invalid("phone_input_observation"))?
+            == PACKAGE
+        {
+            return version
+                .parse()
+                .map(Some)
+                .map_err(|_| Error::Invalid("phone_input_observation"));
+        }
+    }
+    Ok(None)
 }
 async fn setting(adb: &mut impl Device, key: &str) -> Result<String> {
     adb.execute(
@@ -318,8 +342,11 @@ async fn configure(
     apk: &Path,
     observe: bool,
 ) -> Result<bool> {
-    let present = package(adb).await?;
-    if pending.is_some() && !present {
+    let installed = package_version(adb).await?;
+    let current = installed.is_some_and(|version| version >= VERSION);
+    if (pending.is_some() && installed.is_none())
+        || (pending == Some(Stage::ReplaceUnknown) && !current)
+    {
         return Err(Error::Invalid("phone_input_install_unknown"));
     }
     if adb
@@ -330,12 +357,16 @@ async fn configure(
         return Err(Error::Invalid("phone_input_user"));
     }
     let mut changed = false;
-    if !present {
+    if !current {
         if observe {
             return Err(Error::Invalid("phone_input_not_ready"));
         }
         let apk = resource(apk, 16 * 1024 * 1024)?;
-        state.save(Stage::InstallUnknown)?;
+        state.save(if installed.is_some() {
+            Stage::ReplaceUnknown
+        } else {
+            Stage::InstallUnknown
+        })?;
         // An unknown exit is observed, never reinstalled by this invocation.
         let _ = adb
             .execute(
@@ -343,7 +374,10 @@ async fn configure(
                 60,
             )
             .await;
-        if !package(adb).await? {
+        if package_version(adb)
+            .await?
+            .is_none_or(|version| version < VERSION)
+        {
             return Err(Error::Invalid("phone_input_install_unknown"));
         }
         changed = true;

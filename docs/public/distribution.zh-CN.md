@@ -34,8 +34,10 @@ PostgreSQL 使用 Linux 客体内的私有存储。备份包含数据库、Andro
 
 ```sh
 cargo run --quiet --locked -p ai-phone-release-tools -- sign-update /path/to/offline-key \
-  AImanity-0.0.4-macos-arm64.dmg AImanity-0.0.4-windows-x64-setup.exe native-stable.json
+  AImanity-0.0.5-macos-arm64.dmg AImanity-0.0.5-windows-x64-setup.exe native-stable.json
 ```
+
+顺序打包时，本地保留两份安装包回执和一个安装包。另一端的安装包通过管道传给 `sign-update --stdin macos` 或 `sign-update --stdin windows`，后接原有四个参数。工具按传入的文件名读取同目录回执。两端安装包都可下载后再发布共享更新清单。
 
 在 GitHub 发行页附上 DMG 和 EXE，将签名清单 `native-stable.json` 提交到 `update-feed` 分支。Calcium 用户先卸载 0.0.3，再从 Releases 下载 0.0.4 全新安装。此后的版本通过 Dysprosium 客户端内更新。
 

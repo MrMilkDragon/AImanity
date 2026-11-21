@@ -95,6 +95,7 @@ enum Message {
     PanelLeft,
     ClosePanel,
     PanelSize(iced::Size),
+    DevicePanelSize(iced::Size),
     PanelFocus,
     ClosedPaneInput,
     Link,
@@ -227,6 +228,8 @@ struct App {
     from_panel: Size,
     popup_transition: Option<Instant>,
     child: Option<ChildWindow>,
+    agent_list_height: f32,
+    device_panel_height: f32,
     agent_add_height: f32,
     panel_leave_pending: bool,
     started: Instant,
@@ -295,6 +298,8 @@ impl App {
             from_panel: Size::new(400., 140.),
             popup_transition: None,
             child: None,
+            agent_list_height: 232.,
+            device_panel_height: 320.,
             agent_add_height: 505.,
             panel_leave_pending: false,
             started: Instant::now(),
@@ -626,10 +631,17 @@ impl App {
                         links,
                     } = *session;
                     let packaged = self.setup.is_some();
-                    if let Some(setup) = self.setup.take()
-                        && let Err(error) = setup.bundle.mark_installed()
-                    {
-                        self.error = error;
+                    if let Some(mut setup) = self.setup.take() {
+                        if let Err(error) = setup.bundle.mark_installed().and_then(|()| {
+                            if setup.request.reconfigure {
+                                setup.request.reconfigure = false;
+                                setup.request.store(&setup.bundle.home)?;
+                            }
+                            Ok(())
+                        }) {
+                            self.error = error;
+                        }
+                        self.device_admin.applied = Some(setup.request);
                     }
                     self.devices = std::array::from_fn(|i| {
                         registry
@@ -1009,6 +1021,23 @@ impl App {
                     self.reflow_popup();
                 }
             }
+            Message::Agents(agents::Message::ListMeasured(height)) => {
+                if self.agent_list_height != height {
+                    self.agent_list_height = height;
+                    if self.popup && self.panel == Panel::Agent {
+                        self.reflow_popup();
+                        self.reflow_child();
+                    }
+                }
+            }
+            Message::DevicePanelSize(size) => {
+                let height = size.height.ceil();
+                if self.show_devices && self.device_panel_height != height {
+                    self.device_panel_height = height;
+                    self.reflow_popup();
+                    self.reflow_child();
+                }
+            }
             Message::Agents(agents::Message::Measured(size)) if self.agents.adding() => {
                 let height = size.height.ceil().min(505.);
                 if self.agent_add_height != height {
@@ -1023,6 +1052,7 @@ impl App {
             }
             Message::OpenDevices => {
                 self.show_devices = true;
+                self.reflow_popup();
                 self.reflow_child();
                 if let Some(device) = &self.devices[self.focus] {
                     return self.update(Message::Devices(devices::Message::Choose(
@@ -1032,7 +1062,30 @@ impl App {
             }
             Message::CloseDevices => {
                 self.show_devices = false;
+                self.reflow_popup();
                 self.reflow_child();
+            }
+            Message::Devices(devices::Message::Restart) => {
+                if let Some(mut request) = self.device_admin.resources.clone()
+                    && self.stop.is_some()
+                    && self.after_stop.is_none()
+                {
+                    request.reconfigure = true;
+                    let bundle = deployment::Bundle::load().and_then(|bundle| {
+                        bundle.host(&request)?;
+                        request.store(&bundle.home)?;
+                        Ok(bundle)
+                    });
+                    match bundle {
+                        Ok(bundle) => {
+                            self.setup = Some(deployment::Setup::new(bundle, Some(request), true));
+                            self.set_popup(false);
+                            self.show_devices = false;
+                            return self.update(Message::Setup(deployment::Message::Start));
+                        }
+                        Err(error) => self.error = error,
+                    }
+                }
             }
             Message::Devices(message) => {
                 if let Some(client) = &self.connection {
@@ -1544,7 +1597,20 @@ impl App {
                     + padding.bottom;
                 (400., height.min(430.), false)
             }
-            Panel::Agent => (680., 600., false),
+            Panel::Agent => {
+                let editing = self.agents.editor().is_some_and(|(id, _)| !id.is_empty());
+                (
+                    680.,
+                    if self.show_devices {
+                        self.device_panel_height.min(600.)
+                    } else if editing {
+                        600.
+                    } else {
+                        self.agent_list_height.min(600.)
+                    },
+                    false,
+                )
+            }
             Panel::Language => (280., 480., false),
             Panel::Skills => (650., 560., true),
             Panel::Knowledge => (850., 590., false),
@@ -1943,23 +2009,26 @@ impl App {
                 .preview_view(id, name, bounds)
                 .map(Message::Conversation),
             ChildPane::Devices => scrollable(
-                container(
-                    column![
-                        row![
-                            controls::icon_button(
-                                controls::Icon::Back,
-                                Some(Message::CloseDevices)
-                            ),
-                            text(locale.tr("设备")).size(14)
+                sensor(
+                    container(
+                        column![
+                            row![
+                                controls::icon_button(
+                                    controls::Icon::Back,
+                                    Some(Message::CloseDevices)
+                                ),
+                                text(locale.tr("设备")).size(14)
+                            ]
+                            .align_y(iced::Center),
+                            self.device_admin
+                                .view(&self.agents.registry, locale, self.reduced_motion)
+                                .map(Message::Devices)
                         ]
-                        .align_y(iced::Center),
-                        self.device_admin
-                            .view(&self.agents.registry, locale)
-                            .map(Message::Devices)
-                    ]
-                    .spacing(12),
+                        .spacing(12),
+                    )
+                    .padding(surface::tool_padding(WORKBENCH.width)),
                 )
-                .padding(surface::tool_padding(WORKBENCH.width)),
+                .on_resize(Message::DevicePanelSize),
             )
             .direction(surface::tool_scroll())
             .height(Length::Fill)

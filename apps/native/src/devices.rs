@@ -1,13 +1,14 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, content_button, field, form_select, icon_button, text_button},
+    controls::{Icon, action_button, field, form_select, icon_button, text_button},
+    deployment::{self, Field, Request},
     locale::Locale,
     style,
 };
 use ai_phone_api::wire;
 use iced::{
     Element, Length, Subscription, Task,
-    widget::{column, container, row, space, text},
+    widget::{button, column, row, space, text},
 };
 use std::time::Duration;
 
@@ -23,9 +24,19 @@ pub enum Message {
     Check,
     Jobs(Result<wire::DeviceLinkState, String>),
     Cpu(u32),
-    Memory(u32),
+    Memory(Memory),
+    Resource(bool, Field, u16),
+    Restart,
     Install,
     Installed(Result<wire::DesktopProvisionJob, String>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Memory(u32);
+impl std::fmt::Display for Memory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} GB", f64::from(self.0) / 1024.)
+    }
 }
 
 pub struct Devices {
@@ -37,6 +48,8 @@ pub struct Devices {
     memory: u32,
     job: Option<wire::DesktopProvisionJob>,
     pub registry: Option<wire::RegistryState>,
+    pub applied: Option<Request>,
+    pub resources: Option<Request>,
 }
 impl Default for Devices {
     fn default() -> Self {
@@ -49,6 +62,8 @@ impl Default for Devices {
             memory: 2560,
             job: None,
             registry: None,
+            applied: None,
+            resources: None,
         }
     }
 }
@@ -88,6 +103,7 @@ impl Devices {
             Message::Choose(id) => {
                 self.selected = id;
                 self.draft = None;
+                self.resources = self.applied.clone();
                 return self.update(Message::Check, registry, client);
             }
             Message::New(kind) => {
@@ -169,7 +185,13 @@ impl Devices {
                 Err(e) => self.error = e,
             },
             Message::Cpu(n) => self.cpus = n,
-            Message::Memory(n) => self.memory = n,
+            Message::Memory(n) => self.memory = n.0,
+            Message::Resource(desktop, field, value) => {
+                if let Some(request) = &mut self.resources {
+                    request.set(desktop, field, value);
+                }
+            }
+            Message::Restart => {}
             Message::Install => {
                 self.busy = true;
                 self.error.clear();
@@ -202,6 +224,7 @@ impl Devices {
         &'a self,
         registry: &'a wire::RegistryState,
         locale: Locale,
+        reduced_motion: bool,
     ) -> Element<'a, Message> {
         let tr = |key: &'static str| locale.tr(key);
         let available = self.available(registry);
@@ -217,18 +240,26 @@ impl Devices {
         let mut list = column![].spacing(4);
         for d in &registry.devices {
             list = list.push(
-                content_button(
+                button(
                     row![
-                        Icon::Screen.view(),
-                        container(text(&d.name).size(13).wrapping(text::Wrapping::None))
+                        if d.kind == "phone" {
+                            Icon::PhonePortrait
+                        } else {
+                            Icon::Screen
+                        }
+                        .view(),
+                        text(&d.name)
+                            .size(13)
+                            .line_height(style::FIELD_LINE)
                             .width(Length::Fill)
-                            .clip(true)
+                            .wrapping(text::Wrapping::WordOrGlyph)
                     ]
                     .spacing(8)
                     .align_y(iced::Center),
-                    style::CONTROL_HEIGHT,
                 )
+                .padding([10, 8])
                 .width(Length::Fill)
+                .style(style::quiet)
                 .on_press_maybe((!self.busy).then(|| Message::Choose(d.id.clone()))),
             );
         }
@@ -278,15 +309,32 @@ impl Devices {
                     .width(Length::Fill),
                 );
         } else if let Some(device) = device {
+            let desktop = device.kind == "desktop";
             form = form.push(
                 text(device.system.replace(" · 待安装", ""))
                     .size(12)
                     .color(style::MUTED),
             );
-            if device.kind == "desktop"
-                && device.runtime_state != "managed"
-                && device.id == self.selected
+            if device.runtime_state == "managed"
+                && let (Some(applied), Some(edited)) = (&self.applied, &self.resources)
             {
+                let original = applied.guest(desktop);
+                let guest = edited.guest(desktop);
+                form = form.push(deployment::resource_controls(
+                    desktop,
+                    guest,
+                    Some(original.storage(desktop)),
+                    locale,
+                    reduced_motion,
+                    move |field, value| Message::Resource(desktop, field, value),
+                ));
+                if original != guest {
+                    form = form.push(action_button(
+                        tr("应用并重启两台设备"),
+                        (!self.busy && self.draft.is_none()).then_some(Message::Restart),
+                    ));
+                }
+            } else if desktop && device.runtime_state != "managed" && device.id == self.selected {
                 form = form
                     .push(
                         row![
@@ -298,8 +346,8 @@ impl Devices {
                             column![
                                 text(tr("内存")).size(12),
                                 form_select(
-                                    [2048, 2560, 3072, 4096],
-                                    Some(self.memory),
+                                    [2048, 2560, 3072, 4096].map(Memory),
+                                    Some(Memory(self.memory)),
                                     Message::Memory
                                 )
                                 .width(Length::Fill)

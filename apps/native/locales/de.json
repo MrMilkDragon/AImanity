@@ -1,4 +1,5 @@
 {
+  "应用并重启两台设备": "Beide Geräte neu starten und Änderungen anwenden",
   "允许本机协作": "Steuerung des Host-Desktops erlauben",
   "卸载 AImanity": "AImanity deinstallieren",
   "两台虚拟设备、聊天、工作文件和设置将永久删除。": "Beide virtuellen Geräte, Chats, Arbeitsdateien und Einstellungen werden dauerhaft gelöscht.",
@@ -170,6 +171,7 @@
   "数据线": "Kabel",
   "尚未安装系统": "System nicht installiert",
   "未分配 Agent": "Kein Agent zugewiesen",
+  "发送消息…": "Nachricht schreiben…",
   "发送消息": "Nachricht",
   "设备安装后即可对话": "Gerät installieren, um Chat zu starten",
   "消息": "Nachricht",

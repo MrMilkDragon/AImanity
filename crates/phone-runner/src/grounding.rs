@@ -3,7 +3,6 @@ use std::{
     collections::{HashSet, VecDeque},
     time::Instant,
 };
-use xxhash_rust::xxh3::xxh3_64;
 
 const MAX_TARGETS: usize = 160;
 const MAX_AGE: Duration = Duration::from_secs(60);
@@ -25,7 +24,7 @@ struct Snapshot {
 }
 enum Evidence {
     Controls(Option<OcrEvidence>),
-    Motion(u64),
+    Frame(Arc<[u8]>),
     Cue(wire::device_action_request::Action),
 }
 struct OcrEvidence {
@@ -469,8 +468,8 @@ pub async fn observe(
     let mut evidence = Evidence::Controls(None);
     let mut note = String::new();
     if motion {
-        evidence = Evidence::Motion(xxh3_64(&png));
-        note = "可直接滑动或拖动。对即将出现的目标，提前在 phone_tap 或 phone_swipe 中设置 when。"
+        evidence = Evidence::Frame(Arc::from(png.as_slice()));
+        note = "可点击仍在原处的目标，或滑动、拖动。对即将出现的目标，在 phone_tap 或 phone_swipe 中设置 when。"
             .into();
     } else if !native_content_available(&targets, height)
         || ["always", "only"].contains(&request.ocr_mode.as_str())
@@ -484,7 +483,12 @@ pub async fn observe(
                 targets.append(&mut recognized);
                 note = "OCR文字仅为可见文字区域，不保证是按钮".into();
             }
-            Err(error) => note = error,
+            Err(error) => {
+                if !has_native_targets(&targets) {
+                    evidence = Evidence::Frame(Arc::from(png.as_slice()));
+                }
+                note = error;
+            }
         }
     }
     if foreground(runner).await? != app {
@@ -713,7 +717,7 @@ pub async fn resolve(
     let Evidence::Controls(ocr) = &snapshot.evidence else {
         let action = request.action.as_ref().ok_or("缺少动作")?;
         match (&snapshot.evidence, action) {
-            (Evidence::Motion(_), Action::Swipe(_) | Action::Drag(_)) => {}
+            (Evidence::Frame(_), Action::Tap(_) | Action::Swipe(_) | Action::Drag(_)) => {}
             (Evidence::Cue(expected), actual) if expected == actual => {}
             _ => return Err("stale_target:动作与当前画面依据不符，请重新观察".into()),
         }
@@ -722,14 +726,25 @@ pub async fn resolve(
             return Err("stale_target:前台应用或显示尺寸已改变".into());
         }
         if snapshot.created.elapsed() > CUE_MAX_AGE {
-            let Evidence::Motion(original) = &snapshot.evidence else {
+            let Evidence::Frame(original) = &snapshot.evidence else {
                 return Err("stale_target:画面触发信号已过期".into());
             };
             let (png, w, h) = capture_frame(runner).await?;
-            if (w, h) != size
-                || xxh3_64(&png) != *original
-                || foreground(runner).await? != snapshot.app
-            {
+            if (w, h) != size {
+                return Err("stale_target:前台显示尺寸已改变".into());
+            }
+            let current = if png.as_slice() == original.as_ref() {
+                true
+            } else if let Action::Tap(tap) = action {
+                let (x, y) = (tap.x, tap.y);
+                let previous = Arc::clone(original);
+                tokio::task::spawn_blocking(move || same_tap_target(&previous, &png, x, y))
+                    .await
+                    .map_err(|e| e.to_string())?
+            } else {
+                false
+            };
+            if !current || foreground(runner).await? != snapshot.app {
                 return Err("stale_target:动态画面已改变，请重新观察或用 when 等待新帧".into());
             }
         }
@@ -861,6 +876,41 @@ pub async fn resolve(
         scroll: None,
         dimensions,
     }))
+}
+
+fn same_tap_target(before: &[u8], after: &[u8], x: u32, y: u32) -> bool {
+    let decode = |png| image::load_from_memory_with_format(png, image::ImageFormat::Png);
+    let (Ok(a), Ok(b)) = (decode(before), decode(after)) else {
+        return false;
+    };
+    let (a, b) = (a.into_rgb8(), b.into_rgb8());
+    let (w, h) = a.dimensions();
+    if b.dimensions() != (w, h) || x >= w || y >= h {
+        return false;
+    }
+    let stable = |x, y| {
+        a.get_pixel(x, y)
+            .0
+            .into_iter()
+            .zip(b.get_pixel(x, y).0)
+            .all(|(left, right)| left.abs_diff(right) <= 24)
+    };
+    let step = (w.min(h) / 96).max(1) as i32;
+    let target = (-2..=2)
+        .flat_map(|dy| (-2..=2).map(move |dx| (dx, dy)))
+        .filter(|(dx, dy)| {
+            stable(
+                x.saturating_add_signed(dx * step).min(w - 1),
+                y.saturating_add_signed(dy * step).min(h - 1),
+            )
+        })
+        .count();
+    target >= 21
+        && (0..16)
+            .flat_map(|row| (0..12).map(move |col| (row, col)))
+            .filter(|(row, col)| stable((2 * col + 1) * w / 24, (2 * row + 1) * h / 32))
+            .count()
+            >= 144
 }
 
 async fn validate_ocr(
@@ -1150,6 +1200,30 @@ mod tests {
         }
         assert!(scroll_gesture(&b, "diagonal").is_err());
     }
+    #[test]
+    fn a_canvas_tap_survives_unrelated_animation_but_requires_its_target() {
+        let still = image::RgbImage::from_fn(192, 256, |x, y| {
+            image::Rgb([x as u8, y as u8, 120])
+        });
+        let png = |im: image::RgbImage| {
+            let mut bytes = std::io::Cursor::new(Vec::new());
+            im.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+            bytes.into_inner()
+        };
+        let before = png(still.clone());
+        let mut changed = still;
+        for pixel in changed.rows_mut().take(12).flatten() {
+            *pixel = image::Rgb([0; 3]);
+        }
+        assert!(same_tap_target(&before, &png(changed.clone()), 75, 100));
+        for y in 92..109 {
+            for x in 67..84 {
+                changed.put_pixel(x, y, image::Rgb([255; 3]));
+            }
+        }
+        assert!(!same_tap_target(&before, &png(changed), 75, 100));
+    }
+
     #[test]
     fn ocr_visual_guard_tolerates_small_noise_but_rejects_changed_content() {
         let a = vec![120; 2048];

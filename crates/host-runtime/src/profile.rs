@@ -1,4 +1,4 @@
-//! Native first-run configuration. Resuming never rewrites an owned resource profile.
+//! Installed device profiles and explicit resource changes.
 use crate::{Error, Result, filesystem};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -36,6 +36,8 @@ pub(crate) struct Desktop {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Request {
+    #[serde(default)]
+    pub(crate) reconfigure: bool,
     locale: String,
     pub(crate) phone: Phone,
     pub(crate) desktop: Desktop,
@@ -54,7 +56,7 @@ pub(crate) fn phone_resources(
     request: &Request,
 ) -> Result<crate::android::Resources> {
     let path = root.join("data/deployment/profile.json");
-    if path.try_exists()? {
+    if !request.reconfigure && path.try_exists()? {
         let value: Value =
             serde_json::from_slice(&fs::read(path)?).map_err(|_| Error::Invalid("host_profile"))?;
         validate(&value, template)?;
@@ -218,11 +220,27 @@ pub(crate) fn prepare_request(
     }
     let destination = root.join("data/deployment/profile.json");
     if destination.exists() {
-        return validate(
-            &serde_json::from_slice(&fs::read(destination)?)
-                .map_err(|_| Error::Invalid("host_profile"))?,
-            template,
-        );
+        let mut value: Value = serde_json::from_slice(&fs::read(destination)?)
+            .map_err(|_| Error::Invalid("host_profile"))?;
+        validate(&value, template)?;
+        if !request.reconfigure {
+            return Ok(());
+        }
+        if value["phone"]["storage_gb"] != request.phone.storage_gb
+            || request.desktop.storage_gb.is_some_and(|gb| {
+                u64::from(gb) < value["desktop"]["storage_gb"].as_u64().unwrap_or(64)
+            })
+        {
+            return Err(Error::Invalid("installed_device_storage"));
+        }
+        value["phone"]["cpus"] = request.phone.cpus.into();
+        value["phone"]["memory_mb"] = request.phone.memory_mb.into();
+        value["desktop"]["cpus"] = request.desktop.cpus.into();
+        value["desktop"]["memory_mb"] = request.desktop.memory_mb.into();
+        if let Some(gb) = request.desktop.storage_gb {
+            value["desktop"]["storage_gb"] = gb.into();
+        }
+        return persist(root, &value);
     }
     if !sdk.is_absolute()
         || sdk
@@ -377,5 +395,40 @@ mod resume_resources_tests {
         fs::write(&path, &body).unwrap();
         assert!(phone_resources(root, "android35-arm64", &request(2, 2048)).is_err());
         assert_eq!(fs::read(path).unwrap(), body);
+    }
+
+    #[test]
+    fn explicit_reconfiguration_changes_resources_and_keeps_the_installed_identity() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let install =
+            |r| prepare_request(root, Path::new("/owned/sdk"), "android35-arm64", r, "/bin");
+        let mut initial = request(2, 2048);
+        initial.desktop.storage_gb = Some(16);
+        install(initial).unwrap();
+        let credentials = fs::read(root.join(".env")).unwrap();
+        let profile = || {
+            serde_json::from_slice::<Value>(
+                &fs::read(root.join("data/deployment/profile.json")).unwrap(),
+            )
+            .unwrap()
+        };
+        let before = profile();
+        let mut next = request(4, 3072);
+        next.reconfigure = true;
+        next.desktop.memory_mb = 2560;
+        next.desktop.storage_gb = Some(32);
+        install(next).unwrap();
+        let updated = profile();
+        assert_eq!(updated["phone"]["cpus"], 4);
+        assert_eq!(updated["desktop"]["memory_mb"], 2560);
+        assert_eq!(updated["desktop"]["storage_gb"], 32);
+        assert_eq!(updated["sdk_root"], before["sdk_root"]);
+        assert_eq!(fs::read(root.join(".env")).unwrap(), credentials);
+        let mut shrink = request(1, 1536);
+        shrink.reconfigure = true;
+        shrink.desktop.storage_gb = Some(16);
+        assert!(install(shrink).is_err());
+        assert_eq!(profile(), updated);
     }
 }

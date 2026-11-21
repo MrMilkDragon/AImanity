@@ -26,7 +26,10 @@ pub(crate) fn tools() -> Value {
                     "motion_direction":{"type":"string","enum":["left","right","up","down"],"description":"被跟踪物体在屏幕中的运动方向，与手势方向分别选择。背景也会移动时，用目标的颜色和 coverage_percent 一起限定。"},
                     "track_from":{"type":"array","description":"当前截图中目标的辨识性小区域 [左,上,右,下]。跟踪同一物体向 region 移动，需要 motion_direction。","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
                     "lead_ms":{"type":"integer","description":"按实测速度预测目标进入 region，可提前的毫秒数。","minimum":0,"maximum":500},
-                    "on_appearance":{"type":"boolean","description":"先看到条件不成立，首次观察到条件成立时执行"},"timeout_ms":{"type":"integer","minimum":100,"maximum":15000}
+                    "on_appearance":{"type":"boolean","description":"先看到条件不成立，首次观察到条件成立时执行"},
+                    "start_tap":{"type":"object","description":"可选。若当前屏幕有启动、播放或继续控件，先点它，再由设备在新信号出现时执行已规划的动作。须 on_appearance=true、已知颜色或运动方向。传当前 element_id，或画布上的 x、y、fallback_reason。",
+                        "properties":{"element_id":{"type":"string"},"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"fallback_reason":{"type":"string"}},"additionalProperties":false},
+                    "timeout_ms":{"type":"integer","minimum":100,"maximum":15000}
                 },"required":["region","timeout_ms"],"additionalProperties":false});
     let mut catalog = vec![
         function(

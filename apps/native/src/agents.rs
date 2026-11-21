@@ -47,6 +47,7 @@ pub enum Field {
 #[derive(Clone, Debug)]
 pub enum Message {
     Measured(Size),
+    ListMeasured(f32),
     New,
     Edit(String),
     Back,
@@ -125,7 +126,7 @@ impl Agents {
             return Task::none();
         }
         match message {
-            Message::Measured(_) => {}
+            Message::Measured(_) | Message::ListMeasured(_) => {}
             Message::New | Message::Edit(_) => {
                 self.prune_editors(false);
                 let id = if let Message::Edit(id) = message {
@@ -737,6 +738,14 @@ impl Agents {
                         size.width,
                         size.height + header_height + 14. + control + padding.bottom,
                     ))
+                })
+                .into()
+        } else if !editing {
+            sensor(padded)
+                .on_resize(move |size| {
+                    Message::ListMeasured(
+                        (size.height + header_height + 14. + control + padding.bottom).ceil(),
+                    )
                 })
                 .into()
         } else {

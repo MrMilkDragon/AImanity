@@ -1,4 +1,5 @@
 {
+  "应用并重启两台设备": "Apply and restart both devices",
   "允许本机协作": "Allow host desktop control",
   "卸载 AImanity": "Uninstall AImanity",
   "两台虚拟设备、聊天、工作文件和设置将永久删除。": "Both virtual devices, conversations, work files and settings will be permanently deleted.",
@@ -169,6 +170,7 @@
   "数据线": "Cable",
   "尚未安装系统": "System not installed",
   "未分配 Agent": "No Agent assigned",
+  "发送消息…": "Message…",
   "发送消息": "Message",
   "设备安装后即可对话": "Install device to start chatting",
   "消息": "Message",

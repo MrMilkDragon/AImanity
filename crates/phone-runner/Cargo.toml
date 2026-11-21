@@ -21,7 +21,6 @@ base64 = "=0.22.1"
 reqwest = { version = "0.12", default-features = false }
 uuid = { version = "1", features = ["v4"] }
 roxmltree = "=0.21.1"
-xxhash-rust = { version = "=0.8.19", features = ["xxh3"] }
 fs2 = "=0.4.3"
 tonic = { version = "=0.14.9", default-features = false, features = ["transport", "codegen"] }
 tonic-prost = "=0.14.9"

@@ -1150,6 +1150,7 @@ fn motion_evidence(track: &wire::MotionTrack) -> Option<Value> {
 
 fn grounding_metadata(observation: &wire::DeviceObservation) -> Value {
     json!({"device_id":observation.phone_id,"observation_id":observation.observation_id,"foreground_app":observation.foreground_app,
+        "width":observation.width,"height":observation.height,
         "grounding_note":observation.grounding_note,"scroll_feedback":observation.scroll_feedback,
         "elements":observation.elements.iter().map(|e|json!({"id":e.id,"text":e.text,"resource_id":e.resource_id,"bounds":e.bounds.as_ref().map(|b|vec![b.left,b.top,b.right,b.bottom]),"clickable":e.clickable,"scrollable":e.scrollable,"editable":e.editable,"source":e.source,"confidence":e.confidence})).collect::<Vec<_>>()})
 }
@@ -1363,7 +1364,9 @@ fn queue_post_action_observation(
         .as_ref()
         .and_then(|args| args["ocr_mode"].as_str())
     {
-        _ if completion => r#"{"ocr_mode":"motion"}"#,
+        _ if completion || pending.first().is_some_and(action_cue::follows_tap) => {
+            r#"{"ocr_mode":"motion"}"#
+        }
         Some("sequence") if surface_gesture => r#"{"ocr_mode":"sequence"}"#,
         Some("motion") if surface_gesture => r#"{"ocr_mode":"motion"}"#,
         _ if receipt.is_some_and(|v| v["cue"]["matched"] == true) => r#"{"ocr_mode":"motion"}"#,
@@ -1460,7 +1463,9 @@ fn phone_mutation_precondition(context: &[Value], call: &Value) -> Result<(), &'
         .filter_map(|item| output_position(before_result, item))
         .max()
         .ok_or("动作生成前没有已返回的当前观察，请先phone_observe再规划动作")?;
-    if observation >= generated {
+    if action_cue::follows_tap(call) {
+        action_cue::validate_followup(before_result, generated)?;
+    } else if observation >= generated {
         return Err("同批观察结果在动作生成后才返回，动作尚未执行；请根据真实观察结果重新生成动作");
     }
     let changed = before_result
@@ -3277,6 +3282,10 @@ async fn execute(
         for mut item in output {
             if item["type"] == "function_call" {
                 item["local_action_id"] = json!(Uuid::now_v7().to_string());
+                if let Some(tap) = action_cue::starting_tap(&item, &context).await {
+                    pending.push(tap.clone());
+                    context.push(tap);
+                }
                 pending.push(item.clone());
             }
             context.push(item);
@@ -4651,6 +4660,7 @@ async fn tool(
             gesture: Some(gesture),
             ..action_cue::visual_condition(when, context).await?
         };
+        let watch_started = now_ms();
         let hit: wire::ActionCueMatch = tokio::select! { biased;
             _ = cancel.cancelled() => return Err("canceled".into()),
             hit = phone(app, "action-cue", req) => hit?,
@@ -4667,6 +4677,16 @@ async fn tool(
         }
         let mut sample = json!({"source_observation_id":observation_id,"matched":hit.matched,"frames":hit.frames,"wait_ms":hit.elapsed_ms,
             "first_match_at_ms":hit.first_match_at_ms,"confirmed_at_ms":hit.observed_at_ms});
+        if when.get("start_tap").is_some()
+            && let Some(start) = context
+                .iter()
+                .rev()
+                .find(|c| c["local_start_for"] == call["local_action_id"])
+        {
+            sample["start_action_id"] = start["local_action_id"].clone();
+            sample["planned_at_ms"] = start["local_planned_at_ms"].clone();
+            sample["watch_started_at_ms"] = watch_started.into();
+        }
         if let Some(track) = hit.motion.as_ref().and_then(motion_evidence) {
             sample["motion"] = track;
             if when.get("track_from").is_some() {
@@ -4700,6 +4720,10 @@ async fn tool(
         return Err("操作结果未知，已停止，请先检查手机再继续。".into());
     }
     let mut receipt = json!({"success":result.success,"output":result.output});
+    if let Some(next) = call.get("local_start_for") {
+        receipt["planned_followup"] =
+            json!({"action_id":next,"planned_at_ms":call["local_planned_at_ms"]});
+    }
     if let Some(cue) = cue_result {
         receipt["cue"] = cue;
     }
@@ -5587,6 +5611,50 @@ mod verification_tests {
             phone_mutation_precondition(&with_older, &tap[0]).is_err(),
             "new same-batch observation cannot retroactively justify already-generated parameters"
         );
+    }
+
+    #[tokio::test]
+    async fn preplanned_gesture_requires_its_actual_start_and_same_device_frame() {
+        let frame = |id: &str, app: &str| {
+            let mut read = observe(id);
+            let metadata = json!({"observation_id":id,"device_id":"phone","foreground_app":app,"width":720,"height":1440});
+            read[1]["output"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"type":"input_text","text":metadata.to_string()}));
+            read
+        };
+        let mut context = request("手机中启动计时，画面变绿时点击");
+        context.extend(read_skill());
+        context.extend(frame("before", "browser"));
+        let mut gesture = action(
+            "response",
+            "phone_tap",
+            json!({"x":400,"y":600,"fallback_reason":"网页中央画布",
+            "when":{"start_tap":{"element_id":"n4"},"region":[100,250,300,450],"colors":["#00ff00"],"timeout_ms":2000,"on_appearance":true}}),
+        );
+        gesture[0]["local_action_id"] = json!(Uuid::now_v7().to_string());
+        let tap = action_cue::starting_tap(&gesture[0], &context)
+            .await
+            .unwrap();
+        context.push(tap.clone());
+        context.push(gesture[0].clone());
+        assert!(phone_mutation_precondition(&context, &gesture[0]).is_err());
+        context.push(json!({"type":"function_call_output","call_id":tap["call_id"],"output":[{"type":"input_text","text":"{\"success\":true}"}]}));
+        let mut pending = vec![gesture[0].clone()];
+        assert!(queue_post_action_observation(
+            &tap,
+            Some(&json!({"success":true})),
+            &mut context,
+            &mut pending
+        ));
+        let read = &pending[0];
+        assert_eq!(read["arguments"], r#"{"ocr_mode":"motion"}"#);
+        let id = read["call_id"].as_str().unwrap();
+        context.push(frame(id, "browser").pop().unwrap());
+        assert!(phone_mutation_precondition(&context, &gesture[0]).is_ok());
+        *context.last_mut().unwrap() = frame(id, "settings").pop().unwrap();
+        assert!(phone_mutation_precondition(&context, &gesture[0]).is_err());
     }
     #[test]
     fn batched_actions_stop_after_the_first_effect_and_require_a_new_model_decision() {

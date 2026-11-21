@@ -1,8 +1,87 @@
-use super::{STANDARD, latest_phone_observation, tool_output, wire};
+use super::{
+    STANDARD, latest_grounding, latest_phone_observation, output_position, tool_output, tool_value,
+    wire,
+};
 use base64::Engine;
 use image::GenericImageView;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
+
+pub(super) fn follows_tap(call: &Value) -> bool {
+    matches!(call["name"].as_str(), Some("phone_tap" | "phone_swipe"))
+        && call["arguments"]
+            .as_str()
+            .and_then(|args| serde_json::from_str::<Value>(args).ok())
+            .is_some_and(|args| args["when"].get("start_tap").is_some())
+}
+
+pub(super) async fn starting_tap(call: &Value, context: &[Value]) -> Option<Value> {
+    if !matches!(call["name"].as_str(), Some("phone_tap" | "phone_swipe")) {
+        return None;
+    }
+    let args: Value = serde_json::from_str(call["arguments"].as_str()?).ok()?;
+    let when = &args["when"];
+    let start = when.get("start_tap")?;
+    if when["on_appearance"] != true || visual_condition(when, &[]).await.is_err() {
+        return None;
+    }
+    let (name, arguments) = if let Some(element) = start["element_id"].as_str() {
+        let observed = latest_grounding(context)?;
+        (
+            "phone_tap_element",
+            json!({"element_id":element,"observation_id":observed["observation_id"]}),
+        )
+    } else {
+        (
+            "phone_tap",
+            json!({"x":start["x"].as_u64()?,"y":start["y"].as_u64()?,"fallback_reason":start["fallback_reason"].as_str()?}),
+        )
+    };
+    Some(
+        json!({"type":"function_call","name":name,"arguments":arguments.to_string(),
+        "call_id":uuid::Uuid::now_v7().to_string(),"local_action_id":uuid::Uuid::now_v7().to_string(),
+        "local_start_for":call["local_action_id"],"local_planned_at_ms":super::now_ms()}),
+    )
+}
+
+pub(super) fn validate_followup(context: &[Value], generated: usize) -> Result<(), &'static str> {
+    let earlier = &context[..generated];
+    let tap = earlier
+        .last()
+        .filter(|tap| {
+            matches!(
+                tap["name"].as_str(),
+                Some("phone_tap" | "phone_tap_element")
+            )
+        })
+        .ok_or("同批预判需要紧随启动点击")?;
+    let read = latest_phone_observation(context).ok_or("启动后缺少实景")?;
+    if !tap["local_start_for"].is_string()
+        || tap["local_start_for"] != context[generated]["local_action_id"]
+        || read["local_after_action"] != tap["call_id"]
+        || !output_position(context, tap).is_some_and(|n| n > generated)
+        || !tool_output(context, tap)
+            .and_then(tool_value)
+            .is_some_and(|r| r["success"] == true)
+    {
+        return Err("启动点击与当前画面的回执不匹配");
+    }
+    let before = latest_grounding(earlier).ok_or("启动点击之前缺少实景")?;
+    let now = latest_grounding(context).ok_or("启动后缺少实景")?;
+    if !before["foreground_app"]
+        .as_str()
+        .is_some_and(|app| !app.is_empty())
+        || before["foreground_app"] != now["foreground_app"]
+        || before["device_id"] != now["device_id"]
+        || before["width"].as_u64().is_none()
+        || before["height"].as_u64().is_none()
+        || before["width"] != now["width"]
+        || before["height"] != now["height"]
+    {
+        return Err("启动后的设备、应用或画面尺寸已改变，请重新观察");
+    }
+    Ok(())
+}
 
 #[derive(Deserialize)]
 struct Condition {

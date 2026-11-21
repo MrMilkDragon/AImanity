@@ -128,6 +128,10 @@ pub struct Prepared {
     pub reused_device: bool,
 }
 impl Prepared {
+    pub(crate) fn configure(&self, resources: &Resources) -> Result<()> {
+        device::configure(&self.avd_home, resources)
+    }
+
     pub fn wire(&self) -> Result<ai_phone_api::wire::NativeAndroidPrepared> {
         Ok(ai_phone_api::wire::NativeAndroidPrepared {
             version: 1,

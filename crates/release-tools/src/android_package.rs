@@ -89,18 +89,17 @@ pub(super) fn build_app(root: &Path, role: &str) -> Result<(PathBuf, Value)> {
         .args(["compile", "--dir"])
         .arg(source.join("res"))
         .args(["-o", "resources.zip"]))?;
-    run(tool("aapt2", "exe")
-        .args(["link", "-o", "base.apk", "-I"])
+    let mut link = tool("aapt2", "exe");
+    link.args(["link", "-o", "base.apk", "-I"])
         .arg(&platform)
         .arg("--manifest")
         .arg(source.join("AndroidManifest.xml"))
-        .args([
-            "--min-sdk-version",
-            "26",
-            "--target-sdk-version",
-            "35",
-            "resources.zip",
-        ]))?;
+        .args(["--min-sdk-version", "26", "--target-sdk-version", "35"]);
+    if role == "input" {
+        let version = fs::read_to_string(source.join("version-code.txt"))?;
+        link.args(["--version-code", version.trim()]);
+    }
+    run(link.arg("resources.zip"))?;
     let (dex, module, entry) = if role == "home" {
         (home_dex::emit(), "aimanity_home", "rust/main.rs")
     } else {

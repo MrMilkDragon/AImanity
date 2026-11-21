@@ -76,7 +76,10 @@ pub(super) fn verify_existing(home: &Path, sdk: &Path, abi: &str) -> Result<()> 
 }
 
 pub(super) fn applied(home: &Path) -> Result<Resources> {
-    let values = ini(&home.join(DIRECTORY).join("config.ini"))?;
+    configured(&ini(&home.join(DIRECTORY).join("config.ini"))?)
+}
+
+fn configured(values: &BTreeMap<String, String>) -> Result<Resources> {
     let number = |key: &str| {
         values
             .get(key)
@@ -95,6 +98,26 @@ pub(super) fn applied(home: &Path) -> Result<Resources> {
     };
     resources.validate()?;
     Ok(resources)
+}
+
+pub(super) fn configure(home: &Path, resources: &Resources) -> Result<()> {
+    resources.validate()?;
+    let folder = home.join(DIRECTORY);
+    let mut config = ini(&folder.join("config.ini"))?;
+    let current = configured(&config)?;
+    if current.storage_gb != resources.storage_gb {
+        return Err(Error::Invalid("installed_device_storage"));
+    }
+    if current.cpus == resources.cpus && current.memory_mb == resources.memory_mb {
+        return Ok(());
+    }
+    config.insert("hw.cpu.ncore".into(), resources.cpus.to_string());
+    config.insert("hw.ramSize".into(), resources.memory_mb.to_string());
+    let mut bytes = Vec::new();
+    for (key, value) in config {
+        writeln!(bytes, "{key}={value}")?;
+    }
+    filesystem::publish_private(&folder, "config.ini", &bytes, false)
 }
 fn verify_record(home: &Path, folder: &Path, engine: Engine) -> Result<()> {
     let record = ini(&home.join(RECORD))?;

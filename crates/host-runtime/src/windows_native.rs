@@ -45,17 +45,23 @@ impl Deployment<'_> {
         } else {
             None
         };
+        let resources = android::Resources {
+            cpus: request.phone.cpus,
+            memory_mb: request.phone.memory_mb,
+            storage_gb: request.phone.storage_gb,
+        };
         let phone = match cached {
-            Some(prepared) => prepared,
+            Some(prepared) => {
+                if request.reconfigure {
+                    prepared.configure(&resources).map_err(error)?;
+                }
+                prepared
+            }
             None => installation
                 .prepare_android(
                     &self.resource.join("android.payload"),
                     self.android,
-                    android::Resources {
-                        cpus: request.phone.cpus,
-                        memory_mb: request.phone.memory_mb,
-                        storage_gb: request.phone.storage_gb,
-                    },
+                    resources,
                     &|path| fs2::available_space(path).unwrap_or(0),
                     cancel,
                 )
