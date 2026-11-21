@@ -47,14 +47,14 @@ jobs:
             .version == "0.0.5" and .source_commit == $source and .builder_commit == $source and
             .os == "macos" and .arch == "arm64" and .signing == "ad-hoc" and .complete_device_bundle and
             .runtime_payload_complete and .installer_delivery.single_file and .installer_delivery.github_asset_eligible and
-            .installer_delivery.file == $file and .installer_delivery.size == $size
+            .installer_delivery.file.Unix == ($file|explode) and .installer_delivery.size == $size
           ' "$manifest"
           digest=$(openssl dgst -sha512 -binary "$FILE" | openssl base64 -A)
           test "$digest" = "$(jq -er .sha512 "$manifest")"
           sha=$(jq -er .sha256 "$manifest")
           echo "$sha  $FILE" | shasum -a 256 -c -
           jq -e --arg source "$EXPECTED_SOURCE" --arg file "$FILE" --arg sha "$sha" '
-            .source_commit == $source and .artifact.file == $file and .artifact.sha256 == $sha and .artifact.delivery.complete_device_bundle
+            .source_commit == $source and .artifact.file.Unix == ($file|explode) and .artifact.sha256 == $sha and .artifact.delivery.complete_device_bundle
           ' macos-full-factory-report.json
           codesign --verify --strict "$FILE"
           mount="$RUNNER_TEMP/europium-dmg"
