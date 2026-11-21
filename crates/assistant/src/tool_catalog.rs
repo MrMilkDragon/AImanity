@@ -60,8 +60,8 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_observe",
-            "读取当前手机画面、前台应用及控件ID。always 补充文字。游戏、地图和连续变化的画布用 motion 看实景，再滑动或拖动。",
-            json!({"include_ui_tree":{"type":"boolean"},"ocr_mode":{"type":"string","enum":["auto","always","motion"]}}),
+            "读取当前手机画面、前台应用及控件ID。always 补充文字。motion 看当前画面，sequence 按时间顺序返回两帧，用来判断移动、落点或页面是否稳定。",
+            json!({"include_ui_tree":{"type":"boolean"},"ocr_mode":{"type":"string","enum":["auto","always","motion","sequence"]}}),
             vec![],
         ),
         function(

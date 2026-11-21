@@ -6,6 +6,7 @@ use sha2::{Digest, Sha512};
 use sqlx::Row;
 use std::collections::HashMap;
 
+pub(crate) mod knowledge_review;
 pub(crate) mod screen_attention;
 
 pub fn device(metadata_only: bool) -> wire::DeviceRequest {
@@ -402,7 +403,7 @@ pub fn notification_read_only_tool(name: &str) -> bool {
 }
 pub async fn guard_tool(app: &App, run: Uuid, name: &str) -> Result<bool, String> {
     let row = sqlx::query(
-        "SELECT r.status,r.origin,r.background_read_only,p.exploring,p.notifications_enabled,p.autonomous_install,p.wechat_watch,
+        "SELECT r.status,r.origin,r.device_id,r.background_read_only,p.exploring,p.notifications_enabled,p.autonomous_install,p.wechat_watch,
             r.background_read_only AND EXISTS(SELECT 1 FROM phone_notifications n WHERE n.run_id=r.id AND n.notification_key=$2) screen_change
          FROM runs r CROSS JOIN proactive_state p WHERE r.id=$1",
     )
@@ -415,6 +416,9 @@ pub async fn guard_tool(app: &App, run: Uuid, name: &str) -> Result<bool, String
         return Err("canceled".into());
     }
     let origin: String = row.get("origin");
+    if origin == "knowledge-review" && !knowledge_review::allows(name) {
+        return Err("知识库复查只能查阅、维护和关联文档。".into());
+    }
     if origin == "device-handoff" {
         return crate::device_exchange::guard(app, run, name)
             .await
@@ -430,7 +434,13 @@ pub async fn guard_tool(app: &App, run: Uuid, name: &str) -> Result<bool, String
             return Err("canceled".into());
         }
         let can_read = if row.get::<bool, _>("screen_change") {
-            matches!(name, "computer_observe" | "skill_read" | "task_finish")
+            matches!(name, "skill_read" | "task_finish")
+                || name
+                    == if row.get::<&str, _>("device_id") == registry::PHONE {
+                        "phone_observe"
+                    } else {
+                        "computer_observe"
+                    }
         } else {
             notification_read_only_tool(name)
         };
@@ -449,6 +459,9 @@ pub async fn guard_tool(app: &App, run: Uuid, name: &str) -> Result<bool, String
 pub async fn context(app: &App, message: Uuid) -> Result<Option<Vec<Value>>, String> {
     let row=sqlx::query("SELECT r.id,r.origin,r.trigger_input,r.background_read_only,p.exploring,p.autonomous_reply,p.autonomous_install,p.wechat_watch FROM runs r CROSS JOIN proactive_state p WHERE r.assistant_message_id=$1").bind(message).fetch_one(&app.db).await.map_err(|e|e.to_string())?;
     let origin: String = row.get("origin");
+    if origin == "knowledge-review" {
+        return Ok(Some(knowledge_review::context(row.get("trigger_input"))));
+    }
     if origin == "device-handoff" {
         let text: String = row.get("trigger_input");
         return Ok(Some(crate::device_exchange::context(
@@ -470,7 +483,9 @@ pub async fn context(app: &App, message: Uuid) -> Result<Option<Vec<Value>>, Str
         .map_err(|e| e.to_string())?;
         let trigger: String = row.get("trigger_input");
         if screen {
-            return Ok(Some(crate::notification_policy::screen_context(&trigger)));
+            return Ok(Some(crate::notification_policy::screen_context(
+                &kind, &trigger,
+            )));
         }
         return Ok(Some(crate::notification_policy::context(
             &kind,
@@ -646,7 +661,9 @@ async fn ingest_device_feed(
     let seen: std::collections::HashSet<String> = sqlx::query_scalar::<_, String>(
         "WITH heartbeat AS (
             UPDATE proactive_state SET listener_connected=$1,attention_connected=$2,listener_checked_at=now()
-            WHERE owner_id='local-user' AND $4=$5
+            WHERE owner_id='local-user' AND $4=$5 AND
+                  (listener_connected IS DISTINCT FROM $1 OR attention_connected IS DISTINCT FROM $2
+                   OR listener_checked_at IS NULL OR listener_checked_at<now()-interval '15 seconds')
          ) SELECT event_id FROM phone_notifications WHERE event_id=ANY($3)",
     )
     .bind(feed.connected)
@@ -659,8 +676,18 @@ async fn ingest_device_feed(
     .map_err(|e| e.to_string())?
     .into_iter()
     .collect();
-    feed.notifications
-        .retain(|event| !seen.contains(&event.event_id) && !ignored_usage_warning(event));
+    let newest_screen = feed
+        .notifications
+        .iter()
+        .filter(|event| event.notification_key == screen_attention::KEY)
+        .max_by_key(|event| event.posted_at_ms)
+        .map(|event| event.event_id.clone());
+    feed.notifications.retain(|event| {
+        !seen.contains(&event.event_id)
+            && !ignored_usage_warning(event)
+            && (event.notification_key != screen_attention::KEY
+                || Some(&event.event_id) == newest_screen.as_ref())
+    });
     if feed.notifications.is_empty() {
         return Ok(());
     }
@@ -695,10 +722,10 @@ async fn ingest_device_feed(
               AND (notification_key<>",
     )
     .push_bind(screen_attention::KEY)
-    .push(" OR (device_id<>")
-    .push_bind(registry::PHONE)
     .push(
-        " AND NOT EXISTS(SELECT 1 FROM runs r WHERE (r.device_id=n.device_id OR EXISTS(
+        " OR (NOT EXISTS(SELECT 1 FROM phone_notifications recent WHERE recent.device_id=n.device_id
+               AND recent.notification_key='screen:change' AND recent.posted_at>n.posted_at-interval '60 seconds')
+          AND NOT EXISTS(SELECT 1 FROM runs r WHERE (r.device_id=n.device_id OR EXISTS(
               SELECT 1 FROM device_execution_leases l WHERE l.run_id=r.id AND l.device_id=n.device_id))
               AND (r.status IN ('queued','running') OR r.finished_at>now()-interval '10 seconds'))
           AND NOT EXISTS(SELECT 1 FROM desktop_controls c WHERE c.device_id=n.device_id
@@ -730,7 +757,10 @@ async fn schedule(app: &App, kinds: &[&str]) -> Result<(), sqlx::Error> {
            AND d.kind=ANY($1) AND (
              (p.notifications_enabled AND EXISTS(SELECT 1 FROM phone_notifications n
                  WHERE n.device_id=d.id AND n.status IN ('pending','pending-summary')))
-             OR (d.id=$2 AND p.exploring AND p.next_cycle_at<=now()))
+             OR (d.id=$2 AND p.exploring AND p.next_cycle_at<=now())
+             OR (d.id=$2 AND p.next_knowledge_review_at<=now()
+                 AND EXISTS(SELECT 1 FROM knowledge_documents WHERE deleted_at IS NULL)
+                 AND NOT EXISTS(SELECT 1 FROM runs WHERE status IN ('queued','running'))))
          ORDER BY d.id",
     )
     .bind(kinds)
@@ -749,7 +779,7 @@ async fn schedule_device(app: &App, device_id: &str, kind: &str) -> Result<bool,
     )
     .fetch_one(&mut *tx)
     .await?;
-    let config=sqlx::query("SELECT notifications_enabled,wechat_watch,exploring,next_cycle_at<=now() due,wechat_quiet_until>now() manual_quiet FROM proactive_state FOR UPDATE").fetch_one(&mut *tx).await?;
+    let config=sqlx::query("SELECT notifications_enabled,wechat_watch,exploring,next_cycle_at<=now() due,wechat_quiet_until>now() manual_quiet,(next_knowledge_review_at<=now() AND EXISTS(SELECT 1 FROM knowledge_documents WHERE deleted_at IS NULL)) review_due,knowledge_review_cursor FROM proactive_state FOR UPDATE").fetch_one(&mut *tx).await?;
     if kind == "phone" && config.get::<bool, _>("manual_quiet") {
         return Ok(false);
     }
@@ -770,8 +800,6 @@ async fn schedule_device(app: &App, device_id: &str, kind: &str) -> Result<bool,
     let screen = notifications
         .first()
         .is_some_and(|row| row.get::<&str, _>("notification_key") == screen_attention::KEY);
-    notifications
-        .retain(|row| (row.get::<&str, _>("notification_key") == screen_attention::KEY) == screen);
     if screen {
         let ids: Vec<String> = notifications
             .iter()
@@ -803,28 +831,28 @@ async fn schedule_device(app: &App, device_id: &str, kind: &str) -> Result<bool,
     let fresh = notifications
         .first()
         .is_some_and(|row| row.get::<&str, _>("status") == "pending");
+    let review_due = config.get::<bool, _>("review_due") && device_id == registry::PHONE;
     if notifications.is_empty() && sqlx::query_scalar::<_,bool>(
         "SELECT EXISTS(SELECT 1 FROM runs WHERE conversation_id=$1 AND (
-           status IN ('queued','running') OR (origin='exploration' AND (
+           status IN ('queued','running') OR (NOT $2 AND origin='exploration' AND (
              status='paused' OR (status IN ('succeeded','failed','canceled') AND NOT background_finalized)))))"
-    ).bind(conversation).fetch_one(&mut *tx).await? { return Ok(false); }
-    let origin = if !notifications.is_empty() {
-        "notification"
-    } else if device_id == crate::registry::PHONE
+    ).bind(conversation).bind(review_due).fetch_one(&mut *tx).await? { return Ok(false); }
+    let (origin, trigger) = if !notifications.is_empty() {
+        ("notification",json!(notifications.iter().map(|r|json!({"device_id":device_id,"source":if screen{"screen_change"}else if kind=="desktop"{"desktop_notification"}else if r.get::<String,_>("notification_key").starts_with("wechat-badge:"){"unread_badge"}else if r.get::<String,_>("notification_key").starts_with("wechat-visible:"){"visible_change"}else{"android_notification"},"app":r.get::<String,_>("app_name"),"package":r.get::<String,_>("package_name"),"title":r.get::<String,_>("title"),"text":r.get::<String,_>("body"),"event_id":r.get::<String,_>("event_id"),"previous_run_id":r.get::<Option<Uuid>,_>("run_id").map(|id|id.to_string())})).collect::<Vec<_>>()).to_string())
+    } else if review_due
+        && let Some(batch) =
+            knowledge_review::next_batch(&mut tx, config.get("knowledge_review_cursor")).await?
+    {
+        ("knowledge-review", batch)
+    } else if device_id == registry::PHONE
         && config.get::<bool, _>("exploring")
         && config.get::<bool, _>("due")
     {
-        "exploration"
+        ("exploration", "自由探索，没有指定应用、方向或必须产出的成果；可以延续自己的兴趣，也可以换方向或休息。".into())
     } else {
         return Ok(false);
     };
     let read_only = origin == "notification" && (!fresh || screen);
-    let trigger = if origin == "notification" {
-        json!(notifications.iter().map(|r|json!({"device_id":device_id,"source":if screen{"screen_change"}else if kind=="desktop"{"desktop_notification"}else if r.get::<String,_>("notification_key").starts_with("wechat-badge:"){"unread_badge"}else if r.get::<String,_>("notification_key").starts_with("wechat-visible:"){"visible_change"}else{"android_notification"},"app":r.get::<String,_>("app_name"),"package":r.get::<String,_>("package_name"),"title":r.get::<String,_>("title"),"text":r.get::<String,_>("body"),"event_id":r.get::<String,_>("event_id"),"previous_run_id":r.get::<Option<Uuid>,_>("run_id").map(|id|id.to_string())})).collect::<Vec<_>>()).to_string()
-    } else {
-        "自由探索，没有指定应用、方向或必须产出的成果；可以延续自己的兴趣，也可以换方向或休息。"
-            .into()
-    };
     let run = Uuid::now_v7();
     let message = Uuid::now_v7();
     sqlx::query("INSERT INTO messages(id,conversation_id,role) VALUES($1,$2,'assistant')")
@@ -984,7 +1012,7 @@ async fn deliver(app: &App) -> Result<(), String> {
     Ok(())
 }
 async fn attend_phone(app: &App) {
-    let mut interval = tokio::time::interval(Duration::from_secs(3));
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {
@@ -994,7 +1022,7 @@ async fn attend_phone(app: &App) {
         let (inbox, ()) = tokio::join!(ingest(app), supervise_phone(app));
         if inbox.is_err() {
             let _ = sqlx::query(
-                "UPDATE proactive_state SET listener_connected=false,attention_connected=false",
+                "UPDATE proactive_state SET listener_connected=false,attention_connected=false WHERE listener_connected OR attention_connected",
             )
             .execute(&app.db)
             .await;
@@ -1031,7 +1059,7 @@ async fn supervise_phone(app: &App) {
 }
 
 async fn attend_desktops(app: &App) {
-    let mut interval = tokio::time::interval(Duration::from_secs(3));
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
     let mut windows = HashMap::new();
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
@@ -1041,7 +1069,7 @@ async fn attend_desktops(app: &App) {
         } else {
             ""
         };
-        let _ = sqlx::query("UPDATE proactive_state SET last_error=$1 WHERE $1<>'' OR last_error='电脑通知暂不可用，请检查设备通知服务'").bind(inbox_error).execute(&app.db).await;
+        let _ = sqlx::query("UPDATE proactive_state SET last_error=$1 WHERE last_error IS DISTINCT FROM $1 AND ($1<>'' OR last_error='电脑通知暂不可用，请检查设备通知服务')").bind(inbox_error).execute(&app.db).await;
         let _ = schedule(app, &["desktop"]).await;
     }
 }

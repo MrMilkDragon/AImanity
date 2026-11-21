@@ -185,7 +185,34 @@ extern "system" fn Java_dev_aiphone_input_PhoneAttention_onAccessibilityEvent(
     event: Object,
 ) {
     let env = Env(raw);
-    if !env.test(env.text(event, c"getPackageName"), |name| name == WECHAT) {
+    let package = env.text(event, c"getPackageName");
+    if !env.test(package, |name| name == WECHAT) {
+        let kind = env.integer(event, c"getEventType");
+        // Android reports pane titles and appearances with bits 8 and 16.
+        if (matches!(kind, 32 | 2048) && env.integer(event, c"getContentChangeTypes") & 24 != 0)
+            || (kind == 32 && {
+                let class = env.text(event, c"getClassName");
+                env.test(class, |name| name.ends_with(b"Dialog"))
+                    || env.call_bool(
+                        class,
+                        c"equals",
+                        c"(Ljava/lang/Object;)Z",
+                        &[object(
+                            env.string(c"androidx.compose.ui.window.DialogWrapper"),
+                        )],
+                    )
+            })
+        {
+            emit(
+                env,
+                owner,
+                c"screen:change",
+                package,
+                c"手机界面变化",
+                c"前台应用出现面板或对话框。",
+            );
+            persist(env, owner);
+        }
         return;
     }
     let handler = env.get(owner, c"handler", HANDLER);
@@ -292,7 +319,7 @@ fn metric(env: Env, owner: Object) -> Object {
     )
 }
 
-fn emit(env: Env, owner: Object, key: &CStr, title: &CStr, body: &CStr) {
+fn emit(env: Env, owner: Object, key: &CStr, package: Object, title: &CStr, body: &CStr) {
     let time = now(env);
     let identity = env.create(c"java/lang/StringBuilder", c"()V", &[]);
     let topic = env.string(key);
@@ -307,8 +334,15 @@ fn emit(env: Env, owner: Object, key: &CStr, title: &CStr, body: &CStr) {
             hash(env, env.object(identity, c"toString", STRING_GET, &[])),
         ),
         (c"notification_key", topic),
-        (c"package_name", env.string(c"com.tencent.mm")),
-        (c"app_name", env.string(c"微信")),
+        (c"package_name", package),
+        (
+            c"app_name",
+            if key.to_bytes().starts_with(b"wechat-") {
+                env.string(c"微信")
+            } else {
+                package
+            },
+        ),
         (c"title", env.string(title)),
         (c"text", env.string(body)),
     ] {
@@ -486,6 +520,7 @@ fn inspect(env: Env, owner: Object) {
             env,
             owner,
             c"wechat-visible:chat",
+            env.string(c"com.tencent.mm"),
             c"微信会话变化",
             c"当前微信可见内容发生变化，请重新观察确认是否有新消息；不保证是对方的新消息。",
         );
@@ -596,7 +631,7 @@ fn inspect_screenshot(env: Env, callback: Object, result: Object, owner: Object,
     ] {
         let unread = red_badge(env, bitmap, env.get(callback, tab, RECT), scale);
         if unread && !env.flag(owner, state) {
-            emit(env, owner, key, title, body);
+            emit(env, owner, key, env.string(c"com.tencent.mm"), title, body);
         }
         env.flag_set(owner, state, unread);
     }

@@ -345,22 +345,13 @@ async fn notifications(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    let read = |file| {
-        adb(
-            &runner,
-            vec![
-                "exec-out".into(),
-                "cat".into(),
-                format!("/data/user/0/dev.aiphone.input/files/{file}"),
-            ],
-        )
-    };
-    let (notifications, attention) =
-        tokio::join!(read("notifications.json"), read("attention.json"));
-    for (result, attention) in [(notifications, false), (attention, true)] {
-        if let Ok((true, bytes, _)) = result
-            && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes)
-        {
+    let files = adb(&runner, args(&["exec-out", r#"u=$(am get-current-user) && cd "/data/user/$u/dev.aiphone.input/files" || exit 1; cat notifications.json 2>/dev/null; printf '\000'; cat attention.json 2>/dev/null || :"#])).await;
+    if let Ok((true, bytes, _)) = files {
+        for (index, file) in bytes.splitn(2, |byte| *byte == 0).enumerate() {
+            let Ok(value) = serde_json::from_slice::<serde_json::Value>(file) else {
+                continue;
+            };
+            let attention = index == 1;
             let checked = value["checked_at_ms"].as_u64().unwrap_or(0);
             let connected = value["connected"].as_bool().unwrap_or(false)
                 && now.saturating_sub(checked) < 90000;

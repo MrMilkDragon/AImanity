@@ -213,6 +213,7 @@ enum MockChange {
         repeat: bool,
     },
     Pause,
+    Off,
 }
 
 #[derive(Deserialize)]
@@ -235,6 +236,7 @@ fn mock_request(
         ..Default::default()
     };
     match update.change {
+        MockChange::Off => request.enabled = false,
         MockChange::Point { point } => request.point = Some(point.into_fix()),
         MockChange::Route {
             route,

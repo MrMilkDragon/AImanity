@@ -1,4 +1,4 @@
-pub(crate) const KEY: &str = "desktop-screen:title";
+pub(crate) const KEY: &str = "screen:change";
 const COOLDOWN_MS: u64 = 60_000;
 
 pub(super) type Sample = (u32, u32, String, String);
@@ -60,7 +60,6 @@ mod tests {
     #[test]
     fn observes_a_settled_title_change_once_without_reacting_to_focus_or_flicker() {
         let mut watch = WindowWatch::default();
-        assert_eq!(KEY, "desktop-screen:title");
         assert_eq!(watch.observe(sample(1, 7, "one"), 0), None);
         assert_eq!(watch.observe(sample(1, 7, "flash"), 3000), None);
         assert_eq!(watch.observe(sample(1, 7, "one"), 6000), None);

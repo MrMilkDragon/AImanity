@@ -1331,10 +1331,10 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "device_location_set",
-            "本任务获准控制全部受影响设备时可启用和调整模拟位置。先读取device_location_state，使用返回的revision作为expected_revision。point用指定模拟坐标启用静态位置；route启用路线并指定模拟路线点、speed_kph和repeat；pause暂停当前路线。坐标只用于客体模拟，不查询真实位置。",
+            "先读取device_location_state，把revision传入expected_revision。point设置设备模拟坐标，route按路线、speed_kph和repeat移动，pause暂停路线，off关闭模拟并恢复设备定位。",
             json!({
                 "expected_revision":{"type":"integer","minimum":0},
-                "mode":{"type":"string","enum":["point","route","pause"]},
+                "mode":{"type":"string","enum":["point","route","pause","off"]},
                 "point":coordinate,
                 "route":{"type":"array","minItems":2,"maxItems":200,"items":coordinate},
                 "speed_kph":{"type":"number","minimum":0.5,"maximum":500},

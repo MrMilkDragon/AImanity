@@ -27,7 +27,7 @@ message DeviceRequest {
   bool include_ui_tree = 3;
   bool metadata_only = 4;
   bool include_elements = 5;
-  // "auto", "always", "only" (OCR diagnostics), "motion" (real-time game canvas).
+  // "motion" samples the current canvas; "sequence" samples it twice in order.
   string ocr_mode = 6;
 }
 
@@ -46,6 +46,8 @@ message DeviceObservation {
   string foreground_app = 12;
   string grounding_note = 13;
   string scroll_feedback = 14;
+  bytes earlier_jpeg = 15;
+  uint32 sample_interval_ms = 16;
 }
 
 message PhoneBounds { uint32 left = 1; uint32 top = 2; uint32 right = 3; uint32 bottom = 4; }

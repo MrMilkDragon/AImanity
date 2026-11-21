@@ -1292,15 +1292,16 @@ fn queue_post_action_observation(
         return false;
     }
     let surface_gesture = matches!(call["name"].as_str(), Some("phone_swipe" | "phone_drag"));
-    let motion = receipt.is_some_and(|v| v["cue"]["matched"] == true)
-        || surface_gesture
-            && latest_phone_observation(context)
-                .and_then(|read| serde_json::from_str::<Value>(read["arguments"].as_str()?).ok())
-                .is_some_and(|args| args["ocr_mode"] == "motion");
-    let arguments = if motion {
-        r#"{"ocr_mode":"motion"}"#
-    } else {
-        "{}"
+    let last_mode = latest_phone_observation(context)
+        .and_then(|read| serde_json::from_str::<Value>(read["arguments"].as_str()?).ok());
+    let arguments = match last_mode
+        .as_ref()
+        .and_then(|args| args["ocr_mode"].as_str())
+    {
+        Some("sequence") if surface_gesture => r#"{"ocr_mode":"sequence"}"#,
+        Some("motion") if surface_gesture => r#"{"ocr_mode":"motion"}"#,
+        _ if receipt.is_some_and(|v| v["cue"]["matched"] == true) => r#"{"ocr_mode":"motion"}"#,
+        _ => "{}",
     };
     let observation = json!({
         "type":"function_call", "name":"phone_observe",
@@ -2481,10 +2482,15 @@ async fn execute(
     let background = row.get::<String, _>("origin") != "user";
     let task_goal = !background && row.get::<&str, _>("trigger_input") == "task-goal";
     let exploration = row.get::<&str, _>("origin") == "exploration";
+    let knowledge_review = row.get::<&str, _>("origin") == "knowledge-review";
     let notification_run = row.get::<String, _>("origin") == "notification";
     let screen_attention: bool = row.get("screen_attention");
     let desktop = row.get::<Option<&str>, _>("device_kind") == Some("desktop");
     let desktop_id = desktop.then(|| row.get::<&str, _>("device_id"));
+    let screen_observation = screen_attention.then(|| match desktop_id {
+        Some(device) => ("computer_observe", json!({"device_id":device}).to_string()),
+        None => ("phone_observe", "{}".to_owned()),
+    });
     let desktop_notification = notification_run && desktop;
     let elapsed = row.get::<i64, _>("elapsed_seconds");
     let slice_started = std::time::Instant::now();
@@ -2616,9 +2622,10 @@ async fn execute(
         let direct_files = !notification_run
             && !host_session
             && file_delivery_input(&context[evidence_start(&context)..]);
-        let prerequisite = if (host_session || direct_files)
-            && !next_tool.starts_with("phone_")
-            && !next_tool.starts_with("computer_")
+        let prerequisite = if knowledge_review
+            || (host_session || direct_files)
+                && !next_tool.starts_with("phone_")
+                && !next_tool.starts_with("computer_")
         {
             None
         } else if (next_tool.starts_with("phone_")
@@ -2635,6 +2642,12 @@ async fn execute(
             && !builtin_skill_read(&context, "computer-use")
         {
             Some(("skill_read", r#"{"name":"computer-use"}"#))
+        } else if let Some((name, arguments)) = &screen_observation
+            && !context
+                .iter()
+                .any(|call| call["name"] == *name && successful_call(call, &context))
+        {
+            Some((*name, arguments.as_str()))
         } else if notification_run
             && !screen_attention
             && !context.iter().any(|v| {
@@ -2677,6 +2690,7 @@ async fn execute(
         }
         if pending.is_empty()
             && !screen_attention
+            && !knowledge_review
             && !host_session
             && !direct_files
             && let Some(call) = experience_call(app, &context, &mut state).await
@@ -2686,6 +2700,8 @@ async fn execute(
             checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
         }
         if pending.is_empty()
+            && !knowledge_review
+            && !screen_attention
             && !direct_files
             && !host_session
             && let Some((name, arguments)) =
@@ -2962,14 +2978,17 @@ async fn execute(
             continue;
         }
         let gui = gui_execution(&context);
-        let decision = if screen_attention
-            || (!desktop_handoff(&context)
-                && verification_attempts(&context) > 0
-                && !has_current_observation(&context))
+        let decision = if knowledge_review {
+            ("none", ModelTools::KnowledgeReview)
+        } else if screen_attention {
+            ("none", ModelTools::Screen)
+        } else if !desktop_handoff(&context)
+            && verification_attempts(&context) > 0
+            && !has_current_observation(&context)
         {
-            ("none", true)
+            ("none", ModelTools::PhoneObserve)
         } else if (state.stalls > 0 || !gui) && (phone_task(&context) || action_task(&context)) {
-            ("high", false)
+            ("high", ModelTools::All)
         } else if step == 0
             && !background
             && !task_goal
@@ -2978,9 +2997,9 @@ async fn execute(
             && execution_policy::desktop_target(&context)
             && has_grounded_initial_desktop_frame(&context)
         {
-            ("none", false)
+            ("none", ModelTools::All)
         } else {
-            ("low", false)
+            ("low", ModelTools::All)
         };
         let response = respond_to_current_input(
             app,
@@ -3280,13 +3299,21 @@ async fn admit_model(
     }
 }
 
+#[derive(Clone, Copy)]
+enum ModelTools {
+    All,
+    PhoneObserve,
+    Screen,
+    KnowledgeReview,
+}
+
 async fn respond_to_current_input(
     app: &App,
     run: Uuid,
     message: Uuid,
     context: &[Value],
     cancel: &CancellationToken,
-    decision: (&str, bool),
+    decision: (&str, ModelTools),
     model_replay_boundary: usize,
 ) -> Result<Option<Vec<Value>>, String> {
     // Subscribe before reading the queue, so an input committed during admission
@@ -3325,7 +3352,7 @@ async fn respond(
     run: Uuid,
     context: &[Value],
     cancel: &CancellationToken,
-    (effort, force_phone_observe): (&str, bool),
+    (effort, scope): (&str, ModelTools),
     model_replay_boundary: usize,
     timing: &mut crate::model_timing::Timing,
 ) -> Result<Vec<Value>, String> {
@@ -3354,6 +3381,16 @@ async fn respond(
     }
     input.push(json!({"role":"system","content":[{"type":"input_text","text":guidance}]}));
     let mut tools = execution_tools(authority);
+    match scope {
+        ModelTools::KnowledgeReview => tools.as_array_mut().unwrap().retain(|tool| {
+            crate::proactive::knowledge_review::allows(tool["name"].as_str().unwrap())
+        }),
+        ModelTools::Screen => tools
+            .as_array_mut()
+            .unwrap()
+            .retain(|tool| tool["name"] == "task_finish"),
+        _ => {}
+    }
     if host {
         tools
             .as_array_mut()
@@ -3367,8 +3404,13 @@ async fn respond(
         ("reasoning".into(), json!({"effort":effort})),
         ("max_output_tokens".into(), Value::from(8192)),
     ]));
-    if force_phone_observe && !host {
-        body["tool_choice"] = json!({"type":"function","name":"phone_observe"});
+    match scope {
+        ModelTools::Screen => body["tool_choice"] = json!({"type":"function","name":"task_finish"}),
+        ModelTools::KnowledgeReview => body["tool_choice"] = json!("required"),
+        ModelTools::PhoneObserve if !host => {
+            body["tool_choice"] = json!({"type":"function","name":"phone_observe"})
+        }
+        _ => {}
     }
     let client = app.settings.http_client(&config.proxy_url)?;
     let output =
@@ -3847,7 +3889,7 @@ async fn tool(
             return Err("status必须是completed或needs_input".into());
         }
         let row = sqlx::query(
-            "SELECT r.context,r.pending_tools,r.background_read_only,r.origin='notification' AND r.background_read_only summary_only,
+            "SELECT r.origin,r.device_id,r.context,r.pending_tools,r.background_read_only,r.origin='notification' AND r.background_read_only summary_only,
                 NOT r.background_read_only AND (r.origin='notification' OR EXISTS(
                     SELECT 1 FROM phone_notifications n WHERE n.run_id=r.id AND n.status IN ('attending','pending-summary'))) audit_notification,
                 EXISTS(SELECT 1 FROM device_messages m WHERE m.source_run_id=r.id AND m.return_delivered_at IS NULL) handoffs_pending,
@@ -3874,6 +3916,20 @@ async fn tool(
         if pending.as_array().is_some_and(|calls| calls.len() > 1) {
             return Err("仍有待执行工具；请先完成这些步骤，再重新task_finish".into());
         }
+        if row.get::<&str, _>("origin") == "knowledge-review" {
+            let verified_summary = if status == "completed" {
+                let calls = current
+                    .iter()
+                    .filter(|call| successful_call(call, &current))
+                    .filter_map(|call| call["name"].as_str());
+                crate::proactive::knowledge_review::summary(calls)
+            } else {
+                summary
+            };
+            return Ok(
+                json!([{"type":"input_text","text":json!({"success":true,"finish":{"status":status,"summary":verified_summary,"files":[]}}).to_string()}]),
+            );
+        }
         let file_delivery =
             status == "completed" && confirmed_file_delivery(&current, &arguments["files"]);
         if status == "completed" {
@@ -3883,10 +3939,15 @@ async fn tool(
             let summary_only: bool = row.get("summary_only");
             if screen_attention
                 && !current.iter().skip(evidence_start(&current)).any(|call| {
-                    call["name"] == "computer_observe" && successful_call(call, &current)
+                    let observe = if row.get::<&str, _>("device_id") == registry::PHONE {
+                        "phone_observe"
+                    } else {
+                        "computer_observe"
+                    };
+                    call["name"] == observe && successful_call(call, &current)
                 })
             {
-                return Err("先观察来源电脑当前画面，再判断这次变化。".into());
+                return Err("先观察来源设备当前画面，再判断这次变化。".into());
             }
             if summary_only
                 && !screen_attention
@@ -4127,7 +4188,9 @@ async fn tool(
             .map_err(|e| e.to_string())?;
     }
     if name == "phone_observe" {
-        if call["local_after_action"].is_string() && arguments["ocr_mode"] != "motion" {
+        if call["local_after_action"].is_string()
+            && !matches!(arguments["ocr_mode"].as_str(), Some("motion" | "sequence"))
+        {
             // Let Android's local transition begin before capturing. This is not
             // a page-ready claim: loading states must still be read and waited on.
             tokio::select! {
@@ -4151,9 +4214,16 @@ async fn tool(
         if observation.control_epoch != *epoch || observation.controller != "agent" {
             return Err("paused:manual_takeover".into());
         }
-        return Ok(
-            json!([{"type":"input_text","text":format!("真实手机屏幕 {}×{}\nUI树：{}",observation.width,observation.height,observation.ui_tree)},{"type":"input_text","text":grounding_metadata(&observation).to_string()},{"type":"input_image","image_url":format!("data:image/png;base64,{}",STANDARD.encode(observation.png))}]),
-        );
+        let mut parts = vec![
+            json!({"type":"input_text","text":format!("真实手机屏幕 {}×{}\nUI树：{}",observation.width,observation.height,observation.ui_tree)}),
+            json!({"type":"input_text","text":grounding_metadata(&observation).to_string()}),
+        ];
+        if !observation.earlier_jpeg.is_empty() {
+            parts.push(json!({"type":"input_text","text":format!("两帧按时间排序，采样起点相隔 {} ms。最后一张对应当前 observation_id。", observation.sample_interval_ms)}));
+            parts.push(json!({"type":"input_image","image_url":format!("data:image/jpeg;base64,{}",STANDARD.encode(observation.earlier_jpeg))}));
+        }
+        parts.push(json!({"type":"input_image","image_url":format!("data:image/png;base64,{}",STANDARD.encode(observation.png))}));
+        return Ok(Value::Array(parts));
     }
     use wire::device_action_request::Action;
     let mut observation_id = match coordinate_grounding(context, name, &arguments) {

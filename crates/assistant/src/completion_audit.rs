@@ -292,9 +292,10 @@ pub async fn verify(
         let call = current_calls[&row_id];
         let mut result = row.get::<Option<Value>, _>("result").unwrap_or(Value::Null);
         let name = call["name"].as_str().unwrap_or("");
-        if name == "skill_read" {
-            // The skill text guides planning; only its read status belongs in the audit.
-            result = Value::Null;
+        if name == "skill_read"
+            && let Some(text) = result[0]["text"].as_str()
+        {
+            result = json!({"excerpt":text.chars().take(512).collect::<String>()});
         }
         let observation = (row.get::<String, _>("status") == "completed"
             && crate::app_learning::observation_tool(name))

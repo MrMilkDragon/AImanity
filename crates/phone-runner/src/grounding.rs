@@ -397,17 +397,42 @@ pub async fn observe(
     if request.metadata_only {
         return Err("控件定位需要实际截图".into());
     }
-    if !["", "auto", "always", "only", "motion"].contains(&request.ocr_mode.as_str()) {
+    if !["", "auto", "always", "only", "motion", "sequence"].contains(&request.ocr_mode.as_str()) {
         return Err("无效OCR模式".into());
     }
     let (epoch, revision) = {
         let ledger = runner.ledger.lock().await;
         (ledger.epoch, ledger.revision)
     };
-    let motion = request.ocr_mode == "motion";
-    let capture_started = Instant::now();
+    let sequence = request.ocr_mode == "sequence";
+    let motion = sequence || request.ocr_mode == "motion";
+    let mut capture_started = Instant::now();
+    let mut earlier_jpeg = Vec::new();
+    let mut sample_interval_ms = 0;
     let (app, xml, (png, width, height)) = if motion {
-        let (app, frame) = tokio::try_join!(foreground(runner), capture_frame(runner))?;
+        let (app, mut frame) = tokio::try_join!(foreground(runner), capture_frame(runner))?;
+        if sequence {
+            let (earlier, w, h) = frame;
+            let preview = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
+                let image = image::load_from_memory_with_format(&earlier, image::ImageFormat::Png)
+                    .map_err(|e| e.to_string())?
+                    .thumbnail(420, 580);
+                let mut jpeg = Vec::new();
+                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 83)
+                    .encode_image(&image)
+                    .map_err(|e| e.to_string())?;
+                Ok(jpeg)
+            });
+            tokio::time::sleep_until((capture_started + Duration::from_millis(100)).into()).await;
+            let started = Instant::now();
+            sample_interval_ms = (started - capture_started).as_millis() as u32;
+            capture_started = started;
+            frame = capture_frame(runner).await?;
+            if (w, h) != (frame.1, frame.2) {
+                return Err("采样期间屏幕方向已改变，请重新观察".into());
+            }
+            earlier_jpeg = preview.await.map_err(|e| e.to_string())??;
+        }
         (app, String::new(), frame)
     } else {
         let app = foreground(runner).await?;
@@ -515,6 +540,8 @@ pub async fn observe(
         foreground_app: app,
         grounding_note: note,
         scroll_feedback: feedback,
+        earlier_jpeg,
+        sample_interval_ms,
     })
 }
 fn validate_snapshot(snapshot: &Snapshot, epoch: u64, revision: u64) -> Result<(), String> {

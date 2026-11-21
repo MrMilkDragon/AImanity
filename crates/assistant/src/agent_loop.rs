@@ -195,7 +195,10 @@ pub fn compact_observations(context: &mut [Value]) {
             continue;
         };
         let recent = keep.entry(device).or_default();
-        if recent.len() < frames && !recent.iter().any(|prior| images(prior).eq(images(parts))) {
+        let used: usize = recent.iter().map(|parts| images(parts).count()).sum();
+        if used + images(parts).count() <= frames
+            && !recent.iter().any(|prior| images(prior).eq(images(parts)))
+        {
             recent.push(parts);
         } else {
             archive.push(index);
@@ -213,6 +216,28 @@ pub fn compact_observations(context: &mut [Value]) {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn latest_temporal_pair_uses_the_phone_image_budget() {
+        let mut history: Vec<_> = [["old-a", "old-b"], ["earlier", "current"]]
+            .into_iter()
+            .map(|frames| {
+                let mut parts = vec![json!({"type":"input_text","text":"真实手机屏幕 720×1440"})];
+                parts.extend(frames.map(|s| json!({"type":"input_image","image_url":s})));
+                json!({"type":"function_call_output","output":parts})
+            })
+            .collect();
+        compact_observations(&mut history);
+        assert_eq!(
+            history[0]["output"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|p| p["type"] == "input_image")
+                .count(),
+            0
+        );
+        assert_eq!(history[1]["output"][2]["image_url"], "current");
+    }
     #[test]
     fn repeated_host_screens_keep_the_latest_image_and_each_action_receipt() {
         let mut state = LoopState::default();
