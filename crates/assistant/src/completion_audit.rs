@@ -147,18 +147,18 @@ fn single_desktop_input(evidence: &[Value]) -> bool {
     inputs == 1
 }
 
-struct SettingsTapAudit {
+struct PhoneInputAudit {
     source: Value,
     tap: usize,
     after: usize,
     visuals: Range<usize>,
 }
 
-fn single_settings_tap(
+fn single_phone_input(
     evidence: &[Value],
     calls: &HashMap<Uuid, &Value>,
     post_visuals: Option<(Uuid, Range<usize>)>,
-) -> Option<SettingsTapAudit> {
+) -> Option<PhoneInputAudit> {
     let (visual_event, visuals) = post_visuals?;
     if evidence
         .iter()
@@ -174,7 +174,10 @@ fn single_settings_tap(
     let (after, post) = device_rows.next()?;
     if device_rows.next().is_some()
         || before["tool"] != "phone_observe"
-        || action["tool"] != "phone_tap_element"
+        || !matches!(
+            action["tool"].as_str(),
+            Some("phone_tap_element" | "phone_tap" | "phone_swipe")
+        )
         || post["tool"] != "phone_observe"
     {
         return None;
@@ -209,29 +212,37 @@ fn single_settings_tap(
     let target_observation = destination["observation_id"]
         .as_str()
         .filter(|id| !id.is_empty())?;
-    if !source_app.starts_with("com.android.settings/")
-        || !target_app.starts_with("com.android.settings/")
-        || source_app == target_app
-        || destination["device_id"] != device
-        || source_observation == target_observation
-        || arguments["observation_id"] != source_observation
-    {
+    if destination["device_id"] != device || source_observation == target_observation {
         return None;
     }
-    let element_id = arguments["element_id"]
-        .as_str()
-        .filter(|id| !id.is_empty())?;
-    let control = source["elements"].as_array()?.iter().find(|element| {
-        element["id"] == element_id
-            && element["source"] == "native"
-            && element["clickable"] == true
-            && element["text"]
-                .as_str()
-                .is_some_and(|text| !text.trim().is_empty())
-    })?;
-    let source = json!({"device_id":device,"observation_id":source_observation,"foreground_app":source_app,
-        "target":{"id":element_id,"text":control["text"],"resource_id":control["resource_id"]}});
-    Some(SettingsTapAudit {
+    let readback = calls.get(&post_event)?["local_readback"] == true;
+    let target = if action["tool"] == "phone_tap_element" {
+        if arguments["observation_id"] != source_observation
+            || (!readback
+                && (source_app == target_app
+                    || !source_app.starts_with("com.android.settings/")
+                    || !target_app.starts_with("com.android.settings/")))
+        {
+            return None;
+        }
+        let id = arguments["element_id"].as_str()?;
+        let control = source["elements"].as_array()?.iter().find(|c| {
+            c["id"] == id
+                && c["source"] == "native"
+                && c["clickable"] == true
+                && c["text"].as_str().is_some_and(|s| !s.trim().is_empty())
+        })?;
+        json!({"id":id,"text":control["text"],"resource_id":control["resource_id"]})
+    } else {
+        let cue = &result["cue"];
+        if !readback || cue["matched"] != true || cue["source_observation_id"] != source_observation
+        {
+            return None;
+        }
+        json!({"condition":arguments["when"],"matched_at_ms":cue["confirmed_at_ms"],"motion":cue["motion"]})
+    };
+    let source = json!({"device_id":device,"observation_id":source_observation,"foreground_app":source_app,"target":target});
+    Some(PhoneInputAudit {
         source: json!({"evidence_id":before["evidence_id"],"tool":"phone_observe","status":"completed",
             "result":[{"type":"input_text","text":source.to_string()}]}),
         tap,
@@ -251,6 +262,7 @@ pub async fn verify(
     needs_input: bool,
     cancel: &CancellationToken,
 ) -> Result<AuditResult, String> {
+    let mut timing = crate::model_timing::Timing::default();
     let request = (0..context.len()).rfind(|&index| crate::worker::is_task_input(context, index));
     let latest_input = request.unwrap_or(0);
     let current_calls: HashMap<Uuid, &Value> = context
@@ -354,20 +366,24 @@ pub async fn verify(
         && notifications.is_empty()
         && learning.is_empty()
         && rows.len() < 64;
-    let settings_tap = (compact_allowed
+    let phone_input = (compact_allowed
         && rows
             .first()
             .is_some_and(|row| row.get::<bool, _>("user_run")))
-    .then(|| single_settings_tap(&evidence, &current_calls, post_visuals))
+    .then(|| single_phone_input(&evidence, &current_calls, post_visuals))
     .flatten();
-    let compact_phone = settings_tap.is_some();
-    let compact_visuals = if let Some(tap) = settings_tap {
+    let compact_phone = phone_input.is_some();
+    let compact_visuals = if let Some(tap) = phone_input {
         evidence = vec![
             tap.source,
             std::mem::take(&mut evidence[tap.tap]),
             std::mem::take(&mut evidence[tap.after]),
         ];
-        Some(tap.visuals)
+        if evidence[1]["tool"] == "phone_tap_element" {
+            Some(tap.visuals)
+        } else {
+            Some(0..visual_inputs.len())
+        }
     } else if compact_allowed && input_visuals.is_some() && single_desktop_input(&evidence) {
         evidence.retain(|receipt| receipt["tool"] == "computer_type");
         input_visuals
@@ -384,7 +400,7 @@ pub async fn verify(
     let mut audit_input = vec![
         json!({"type":"input_text","text":json!({"request":request_text,"proposed_completion":summary,"needs_input":needs_input,"tool_evidence":evidence,"handoff_receipts":handoff_receipts}).to_string()}),
     ];
-    if readback {
+    if readback && !compact_phone {
         audit_input.push(json!({"type":"input_text","text":"这是本轮的最终读回。按用户原始要求核对操作和动作后截图。通过时用 feedback 直接回答用户，带上用户要求的页面、文字或具体数值；还有步骤或结果看不清时指出缺什么。"}));
     }
     if !notifications.is_empty() {
@@ -414,7 +430,7 @@ pub async fn verify(
         audit_input.push(json!({"type":"input_text","text":"有可复用的跨应用结论才填 knowledge。引用至少两个应用的 evidence_id，含动作后复查。沿用已有标题；可附所引证据中的截图，排除聊天、通知、凭据和私人文件。"}));
     }
     let instructions = if compact_phone {
-        "用点击前的控件、点击回执和同一手机的动作后画面核对 Android 设置跳转。点击对象、实际到达页面及结果声明都吻合才通过。用一句话指出证据或缺失。"
+        "核对用户要求、目标、手势回执和动作后的实屏。通过时用 feedback 直接给出所求结果，含所问数值或页面名。不符或看不清时指出缺失。"
     } else if compact {
         "核对电脑输入回执与动作后画面。确认目标窗口和实际写入内容均符合用户要求才通过。用一句话指出证据或缺失。"
     } else {
@@ -425,7 +441,7 @@ pub async fn verify(
         {"role":"user","content":audit_input}
     ],"tools":[tool],"tool_choice":{"type":"function","name":"audit_result"},"parallel_tool_calls":false,
         "reasoning":{"effort":"none"},"max_output_tokens":if compact {192} else {1200},"stream":false,"store":false});
-    let mut timing = crate::model_timing::Timing::default();
+
     let audit = async {
         let config = crate::settings::for_run(app, run).await?;
         let client = app.settings.http_client(&config.proxy_url)?;
@@ -683,25 +699,25 @@ mod tests {
         let unrelated_call = json!({"local_after_action":"other-tap"});
         let calls = HashMap::from([(action, &tap_call), (after, &post_call)]);
         let images = Some((after, 0..2));
-        let short = single_settings_tap(&evidence, &calls, images.clone()).unwrap();
+        let short = single_phone_input(&evidence, &calls, images.clone()).unwrap();
         assert_eq!(short.visuals, 0..2);
         let target = crate::worker::tool_value(&short.source["result"]).unwrap();
         assert_eq!(target["target"]["text"], "Battery");
         assert!(target.get("elements").is_none());
 
-        assert!(single_settings_tap(&evidence, &calls, None).is_none());
+        assert!(single_phone_input(&evidence, &calls, None).is_none());
         let unlinked = HashMap::from([(action, &tap_call), (after, &unrelated_call)]);
-        assert!(single_settings_tap(&evidence, &unlinked, images.clone()).is_none());
+        assert!(single_phone_input(&evidence, &unlinked, images.clone()).is_none());
         evidence[2] = receipt(
             after,
             "phone_observe",
             json!({"device_id":"another-phone",
             "observation_id":"details","foreground_app":"com.android.settings/.SubSettings"}),
         );
-        assert!(single_settings_tap(&evidence, &calls, images.clone()).is_none());
+        assert!(single_phone_input(&evidence, &calls, images.clone()).is_none());
         evidence[2] = receipt(after, "phone_observe", destination);
         evidence.push(evidence[1].clone());
-        assert!(single_settings_tap(&evidence, &calls, images).is_none());
+        assert!(single_phone_input(&evidence, &calls, images).is_none());
     }
 
     #[test]

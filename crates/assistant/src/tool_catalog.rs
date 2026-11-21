@@ -23,7 +23,9 @@ pub(crate) fn tools() -> Value {
                     "avoid_points":{"type":"array","description":"从最近截图的其他阻挡物取色，clear_region 会同时检查触发色和这些颜色","items":{"type":"array","items":{"type":"integer","minimum":0},"minItems":2,"maxItems":2},"minItems":1,"maxItems":4},
                     "any_color":{"type":"boolean","description":"任意一种颜色达标时响应，默认要求每种达标"},
                     "coverage_percent":{"type":"integer","description":"每种颜色分别占区域的最小百分比","minimum":1,"maximum":100},
-                    "motion_direction":{"type":"string","enum":["left","right","up","down"],"description":"区域内的主要纹理沿此方向移动时执行。背景也会移动时，用目标的颜色和 coverage_percent 一起限定。"},
+                    "motion_direction":{"type":"string","enum":["left","right","up","down"],"description":"被跟踪物体在屏幕中的运动方向，与手势方向分别选择。背景也会移动时，用目标的颜色和 coverage_percent 一起限定。"},
+                    "track_from":{"type":"array","description":"当前截图中目标的辨识性小区域 [左,上,右,下]。跟踪同一物体向 region 移动，需要 motion_direction。","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
+                    "lead_ms":{"type":"integer","description":"按实测速度预测目标进入 region，可提前的毫秒数。","minimum":0,"maximum":500},
                     "on_appearance":{"type":"boolean","description":"先看到条件不成立，首次观察到条件成立时执行"},"timeout_ms":{"type":"integer","minimum":100,"maximum":15000}
                 },"required":["region","timeout_ms"],"additionalProperties":false});
     let mut catalog = vec![

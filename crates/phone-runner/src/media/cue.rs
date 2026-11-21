@@ -8,7 +8,11 @@ use std::{
 };
 use tokio::time::timeout;
 
+mod target;
+use target::{Target, crossing};
+
 pub(super) struct Cue {
+    target: Option<Target>,
     source: (u32, u32),
     region: wire::PhoneBounds,
     clear_region: Option<(wire::PhoneBounds, Vec<[u8; 3]>)>,
@@ -20,6 +24,7 @@ pub(super) struct Cue {
 
 pub(super) enum Sample {
     Color(bool),
+    Target(Option<wire::PhoneBounds>, bool),
     Motion(crate::motion::Grid, bool),
 }
 
@@ -31,6 +36,17 @@ impl Cue {
             return Sample::Color(false);
         }
         let appearance = self.matches(size, &pixel);
+        if let Some(target) = &self.target {
+            return Sample::Target(
+                target.locate(self.region, self.source, |x, y| {
+                    pixel(
+                        (u64::from(x) * u64::from(size.0) / u64::from(self.source.0)) as u32,
+                        (u64::from(y) * u64::from(size.1) / u64::from(self.source.1)) as u32,
+                    )
+                }),
+                appearance,
+            );
+        }
         if self.moving {
             let grid = crate::motion::Grid::sample(
                 self.region,
@@ -147,7 +163,7 @@ pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Respo
         return StatusCode::BAD_REQUEST.into_response();
     };
     if request.phone_id != media.config.device
-        || [Some(region), request.clear_region]
+        || [Some(region), request.clear_region, request.track_from]
             .into_iter()
             .flatten()
             .any(|r| {
@@ -190,7 +206,28 @@ pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Respo
         blocked.extend(colors(&request.avoid_rgb));
         (area, blocked)
     });
+    let target = if let Some(area) = request.track_from {
+        let Ok(pixels) = <[u8; 75]>::try_from(request.target_rgb.as_slice()) else {
+            return StatusCode::BAD_REQUEST.into_response();
+        };
+        if request.motion_direction.is_empty()
+            || request.lead_ms > 500
+            || !(0..3).any(|c| {
+                let mut channel = pixels[c..].iter().step_by(3);
+                let first = *channel.next().unwrap();
+                let (low, high) =
+                    channel.fold((first, first), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+                high - low >= 24
+            })
+        {
+            return StatusCode::BAD_REQUEST.into_response();
+        }
+        Some(Target::new(area, pixels))
+    } else {
+        None
+    };
     let cue = Arc::new(Cue {
+        target,
         source: (request.source_width, request.source_height),
         region,
         clear_region,
@@ -205,6 +242,8 @@ pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Respo
     let mut frames = samples(&media, cue, edge);
     let observe = async {
         let mut previous = None;
+        let mut missing_since = None;
+        let mut prior_target: Option<(wire::PhoneBounds, Instant)> = None;
         let mut reference: Option<(crate::motion::Grid, Instant)> = None;
         let max_age = crate::grounding::CUE_MAX_AGE;
         while let Some(sample) = frames.next().await {
@@ -216,6 +255,41 @@ pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Respo
             result.frames += 1;
             let matched = match sample {
                 Sample::Color(matched) => matched,
+                Sample::Target(bounds, appearance) => {
+                    let Some(bounds) = bounds else {
+                        if prior_target.is_none()
+                            || at.saturating_duration_since(*missing_since.get_or_insert(at))
+                                >= Duration::from_millis(120)
+                        {
+                            result.target_lost = true;
+                            return Ok(());
+                        }
+                        continue;
+                    };
+                    missing_since = None;
+                    if let Some((old, prior)) = prior_target {
+                        let dt = at.saturating_duration_since(prior);
+                        if dt < Duration::from_millis(40) {
+                            continue;
+                        }
+                        if appearance
+                            && dt <= max_age
+                            && let Some((track, arrival)) = crossing(
+                                old,
+                                bounds,
+                                dt.as_millis() as u32,
+                                region,
+                                &request.motion_direction,
+                                request.lead_ms,
+                            )
+                        {
+                            result.motion = Some(track);
+                            result.arrival_ms = arrival;
+                        }
+                    }
+                    prior_target = Some((bounds, at));
+                    result.motion.is_some()
+                }
                 Sample::Motion(grid, appearance) => {
                     if reference.as_ref().is_some_and(|(_, prior)| {
                         at.saturating_duration_since(*prior) < Duration::from_millis(65)
@@ -276,6 +350,7 @@ mod tests {
     #[test]
     fn alternate_colors_still_require_coverage_inside_the_lane() {
         let mut cue = Cue {
+            target: None,
             source: (8, 8),
             region: wire::PhoneBounds {
                 left: 2,

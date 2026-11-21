@@ -7,6 +7,9 @@ use serde_json::Value;
 #[derive(Deserialize)]
 struct Condition {
     region: [u32; 4],
+    track_from: Option<[u32; 4]>,
+    #[serde(default)]
+    lead_ms: u32,
     clear_region: Option<[u32; 4]>,
     #[serde(default)]
     colors: Vec<String>,
@@ -48,8 +51,15 @@ pub(super) async fn visual_condition(
                 .ok_or("颜色格式应为 #RRGGBB")
         })
         .collect::<Result<Vec<_>, _>>()?;
+    if cue.lead_ms > 500
+        || (cue.lead_ms > 0 && cue.track_from.is_none())
+        || (cue.track_from.is_some() && !motion)
+    {
+        return Err("跟踪需选择方向，提前量为 0–500 毫秒".into());
+    }
     let mut avoid_rgb = Vec::new();
-    if !cue.sample_points.is_empty() || !cue.avoid_points.is_empty() {
+    let mut target_rgb = Vec::new();
+    if cue.track_from.is_some() || !cue.sample_points.is_empty() || !cue.avoid_points.is_empty() {
         let frame = latest_phone_observation(context)
             .and_then(|call| tool_output(context, call))
             .and_then(Value::as_array)
@@ -65,7 +75,7 @@ pub(super) async fn visual_condition(
             })
             .ok_or("当前手机实景帧不可用，请重新观察后取色")?;
         let png = STANDARD.decode(frame).map_err(|_| "实景帧编码无效")?;
-        let (target, avoid) = tokio::task::spawn_blocking(move || {
+        let (target, avoid, patch) = tokio::task::spawn_blocking(move || {
             let image = image::load_from_memory_with_format(&png, image::ImageFormat::Png)
                 .map_err(|_| "实景帧读取失败")?;
             let sample = |points: &[[u32; 2]]| {
@@ -80,10 +90,33 @@ pub(super) async fn visual_condition(
                     })
                     .collect::<Result<Vec<_>, _>>()
             };
-            Ok::<_, &str>((sample(&cue.sample_points)?, sample(&cue.avoid_points)?))
+            let mut patch = Vec::new();
+            if let Some([l, t, r, b]) = cue.track_from {
+                if r <= l || b <= t || r > image.width() || b > image.height() {
+                    return Err("目标框超出当前截图");
+                }
+                for j in 0..5 {
+                    for i in 0..5 {
+                        patch.extend_from_slice(
+                            &image
+                                .get_pixel(
+                                    l + (2 * i + 1) * (r - l) / 10,
+                                    t + (2 * j + 1) * (b - t) / 10,
+                                )
+                                .0[..3],
+                        );
+                    }
+                }
+            }
+            Ok::<_, &str>((
+                sample(&cue.sample_points)?,
+                sample(&cue.avoid_points)?,
+                patch,
+            ))
         })
         .await
         .map_err(|e| e.to_string())??;
+        target_rgb = patch;
         rgb.extend(target);
         avoid_rgb = avoid;
     }
@@ -95,6 +128,9 @@ pub(super) async fn visual_condition(
     };
     Ok(wire::ActionCueRequest {
         region: Some(bounds(cue.region)),
+        track_from: cue.track_from.map(bounds),
+        target_rgb,
+        lead_ms: cue.lead_ms,
         clear_region: cue.clear_region.map(bounds),
         rgb,
         avoid_rgb,

@@ -1312,17 +1312,20 @@ fn queue_post_action_observation(
         .as_ref()
         .and_then(|args| args["ocr_mode"].as_str())
     {
-        _ if completion => "{}",
+        _ if completion => r#"{"ocr_mode":"motion"}"#,
         Some("sequence") if surface_gesture => r#"{"ocr_mode":"sequence"}"#,
         Some("motion") if surface_gesture => r#"{"ocr_mode":"motion"}"#,
         _ if receipt.is_some_and(|v| v["cue"]["matched"] == true) => r#"{"ocr_mode":"motion"}"#,
         _ => "{}",
     };
-    let observation = json!({
+    let mut observation = json!({
         "type":"function_call", "name":"phone_observe",
         "arguments":arguments, "call_id":Uuid::now_v7().to_string(),
         "local_action_id":Uuid::now_v7().to_string(), "local_after_action":action_id
     });
+    if completion {
+        observation["local_readback"] = true.into();
+    }
     // Persist the completed action and this pending read in one checkpoint.
     // Recovery reuses the same read ID, never replays the phone action.
     context.push(observation.clone());
@@ -4288,7 +4291,8 @@ async fn tool(
     }
     if name == "phone_observe" {
         if call["local_after_action"].is_string()
-            && !matches!(arguments["ocr_mode"].as_str(), Some("motion" | "sequence"))
+            && (call["local_readback"] == true
+                || !matches!(arguments["ocr_mode"].as_str(), Some("motion" | "sequence")))
         {
             // Let Android's local transition begin before capturing. This is not
             // a page-ready claim: loading states must still be read and waited on.
@@ -4445,7 +4449,7 @@ async fn tool(
             phone_id: phone_id.clone(),
             owner_id: "local-user".into(),
             control_epoch: *epoch,
-            observation_id,
+            observation_id: observation_id.clone(),
             gesture: Some(gesture),
             ..action_cue::visual_condition(when, context).await?
         };
@@ -4453,15 +4457,23 @@ async fn tool(
             _ = cancel.cancelled() => return Err("canceled".into()),
             hit = phone(app, "action-cue", req) => hit?,
         };
+        if hit.target_lost {
+            return Ok(phone_plan_rejection(
+                "本次观察的目标已离开画面。请从新的画面重新选择目标与动作。",
+            ));
+        }
         if hit.already_present {
             return Ok(phone_plan_rejection(
                 "布防时区域已经满足条件。重新观察，选择在等待画面和目标画面之间有明显变化的区域。",
             ));
         }
-        let mut sample = json!({"matched":hit.matched,"frames":hit.frames,"wait_ms":hit.elapsed_ms,
+        let mut sample = json!({"source_observation_id":observation_id,"matched":hit.matched,"frames":hit.frames,"wait_ms":hit.elapsed_ms,
             "first_match_at_ms":hit.first_match_at_ms,"confirmed_at_ms":hit.observed_at_ms});
         if let Some(track) = hit.motion.as_ref().and_then(motion_evidence) {
             sample["motion"] = track;
+            if when.get("track_from").is_some() {
+                sample["arrival_ms"] = hit.arrival_ms.into();
+            }
         }
         if !hit.matched || has_steering(app, run).await? || cancel.is_cancelled() {
             return Ok(
@@ -4883,6 +4895,25 @@ mod verification_tests {
             assert_eq!(args["ocr_mode"].as_str(), expected);
             context.extend(observe("menu"));
         }
+    }
+
+    #[test]
+    fn terminal_gesture_reads_the_supported_screenshot_mode() {
+        let performed = action(
+            "done",
+            "phone_tap",
+            json!({"completion_summary":"读取成绩"}),
+        );
+        let mut context = performed.clone();
+        let mut pending = Vec::new();
+        assert!(queue_post_action_observation(
+            &performed[0],
+            Some(&json!({"success":true})),
+            &mut context,
+            &mut pending
+        ));
+        assert_eq!(pending[0]["local_readback"], true);
+        assert_eq!(pending[0]["arguments"], r#"{"ocr_mode":"motion"}"#);
     }
 
     #[test]
