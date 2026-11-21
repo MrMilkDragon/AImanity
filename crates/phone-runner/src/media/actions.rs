@@ -29,13 +29,19 @@ impl Input {
         Ok(Self::Grpc(Box::new(media.session()?)))
     }
 
-    async fn touch(&mut self, contacts: &[Contact], pressure: i32, rotation: u32) -> Result<()> {
+    async fn touch(
+        &mut self,
+        contacts: &[Contact],
+        pressure: i32,
+        rotation: u32,
+        size: (i32, i32),
+    ) -> Result<()> {
         match self {
             Self::Grpc(session) => {
                 let touches = contacts
                     .iter()
                     .map(|&(x, y, id)| {
-                        let (x, y) = physical(x, y, rotation);
+                        let (x, y) = physical(x, y, rotation, size);
                         Touch {
                             x,
                             y,
@@ -60,8 +66,13 @@ impl Input {
                 let mut command = String::from("touch 0");
                 if pressure > 0 {
                     for &(x, y, id) in contacts {
-                        let (x, y) = physical(x, y, rotation);
-                        write!(command, " {id}:{}:{}", x * 32767 / 719, y * 32767 / 1439)?;
+                        let (x, y) = physical(x, y, rotation, size);
+                        write!(
+                            command,
+                            " {id}:{}:{}",
+                            x * 32767 / (size.0 - 1),
+                            y * 32767 / (size.1 - 1)
+                        )?;
                     }
                 }
                 control.send(&command).await
@@ -71,12 +82,12 @@ impl Input {
     }
 }
 
-fn physical(x: u32, y: u32, rotation: u32) -> (i32, i32) {
+fn physical(x: u32, y: u32, rotation: u32, (width, height): (i32, i32)) -> (i32, i32) {
     let (x, y) = (x as i32, y as i32);
     match rotation {
-        1 => (719 - y, x),
-        2 => (719 - x, 1439 - y),
-        3 => (y, 1439 - x),
+        1 => (width - 1 - y, x),
+        2 => (width - 1 - x, height - 1 - y),
+        3 => (y, height - 1 - x),
         _ => (x, y),
     }
 }
@@ -103,7 +114,14 @@ async fn send(
     rotation: u32,
     began: Instant,
 ) -> Result<()> {
-    input.touch(contacts, pressure, rotation).await?;
+    let width = media.width.load(Ordering::Relaxed) as i32;
+    let height = media.height.load(Ordering::Relaxed) as i32;
+    let size = if rotation % 2 == 1 {
+        (height, width)
+    } else {
+        (width, height)
+    };
+    input.touch(contacts, pressure, rotation, size).await?;
     mark(media, contacts, began).await;
     Ok(())
 }

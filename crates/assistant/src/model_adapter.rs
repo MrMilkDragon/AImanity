@@ -75,6 +75,7 @@ pub async fn request_tracked(
         configure_responses(&mut body, config, &effort);
     }
     let encoded = serde_json::to_vec(&body).map_err(|_| "模型请求编码失败")?;
+    drop(body);
     timing.request_started(encoded.len());
     let mut request = client
         .post(config.endpoint()?)

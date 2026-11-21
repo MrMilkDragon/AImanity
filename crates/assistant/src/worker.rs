@@ -1288,9 +1288,14 @@ fn queue_post_action_observation(
     }) {
         return false;
     }
+    let arguments = if receipt.is_some_and(|v| v["cue"]["matched"] == true) {
+        r#"{"ocr_mode":"motion"}"#
+    } else {
+        "{}"
+    };
     let observation = json!({
         "type":"function_call", "name":"phone_observe",
-        "arguments":"{}", "call_id":Uuid::now_v7().to_string(),
+        "arguments":arguments, "call_id":Uuid::now_v7().to_string(),
         "local_action_id":Uuid::now_v7().to_string(), "local_after_action":action_id
     });
     // Persist the completed action and this pending read in one checkpoint.
@@ -2598,8 +2603,7 @@ async fn execute(
             .first()
             .and_then(|call| call["name"].as_str())
             .unwrap_or("");
-        let grant = app.run_signals.host.session(id);
-        let host_session = grant.is_some();
+        let host_session = app.run_signals.host.session(id).is_some();
         let direct_files = !notification_run
             && !host_session
             && file_delivery_input(&context[evidence_start(&context)..]);
@@ -2674,27 +2678,11 @@ async fn execute(
         }
         if pending.is_empty()
             && !direct_files
-            && let Some((name, arguments)) = (if host_session {
-                (!context.iter().skip(evidence_start(&context)).any(|call| {
-                    call["name"] == "host_desktop"
-                        && tool_output(&context, call)
-                            .and_then(tool_value)
-                            .is_some_and(|v| {
-                                v["host_session"].as_str() == grant.as_deref()
-                                    && v["kind"] == "observe"
-                            })
-                }))
-                .then(|| {
-                    (
-                        "host_desktop",
-                        json!({"kind":"observe","intent":"查看本次授权的桌面"}),
-                    )
-                })
-            } else {
+            && !host_session
+            && let Some((name, arguments)) =
                 initial_observation(&context, desktop_id).or_else(|| {
                     needs_verification_observation(&context).then(|| ("phone_observe", json!({})))
                 })
-            })
         {
             let call = json!({"type":"function_call","name":name,"arguments":arguments.to_string(),
                 "call_id":Uuid::now_v7().to_string(),"local_action_id":Uuid::now_v7().to_string()});
@@ -4130,7 +4118,7 @@ async fn tool(
             .map_err(|e| e.to_string())?;
     }
     if name == "phone_observe" {
-        if call["local_after_action"].is_string() {
+        if call["local_after_action"].is_string() && arguments["ocr_mode"] != "motion" {
             // Let Android's local transition begin before capturing. This is not
             // a page-ready claim: loading states must still be read and waited on.
             tokio::select! {
@@ -4159,7 +4147,7 @@ async fn tool(
         );
     }
     use wire::device_action_request::Action;
-    let observation_id = match coordinate_grounding(context, name, &arguments) {
+    let mut observation_id = match coordinate_grounding(context, name, &arguments) {
         Ok(id) => id,
         Err(rejection) => return Ok(rejection),
     };
@@ -4262,6 +4250,65 @@ async fn tool(
         }),
         _ => return Ok(json!([{"type":"input_text","text":"未知工具"}])),
     };
+    let mut cue_result = None;
+    if let Action::Swipe(swipe) = &action
+        && let Some(when) = arguments.get("when")
+    {
+        #[derive(serde::Deserialize)]
+        struct Cue {
+            region: [u32; 4],
+            clear_region: Option<[u32; 4]>,
+            colors: Vec<String>,
+            #[serde(default)]
+            any_color: bool,
+            coverage_percent: u32,
+            timeout_ms: u32,
+        }
+        let cue: Cue =
+            serde::Deserialize::deserialize(when).map_err(|_| "游戏观察区域或颜色无效")?;
+        let bounds = |[left, top, right, bottom]: [u32; 4]| wire::PhoneBounds {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        let rgb = cue
+            .colors
+            .iter()
+            .map(|s| {
+                s.strip_prefix('#')
+                    .filter(|v| v.len() == 6)
+                    .and_then(|v| u32::from_str_radix(v, 16).ok())
+                    .ok_or("颜色格式应为 #RRGGBB")
+            })
+            .collect::<Result<_, _>>()?;
+        let req = wire::SwipeCueRequest {
+            phone_id: phone_id.clone(),
+            owner_id: "local-user".into(),
+            control_epoch: *epoch,
+            observation_id,
+            swipe: Some(*swipe),
+            region: Some(bounds(cue.region)),
+            clear_region: cue.clear_region.map(bounds),
+            rgb,
+            any_color: cue.any_color,
+            coverage_percent: cue.coverage_percent,
+            timeout_ms: cue.timeout_ms,
+            ..Default::default()
+        };
+        let hit: wire::SwipeCueMatch = tokio::select! { biased;
+            _ = cancel.cancelled() => return Err("canceled".into()),
+            hit = phone(app, "swipe-cue", req) => hit?,
+        };
+        let sample = json!({"matched":hit.matched,"frames":hit.frames,"wait_ms":hit.elapsed_ms});
+        if !hit.matched || has_steering(app, run).await? || cancel.is_cancelled() {
+            return Ok(
+                json!([{"type":"input_text","text":json!({"success":false,"not_executed":true,"cue":sample}).to_string()}]),
+            );
+        }
+        observation_id = hit.observation_id;
+        cue_result = Some(sample);
+    }
     let result: wire::DeviceActionResponse = phone(
         app,
         "action",
@@ -4280,9 +4327,11 @@ async fn tool(
     if result.result_unknown {
         return Err("操作结果未知，已停止，请先检查手机再继续。".into());
     }
-    Ok(
-        json!([{"type":"input_text","text":json!({"success":result.success,"output":result.output}).to_string()}]),
-    )
+    let mut receipt = json!({"success":result.success,"output":result.output});
+    if let Some(cue) = cue_result {
+        receipt["cue"] = cue;
+    }
+    Ok(json!([{"type":"input_text","text":receipt.to_string()}]))
 }
 
 #[cfg(test)]

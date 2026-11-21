@@ -6,6 +6,7 @@ use std::{
 
 const MAX_TARGETS: usize = 160;
 const MAX_AGE: Duration = Duration::from_secs(60);
+pub(super) const CUE_MAX_AGE: Duration = Duration::from_millis(250);
 struct Target {
     element: wire::PhoneElement,
     key: String,
@@ -20,6 +21,7 @@ struct Snapshot {
     created: Instant,
     targets: Arc<Vec<Target>>,
     ocr: Option<OcrEvidence>,
+    cue_swipe: Option<wire::SwipeAction>,
 }
 struct OcrEvidence {
     png: Vec<u8>,
@@ -43,6 +45,14 @@ pub struct GroundingState {
     snapshots: VecDeque<Arc<Snapshot>>,
     pending_scroll: Option<ScrollAttempt>,
     blocked: Option<ScrollAttempt>,
+}
+impl GroundingState {
+    fn remember(&mut self, snapshot: Snapshot) {
+        if self.snapshots.len() == 4 {
+            self.snapshots.pop_front();
+        }
+        self.snapshots.push_back(Arc::new(snapshot));
+    }
 }
 fn bounds(text: &str, width: u32, height: u32) -> Option<wire::PhoneBounds> {
     let mut parts = text.split(['[', ']', ',']).filter(|part| !part.is_empty());
@@ -382,24 +392,32 @@ pub async fn observe(
     if request.metadata_only {
         return Err("控件定位需要实际截图".into());
     }
-    if !["", "auto", "always", "only"].contains(&request.ocr_mode.as_str()) {
+    if !["", "auto", "always", "only", "motion"].contains(&request.ocr_mode.as_str()) {
         return Err("无效OCR模式".into());
     }
     let (epoch, revision) = {
         let ledger = runner.ledger.lock().await;
         (ledger.epoch, ledger.revision)
     };
-    let app = foreground(runner).await?;
-    let xml = if request.ocr_mode != "only" {
-        capture_ui_tree(runner).await
+    let motion = request.ocr_mode == "motion";
+    let (app, xml, (png, width, height)) = if motion {
+        let (app, frame) = tokio::try_join!(foreground(runner), capture_frame(runner))?;
+        (app, String::new(), frame)
     } else {
-        String::new()
+        let app = foreground(runner).await?;
+        let xml = if request.ocr_mode == "only" {
+            String::new()
+        } else {
+            capture_ui_tree(runner).await
+        };
+        (app, xml, capture_frame(runner).await?)
     };
-    let (png, width, height) = capture_frame(runner).await?;
     let mut targets = parse_native(&xml, &app, width, height);
     let mut ocr_evidence = None;
     let mut note = String::new();
-    if !native_content_available(&targets, height)
+    if motion {
+        note = "游戏实景帧；可用 phone_swipe 的 when 预置反应，菜单控件用普通观察。".into();
+    } else if !native_content_available(&targets, height)
         || ["always", "only"].contains(&request.ocr_mode.as_str())
     {
         match ocr(runner, &png, width, height).await {
@@ -452,7 +470,7 @@ pub async fn observe(
         );
     }
     let elements = targets.iter().map(|t| t.element.clone()).collect();
-    cache.snapshots.push_back(Arc::new(Snapshot {
+    cache.remember(Snapshot {
         id: id.clone(),
         epoch,
         revision,
@@ -462,10 +480,8 @@ pub async fn observe(
         created: Instant::now(),
         targets: Arc::new(targets),
         ocr: ocr_evidence,
-    }));
-    while cache.snapshots.len() > 4 {
-        cache.snapshots.pop_front();
-    }
+        cue_swipe: None,
+    });
     Ok(wire::DeviceObservation {
         phone_id: runner.phone_id.clone(),
         width,
@@ -499,6 +515,70 @@ fn validate_snapshot(snapshot: &Snapshot, epoch: u64, revision: u64) -> Result<(
         return Err("stale_target:观察已过期或手机已操作，请重新观察后选择控件".into());
     }
     Ok(())
+}
+pub(super) async fn watch_swipe(
+    runner: &Runner,
+    mut request: wire::SwipeCueRequest,
+) -> Result<wire::SwipeCueMatch, String> {
+    let (epoch, revision) = {
+        let ledger = runner.ledger.lock().await;
+        if ledger.epoch != request.control_epoch || ledger.controller != "agent" {
+            return Err("stale_control".into());
+        }
+        (ledger.epoch, ledger.revision)
+    };
+    let source = runner
+        .grounding
+        .lock()
+        .await
+        .snapshots
+        .iter()
+        .find(|s| s.id == request.observation_id)
+        .cloned()
+        .ok_or("缺少当前游戏观察")?;
+    validate_snapshot(&source, epoch, revision)?;
+    let area = request.region.ok_or("缺少观察区域")?;
+    let swipe = request.swipe.ok_or("缺少滑动手势")?;
+    if source.cue_swipe.is_some() || area.right > source.width || area.bottom > source.height {
+        return Err("观察区域必须来自当前手机截图".into());
+    }
+    (request.source_width, request.source_height) = (source.width, source.height);
+    let reply = runner
+        .local
+        .post(format!("{}/swipe-cue", runner.media_url))
+        .bearer_auth(&runner.token)
+        .header("content-type", MEDIA)
+        .body(request.encode_to_vec())
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    let mut hit = wire::SwipeCueMatch::decode(reply.bytes().await.map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    if hit.matched {
+        if (hit.width, hit.height) != (source.width, source.height) {
+            return Err("stale_target:游戏画面方向或尺寸已变化".into());
+        }
+        let age = Duration::from_millis(media::now().saturating_sub(hit.observed_at_ms));
+        if age > CUE_MAX_AGE {
+            return Err("stale_target:游戏画面已过期".into());
+        }
+        hit.observation_id = Uuid::new_v4().to_string();
+        runner.grounding.lock().await.remember(Snapshot {
+            id: hit.observation_id.clone(),
+            epoch,
+            revision,
+            app: source.app.clone(),
+            width: hit.width,
+            height: hit.height,
+            created: Instant::now() - age,
+            targets: Arc::default(),
+            ocr: None,
+            cue_swipe: Some(swipe),
+        });
+    }
+    Ok(hit)
 }
 fn scroll_gesture(b: &wire::PhoneBounds, direction: &str) -> Result<wire::SwipeAction, String> {
     let w = b.right.saturating_sub(b.left);
@@ -562,6 +642,21 @@ pub async fn resolve(
     }
     .ok_or("stale_target:观察记录不存在或服务已重启，请重新观察")?;
     validate_snapshot(&snapshot, epoch, revision)?;
+    if let Some(swipe) = snapshot.cue_swipe {
+        let (app, size) = tokio::join!(foreground(runner), dimensions(runner));
+        if request.action.as_ref() != Some(&Action::Swipe(swipe))
+            || app? != snapshot.app
+            || size != (snapshot.width, snapshot.height)
+            || snapshot.created.elapsed() > CUE_MAX_AGE
+        {
+            return Err("stale_target:游戏信号或对应的手势已过期".into());
+        }
+        return Ok(Some(ResolvedAction {
+            action: Action::Swipe(swipe),
+            scroll: None,
+            dimensions: size,
+        }));
+    }
     if foreground(runner).await? != snapshot.app {
         return Err("stale_target:前台应用已变化，请重新观察".into());
     }
@@ -939,6 +1034,7 @@ mod tests {
             created: Instant::now(),
             targets: Arc::new(vec![]),
             ocr: None,
+            cue_swipe: None,
         };
         assert!(validate_snapshot(&s, 3, 4).is_ok());
         assert!(validate_snapshot(&s, 4, 4).is_err());

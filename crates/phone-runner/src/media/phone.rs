@@ -199,6 +199,7 @@ async fn grpc_capture(media: Arc<Media>) {
                 continue;
             }
             if let Some(image) = image {
+                next = Instant::now() + Duration::from_millis(33);
                 let rotation = angle(&encoder_media, &image);
                 let at = image.timestamp_us / 1000;
                 match tokio::task::spawn_blocking(move || hub::jpeg(&image, rotation)).await {
@@ -208,7 +209,6 @@ async fn grpc_capture(media: Arc<Media>) {
                         encoder_media.screen.end();
                     }
                 }
-                next = Instant::now() + Duration::from_millis(33);
             }
         }
     });

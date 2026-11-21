@@ -312,10 +312,12 @@ async fn dimensions(runner: &Runner) -> (u32, u32) {
         && let Ok(bytes) = response.bytes().await
         && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes)
         && let (Some(width), Some(height)) = (value["width"].as_u64(), value["height"].as_u64())
-        && matches!((width, height), (720, 1440) | (1440, 720))
+        && let (Ok(width), Ok(height)) = (u32::try_from(width), u32::try_from(height))
+        && width > 1
+        && height > 1
     {
-        runner.width.store(width as u32, Ordering::Release);
-        runner.height.store(height as u32, Ordering::Release);
+        runner.width.store(width, Ordering::Release);
+        runner.height.store(height, Ordering::Release);
     }
     observed_dimensions(runner)
 }
@@ -495,6 +497,27 @@ async fn observe(
             "device_unavailable",
             &message,
         ),
+    }
+}
+
+async fn swipe_cue(
+    State(runner): State<Arc<Runner>>,
+    headers: HeaderMap,
+    body: Result<Bytes, BytesRejection>,
+) -> Response {
+    let req: wire::SwipeCueRequest = match request(&runner, &headers, body) {
+        Ok(req) => req,
+        Err(e) => return e.into(),
+    };
+    if let Err(e) = scope(&runner, &req.phone_id, &req.owner_id) {
+        return e.into();
+    }
+    match grounding::watch_swipe(&runner, req).await {
+        Ok(hit) => pb(StatusCode::OK, hit),
+        Err(error) if error == "stale_control" => {
+            err(StatusCode::CONFLICT, "stale_control", &error)
+        }
+        Err(error) => err(StatusCode::CONFLICT, "cue_unavailable", &error),
     }
 }
 
@@ -719,11 +742,10 @@ async fn action(
     };
     let complex = matches!(request.action, Some(Action::Gesture(_) | Action::Motion(_)));
     let fast_touch = complex
-        || (((width == 720 && height == 1440) || (width == 1440 && height == 720))
-            && matches!(
-                request.action,
-                Some(Action::Tap(_) | Action::Swipe(_) | Action::Drag(_) | Action::LongPress(_))
-            ));
+        || matches!(
+            request.action,
+            Some(Action::Tap(_) | Action::Swipe(_) | Action::Drag(_) | Action::LongPress(_))
+        );
     let fast_body = fast_touch.then(|| request.encode_to_vec());
     let expected_orientation = match request.action.as_ref() {
         Some(Action::Orientation(value)) => Some(*value),
@@ -1096,6 +1118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     let app = Router::new()
         .route("/v1/observe", post(observe))
+        .route("/v1/swipe-cue", post(swipe_cue))
         .route("/v1/notifications", post(notifications))
         .route("/v1/orientation", post(read_orientation))
         .route("/v1/cursor", post(cursor::read))

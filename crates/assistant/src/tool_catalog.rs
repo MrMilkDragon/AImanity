@@ -60,8 +60,8 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_observe",
-            "读取当前手机画面、前台应用及控件ID。找不到文字时用 ocr_mode=always 补充识别。",
-            json!({"include_ui_tree":{"type":"boolean"},"ocr_mode":{"type":"string","enum":["auto","always"]}}),
+            "读取当前手机画面、前台应用及控件ID。always 补充文字，motion 直接观察实时游戏画面。",
+            json!({"include_ui_tree":{"type":"boolean"},"ocr_mode":{"type":"string","enum":["auto","always","motion"]}}),
             vec![],
         ),
         function(
@@ -96,8 +96,16 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_swipe",
-            "仅无原生可滚动容器时使用可见区域坐标滑动；说明fallback_reason。有滚动容器时必须phone_scroll。",
-            json!({"x1":{"type":"integer"},"y1":{"type":"integer"},"x2":{"type":"integer"},"y2":{"type":"integer"},"duration_ms":{"type":"integer"},"fallback_reason":{"type":"string"}}),
+            "在画布上滑动。实时游戏可提前用 when 指定观察区域和障碍颜色，连续两帧命中即滑动一次。列表用 phone_scroll。",
+            json!({"x1":{"type":"integer"},"y1":{"type":"integer"},"x2":{"type":"integer"},"y2":{"type":"integer"},"duration_ms":{"type":"integer"},"fallback_reason":{"type":"string"},
+                "when":{"type":"object","properties":{
+                    "region":{"type":"array","description":"最近截图中的 [左,上,右,下] 像素","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
+                    "colors":{"type":"array","description":"障碍的 #RRGGBB 颜色","items":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"minItems":1,"maxItems":4},
+                    "clear_region":{"type":"array","description":"可选的目标轨道区域，同一帧内任何障碍色达标时暂停滑动","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
+                    "any_color":{"type":"boolean","description":"任意一种颜色达标时响应，默认要求每种达标"},
+                    "coverage_percent":{"type":"integer","description":"每种颜色分别占区域的最小百分比","minimum":1,"maximum":100},
+                    "timeout_ms":{"type":"integer","minimum":100,"maximum":5000}
+                },"required":["region","colors","coverage_percent","timeout_ms"],"additionalProperties":false}}),
             vec!["x1", "y1", "x2", "y2", "duration_ms", "fallback_reason"],
         ),
         function(

@@ -57,7 +57,7 @@ enum Message {
     Host(host::Event),
     Setup(deployment::Message),
     Connected(Result<Box<connection::Session>, String>),
-    Frame(usize, Result<Frame, String>),
+    Frame(usize, connection::LatestFrame),
     PollAgentPointers,
     AgentPointers(Box<[Option<wire::DeviceCursor>; 2]>),
     Chat(Result<wire::ChatState, String>),
@@ -745,8 +745,8 @@ impl App {
                     Err(error) => self.error = error,
                 }
             }
-            Message::Frame(index, result) => match result {
-                Ok(frame) => {
+            Message::Frame(index, pending) => match pending.take() {
+                Some(Ok(frame)) => {
                     let resized = self.frames[index]
                         .as_ref()
                         .is_none_or(|old| old.width != frame.width || old.height != frame.height);
@@ -762,7 +762,8 @@ impl App {
                         self.rearrange();
                     }
                 }
-                Err(error) => self.frame_errors[index] = error,
+                Some(Err(error)) => self.frame_errors[index] = error,
+                None => {}
             },
             Message::PollAgentPointers if !self.pointer_polling && self.after_stop.is_none() => {
                 if let Some(client) = self.connection.clone() {

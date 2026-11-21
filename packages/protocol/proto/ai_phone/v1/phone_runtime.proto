@@ -27,7 +27,7 @@ message DeviceRequest {
   bool include_ui_tree = 3;
   bool metadata_only = 4;
   bool include_elements = 5;
-  // "auto" (default), "always" (supplement native nodes), "only" (OCR diagnostics).
+  // "auto", "always", "only" (OCR diagnostics), "motion" (real-time game canvas).
   string ocr_mode = 6;
 }
 
@@ -67,6 +67,30 @@ message ElementScrollAction { string observation_id = 1; string element_id = 2; 
 
 message TapAction { uint32 x = 1; uint32 y = 2; }
 message SwipeAction { uint32 x1 = 1; uint32 y1 = 2; uint32 x2 = 3; uint32 y2 = 4; uint32 duration_ms = 5; }
+message SwipeCueRequest {
+  string phone_id = 1;
+  string owner_id = 2;
+  uint64 control_epoch = 3;
+  string observation_id = 4;
+  SwipeAction swipe = 5;
+  PhoneBounds region = 6;
+  repeated uint32 rgb = 7;
+  uint32 coverage_percent = 8;
+  uint32 timeout_ms = 9;
+  uint32 source_width = 10;
+  uint32 source_height = 11;
+  bool any_color = 12;
+  PhoneBounds clear_region = 13;
+}
+message SwipeCueMatch {
+  string observation_id = 1;
+  uint32 frames = 2;
+  uint32 elapsed_ms = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  bool matched = 6;
+  uint64 observed_at_ms = 7;
+}
 message LongPressAction { uint32 x = 1; uint32 y = 2; uint32 duration_ms = 3; }
 message DragAction { uint32 x1 = 1; uint32 y1 = 2; uint32 x2 = 3; uint32 y2 = 4; uint32 duration_ms = 5; }
 message InputAction { string text = 1; }

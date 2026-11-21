@@ -3,7 +3,7 @@ use bytes::BytesMut;
 use futures_util::{SinkExt, StreamExt};
 use prost::Message;
 use std::{
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio_tungstenite::tungstenite::{client::IntoClientRequest, http::HeaderValue};
@@ -28,6 +28,20 @@ pub struct Frame {
     pub sequence: u64,
     pub captured_ms: f64,
     pub received: Instant,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct LatestFrame(Arc<Mutex<Option<Result<Frame, String>>>>);
+
+impl LatestFrame {
+    fn replace(&self, frame: Result<Frame, String>) -> bool {
+        let previous = self.0.lock().unwrap().replace(frame);
+        previous.is_none()
+    }
+
+    pub fn take(&self) -> Option<Result<Frame, String>> {
+        self.0.lock().unwrap().take()
+    }
 }
 
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
@@ -364,8 +378,9 @@ impl Connection {
     pub fn frames(
         self,
         device: wire::RegisteredDevice,
-    ) -> impl futures_util::Stream<Item = Result<Frame, String>> {
-        iced::stream::channel::<Result<Frame, String>>(1, async move |mut output| {
+    ) -> impl futures_util::Stream<Item = LatestFrame> {
+        iced::stream::channel::<LatestFrame>(1, async move |mut output| {
+            let pending = LatestFrame::default();
             let route = if device.kind == "phone" {
                 "screen"
             } else {
@@ -426,17 +441,19 @@ impl Connection {
                             last_jpeg = Some(jpeg);
                             sequence += 1;
                             reconnecting = false;
-                            output
-                                .send(Ok(Frame {
-                                    width: decoded.width(),
-                                    height: decoded.height(),
-                                    pixels: Arc::new(decoded.into_raw()),
-                                    sequence,
-                                    captured_ms,
-                                    received,
-                                }))
-                                .await
-                                .map_err(|e| e.to_string())?;
+                            if pending.replace(Ok(Frame {
+                                width: decoded.width(),
+                                height: decoded.height(),
+                                pixels: Arc::new(decoded.into_raw()),
+                                sequence,
+                                captured_ms,
+                                received,
+                            })) {
+                                output
+                                    .send(pending.clone())
+                                    .await
+                                    .map_err(|e| e.to_string())?;
+                            }
                         }
                     }
                     Err("设备画面连接已关闭".into())
@@ -444,7 +461,8 @@ impl Connection {
                 .await;
                 if !reconnecting
                     && let Err(error) = result
-                    && output.send(Err(error)).await.is_err()
+                    && pending.replace(Err(error))
+                    && output.send(pending.clone()).await.is_err()
                 {
                     return;
                 }
@@ -636,4 +654,30 @@ impl Connection {
             phone: HeaderValue::from_static(""),
         }
     }
+}
+
+#[cfg(test)]
+#[test]
+fn stalled_renderer_keeps_the_latest_frame_and_one_wakeup() {
+    let slot = LatestFrame::default();
+    let mut previous = std::sync::Weak::new();
+    let mut wakes = 0;
+    for sequence in 1..=120 {
+        let pixels = Arc::new(vec![0; 16]);
+        let live = Arc::downgrade(&pixels);
+        wakes += usize::from(slot.replace(Ok(Frame {
+            width: 2,
+            height: 2,
+            pixels,
+            sequence,
+            captured_ms: 0.,
+            received: Instant::now(),
+        })));
+        assert!(previous.upgrade().is_none());
+        previous = live;
+    }
+    assert_eq!(wakes, 1);
+    assert_eq!(slot.take().unwrap().unwrap().sequence, 120);
+    assert!(slot.replace(Err("disconnected".into())));
+    assert_eq!(slot.take().unwrap().unwrap_err(), "disconnected");
 }
