@@ -1949,7 +1949,9 @@ fn phone_completion_proposal(context: &[Value], output: &[Value], summary: &str)
     if !single || action["name"] != "phone_tap_element" {
         return None;
     }
-    Some(completion_proposal(summary))
+    Some(completion_proposal(
+        json!({"status":"completed","summary":summary}),
+    ))
 }
 
 fn completed_phone_gesture(context: &[Value]) -> Option<(&Value, bool)> {
@@ -2002,9 +2004,9 @@ fn completed_phone_gesture(context: &[Value]) -> Option<(&Value, bool)> {
     Some((action, single))
 }
 
-fn completion_proposal(summary: &str) -> Value {
+fn completion_proposal(arguments: Value) -> Value {
     json!({"type":"function_call","name":"task_finish","call_id":Uuid::now_v7().to_string(),
-        "arguments":json!({"status":"completed","summary":summary}).to_string()})
+        "arguments":arguments.to_string()})
 }
 
 fn hinted_device_completion(context: &[Value]) -> Option<Value> {
@@ -2019,39 +2021,51 @@ fn hinted_device_completion(context: &[Value]) -> Option<Value> {
         .find(|item| item["type"] == "function_call" && item["call_id"] == id)?;
     let action = match call["name"].as_str()? {
         "phone_observe" => completed_phone_gesture(context)?.0,
-        "computer_type" | "computer_click"
+        "computer_type" | "computer_click" | "computer_key"
             if receipt["output"]
                 .as_array()
                 .is_some_and(|parts| has_live_png(parts))
                 && tool_value(&receipt["output"]).is_some_and(|value| {
-                    value["success"] == true && value["observation_id"].is_string()
+                    confirmed_input(&value) && value["observation_id"].is_string()
                 })
-                && recent.iter().all(|item| {
-                    item["type"] != "function_call"
-                        || matches!(
-                            item["name"].as_str(),
-                            Some("skill_read" | "device_list" | "computer_observe")
-                        )
-                        || item["call_id"] == id
-                }) =>
+                && (call["name"] == "computer_key"
+                    || recent.iter().all(|item| {
+                        item["type"] != "function_call"
+                            || matches!(
+                                item["name"].as_str(),
+                                Some("skill_read" | "device_list" | "computer_observe")
+                            )
+                            || item["call_id"] == id
+                    })) =>
         {
             call
         }
         _ => return None,
     };
     let arguments: Value = serde_json::from_str(action["arguments"].as_str()?).ok()?;
-    let summary = if action["name"] == "computer_click" && arguments["finish"] == true {
-        "已点击，按原任务读回结果。"
+    let finish = if action["name"] == "computer_key" {
+        let path = arguments["reply_file"].as_str()?;
+        let written = tool_value(&receipt["output"])?;
+        if written["saved_file"] != path || written["device_id"] != arguments["device_id"] {
+            return None;
+        }
+        let device = written["device_id"].as_str()?;
+        json!({"status":"completed","summary":"请核对按键后的画面、文件与用户要求。","files":[{"device_id":device,"path":path}]})
     } else {
-        arguments["completion_summary"].as_str()?.trim()
+        let summary = if action["name"] == "computer_click" && arguments["finish"] == true {
+            "已点击，按原任务读回结果。"
+        } else {
+            arguments["completion_summary"].as_str()?.trim()
+        };
+        if summary.is_empty() || summary.chars().count() > 400 {
+            return None;
+        }
+        json!({"status":"completed","summary":summary})
     };
-    if summary.is_empty() || summary.chars().count() > 400 {
-        return None;
-    }
-    let mut proposal = completion_proposal(summary);
+    let mut proposal = completion_proposal(finish);
     if matches!(
         call["name"].as_str(),
-        Some("phone_observe" | "computer_click")
+        Some("phone_observe" | "computer_click" | "computer_key")
     ) {
         proposal["local_readback"] = json!(true);
     }
@@ -4294,7 +4308,8 @@ async fn tool(
         let audit = row.get::<bool, _>("audit_notification")
             || !screen_attention
                 && status == "completed"
-                && (file_delivery
+                && (call["local_readback"] == true
+                    || file_delivery
                     || action_task(&current)
                     || computer_task(&current)
                     || phone_task(&current)
@@ -4900,6 +4915,36 @@ mod verification_tests {
             .unwrap()
             .push(json!({"type":"input_text","text":metadata.to_string()}));
         events
+    }
+
+    #[test]
+    fn final_key_attaches_only_after_its_receipt_and_before_new_steering() {
+        let mut context = request("保存并附上文件");
+        context.extend(action("edit", "computer_type", json!({"text":"11"})));
+        let mut save = device_frame("after-save", "desktop");
+        save[0]["name"] = json!("computer_key");
+        save[0]["arguments"] = json!(
+            json!({"key":"ctrl+s","device_id":"desktop","reply_file":"/home/ai/Files/report.xlsx"})
+                .to_string()
+        );
+        let metadata = json!({"success":true,"device_id":"desktop","observation_id":"after-save","saved_file":"/home/ai/Files/report.xlsx"});
+        save[1]["output"][1]["text"] = json!(metadata.to_string());
+        context.extend(save);
+        let finish = hinted_device_completion(&context).unwrap();
+        let args: Value = serde_json::from_str(finish["arguments"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            args["files"],
+            json!([{"device_id":"desktop","path":"/home/ai/Files/report.xlsx"}])
+        );
+        assert_eq!(finish["local_readback"], true);
+        let output = &mut context.last_mut().unwrap()["output"][1]["text"];
+        *output = json!(
+            json!({"success":true,"device_id":"desktop","observation_id":"after-save"}).to_string()
+        );
+        assert!(hinted_device_completion(&context).is_none());
+        context.last_mut().unwrap()["output"][1]["text"] = json!(metadata.to_string());
+        context.extend(request("先别交付，继续修改。"));
+        assert!(hinted_device_completion(&context).is_none());
     }
 
     #[test]

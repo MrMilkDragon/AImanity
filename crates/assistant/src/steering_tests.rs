@@ -733,7 +733,7 @@ async fn completion_and_new_input_respect_both_serialization_orders() {
                 .await
                 .unwrap();
             let next = request("另一个必须保留的要求");
-            let sender_wait = "SELECT id,status,agent_id FROM runs%FOR UPDATE%";
+            let sender_wait = "SELECT % FROM runs WHERE conversation_id=$1%LIMIT 1 FOR UPDATE";
             let finisher_wait = "SELECT steering,status%FROM runs%FOR UPDATE%";
             let (admitted, completed) = tokio::time::timeout(Duration::from_secs(10), async {
                 if send_first {

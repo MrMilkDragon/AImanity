@@ -59,6 +59,35 @@ fn desktop_admin(arguments: &[&str]) -> Result<tokio::process::Command> {
     ai_phone_host_runtime::desktop_bridge::administration(Path::new(&root), arguments).map_err(err)
 }
 
+pub(crate) async fn desktop_file_version(
+    path: &str,
+    previous: Option<&str>,
+) -> Result<Option<String>> {
+    if !path.starts_with('/') {
+        return Err("交付文件需要绝对路径".into());
+    }
+    let script = r#"
+version() {
+    if [ -f "$1" ] && [ ! -L "$1" ]; then
+        stat --printf='%d:%i:%s:%y' -- "$1"
+    elif [ -e "$1" ] || [ -L "$1" ]; then
+        echo 'Expected a regular file' >&2; return 1
+    fi
+}
+current=$(version "$1") || exit 1
+for delay in .04 .08 .16 .32 .64; do
+    [ "$#" = 2 ] && { [ -z "$current" ] || [ "$current" = "$2" ]; } || break
+    sleep "$delay"
+    current=$(version "$1") || exit 1
+done
+printf '%s' "$current""#;
+    let mut args = vec!["sh", "-c", script, "sh", path];
+    args.extend(previous);
+    let bytes = crate::desktop::process(desktop_admin(&args)?, vec![], 256, 5).await?;
+    let version = String::from_utf8(bytes).map_err(err)?;
+    Ok((!version.is_empty() && Some(version.as_str()) != previous).then_some(version))
+}
+
 async fn desktop_tar(arguments: &[&str], input: Stdio, output: Stdio) -> Result<()> {
     let child = desktop_admin(arguments)?
         .stdin(input)
@@ -383,14 +412,29 @@ impl Store {
                             .await
                             .map_err(|_| "请选择实际生成的普通文件".to_string())?;
                     }
-                    let archive = tempfile::tempfile().map_err(err)?;
                     let (folder, name) = file_parts(Path::new(source))?;
-                    desktop_tar(
-                        &["tar", "-cf", "-", "-C", folder, "--", name],
-                        Stdio::null(),
-                        Stdio::from(archive.try_clone().map_err(err)?),
-                    )
-                    .await?;
+                    let mut retry_save = regular_file;
+                    let archive = loop {
+                        let archive = tempfile::tempfile().map_err(err)?;
+                        match desktop_tar(
+                            &["tar", "-cf", "-", "-C", folder, "--", name],
+                            Stdio::null(),
+                            Stdio::from(archive.try_clone().map_err(err)?),
+                        )
+                        .await
+                        {
+                            Ok(()) => break archive,
+                            Err(error)
+                                if retry_save
+                                    && error.trim_end()
+                                        == format!("tar: {name}: file changed as we read it") =>
+                            {
+                                retry_save = false;
+                                tokio::time::sleep(Duration::from_millis(60)).await;
+                            }
+                            Err(error) => return Err(error),
+                        }
+                    };
                     let (name, target) = (name.to_owned(), target.to_owned());
                     tokio::task::spawn_blocking(move || unpack_desktop(archive, &name, &target))
                         .await

@@ -1146,8 +1146,38 @@ pub async fn route(
     .await;
     result.unwrap_or_else(|e| error(StatusCode::CONFLICT, "device_operation", &e))
 }
-fn blocks(o: wire::DesktopObservation) -> Value {
-    json!([{"type":"input_text","text":observation_meta(&o).to_string()},{"type":"input_image","image_url":format!("data:image/png;base64,{}",STANDARD.encode(o.png))}])
+fn blocks(o: wire::DesktopObservation, meta: Value) -> Value {
+    json!([{"type":"input_text","text":meta.to_string()},{"type":"input_image","image_url":format!("data:image/png;base64,{}",STANDARD.encode(o.png))}])
+}
+async fn open_document_path(app: &App, o: &wire::DesktopObservation) -> Option<String> {
+    let title = o.title.trim_start_matches('*').trim_start();
+    let file = title.split_once(" — ").map_or(title, |(name, _)| name);
+    if o.process_id == 0 || std::path::Path::new(file).extension().is_none() {
+        return None;
+    }
+    let directory = format!("/proc/{}/fd", o.process_id);
+    let mut command = ai_phone_host_runtime::desktop_bridge::administration(
+        &app.root,
+        &["/usr/sbin/runuser", "-u", "ai", "--", "find", &directory],
+    )
+    .ok()?;
+    command.args([
+        "-maxdepth",
+        "1",
+        "-type",
+        "l",
+        "-xtype",
+        "f",
+        "-printf",
+        "%l\\0",
+    ]);
+    let links = process(command, vec![], 64 * 1024, 2).await.ok()?;
+    let mut matches = links
+        .split(|b| *b == 0)
+        .filter_map(|link| std::str::from_utf8(link).ok())
+        .filter(|link| link.starts_with('/') && link.rsplit('/').next() == Some(file));
+    let path = matches.next()?;
+    matches.all(|other| other == path).then(|| path.to_owned())
 }
 fn plain(value: Value) -> Value {
     json!([{"type":"input_text","text":value.to_string()}])
@@ -1269,9 +1299,14 @@ pub async fn tool(app: &App, run: Uuid, call: &Value, args: &Value) -> Result<Va
         if source.as_ref().is_some_and(|(_, manual)| *manual) {
             return Err("用户正在操作电脑，画面检查已跳过。".into());
         }
-        return Ok(blocks(
-            observe(app, device, Some(run), source.is_none()).await?,
-        ));
+        let observed = observe(app, device, Some(run), source.is_none()).await?;
+        let mut meta = observation_meta(&observed);
+        if source.is_none()
+            && let Some(path) = open_document_path(app, &observed).await
+        {
+            meta["document_path"] = json!(path);
+        }
+        return Ok(blocks(observed, meta));
     }
     if name == "computer_run" {
         control(app, device, Some(run), true).await?;
@@ -1334,8 +1369,34 @@ async fn tool_action(
         wait_for_paint: true,
         replace: args["replace"].as_bool().unwrap_or(false),
     };
+    let file = if name == "computer_key"
+        && let Some(path) = args["reply_file"].as_str()
+    {
+        file_authorized(app, run, device).await?;
+        Some((
+            path,
+            crate::files::desktop_file_version(path, None)
+                .await?
+                .unwrap_or_default(),
+        ))
+    } else {
+        None
+    };
     match action(app, r, Some(run)).await {
-        Ok(observation) => Ok(blocks(observation)),
+        Ok(observation) => {
+            let mut meta = observation_meta(&observation);
+            if let Some((path, before)) = file {
+                match crate::files::desktop_file_version(path, Some(&before)).await {
+                    Ok(Some(_)) => meta["saved_file"] = json!(path),
+                    Ok(None) => {
+                        meta["file_feedback"] =
+                            json!("已发送按键，尚未检测到该文件写入。请检查当前画面和文件。")
+                    }
+                    Err(error) => meta["file_feedback"] = json!(error),
+                }
+            }
+            Ok(blocks(observation, meta))
+        }
         Err(error) => input_rejection(&error).map(plain).ok_or(error),
     }
 }
@@ -1441,7 +1502,7 @@ pub fn catalog() -> Vec<Value> {
         function(
             "computer_key",
             "发送Linux按键，如Return、ctrl+l、ctrl+s、Alt+F4。不能替代观察。",
-            json!({"device_id":id,"observation_id":id,"key":id}),
+            json!({"device_id":id,"observation_id":id,"key":id,"reply_file":{"type":"string","description":"本键为最后保存操作且需将文件附到当前对话时，填写观察返回的 document_path 或已确认的目标绝对路径。系统会读回保存件和画面。"}}),
             vec!["device_id", "observation_id", "key"],
         ),
         function(

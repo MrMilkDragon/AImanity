@@ -1178,8 +1178,8 @@
     },
     {
       "path": "crates/assistant/src/desktop.rs",
-      "size": 87504,
-      "sha256": "a465afe6f4f88e76660f7e863593078f1702c622f3c94885cf4b88c31aa80e85"
+      "size": 90034,
+      "sha256": "7bd1d5a921ddf3d3fcf8c99d9a38e25870f2b4e033b256b113c0d7850df23d9c"
     },
     {
       "path": "crates/assistant/src/device_exchange/kafka.rs",
@@ -1238,8 +1238,8 @@
     },
     {
       "path": "crates/assistant/src/files.rs",
-      "size": 49037,
-      "sha256": "f4e087634c6f9a9d56c2a82317b2c637c18b31d1f423e8f683acd5894b208d04"
+      "size": 50782,
+      "sha256": "e305f3ecc426fa3d8995ccd8fc1c9b293f8f177e6e4b108ac90291abacdddcb4"
     },
     {
       "path": "crates/assistant/src/handoff_returns.rs",
@@ -1473,8 +1473,8 @@
     },
     {
       "path": "crates/assistant/src/steering_tests.rs",
-      "size": 52569,
-      "sha256": "50b4c3032b663178813e7498c0ab3cb9f7d427445414d833798f046d07207b5e"
+      "size": 52584,
+      "sha256": "6d6f744dd800cf2b7b7a8fb55b0a9d38172b1c86cae8f6abcf683f41a28aac41"
     },
     {
       "path": "crates/assistant/src/task_goal_tests.rs",
@@ -1528,8 +1528,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 272630,
-      "sha256": "7af4fad822e0fdf6ec5bc260f9c06a35e260214ae454203a5a8bee27bbf158a5"
+      "size": 275031,
+      "sha256": "edd211be58636a975334bdb37ab7cfa9f2026cb7bf70903b266b18e2dd0fa125"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -3663,13 +3663,28 @@
     },
     {
       "path": "skills/builtin/calc/SKILL.md",
-      "size": 2479,
-      "sha256": "81ff14ee8e37a9ca26e28ee652aeea68e776086752ec2154249524adcc11f7be"
+      "size": 1150,
+      "sha256": "21ed9bf2d763a79138e7c3996191837b80cfc601e4616d20ca4bcefce5e828a1"
+    },
+    {
+      "path": "skills/builtin/calc/references/import-and-save.md",
+      "size": 1929,
+      "sha256": "e1d3ef7aec811addc1e466c8cfb4f9700247608f2f90176dc1b45e6ec1da73cd"
     },
     {
       "path": "skills/builtin/computer-use/SKILL.md",
-      "size": 7746,
-      "sha256": "d38b5518e4480eaec1cf0b6b4134c18c88936336f43124500ff74f13c7be0d94"
+      "size": 2299,
+      "sha256": "aff6401934863056b207c21669ed9fa0bc47a622a039975a3ffed2d3ac894d63"
+    },
+    {
+      "path": "skills/builtin/computer-use/references/controls.md",
+      "size": 3082,
+      "sha256": "b2932def80bd5df0989577ba0b0d8a6abc5252b34e5c1c784242bbe5a35fc5f5"
+    },
+    {
+      "path": "skills/builtin/computer-use/references/files-and-office.md",
+      "size": 1991,
+      "sha256": "0a58339dc6e1d733b11acea65dde665bd75aa6b964c61767d1e7046935a3929d"
     },
     {
       "path": "skills/builtin/create-game-assets/SKILL.md",
