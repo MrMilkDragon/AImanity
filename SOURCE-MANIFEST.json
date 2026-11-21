@@ -1148,8 +1148,8 @@
     },
     {
       "path": "crates/assistant/src/completion_audit.rs",
-      "size": 56216,
-      "sha256": "14beaeecb42dab6319dda89aa55e9c8dbe1f904f51e0d52df7ee8901406c8776"
+      "size": 66306,
+      "sha256": "c53fa75f3ff0980de4d4d135c06af51dfbca97650e9c4ee1e02db142a019d0d6"
     },
     {
       "path": "crates/assistant/src/database/bootstrap.rs",
@@ -1253,8 +1253,8 @@
     },
     {
       "path": "crates/assistant/src/harness_proxy.rs",
-      "size": 14473,
-      "sha256": "aa70add26197d22362de70a75a61f5ca55d9b78bf33badec2f6b2f32dff29421"
+      "size": 14781,
+      "sha256": "bde1075cdf189c4e4333cb5cfc56e6b75914b7c6e704c3272c852d0a559f6c73"
     },
     {
       "path": "crates/assistant/src/harness_proxy_devices.rs",
@@ -1768,8 +1768,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/session/avo.rs",
-      "size": 6643,
-      "sha256": "104cb61d49c8f855b722c6793fc5e65d8aa9961b755e9bd3c135bbaaee430e07"
+      "size": 6606,
+      "sha256": "05698a1d75a16eda06cf3a0d0830e484ab34650bf890b651fae9a3e067bac8a9"
     },
     {
       "path": "crates/host-runtime/src/android/session/cli.rs",
@@ -3943,8 +3943,13 @@
     },
     {
       "path": "skills/builtin/phone-use/SKILL.md",
-      "size": 10968,
-      "sha256": "60cf5d16c9634141bbebaa9b3629b598ba91a3845901c71f6fa46e84ef8b2cbb"
+      "size": 2000,
+      "sha256": "1dca9ffb89354a2d04e589714dcb92e56696670a4e3857ca050ca60caa86ec07"
+    },
+    {
+      "path": "skills/builtin/phone-use/references/gestures.md",
+      "size": 1666,
+      "sha256": "d83930ac6265aaae0df91f434d4ee41cba7b3b861294004faa8ff3c8d3e8a8c0"
     },
     {
       "path": "skills/builtin/playwright/SKILL.md",

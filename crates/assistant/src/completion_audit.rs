@@ -1,8 +1,7 @@
 use crate::*;
 use serde_json::{Value, json};
 use sqlx::Row;
-use std::collections::HashMap;
-use std::ops::Range;
+use std::collections::{HashMap, HashSet};
 
 pub struct AuditResult {
     pub approved: bool,
@@ -151,15 +150,13 @@ struct PhoneInputAudit {
     source: Value,
     tap: usize,
     after: usize,
-    visuals: Range<usize>,
 }
 
-fn single_phone_input(
+fn single_cued_input(
     evidence: &[Value],
     calls: &HashMap<Uuid, &Value>,
-    post_visuals: Option<(Uuid, Range<usize>)>,
+    pngs: &HashMap<Uuid, usize>,
 ) -> Option<PhoneInputAudit> {
-    let (visual_event, visuals) = post_visuals?;
     if evidence
         .iter()
         .any(|receipt| receipt["status"] != "completed")
@@ -174,10 +171,7 @@ fn single_phone_input(
     let (after, post) = device_rows.next()?;
     if device_rows.next().is_some()
         || before["tool"] != "phone_observe"
-        || !matches!(
-            action["tool"].as_str(),
-            Some("phone_tap_element" | "phone_tap" | "phone_swipe")
-        )
+        || !matches!(action["tool"].as_str(), Some("phone_tap" | "phone_swipe"))
         || post["tool"] != "phone_observe"
     {
         return None;
@@ -196,7 +190,8 @@ fn single_phone_input(
     let action_id = action_call["call_id"]
         .as_str()
         .filter(|id| !id.is_empty())?;
-    if visual_event != post_event || calls.get(&post_event)?["local_after_action"] != action_id {
+    if !pngs.contains_key(&post_event) || calls.get(&post_event)?["local_after_action"] != action_id
+    {
         return None;
     }
 
@@ -204,7 +199,11 @@ fn single_phone_input(
     let source = crate::worker::tool_value(&before["result"])?;
     let destination = crate::worker::tool_value(&post["result"])?;
     let source_app = source["foreground_app"].as_str()?;
-    let target_app = destination["foreground_app"].as_str()?;
+    if crate::application_identity::phone(source_app)?
+        != crate::application_identity::phone(destination["foreground_app"].as_str()?)?
+    {
+        return None;
+    }
     let device = source["device_id"].as_str().filter(|id| !id.is_empty())?;
     let source_observation = source["observation_id"]
         .as_str()
@@ -216,39 +215,138 @@ fn single_phone_input(
         return None;
     }
     let readback = calls.get(&post_event)?["local_readback"] == true;
-    let target = if action["tool"] == "phone_tap_element" {
-        if arguments["observation_id"] != source_observation
-            || (!readback
-                && (source_app == target_app
-                    || !source_app.starts_with("com.android.settings/")
-                    || !target_app.starts_with("com.android.settings/")))
-        {
-            return None;
-        }
-        let id = arguments["element_id"].as_str()?;
-        let control = source["elements"].as_array()?.iter().find(|c| {
-            c["id"] == id
-                && c["source"] == "native"
-                && c["clickable"] == true
-                && c["text"].as_str().is_some_and(|s| !s.trim().is_empty())
-        })?;
-        json!({"id":id,"text":control["text"],"resource_id":control["resource_id"]})
-    } else {
-        let cue = &result["cue"];
-        if !readback || cue["matched"] != true || cue["source_observation_id"] != source_observation
-        {
-            return None;
-        }
-        json!({"condition":arguments["when"],"matched_at_ms":cue["confirmed_at_ms"],"motion":cue["motion"]})
-    };
+    let cue = &result["cue"];
+    if !readback || cue["matched"] != true || cue["source_observation_id"] != source_observation {
+        return None;
+    }
+    let target = json!({"condition":arguments["when"],"matched_at_ms":cue["confirmed_at_ms"],"motion":cue["motion"]});
     let source = json!({"device_id":device,"observation_id":source_observation,"foreground_app":source_app,"target":target});
     Some(PhoneInputAudit {
         source: json!({"evidence_id":before["evidence_id"],"tool":"phone_observe","status":"completed",
             "result":[{"type":"input_text","text":source.to_string()}]}),
         tap,
         after,
-        visuals,
     })
+}
+
+// A source image can be deferred only when the persisted control under the tap,
+// the input receipt and the immediately following read all identify one chain.
+struct PhoneFrames {
+    device: String,
+    images: Vec<(Uuid, usize)>,
+    shown: HashSet<Uuid>,
+}
+
+impl PhoneFrames {
+    fn navigation(
+        evidence: &[Value],
+        calls: &HashMap<Uuid, &Value>,
+        pngs: &HashMap<Uuid, usize>,
+    ) -> Option<Self> {
+        let mut rows = evidence.iter().filter(|row| row["tool"] != "skill_read");
+        if evidence.iter().any(|row| row["status"] != "completed") {
+            return None;
+        }
+        let event_id = |row: &Value| Uuid::parse_str(row["evidence_id"].as_str()?).ok();
+        let mut row = rows.next()?;
+        let mut seen = HashSet::new();
+        let mut images = Vec::new();
+        let mut device = None;
+        let mut app_id = None;
+        loop {
+            let event = event_id(row)?;
+            let frame = crate::worker::tool_value(&row["result"])?;
+            let observation = frame["observation_id"]
+                .as_str()
+                .filter(|id| !id.is_empty())?;
+            let phone = frame["device_id"].as_str().filter(|id| !id.is_empty())?;
+            let package = crate::application_identity::phone(frame["foreground_app"].as_str()?)?;
+            if row["tool"] != "phone_observe"
+                || device.get_or_insert_with(|| phone.to_owned()) != phone
+                || app_id.get_or_insert_with(|| package.to_owned()) != package
+                || !seen.insert(observation.to_owned())
+            {
+                return None;
+            }
+            images.push((event, *pngs.get(&event)?));
+            let Some(action) = rows.next() else {
+                if images.len() < 2 || calls.get(&event)?["local_readback"] != true {
+                    return None;
+                }
+                return Some(Self {
+                    device: device?,
+                    images,
+                    shown: HashSet::from([event]),
+                });
+            };
+            let action_call = calls.get(&event_id(action)?)?;
+            let args: Value = serde_json::from_str(action_call["arguments"].as_str()?).ok()?;
+            let result = crate::worker::tool_value(&action["result"])?;
+            let target = args["element_id"].as_str().filter(|id| !id.is_empty())?;
+            let call_id = action_call["call_id"]
+                .as_str()
+                .filter(|id| !id.is_empty())?;
+            row = rows.next()?;
+            if action["tool"] != "phone_tap_element"
+                || result["success"] != true
+                || result["result_unknown"] == true
+                || result["not_executed"] == true
+                || result["error"].is_string()
+                || args["observation_id"] != observation
+                || calls.get(&event_id(row)?)?["local_after_action"] != call_id
+                || !frame["elements"].as_array()?.iter().any(|c| {
+                    c["id"] == target
+                        && c["source"] == "native"
+                        && c["clickable"] == true
+                        && c["text"]
+                            .as_str()
+                            .is_some_and(|text| !text.trim().is_empty())
+                })
+            {
+                return None;
+            }
+        }
+    }
+
+    fn request(&self, template: &Value, visuals: &[Value]) -> Value {
+        let mut body = template.clone();
+        let content = body["input"][1]["content"].as_array_mut().unwrap();
+        let mut selected = Vec::new();
+        let mut available = Vec::new();
+        for (id, i) in &self.images {
+            if self.shown.contains(id) {
+                selected.extend_from_slice(&visuals[*i..*i + 2]);
+            } else {
+                available.push(id);
+            }
+        }
+        append_visuals(content, selected);
+        if !available.is_empty() {
+            body["tools"].as_array_mut().unwrap().push(json!({"type":"function","name":"audit_images",
+                "description":"原生记录和已附原图不足以核实用户要求时，一次选择所需的其余原图。前后外观、颜色、图形等视觉比较须取相应时刻的原图。",
+                "parameters":{"type":"object","additionalProperties":false,"properties":{
+                    "evidence_ids":{"type":"array","minItems":1,"maxItems":available.len(),"items":{"type":"string","enum":available}}
+                },"required":["evidence_ids"]}}));
+            body["tool_choice"] = json!("required");
+        }
+        body
+    }
+
+    fn reveal(&mut self, args: &str) -> Result<Vec<Uuid>, String> {
+        let value: Value = serde_json::from_str(args).map_err(|_| "截图回看参数无效")?;
+        let ids: Vec<Uuid> = serde_json::from_value(value["evidence_ids"].clone())
+            .map_err(|_| "截图回看需要本轮证据 ID")?;
+        if ids.is_empty()
+            || ids.len() > self.images.len()
+            || ids.iter().any(|id| {
+                !self.images.iter().any(|(event, _)| event == id) || self.shown.contains(id)
+            })
+        {
+            return Err("截图回看只接受本轮尚未发送的原图 ID".into());
+        }
+        self.shown.extend(ids.iter().copied());
+        Ok(ids)
+    }
 }
 
 // A completion audit has no execution tools. Its input comes from this run's
@@ -287,18 +385,20 @@ pub async fn verify(
     {
         return Err("本轮没有已确认的执行回执，无法核验完成。".into());
     }
-    let event = Uuid::now_v7();
-    sqlx::query("INSERT INTO harness_events(id,run_id,message_id,kind,title,content) VALUES($1,$2,$3,'audit','结果核验','核对本轮工具记录与完成声明')")
-        .bind(event).bind(run).bind(message).execute(&app.db).await.map_err(|e| e.to_string())?;
     let mut image_budget = 8usize;
     let mut visual_inputs = Vec::new();
     let mut input_visuals = None;
-    let mut post_visuals = None;
+    let mut pngs = HashMap::new();
     let mut evidence = Vec::new();
     let mut learning_evidence = LearningEvidence::new();
     let mut illustrated = Vec::new();
     let host_session = app.run_signals.host.session(run);
-    let complete_ledger = rows.len() < 64;
+    let complete_ledger = rows.len() < 64
+        && current_calls
+            .values()
+            .filter(|call| call["name"] != "task_finish")
+            .count()
+            == rows.len();
     let user_run = rows
         .first()
         .is_some_and(|row| row.get::<bool, _>("user_run"));
@@ -336,14 +436,13 @@ pub async fn verify(
             input_visuals = Some(first_visual..visual_inputs.len());
         }
         if name == "phone_observe"
-            && call["local_after_action"].is_string()
             && visual_inputs.len() == first_visual + 2
             && visual_inputs[first_visual + 1]["image_url"]
                 .as_str()
                 .and_then(|url| url.strip_prefix("data:image/png;base64,"))
                 .is_some_and(|png| !png.is_empty())
         {
-            post_visuals = Some((row_id, first_visual..visual_inputs.len()));
+            pngs.insert(row_id, first_visual);
         }
         evidence.push(json!({"evidence_id":id,"tool":name,"learning_app":learning_evidence.get(&id).map(|m|m.app_id.as_str()),
             "input":call["arguments"].as_str().unwrap_or(""),
@@ -370,8 +469,14 @@ pub async fn verify(
         && notifications.is_empty()
         && learning.is_empty()
         && complete_ledger;
+    let readback = context
+        .last()
+        .is_some_and(|call| call["local_readback"] == true);
+    let mut frames = (compact_allowed && user_run && readback)
+        .then(|| PhoneFrames::navigation(&evidence, &current_calls, &pngs))
+        .flatten();
     let phone_input = (compact_allowed && user_run)
-        .then(|| single_phone_input(&evidence, &current_calls, post_visuals))
+        .then(|| single_cued_input(&evidence, &current_calls, &pngs))
         .flatten();
     let compact_phone = phone_input.is_some();
     let compact_visuals = if let Some(tap) = phone_input {
@@ -380,11 +485,7 @@ pub async fn verify(
             std::mem::take(&mut evidence[tap.tap]),
             std::mem::take(&mut evidence[tap.after]),
         ];
-        if evidence[1]["tool"] == "phone_tap_element" {
-            Some(tap.visuals)
-        } else {
-            Some(0..visual_inputs.len())
-        }
+        Some(0..visual_inputs.len())
     } else if compact_allowed && input_visuals.is_some() && single_desktop_input(&evidence) {
         evidence.retain(|receipt| receipt["tool"] == "computer_type");
         input_visuals
@@ -392,9 +493,6 @@ pub async fn verify(
         None
     };
     let compact = compact_visuals.is_some();
-    let readback = context
-        .last()
-        .is_some_and(|call| call["local_readback"] == true);
     if readback && compact_allowed {
         evidence.retain(|receipt| receipt["tool"] != "skill_read");
     }
@@ -417,17 +515,10 @@ pub async fn verify(
     if !learning.is_empty() {
         audit_input.push(json!({"type":"input_text","text":format!("核对以下当前经验候选的步骤、结果和适用范围：{}",json!(learning))}));
     }
-    let selected = if let Some(range) = compact_visuals {
-        let count = range.len();
-        visual_inputs
-            .into_iter()
-            .skip(range.start)
-            .take(count)
-            .collect()
-    } else {
-        visual_inputs
-    };
-    append_visuals(&mut audit_input, selected);
+    if frames.is_none() {
+        let range = compact_visuals.unwrap_or(0..visual_inputs.len());
+        append_visuals(&mut audit_input, visual_inputs.drain(range).collect());
+    }
     let mut tool = json!({"type":"function","name":"audit_result","description":"核验任务结果",
         "parameters":{"type":"object","properties":{"approved":{"type":"boolean"},"feedback":{"type":"string"}},
         "required":["approved","feedback"],"additionalProperties":false}});
@@ -439,7 +530,9 @@ pub async fn verify(
         tool["parameters"]["properties"]["knowledge"] = schema;
         audit_input.push(json!({"type":"input_text","text":"有可复用的跨应用结论才填 knowledge。引用至少两个应用的 evidence_id，含动作后复查。沿用已有标题；可附所引证据中的截图，排除聊天、通知、凭据和私人文件。"}));
     }
-    let instructions = if compact_phone {
+    let instructions = if frames.is_some() {
+        "按用户要求，用有据可查的原生控件、动作回执及终页原图核验。proposed_completion 和动作意图是待核对的声明。涉及早期图形、布局或前后视觉比较，或原生记录不足时，用 audit_images 选择所需原图；已有证据充分就用 audit_result 直接回答。"
+    } else if compact_phone {
         "核对用户要求、目标、手势回执和动作后的实屏。通过时用 feedback 直接给出所求结果，含所问数值或页面名。不符或看不清时指出缺失。"
     } else if compact {
         "核对电脑输入回执与动作后画面。确认目标窗口和实际写入内容均符合用户要求才通过。用一句话指出证据或缺失。"
@@ -453,62 +546,112 @@ pub async fn verify(
         "reasoning":{"effort":"none"},"max_output_tokens":if compact {192} else {1200},"stream":false,"store":false});
     body["input"][1]["content"] = Value::Array(audit_input);
 
-    let audit = async {
-        let config = crate::settings::for_run(app, run).await?;
-        let client = app.settings.http_client(&config.proxy_url)?;
-        let output = tokio::time::timeout(
-            Duration::from_secs(60),
-            crate::model_adapter::request_tracked(&config, &client, body, cancel, &mut timing),
-        )
-        .await
-        .map_err(|_| "结果核验超时；尚未确认完成")??;
-        parse_result(&json!({"output":output}))
-    };
-    let result =
-        tokio::select! {_ = cancel.cancelled() => Err("canceled".into()), result = audit => result};
-    let mut audit_timing = timing.snapshot();
-    audit_timing["compact"] = json!(compact);
-    if !compact
-        && let Ok(report) = &result
-        && let Some(candidate) = report.experience.as_ref().filter(|_| !needs_input)
-    {
-        match learning_candidate(candidate, &learning_evidence) {
-            Ok(candidate) => {
-                retain_learning(app, run, false, Some(&candidate)).await;
-            }
-            Err(error) => eprintln!(
-                "Optional app learning was not retained; user task result preserved: {error}"
-            ),
-        }
+    enum Turn {
+        Result(AuditResult),
+        Images(Vec<Uuid>),
     }
-    let (status, content) = match &result {
-        Ok(result) => (
-            if result.approved {
-                "completed"
+    let (event, result) = loop {
+        let sent_images = frames.as_ref().map(|f| {
+            f.images
+                .iter()
+                .filter_map(|(id, _)| f.shown.contains(id).then_some(*id))
+                .collect::<Vec<_>>()
+        });
+        let event = Uuid::now_v7();
+        sqlx::query("INSERT INTO harness_events(id,run_id,message_id,kind,title,content) VALUES($1,$2,$3,'audit','结果核验',$4)")
+            .bind(event).bind(run).bind(message)
+            .bind(if frames.as_ref().is_some_and(|f| f.shown.len() > 1) { "按所选证据回看原始截图" } else { "核对本轮工具记录与完成声明" })
+            .execute(&app.db).await.map_err(|e| e.to_string())?;
+        let audit = async {
+            let config = crate::settings::for_run(app, run).await?;
+            let client = app.settings.http_client(&config.proxy_url)?;
+            let request = if let Some(frames) = &frames {
+                if crate::phone_system::for_run(app, run).await? != frames.device {
+                    return Err(crate::phone_system::PHONE_BINDING_REVOKED.into());
+                }
+                let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM runs WHERE id=$1 AND assistant_message_id=$2 AND status='running' AND jsonb_array_length(steering)=0)")
+                    .bind(run).bind(message).fetch_one(&app.db).await.map_err(|e| e.to_string())?;
+                if !active {
+                    return Err("canceled".into());
+                }
+                frames.request(&body, &visual_inputs)
             } else {
-                "failed"
-            },
-            result.feedback.clone(),
-        ),
-        Err(error) => (
-            if error == "canceled" {
-                "canceled"
+                std::mem::take(&mut body)
+            };
+            let output = tokio::time::timeout(
+                Duration::from_secs(60),
+                crate::model_adapter::request_tracked(
+                    &config,
+                    &client,
+                    request,
+                    cancel,
+                    &mut timing,
+                ),
+            )
+            .await
+            .map_err(|_| "结果核验超时；尚未确认完成")??;
+            let output = json!({"output":output});
+            let call = audit_call(&output)?;
+            if call["name"] == "audit_images" {
+                let frames = frames.as_mut().ok_or("本轮没有可回看的截图")?;
+                Ok(Turn::Images(frames.reveal(
+                    call["arguments"].as_str().ok_or("截图回看参数无效")?,
+                )?))
             } else {
-                "failed"
-            },
-            error.clone(),
-        ),
+                parse_result(&output).map(Turn::Result)
+            }
+        };
+        let turn = tokio::select! {biased; _ = cancel.cancelled() => Err("canceled".into()), turn = audit => turn};
+        let mut metrics = timing.snapshot();
+        metrics["compact"] = json!(compact);
+        if metrics["request_bytes"].as_u64().is_some_and(|n| n > 0)
+            && let Some(ids) = sent_images
+        {
+            metrics["sent_image_evidence_ids"] = json!(ids);
+        }
+        let (status, content) = match &turn {
+            Ok(Turn::Result(report)) => (
+                if report.approved {
+                    "completed"
+                } else {
+                    "failed"
+                },
+                report.feedback.as_str(),
+            ),
+            Ok(Turn::Images(ids)) => {
+                metrics["requested_evidence_ids"] = json!(ids);
+                ("succeeded", "已选择原始截图，继续核验")
+            }
+            Err(error) => (
+                if error == "canceled" {
+                    "canceled"
+                } else {
+                    "failed"
+                },
+                error.as_str(),
+            ),
+        };
+        if !compact
+            && let Ok(Turn::Result(report)) = &turn
+            && let Some(candidate) = report.experience.as_ref().filter(|_| !needs_input)
+        {
+            match learning_candidate(candidate, &learning_evidence) {
+                Ok(candidate) => {
+                    retain_learning(app, run, false, Some(&candidate)).await;
+                }
+                Err(error) => eprintln!(
+                    "Optional app learning was not retained; user task result preserved: {error}"
+                ),
+            }
+        }
+        sqlx::query("UPDATE harness_events SET status=$2,content=$3,result=$4,finished_at=now() WHERE id=$1")
+            .bind(event).bind(status).bind(content).bind(metrics).execute(&app.db).await.map_err(|e| e.to_string())?;
+        match turn {
+            Ok(Turn::Images(_)) => timing = Default::default(),
+            Ok(Turn::Result(report)) => break (event, Ok(report)),
+            Err(error) => break (event, Err(error)),
+        }
     };
-    sqlx::query(
-        "UPDATE harness_events SET status=$2,content=$3,result=$4,finished_at=now() WHERE id=$1",
-    )
-    .bind(event)
-    .bind(status)
-    .bind(content)
-    .bind(audit_timing)
-    .execute(&app.db)
-    .await
-    .map_err(|e| e.to_string())?;
     if !compact
         && !needs_input
         && let Ok(report) = &result
@@ -572,20 +715,25 @@ pub async fn history(app: &App, run: Uuid, limit: usize) -> Result<Value, String
     Ok(json!({"note":"这是旧轮次真实账本，仅用于回答质疑，不可用作本轮执行证据","runs":history}))
 }
 
-fn parse_result(value: &Value) -> Result<AuditResult, String> {
+fn audit_call(value: &Value) -> Result<&Value, String> {
     let mut calls = value["output"]
         .as_array()
         .into_iter()
         .flatten()
         .filter(|item| item["type"] == "function_call");
-    let args = calls
-        .next()
-        .filter(|item| item["name"] == "audit_result")
-        .and_then(|item| item["arguments"].as_str())
-        .ok_or("结果核验没有返回有效结论")?;
+    let call = calls.next().ok_or("结果核验没有返回有效结论")?;
     if calls.next().is_some() {
         return Err("结果核验必须返回唯一结论".into());
     }
+    Ok(call)
+}
+
+fn parse_result(value: &Value) -> Result<AuditResult, String> {
+    let call = audit_call(value)?;
+    let args = (call["name"] == "audit_result")
+        .then(|| call["arguments"].as_str())
+        .flatten()
+        .ok_or("结果核验没有返回有效结论")?;
     let report: Value = serde_json::from_str(args).map_err(|_| "结果核验没有返回有效结论")?;
     let approved = report["approved"].as_bool().ok_or("结果核验缺少证据判定")?;
     let feedback = report["feedback"]
@@ -809,53 +957,124 @@ mod tests {
     }
 
     #[test]
-    fn settings_short_review_requires_its_own_tap_and_post_action_image() {
-        let before = Uuid::new_v4();
-        let action = Uuid::new_v4();
-        let after = Uuid::new_v4();
-        let receipt = |id, tool, result: Value| {
-            json!({"evidence_id":id,"tool":tool,"status":"completed",
-            "result":[{"type":"input_text","text":result.to_string()}]})
+    fn native_navigation_reviews_exact_frames_and_requires_each_verified_link() {
+        let [start, tap, middle, next, last] = std::array::from_fn(|_| Uuid::new_v4());
+        let frame = |id: Uuid, observation: &str, activity: &str| {
+            let metadata = json!({"device_id":"phone","observation_id":observation,
+                "foreground_app":activity,"elements":[{"id":"n1","source":"native","clickable":true,"text":"Open"}]});
+            json!({"evidence_id":id,"tool":"phone_observe","status":"completed",
+                "result":[{"type":"input_text","text":metadata.to_string()}]})
         };
-        let source = json!({"device_id":"phone-local-01","observation_id":"home",
-            "foreground_app":"com.android.settings/.Settings","elements":[
-                {"id":"n1","source":"native","clickable":true,"text":"Battery","resource_id":"android:id/title"},
-                {"id":"n2","source":"native","clickable":true,"text":"Network"}]});
-        let destination = json!({"device_id":"phone-local-01","observation_id":"details",
-            "foreground_app":"com.android.settings/.SubSettings"});
-        let mut evidence = vec![
-            receipt(before, "phone_observe", source),
-            receipt(
-                action,
-                "phone_tap_element",
-                json!({"success":true,"output":"tap"}),
-            ),
-            receipt(after, "phone_observe", destination.clone()),
+        let tap_row = |id: Uuid| {
+            json!({"evidence_id":id,"tool":"phone_tap_element","status":"completed",
+            "result":[{"type":"input_text","text":r#"{"success":true}"#}]})
+        };
+        let evidence = vec![
+            frame(start, "a", "org.example.viewer/.Home"),
+            tap_row(tap),
+            frame(middle, "b", "org.example.viewer/.Item"),
+            tap_row(next),
+            frame(last, "c", "org.example.viewer/.Item"),
         ];
-        let tap_call = json!({"call_id":"tap","arguments":"{\"observation_id\":\"home\",\"element_id\":\"n1\"}"});
-        let post_call = json!({"local_after_action":"tap"});
-        let unrelated_call = json!({"local_after_action":"other-tap"});
-        let calls = HashMap::from([(action, &tap_call), (after, &post_call)]);
-        let images = Some((after, 0..2));
-        let short = single_phone_input(&evidence, &calls, images.clone()).unwrap();
-        assert_eq!(short.visuals, 0..2);
-        let target = crate::worker::tool_value(&short.source["result"]).unwrap();
-        assert_eq!(target["target"]["text"], "Battery");
-        assert!(target.get("elements").is_none());
-
-        assert!(single_phone_input(&evidence, &calls, None).is_none());
-        let unlinked = HashMap::from([(action, &tap_call), (after, &unrelated_call)]);
-        assert!(single_phone_input(&evidence, &unlinked, images.clone()).is_none());
-        evidence[2] = receipt(
-            after,
-            "phone_observe",
-            json!({"device_id":"another-phone",
-            "observation_id":"details","foreground_app":"com.android.settings/.SubSettings"}),
+        let tap_call = |id: &str, observation: &str| {
+            json!({"call_id":id,
+            "arguments":json!({"element_id":"n1","observation_id":observation}).to_string()})
+        };
+        let first = tap_call("first", "a");
+        let second = tap_call("second", "b");
+        let intermediate = json!({"local_after_action":"first"});
+        let readback = json!({"local_after_action":"second","local_readback":true});
+        let calls = HashMap::from([
+            (tap, &first),
+            (middle, &intermediate),
+            (next, &second),
+            (last, &readback),
+        ]);
+        let pngs = HashMap::from([(last, 0), (middle, 2), (start, 4)]);
+        let mut images = Vec::new();
+        for id in [last, middle, start] {
+            extract_images(
+                &mut json!({"type":"input_image","image_url":format!("original-{id}")}),
+                &id.to_string(),
+                &mut images,
+            );
+        }
+        let template = json!({"input":[{},{"content":[]}],"tools":[{"name":"audit_result"}]});
+        let mut review = PhoneFrames::navigation(&evidence, &calls, &pngs).unwrap();
+        let sent = |review: &PhoneFrames| {
+            review.request(&template, &images)["input"][1]["content"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|item| item["image_url"].as_str().map(str::to_owned))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sent(&review), [format!("original-{last}")]);
+        assert!(
+            review
+                .reveal(&json!({"evidence_ids":[start,Uuid::new_v4()]}).to_string())
+                .is_err()
         );
-        assert!(single_phone_input(&evidence, &calls, images.clone()).is_none());
-        evidence[2] = receipt(after, "phone_observe", destination);
-        evidence.push(evidence[1].clone());
-        assert!(single_phone_input(&evidence, &calls, images).is_none());
+        assert_eq!(sent(&review), [format!("original-{last}")]);
+        review
+            .reveal(&json!({"evidence_ids":[middle]}).to_string())
+            .unwrap();
+        assert_eq!(
+            sent(&review),
+            [format!("original-{middle}"), format!("original-{last}")]
+        );
+        assert!(
+            review
+                .reveal(&json!({"evidence_ids":[middle]}).to_string())
+                .is_err()
+        );
+        review
+            .reveal(&json!({"evidence_ids":[start]}).to_string())
+            .unwrap();
+        assert_eq!(
+            review.request(&template, &images)["tools"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            sent(&review),
+            [
+                format!("original-{start}"),
+                format!("original-{middle}"),
+                format!("original-{last}")
+            ]
+        );
+
+        let missing = HashMap::from([(middle, 2), (start, 4)]);
+        assert!(PhoneFrames::navigation(&evidence, &calls, &missing).is_none());
+        let other = json!({"local_after_action":"elsewhere","local_readback":true});
+        let no_hint = json!({"local_after_action":"second"});
+        for invalid in [&other, &no_hint] {
+            let mut calls = calls.clone();
+            calls.insert(last, invalid);
+            assert!(PhoneFrames::navigation(&evidence, &calls, &pngs).is_none());
+        }
+        for replacement in [
+            frame(middle, "b", "org.another.app/.Screen"),
+            frame(middle, "a", "org.example.viewer/.Screen"),
+            json!({"evidence_id":middle,"tool":"computer_observe","status":"completed"}),
+        ] {
+            let mut invalid = evidence.clone();
+            invalid[2] = replacement;
+            assert!(PhoneFrames::navigation(&invalid, &calls, &pngs).is_none());
+        }
+        for (key, value) in [("device_id", json!("second")), ("elements", json!([]))] {
+            let mut invalid = evidence.clone();
+            let mut metadata = crate::worker::tool_value(&invalid[2]["result"]).unwrap();
+            metadata[key] = value;
+            invalid[2]["result"][0]["text"] = json!(metadata.to_string());
+            assert!(PhoneFrames::navigation(&invalid, &calls, &pngs).is_none());
+        }
+        let mut invalid = evidence.clone();
+        invalid[1]["result"][0]["text"] = json!(r#"{"success":true,"result_unknown":true}"#);
+        assert!(PhoneFrames::navigation(&invalid, &calls, &pngs).is_none());
     }
 
     #[test]
