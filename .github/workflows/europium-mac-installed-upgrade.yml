@@ -1,0 +1,133 @@
+name: Europium installed Mac updater
+on:
+  push:
+    branches: [codex/europium-mac-updater-acceptance]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  installed-updater:
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - name: Read both immutable package identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          mkdir -p "$RUNNER_TEMP/evidence" "$RUNNER_TEMP/old"
+          gh api repos/MrMilkDragon/AImanity/actions/artifacts/14721814337 > "$RUNNER_TEMP/evidence/factory.json"
+          jq -e '.id==14721814337 and (.expired|not) and .workflow_run.id==44941576681 and .workflow_run.head_sha=="c3f8f2395002f0b7fca72815c8beffa322704658" and .digest=="sha256:761ec7be61444599a4150f99f331a304363eb90c2c11127f52cf0283dfdb7627"' "$RUNNER_TEMP/evidence/factory.json"
+          gh release view v0.0.4 -R MrMilkDragon/AImanity --json assets --jq '.assets[] | select(.name=="AImanity-0.0.4-macos-arm64.dmg") | {name,size,digest}' > "$RUNNER_TEMP/evidence/released.json"
+          jq -e '.size==1790865395 and .digest=="sha256:6ed472b515b6f5ce4059f40c71ed8a5c2ba7db47513c8629215a6c9ea61ab703"' "$RUNNER_TEMP/evidence/released.json"
+          gh release download v0.0.4 -R MrMilkDragon/AImanity -p 'AImanity-0.0.4-macos-arm64.dmg' -D "$RUNNER_TEMP/old"
+      - name: Fetch signed factory DMG
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44941576681
+          artifact-ids: 14721814337
+          path: ${{ runner.temp }}/candidate
+      - name: Install the released bundle in Applications
+        run: |
+          set -euo pipefail
+          ev="$RUNNER_TEMP/evidence"
+          id=dev.aimanity.native
+          cache="$HOME/Library/Caches/$id/client-updates"
+          old="$RUNNER_TEMP/old/AImanity-0.0.4-macos-arm64.dmg"
+          installer="AImanity-0.0.5-macos-arm64.dmg"
+          candidate=$(find "$RUNNER_TEMP/candidate" -type f -name "$installer")
+          test -f "$candidate"
+          mkdir -p "$cache"
+          mv "$candidate" "$cache/$installer"
+          printf '%s  %s\n' 6ed472b515b6f5ce4059f40c71ed8a5c2ba7db47513c8629215a6c9ea61ab703 "$old" c33cf818b29ccfb4198e97052e0820c68d528e634003c35f249eb5e7618c434f "$cache/$installer" | shasum -a 256 --check | tee "$ev/packages.txt"
+          codesign --verify --strict "$old"
+          codesign --verify --strict "$cache/$installer"
+          for dmg in "$old" "$cache/$installer"; do codesign -dv --verbose=2 "$dmg" 2>&1; done > "$ev/dmg-signatures.txt"
+          app=/Applications/AImanity.app
+          test ! -e "$app"
+          test -w /Applications
+          m="$RUNNER_TEMP/mounted-old"
+          mkdir -p "$m"; hdiutil attach -readonly -nobrowse -owners off -mountpoint "$m" "$old"
+          ditto "$m/AImanity.app" "$app"
+          hdiutil detach "$m"
+          codesign --verify --strict "$app"
+          plist="$app/Contents/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$plist")" = 0.0.4
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$plist")" = "$id"
+          {
+            /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$plist"
+            codesign -dv --verbose=3 "$app" 2>&1
+            shasum -a 256 "$app/Contents/MacOS/ai-phone-client"
+          } > "$ev/old-app.txt"
+          data="$HOME/Library/Application Support/$id/host/user/data"
+          mkdir -p "$data/android" "$data/desktop" "$data/model/revisions" "$data/postgres"
+          cd "$data"
+          for name in android desktop model/revisions postgres; do
+            (umask 077; /usr/bin/uuidgen > "$name/acceptance-sentinel")
+          done
+          shasum -a 256 {android,desktop,model/revisions,postgres}/acceptance-sentinel > "$ev/user-files-before.txt"
+          stat -f '%d %i %Sp %N' {android,desktop,model/revisions,postgres}/acceptance-sentinel > "$ev/user-inodes-before.txt"
+      - name: Run the 0.0.4 binary and observe its LaunchServices restart
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          ev="$RUNNER_TEMP/evidence"
+          app=/Applications/AImanity.app
+          client="$app/Contents/MacOS/ai-phone-client"
+          dmg="$HOME/Library/Caches/dev.aimanity.native/client-updates/AImanity-0.0.5-macos-arm64.dmg"
+          ruby - "$client" "$dmg" "$ev" <<'RUBY'
+          exe, dmg, ev = ARGV
+          parent = Process.pid
+          work = File.join('/Applications', ".ai-phone-update-#{parent}")
+          Dir.mkdir(work, 0700)
+          helper = Process.spawn(exe, '--install-macos-update', dmg, '0.0.5', parent.to_s,
+                                 pgroup: true, in: File::NULL, out: File.join(ev, 'helper-out.txt'), err: File.join(ev, 'helper-err.txt'))
+          File.write(File.join(ev, 'handoff.txt'), "0.0.4 helper PID #{helper}\nparent PID #{parent}\n#{exe}\n")
+          File.write(File.join(ev, 'helper.pid'), helper.to_s)
+          File.write(File.join(ev, 'work.path'), work)
+          sleep 0.5
+          RUBY
+          helper=$(cat "$ev/helper.pid")
+          work=$(cat "$ev/work.path")
+          ls_app_pid() {
+            osascript -l JavaScript -e 'ObjC.import("AppKit"); let a=$.NSRunningApplication.runningApplicationsWithBundleIdentifier("dev.aimanity.native"); let pid=0; for (let i=0; i<a.count; i++){let p=a.objectAtIndex(i); if(ObjC.unwrap(p.bundleURL.path)==="/Applications/AImanity.app") pid=p.processIdentifier;} pid'
+          }
+          deadline=$((SECONDS+180))
+          pid=0
+          while (( SECONDS < deadline )); do
+            if [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" == 0.0.5 ]]; then
+              pid=$(ls_app_pid)
+              if [[ "$pid" =~ ^[1-9][0-9]*$ ]] && [[ "$pid" != "$helper" ]] && [[ ! -d "$work" ]]; then break; fi
+            fi
+            sleep 0.4
+          done
+          test "$pid" -gt 0
+          test "$pid" != "$helper"
+          test ! -d "$work"
+          kill -0 "$pid"
+          ps -ww -p "$pid" -o pid=,ppid=,comm= | tee "$ev/launchservices-process.txt"
+          /usr/sbin/lsof -a -p "$pid" -d txt -Fn > "$ev/process-images.txt"
+          grep -Fx "n$client" "$ev/process-images.txt"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = 0.0.5
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Contents/Info.plist")" = dev.aimanity.native
+          codesign --verify --strict "$app"
+          {
+            /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist"
+            codesign -dv --verbose=3 "$app" 2>&1
+            shasum -a 256 "$client"
+          } > "$ev/new-app.txt"
+          cd "$HOME/Library/Application Support/dev.aimanity.native/host/user/data"
+          shasum -a 256 --check "$ev/user-files-before.txt" | tee "$ev/user-files-after.txt"
+          stat -f '%d %i %Sp %N' {android,desktop,model/revisions,postgres}/acceptance-sentinel > "$ev/user-inodes-after.txt"
+          cmp "$ev/user-inodes-before.txt" "$ev/user-inodes-after.txt"
+          echo 'Old installed helper replaced 0.0.4, relaunched 0.0.5 at /Applications/AImanity.app and retained four user files with their inode, contents and permissions.' | tee "$ev/result.txt"
+      - name: Collect upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: installed-mac-updater-evidence
+          path: ${{ runner.temp }}/evidence
+          if-no-files-found: error
+          retention-days: 7
