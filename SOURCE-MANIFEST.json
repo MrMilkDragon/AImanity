@@ -88,8 +88,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 2973,
-      "sha256": "f866ffdf33d426adbf9c3be29a92a8e903f7f8446d010213de8764a0d9f6e774"
+      "size": 3574,
+      "sha256": "ca1baf159208dc599013eddaef2d075c7828a3abaf2545cd9f2cc8b4cbfb34ee"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -128,13 +128,13 @@
     },
     {
       "path": "README.en.md",
-      "size": 2813,
-      "sha256": "0c89ac4ebcb68e2fceca893acf729b1646091b74a3c8b5b8837474d39bb5d870"
+      "size": 3042,
+      "sha256": "3b04fea4ffde47bc8a693d7ef372501d2205eb0b2466866f695833600f0d72da"
     },
     {
       "path": "README.md",
-      "size": 5170,
-      "sha256": "da753e6dede909255e52d29af426945671d5937b424a594b2d51378354f8e8fc"
+      "size": 5592,
+      "sha256": "0ba49f2046c53c2ce45edf36a5252bec8a3fb274ab0499e47ac3ce254ea81e90"
     },
     {
       "path": "SECURITY.md",
@@ -3193,43 +3193,43 @@
     },
     {
       "path": "docs/public/readme.ar.md",
-      "size": 4107,
-      "sha256": "a5c765ad5b6604e44403049f6dc5ae00e72e66af5fa7f5b9b7255c1f6cf5c377"
+      "size": 4081,
+      "sha256": "6e90fdd80fc35725d5b4bc323bbbad08c1f549a8609fec9af4d8ff20885bbb11"
     },
     {
       "path": "docs/public/readme.de.md",
-      "size": 3131,
-      "sha256": "889ad93f9ca83e181a790db7a125492e398db493db8d33634202d39ce5ae5ad2"
+      "size": 3163,
+      "sha256": "da4cd20c64e29ebb830c0f66e6a5e8e1f35cbd7f59d8bc2e1f5b2f6185c594ab"
     },
     {
       "path": "docs/public/readme.es.md",
-      "size": 3049,
-      "sha256": "3cf5537d86b22a05f4dbd60d2f7e1a0ccfd5e26378a48c37b7f799e4810e47f8"
+      "size": 3148,
+      "sha256": "337a9b3a06c61f5ec924be94795f937795600407542faed23cfbf108aa886de4"
     },
     {
       "path": "docs/public/readme.fr.md",
-      "size": 3313,
-      "sha256": "bf8da53ad8bd8f3c9fd6a5147b4dbe1cf8859ea785dbd5c4d2e33908686bb19a"
+      "size": 3389,
+      "sha256": "f5f60514c9f02d40fed5759cdc4431df0fde6e0047c8c942b78f7cb6685c3c3a"
     },
     {
       "path": "docs/public/readme.ja.md",
-      "size": 3217,
-      "sha256": "0db2a32200295a7c76a3a9983803eb4431b7e62ceaaa1bd743484db224691e19"
+      "size": 3251,
+      "sha256": "fde7330d26ae9f6895a1fc3b0bef19afd2c3bcfd8cc44654414112705215fcd1"
     },
     {
       "path": "docs/public/readme.ko.md",
-      "size": 3163,
-      "sha256": "e45d372d5267bc8dd5d1b771bba981ee5f2e67aabf1cdfe7e941bd88a47813bb"
+      "size": 3220,
+      "sha256": "f1fe84366f13557ff4dfecf9ae62f6c4a95c8179534b712f9b7622a7bda00572"
     },
     {
       "path": "docs/public/readme.ru.md",
-      "size": 4994,
-      "sha256": "ba7e5e0e4b8d45ef92ae417e044a0ad3e5663822d2c2fbe17583a4e969f5b31c"
+      "size": 4913,
+      "sha256": "6ed9a1887f8c6c9416ee6ab9e2954dab6c8ed0a14a1633f75c7ec6be47e1da59"
     },
     {
       "path": "docs/public/readme.zh-TW.md",
-      "size": 2616,
-      "sha256": "c532f3e5c62fe221ab964af3dc9ec64cc9561990a5783832613fac9842da3124"
+      "size": 2685,
+      "sha256": "2d6ccb600260c546ecae80c4ffb360a9815f321cc65f2c54d277797e23ed4ea3"
     },
     {
       "path": "docs/public/release-roadmap.en.md",
@@ -3243,8 +3243,8 @@
     },
     {
       "path": "docs/public/release-status.md",
-      "size": 3426,
-      "sha256": "f26b602de79210d725f163dd0125799c2a02290c72e6dd5e47ff1a7d68762b74"
+      "size": 3942,
+      "sha256": "f2aef192ae38cd2f3f28217216e95b371fbd6612afb36398149dbcebeba10d5a"
     },
     {
       "path": "docs/public/runtime-bundles.md",

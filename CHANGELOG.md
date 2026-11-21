@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.5 Europium
+
+- [Download for Apple Silicon Macs](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg). Windows 11 x64 users can install [0.0.4 Dysprosium](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe). The shared in-app update will follow when both Europium installers are available.
+- Enable host access in Settings, then grant a task permission to use your Mac desktop when you ask for it. Android and Linux remain the default workspace.
+- Use the refreshed Linux desktop and office apps.
+
 ## 0.0.4 Dysprosium
 
 - Run the shared Android and Linux workbench in a native Rust client built with Iced and wgpu.

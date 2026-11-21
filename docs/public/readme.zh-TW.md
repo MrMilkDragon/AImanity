@@ -4,7 +4,9 @@
 
 ## 下載與現況
 
-[下載 0.0.4 Dysprosium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.4)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.4 Dysprosium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe)
+
+兩個平台的安裝程式都發佈後，0.0.4 使用者即可在應用程式內更新至 Europium。
 
 支援 Apple Silicon macOS 15.0 以上與 Windows 11 x64。安裝包內建 Android、Linux、模擬器及本機服務。
 
@@ -15,19 +17,19 @@ AImanity 將 Android 手機與 Linux 桌面放在同一個工作台，兩台裝�
 - 操作微信等應用：觀察真實畫面、檢視通知，依使用者指示回覆；帳號及應用限制仍然有效。
 - 跨裝置工作：手機收件，傳到 Linux 處理、核對試算表，再交回手機。裝置間傳輸成功與交付聯絡人是不同結果，需分別驗證。
 - 持續任務：可持續補充指示和中斷生成，先前訊息與操作紀錄保持；通知可喚醒 Agent，Liberty 可跨裝置運作。
-- Skill、關聯知識文件、工作檔案全域共享；模型/API、記憶、外部連接屬於 Agent。Clash 以應用形式存在於客體，宿主預設直連。
+- Skill、關聯知識文件、工作檔案全域共享；模型/API、記憶、外部連接屬於 Agent。裝置預設直接連線，可在工作台設定網路代理。
 
 有副作用的動作綁定觀察、裝置、任務、控制 epoch 及唯一 action ID；結果未知時先觀察再決定是否重試。
 
 ## 架構與資料
 
-`apps/native`：Rust（Iced/wgpu）；`crates`：Rust/Axum/Tokio；`packages/protocol`：protobuf。PostgreSQL/SQLx 保存狀態，Redis 預留為選用快取，非任務佇列。Cargo 負責建置，Compose 承載服務。`infra`、`scripts`、`skills`、`config` 存放執行環境和內建能力。
+`apps/native`：Rust（Iced/wgpu）；`crates`：Rust/Axum/Tokio；`packages/protocol`：protobuf。資料透過 SQLx 存入 PostgreSQL，專案使用 Cargo 建置。
 
 程式碼與使用者狀態分離。裝置磁碟、帳號、聊天、附件、金鑰及私有證據不進入公開儲存庫。更新應使用版本化產物、備份、遷移與回復，不直接在使用者資料上執行 `git pull`。
 
 ## 後續方向、責任與授權
 
-優先完成全包部署、中斷恢復、簽署更新、長時間 Agent 穩定性、畫音與輸入、模型能力檢測及應用特化 Skill。語音及實驗性通話屬後續方向。
+接下來將擴充語音服務、應用程式專用技能，以及收到通知後啟動的辦公流程。
 
 介面和初次配置支援十種語言。Skill 左側語言入口即時切換介面，阿拉伯語採 RTL；不自動改變客體系統語言、記憶或翻譯工具原文。
 
