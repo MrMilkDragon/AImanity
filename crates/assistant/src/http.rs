@@ -588,6 +588,9 @@ async fn send_receipt(
     })
 }
 
+pub(crate) const REPLACES_GOAL: &str =
+    "以下是用户更新后的完整目标，替换原目标。保留已经核验且仍适用的执行成果。";
+
 /// Build the exact model input before accepting a steering request. Files remain owner-scoped.
 async fn steering_input(
     app: &App,
@@ -599,7 +602,7 @@ async fn steering_input(
     let invalid = || sqlx::Error::Protocol("invalid_attachments".into());
     let mut content = Vec::new();
     if replaces_goal {
-        content.push(json!({"type":"input_text","text":"以下是用户更新后的完整目标，替换原目标。保留已经核验且仍适用的执行成果。"}));
+        content.push(json!({"type":"input_text","text":REPLACES_GOAL}));
     }
     if !request.text.is_empty() {
         content.push(json!({"type":"input_text","text":crate::voice_input::model_text(&request.text, &request.request_id, request.voice.as_ref())}));

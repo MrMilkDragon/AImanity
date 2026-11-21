@@ -4,6 +4,8 @@ use xxhash_rust::xxh3::Xxh3;
 
 pub const SLICE_TURNS: i32 = 8;
 pub const ARCHIVED_OBSERVATION: &str = "AI_PHONE_VALIDATED_OBSERVATION_ARCHIVED:";
+pub const UNCHANGED_DESKTOP: &str =
+    "桌面与上次观察一致。目标可见时直接用本次观察操作；若仍在加载，用 task_wait 等待变化。";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolOutcome {
     Completed,
@@ -85,15 +87,23 @@ impl LoopState {
             fingerprint.update(b"\n");
         };
         feed(name);
-        if name == "host_desktop"
-            && let Some(receipt) = metadata.filter(|v| v["kind"] == "observe")
-            && let Some(frame) = result
+        let desktop = metadata.filter(|receipt| {
+            name == "computer_observe" || (name == "host_desktop" && receipt["kind"] == "observe")
+        });
+        let frame = desktop.and_then(|receipt| {
+            result
                 .as_array()
                 .and_then(|parts| parts.iter().find_map(|part| part["image_url"].as_str()))
-        {
+                .map(|image| (receipt, image))
+        });
+        if let Some((receipt, image)) = frame {
             feed(receipt["host_session"].as_str().unwrap_or(""));
             feed(receipt["device_id"].as_str().unwrap_or(""));
-            feed(frame);
+            feed(receipt["title"].as_str().unwrap_or(""));
+            if let Some(window) = receipt["window_id"].as_u64() {
+                fingerprint.update(&window.to_le_bytes());
+            }
+            fingerprint.update(image.as_bytes());
         } else {
             feed(arguments);
             if let Some(receipt) = metadata.filter(|_| crate::app_learning::observation_tool(name))
@@ -109,7 +119,9 @@ impl LoopState {
             }
         }
         let signature = format!("{:032x}", fingerprint.digest128());
-        if self.recent_results.contains(&signature) {
+        if frame.is_some() && self.recent_results.last() == Some(&signature) {
+            self.no_progress(UNCHANGED_DESKTOP)
+        } else if frame.is_none() && self.recent_results.contains(&signature) {
             self.no_progress("重复取得相同工具结果，没有观察到新进展")
         } else {
             self.stalls = 0;
@@ -238,6 +250,29 @@ mod tests {
         );
         assert_eq!(history[1]["output"][2]["image_url"], "current");
     }
+    #[test]
+    fn desktop_reads_compare_visible_state_across_fresh_observation_ids() {
+        let mut state = LoopState::default();
+        let mut read = |window, image: &str, id: &str| {
+            let receipt = json!({"device_id":"desktop","window_id":window,"observation_id":id,"title":"Report"});
+            let parts = json!([{"type":"input_text","text":receipt.to_string()},
+                {"type":"input_image","image_url":image}]);
+            state.tool_result(
+                "computer_observe",
+                id,
+                &parts,
+                Some(&receipt),
+                ToolOutcome::Completed,
+            );
+            state.last_issue.clone()
+        };
+        assert_eq!(read(1, "sheet", "a"), "");
+        assert_eq!(read(1, "sheet", "b"), UNCHANGED_DESKTOP);
+        assert_eq!(read(2, "sheet", "c"), "");
+        assert_eq!(read(2, "dialog", "d"), "");
+        assert_eq!(read(2, "sheet", "e"), "");
+    }
+
     #[test]
     fn repeated_host_screens_keep_the_latest_image_and_each_action_receipt() {
         let mut state = LoopState::default();

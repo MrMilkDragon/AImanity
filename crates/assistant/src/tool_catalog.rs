@@ -213,7 +213,7 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "workspace_list",
-            "列出独立工作目录文件和下载链接。",
+            "列出独立工作目录。交付文件时将对应的 location 放入 task_finish.files。",
             json!({"path":{"type":"string"}}),
             vec![],
         ),
@@ -225,13 +225,13 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "workspace_write",
-            "在工作目录写入文本、代码或报告，并返回真实下载链接。",
+            "在工作目录写入文本、代码或报告。交付文件时将返回的 location 放入 task_finish.files。",
             json!({"path":{"type":"string"},"content":{"type":"string"}}),
             vec!["path", "content"],
         ),
         function(
             "workspace_fetch",
-            "读取公开HTTPS网页或下载文件到工作目录，使用部署的网络配置。",
+            "读取公开HTTPS网页或下载文件到工作目录，使用部署的网络配置。保存文件时返回可放入 task_finish.files 的 location。",
             json!({"url":{"type":"string"},"path":{"type":"string"}}),
             vec!["url"],
         ),
@@ -261,8 +261,8 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "task_finish",
-            "结束任务。交付文件时，files 填设备ID及绝对路径，系统会存入工作文件并附到回复。",
-            json!({"status":{"type":"string","enum":["completed","needs_input"]},"summary":{"type":"string","description":"给用户的一至三句交付结果：成果文件、关键核验结论或真实阻碍。"},"notification_only":{"type":"boolean","description":"仅登记安卓系统状态已读时为 true。"},"files":{"type":"array","items":{"type":"object","properties":{"device_id":{"type":"string"},"path":{"type":"string"}},"required":["device_id","path"],"additionalProperties":false}}}),
+            "结束任务。用 files 附上工作文件或设备产物的绝对路径。",
+            json!({"status":{"type":"string","enum":["completed","needs_input"]},"summary":{"type":"string","description":"给用户的一至三句交付结果：成果文件、关键核验结论或真实阻碍。"},"notification_only":{"type":"boolean","description":"仅登记安卓系统状态已读时为 true。"},"files":{"type":"array","items":{"type":"object","properties":{"device_id":{"type":"string","description":"工作文件用空字符串；设备文件用设备 ID。"},"path":{"type":"string"}},"required":["device_id","path"],"additionalProperties":false}}}),
             vec!["status", "summary"],
         ),
         function(

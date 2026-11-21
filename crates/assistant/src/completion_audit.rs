@@ -349,6 +349,12 @@ impl PhoneFrames {
     }
 }
 
+pub(crate) struct Proposal<'a> {
+    pub summary: &'a str,
+    pub needs_input: bool,
+    pub attachments: &'a [crate::files::PreparedOutput],
+}
+
 // A completion audit has no execution tools. Its input comes from this run's
 // persisted tool ledger, never from historical assistant prose.
 pub async fn verify(
@@ -356,13 +362,16 @@ pub async fn verify(
     run: Uuid,
     message: Uuid,
     context: &[Value],
-    summary: &str,
-    needs_input: bool,
+    proposal: Proposal<'_>,
     cancel: &CancellationToken,
 ) -> Result<AuditResult, String> {
+    let Proposal {
+        summary,
+        needs_input,
+        attachments,
+    } = proposal;
     let mut timing = crate::model_timing::Timing::default();
-    let request = (0..context.len()).rfind(|&index| crate::worker::is_task_input(context, index));
-    let latest_input = request.unwrap_or(0);
+    let (latest_input, request_text) = crate::worker::audit_request(context);
     let current_calls: HashMap<Uuid, &Value> = context
         .iter()
         .skip(latest_input + 1)
@@ -449,13 +458,6 @@ pub async fn verify(
             "title":row.get::<String,_>("title"),"status":row.get::<String,_>("status"),"result":result}));
     }
     evidence.reverse();
-    let request_text = request
-        .and_then(|index| context[index]["content"].as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|part| part["text"].as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
     let (handoff_receipts, notifications, learning) = tokio::try_join!(
         sqlx::query_scalar::<_, Value>("SELECT e.result FROM harness_events e JOIN runs r ON r.id=e.run_id WHERE e.run_id=$1 AND e.kind='summary' AND e.title='设备协作' AND e.status='completed' AND e.result IS NOT NULL AND e.created_at>=COALESCE(r.input_at,r.created_at) ORDER BY e.created_at")
             .bind(run).fetch_all(&app.db),
@@ -499,8 +501,12 @@ pub async fn verify(
     if !compact {
         compact_phone_trees(&mut evidence);
     }
+    let chat_attachments = attachments
+        .iter()
+        .map(|f| json!({"name":f.name,"bytes":f.size_bytes}))
+        .collect::<Vec<_>>();
     let mut audit_input = vec![
-        json!({"type":"input_text","text":json!({"request":request_text,"proposed_completion":summary,"needs_input":needs_input,"tool_evidence":evidence,"handoff_receipts":handoff_receipts}).to_string()}),
+        json!({"type":"input_text","text":json!({"request":request_text,"proposed_completion":summary,"reply_attachments":chat_attachments,"needs_input":needs_input,"tool_evidence":evidence,"handoff_receipts":handoff_receipts}).to_string()}),
     ];
     if readback && !compact_phone {
         audit_input.push(json!({"type":"input_text","text":"这是本轮的最终读回。按用户原始要求核对操作和动作后截图。通过时用 feedback 直接回答用户，带上用户要求的页面、文字或具体数值；还有步骤或结果看不清时指出缺什么。"}));
@@ -537,7 +543,7 @@ pub async fn verify(
     } else if compact {
         "核对电脑输入回执与动作后画面。确认目标窗口和实际写入内容均符合用户要求才通过。用一句话指出证据或缺失。"
     } else {
-        "只按本轮工具回执、截图和用户目标核验。动作、数量、界面事实及交付均有证据才通过；缺证时直接指出下一步。文件传输认设备回执，外发认原应用记录。通知预览、发送记录与对方确认分别核对。经验的步骤和适用范围由操作前后证据支持。截图归档后缺证就重新观察。反馈只写可核对的结论，不含凭据。"
+        "只按本轮工具回执、截图和用户目标核验。动作、数量、界面事实及交付均有证据才通过；缺证时直接指出下一步。当前对话将随回复发布的文件以 reply_attachments 为准，空列表表示没有附件；其他应用的发送核对原会话回执。通知预览、发送记录与对方确认分别核对。经验的步骤和适用范围由操作前后证据支持。截图归档后缺证就重新观察。反馈只写可核对的结论，不含凭据。"
     };
     let mut body = json!({"input":[
         {"role":"system","content":[{"type":"input_text","text":instructions}]},
@@ -1280,8 +1286,11 @@ mod tests {
                 other_run,
                 other_message,
                 &context,
-                "Read the app",
-                false,
+                Proposal {
+                    summary: "Read the app",
+                    needs_input: false,
+                    attachments: &[],
+                },
                 &CancellationToken::new(),
             )
             .await;
@@ -1343,8 +1352,11 @@ mod tests {
                         run,
                         message,
                         &context,
-                        "Fixture result",
-                        false,
+                        Proposal {
+                            summary: "Fixture result",
+                            needs_input: false,
+                            attachments: &[]
+                        },
                         &CancellationToken::new()
                     )
                     .await

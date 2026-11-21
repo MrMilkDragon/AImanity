@@ -19,6 +19,9 @@ use std::{
 fn workspace(app: &App) -> PathBuf {
     app.root.join("data/workspaces/admin")
 }
+fn workspace_location(relative: &str) -> Value {
+    json!({"device_id":"","path": format!("/{relative}")})
+}
 async fn safe_path(base: &FilePath, path: &str, write: bool) -> Result<PathBuf, String> {
     if path.len() > 500
         || FilePath::new(path).is_absolute()
@@ -1241,7 +1244,15 @@ pub(crate) async fn invoke_tool(
         }
         "workspace_list" => {
             let list = files(app, &string("path")).await?;
-            Ok(json!(list.files.iter().map(|f|json!({"path":f.path,"directory":f.directory,"bytes":f.size_bytes,"download":format!("/api/workbench/file?path={}",f.path)})).collect::<Vec<_>>()))
+            Ok(json!(
+                list.files
+                    .iter()
+                    .map(|f| json!({
+                        "path": f.path, "directory": f.directory, "bytes": f.size_bytes,
+                        "location": workspace_location(&f.path)
+                    }))
+                    .collect::<Vec<_>>()
+            ))
         }
         "workspace_read" => {
             let file = safe_path(&workspace(app), &string("path"), false).await?;
@@ -1266,7 +1277,7 @@ pub(crate) async fn invoke_tool(
             tokio::fs::write(file, content)
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(json!({"path":path,"download":format!("/api/workbench/file?path={path}")}))
+            Ok(json!({"path":path,"location": workspace_location(&path)}))
         }
         "workspace_fetch" => {
             let url = string("url");
@@ -1281,9 +1292,7 @@ pub(crate) async fn invoke_tool(
                 tokio::fs::write(file, &data)
                     .await
                     .map_err(|e| e.to_string())?;
-                Ok(
-                    json!({"path":path,"bytes":data.len(),"download":format!("/api/workbench/file?path={path}")}),
-                )
+                Ok(json!({"path":path,"bytes":data.len(),"location":workspace_location(&path)}))
             }
         }
         "workspace_run" => {

@@ -988,8 +988,8 @@
     },
     {
       "path": "crates/assistant/src/agent_loop.rs",
-      "size": 15387,
-      "sha256": "af8d7f4e707ef7324c97f99371935507719de3f90af75b160bdbc189dfa545c7"
+      "size": 17052,
+      "sha256": "8f58a53306634a008a7e4fa60bd872e65f3e6715d8771ddb24154304b9f74827"
     },
     {
       "path": "crates/assistant/src/anthropic_messages.rs",
@@ -1148,8 +1148,8 @@
     },
     {
       "path": "crates/assistant/src/completion_audit.rs",
-      "size": 66306,
-      "sha256": "c53fa75f3ff0980de4d4d135c06af51dfbca97650e9c4ee1e02db142a019d0d6"
+      "size": 66756,
+      "sha256": "049baef4b7432468ca2e004dc8501997bf61f38d9649b7a37faf204417fe451e"
     },
     {
       "path": "crates/assistant/src/database/bootstrap.rs",
@@ -1238,8 +1238,8 @@
     },
     {
       "path": "crates/assistant/src/files.rs",
-      "size": 46769,
-      "sha256": "1d92368b6789ba9589bf7d23f959c061b5e53a158812dd63dfbf12d51fd5fd72"
+      "size": 49037,
+      "sha256": "f4e087634c6f9a9d56c2a82317b2c637c18b31d1f423e8f683acd5894b208d04"
     },
     {
       "path": "crates/assistant/src/handoff_returns.rs",
@@ -1278,8 +1278,8 @@
     },
     {
       "path": "crates/assistant/src/http.rs",
-      "size": 56271,
-      "sha256": "21ce8434a622c919a58ce31c929663f89512b160343a17f99ea25c27f557d940"
+      "size": 56330,
+      "sha256": "59fb1205c3e86c23f24581870bb72acfcda7ca4db9d20c1d5c215118486e8e19"
     },
     {
       "path": "crates/assistant/src/location.rs",
@@ -1488,8 +1488,8 @@
     },
     {
       "path": "crates/assistant/src/tool_catalog.rs",
-      "size": 21616,
-      "sha256": "9c08f55041cc3ff79939b1b3268501cdb3c47af24a32b83b37bd523f335689ed"
+      "size": 21794,
+      "sha256": "fcc9fbe472ba7f2938ae63e27829fd10468569e9aac0d4c43ad76442a0bd3cdd"
     },
     {
       "path": "crates/assistant/src/voice_input.rs",
@@ -1503,8 +1503,8 @@
     },
     {
       "path": "crates/assistant/src/workbench.rs",
-      "size": 56272,
-      "sha256": "eb400ba21f76d61ba72e3d9115fcd2b4e53d6b7d9c7e187d0f77bf1f14a04d88"
+      "size": 56463,
+      "sha256": "ed358df37c94fd0b0415891ae262b13fcaa79f662fc2ef0c6d3cf8a208e22b5b"
     },
     {
       "path": "crates/assistant/src/worker/action_cue.rs",
@@ -1528,8 +1528,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 269053,
-      "sha256": "2459e09068ef4ae675481f22d66155c0bbf7243b3b3f28693c7e6ea6b0b5e2c6"
+      "size": 272630,
+      "sha256": "7af4fad822e0fdf6ec5bc260f9c06a35e260214ae454203a5a8bee27bbf158a5"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -3663,13 +3663,13 @@
     },
     {
       "path": "skills/builtin/calc/SKILL.md",
-      "size": 2889,
-      "sha256": "604acfdc30635025f315cbf9fb29d2b84eea1e962ce418eda87b7972973a0b8d"
+      "size": 2479,
+      "sha256": "81ff14ee8e37a9ca26e28ee652aeea68e776086752ec2154249524adcc11f7be"
     },
     {
       "path": "skills/builtin/computer-use/SKILL.md",
-      "size": 7823,
-      "sha256": "d5ef6c34ad45c40cd884f21f50a664a896e3a8aea3cf0c66f7ec738aa735b6c5"
+      "size": 7746,
+      "sha256": "d38b5518e4480eaec1cf0b6b4134c18c88936336f43124500ff74f13c7be0d94"
     },
     {
       "path": "skills/builtin/create-game-assets/SKILL.md",

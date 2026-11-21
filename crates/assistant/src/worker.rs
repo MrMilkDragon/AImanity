@@ -210,7 +210,9 @@ async fn initial_context(
     if identity.get::<bool, _>("task_goal") {
         system.push_str("持续执行本轮目标，后续文字、语音和目标更新可修订它。用 device_list 查授权设备，按需自主切换、同时使用或交接。");
     }
-    system.push_str(&format!("\n当前设备类型：{kind}。授权设备见 device_list。"));
+    system.push_str(&format!(
+        "\n[当前设备类型:{kind}] 使用当前观察操作本设备；查询其他设备时用 device_list。"
+    ));
     let mut context =
         vec![json!({"role":"system","content":[{"type":"input_text","text":system}]})];
     let task_start = rows
@@ -295,13 +297,41 @@ pub(crate) fn is_task_input(context: &[Value], index: usize) -> bool {
                 .is_none())
 }
 
+fn current_task_boundary(context: &[Value]) -> Option<usize> {
+    context.iter().rposition(|item| {
+        item["role"] == "system"
+            && item["content"][0]["text"]
+                .as_str()
+                .is_some_and(|s| s.starts_with("AI_PHONE_CURRENT_TASK："))
+    })
+}
+
+// Goals can span steering inputs. Proof still starts after the most recent one.
+pub(crate) fn audit_request(context: &[Value]) -> (usize, String) {
+    let latest = evidence_start(context);
+    // Older checkpoints without a task marker can contain prior conversations.
+    let start = current_task_boundary(context).unwrap_or(latest);
+    let mut request = String::new();
+    for i in (start..context.len()).filter(|&i| is_task_input(context, i)) {
+        let input = &context[i];
+        let text = text_of(input);
+        if text.is_empty() {
+            continue;
+        }
+        // steering_input prepends a dedicated text part when a full goal replaces the prior one.
+        if input["content"][0]["text"] == crate::http::REPLACES_GOAL {
+            request.clear();
+        }
+        if !request.is_empty() {
+            request.push_str("\n后续用户指令（更正优先，保留仍适用的要求）\n");
+        }
+        request.push_str(&text);
+    }
+    (latest, request)
+}
+
 fn latest_request(context: &[Value]) -> String {
-    let boundary = context
-        .iter()
-        .rposition(|item| {
-            item["role"] == "system" && text_of(item).starts_with("AI_PHONE_CURRENT_TASK：")
-        })
-        .unwrap_or(0);
+    let boundary = current_task_boundary(context).unwrap_or(0);
     let requests = (boundary..context.len())
         .rev()
         .filter(|&index| is_task_input(context, index))
@@ -343,6 +373,30 @@ fn resolved_request(mut requests: impl Iterator<Item = String>) -> String {
 #[cfg(test)]
 mod continuation_tests {
     use super::*;
+    #[test]
+    fn audit_keeps_current_goal_and_revisions_but_only_accepts_fresh_proof() {
+        let user = |s: &str| json!({"role":"user","content":[{"type":"input_text","text":s}]});
+        let mut context = vec![
+            user("上一轮购买物品"),
+            json!({"role":"system","content":[{"type":"input_text","text":"AI_PHONE_CURRENT_TASK：本轮"}]}),
+            user("保留公式，改为10，保存并交付工作簿"),
+            json!({"type":"function_call","name":"computer_type","call_id":"before"}),
+            user("改为11"),
+            json!({"type":"function_call","name":"computer_observe","call_id":"after"}),
+        ];
+        let (last, text) = audit_request(&context);
+        assert_eq!(last, 4);
+        assert!(text.starts_with("保留公式") && text.ends_with("改为11"));
+        assert!(!text.contains("上一轮"));
+        assert_eq!(context[last + 1..].len(), 1);
+        assert_eq!(context[last + 1]["call_id"], "after");
+        context.push(json!({"role":"user","content":[
+            {"type":"input_text","text":crate::http::REPLACES_GOAL},
+            {"type":"input_text","text":"只读本页"}]}));
+        let (_, replaced) = audit_request(&context);
+        assert!(replaced.ends_with("只读本页") && !replaced.contains("工作簿"));
+        assert_eq!(audit_request(&[user("旧会话"), user("本轮")]).1, "本轮");
+    }
     #[test]
     fn repeated_continue_keeps_current_goal_but_not_previous_task() {
         let user =
@@ -2813,6 +2867,14 @@ async fn execute(
             );
             let mut output = json!({"type":"function_call_output","call_id":call["call_id"]});
             output["output"] = result;
+            if !failed
+                && state.last_issue == crate::agent_loop::UNCHANGED_DESKTOP
+                && (name == "computer_observe" || name == "host_desktop")
+                && let Some(parts) = output["output"].as_array_mut()
+            {
+                parts
+                    .push(json!({"type":"input_text","text":crate::agent_loop::UNCHANGED_DESKTOP}));
+            }
             context.push(output);
             pending.remove(0);
             if name == "computer_type"
@@ -3049,7 +3111,10 @@ async fn execute(
             && !has_current_observation(&context)
         {
             ("none", ModelTools::PhoneObserve)
-        } else if (state.stalls > 0 || !gui) && (phone_task(&context) || action_task(&context)) {
+        } else if ((!gui || state.stalls > 0)
+            && state.last_issue != crate::agent_loop::UNCHANGED_DESKTOP)
+            && (phone_task(&context) || action_task(&context))
+        {
             ("high", ModelTools::All)
         } else if step == 0
             && !background
@@ -4238,35 +4303,46 @@ async fn tool(
                             .as_str()
                             .is_some_and(|name| name.starts_with("phone_"))
                     }));
-        if audit {
-            let result = crate::completion_audit::verify(
-                app,
-                run,
-                message,
-                &current,
-                &summary,
-                status == "needs_input",
-                cancel,
-            )
-            .await?;
-            if !result.approved {
-                return Err(format!(
-                    "完成审计未通过：{}。继续修正并用真实工具验证，不要结束。",
-                    result.feedback
-                ));
-            }
-            if call["local_readback"] == true {
-                summary = result.feedback;
-            }
-        }
-        if status == "completed" && !screen_attention {
-            crate::app_learning::promote(app, run).await?;
-        }
         let files = if status == "completed" {
             crate::files::prepare_outputs(app, run, arguments["files"].clone()).await?
         } else {
             Vec::new()
         };
+        let verified: Result<(), String> = async {
+            if audit {
+                let result = crate::completion_audit::verify(
+                    app,
+                    run,
+                    message,
+                    &current,
+                    crate::completion_audit::Proposal {
+                        summary: &summary,
+                        needs_input: status == "needs_input",
+                        attachments: &files,
+                    },
+                    cancel,
+                )
+                .await?;
+                if !result.approved {
+                    return Err(format!(
+                        "完成审计未通过：{}。继续修正并用真实工具验证，不要结束。",
+                        result.feedback
+                    ));
+                }
+                if call["local_readback"] == true {
+                    summary = result.feedback;
+                }
+            }
+            if status == "completed" && !screen_attention {
+                crate::app_learning::promote(app, run).await?;
+            }
+            Ok(())
+        }
+        .await;
+        if let Err(error) = verified {
+            crate::files::discard_outputs(app, &files).await;
+            return Err(error);
+        }
         return Ok(
             json!([{"type":"input_text","text":json!({"success":true,"finish":{"status":status,"summary":summary,"files":files}}).to_string()}]),
         );
