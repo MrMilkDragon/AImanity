@@ -7,8 +7,8 @@ use sqlx::{Row, types::Json};
 
 mod execution_policy;
 use execution_policy::{execution_tools, gui_execution, initial_observation, lookup_evidence};
+mod action_cue;
 mod model_trace;
-mod swipe_cue;
 mod work_intent;
 
 #[cfg(test)]
@@ -1229,7 +1229,10 @@ fn coordinate_grounding(context: &[Value], name: &str, arguments: &Value) -> Res
     }
     let observation = latest_grounding(context)
         .ok_or_else(|| phone_plan_rejection("请先phone_observe取得带控件定位的当前画面"))?;
-    if let Some(element) = coordinate_interception(&observation, name, arguments) {
+    let future_target =
+        matches!(name, "phone_tap" | "phone_swipe") && arguments["when"]["on_appearance"] == true;
+    if !future_target && let Some(element) = coordinate_interception(&observation, name, arguments)
+    {
         return Err(phone_plan_rejection(format!(
             "此位置已有控件{}，请使用{}并传回observation_id，不要绕过控件核对",
             element["id"],
@@ -2484,6 +2487,9 @@ async fn execute(
     let exploration = row.get::<&str, _>("origin") == "exploration";
     let knowledge_review = row.get::<&str, _>("origin") == "knowledge-review";
     let notification_run = row.get::<String, _>("origin") == "notification";
+    let system_status = notification_run
+        && serde_json::from_str::<Vec<Value>>(row.get("trigger_input"))
+            .is_ok_and(|events| crate::notification_policy::system_status(&events));
     let screen_attention: bool = row.get("screen_attention");
     let desktop = row.get::<Option<&str>, _>("device_kind") == Some("desktop");
     let desktop_id = desktop.then(|| row.get::<&str, _>("device_id"));
@@ -2704,8 +2710,10 @@ async fn execute(
             && !screen_attention
             && !direct_files
             && !host_session
-            && let Some((name, arguments)) =
-                initial_observation(&context, desktop_id).or_else(|| {
+            && let Some((name, arguments)) = (!system_status)
+                .then(|| initial_observation(&context, desktop_id))
+                .flatten()
+                .or_else(|| {
                     needs_verification_observation(&context).then(|| ("phone_observe", json!({})))
                 })
         {
@@ -3889,7 +3897,7 @@ async fn tool(
             return Err("status必须是completed或needs_input".into());
         }
         let row = sqlx::query(
-            "SELECT r.origin,r.device_id,r.context,r.pending_tools,r.background_read_only,r.origin='notification' AND r.background_read_only summary_only,
+            "SELECT r.origin,r.device_id,r.context,r.pending_tools,r.background_read_only,r.input_at IS NOT NULL steered,r.origin='notification' AND r.background_read_only summary_only,
                 NOT r.background_read_only AND (r.origin='notification' OR EXISTS(
                     SELECT 1 FROM phone_notifications n WHERE n.run_id=r.id AND n.status IN ('attending','pending-summary'))) audit_notification,
                 EXISTS(SELECT 1 FROM device_messages m WHERE m.source_run_id=r.id AND m.return_delivered_at IS NULL) handoffs_pending,
@@ -3932,6 +3940,55 @@ async fn tool(
         }
         let file_delivery =
             status == "completed" && confirmed_file_delivery(&current, &arguments["files"]);
+        if arguments["notification_only"] == true {
+            let only_reads = current
+                .iter()
+                .filter(|call| call["type"] == "function_call")
+                .all(|call| {
+                    matches!(
+                        call["name"].as_str(),
+                        Some(
+                            "skill_read"
+                                | "phone_notifications"
+                                | "device_notifications"
+                                | "phone_observe"
+                                | "computer_observe"
+                                | "task_finish"
+                        )
+                    )
+                });
+            if status != "completed"
+                || row.get::<&str, _>("origin") != "notification"
+                || row.get::<bool, _>("background_read_only")
+                || row.get::<bool, _>("handoffs_pending")
+                || row.get::<bool, _>("steered")
+                || !only_reads
+                || arguments["files"]
+                    .as_array()
+                    .is_some_and(|files| !files.is_empty())
+            {
+                return Err("这项任务需要按实际操作核验。".into());
+            }
+            let did_read = current.iter().any(|call| {
+                matches!(
+                    call["name"].as_str(),
+                    Some("phone_notifications" | "device_notifications")
+                ) && successful_call(call, &current)
+            });
+            if !did_read {
+                return Err("请先读取本任务分配的通知。".into());
+            }
+            let assigned =
+                proactive::assigned_notifications(app, run, row.get("device_id")).await?;
+            let note = assigned
+                .as_ref()
+                .and_then(tool_value)
+                .and_then(|receipt| crate::notification_policy::read_receipt(&receipt))
+                .ok_or("需要在来源应用查看完整消息。")?;
+            return Ok(
+                json!([{"type":"input_text","text":json!({"success":true,"finish":{"status":status,"summary":note,"files":[]}}).to_string()}]),
+            );
+        }
         if status == "completed" {
             if row.get::<bool, _>("handoffs_pending") {
                 return Err("设备协作尚未返回并核对；使用task_wait等待结果，系统会唤醒原任务。不要把交接排队说成已完成。".into());
@@ -4330,22 +4387,31 @@ async fn tool(
         _ => return Ok(json!([{"type":"input_text","text":"未知工具"}])),
     };
     let mut cue_result = None;
-    if let Action::Swipe(swipe) = &action
-        && let Some(when) = arguments.get("when")
-    {
-        let req = wire::SwipeCueRequest {
+    if let Some(when) = arguments.get("when") {
+        let gesture = match &action {
+            Action::Swipe(swipe) => wire::action_cue_request::Gesture::Swipe(*swipe),
+            Action::Tap(tap) => wire::action_cue_request::Gesture::Tap(*tap),
+            _ => return Err("此动作不支持画面触发条件".into()),
+        };
+        let req = wire::ActionCueRequest {
             phone_id: phone_id.clone(),
             owner_id: "local-user".into(),
             control_epoch: *epoch,
             observation_id,
-            swipe: Some(*swipe),
-            ..swipe_cue::visual_condition(when, context).await?
+            gesture: Some(gesture),
+            ..action_cue::visual_condition(when, context).await?
         };
-        let hit: wire::SwipeCueMatch = tokio::select! { biased;
+        let hit: wire::ActionCueMatch = tokio::select! { biased;
             _ = cancel.cancelled() => return Err("canceled".into()),
-            hit = phone(app, "swipe-cue", req) => hit?,
+            hit = phone(app, "action-cue", req) => hit?,
         };
-        let sample = json!({"matched":hit.matched,"frames":hit.frames,"wait_ms":hit.elapsed_ms});
+        if hit.already_present {
+            return Ok(phone_plan_rejection(
+                "布防时区域已经满足条件。重新观察，选择在等待画面和目标画面之间有明显变化的区域。",
+            ));
+        }
+        let sample = json!({"matched":hit.matched,"frames":hit.frames,"wait_ms":hit.elapsed_ms,
+            "first_match_at_ms":hit.first_match_at_ms,"confirmed_at_ms":hit.observed_at_ms});
         if !hit.matched || has_steering(app, run).await? || cancel.is_cancelled() {
             return Ok(
                 json!([{"type":"input_text","text":json!({"success":false,"not_executed":true,"cue":sample}).to_string()}]),
@@ -5070,6 +5136,14 @@ mod verification_tests {
             let rejected = action("rejected", name, args.clone());
             context.push(rejected[0].clone());
             assert!(phone_mutation_precondition(&context, &rejected[0]).is_ok());
+            let mut future = args.clone();
+            future["when"] = json!({"on_appearance":true});
+            assert_eq!(
+                coordinate_grounding(&context, name, &future).unwrap(),
+                "snapshot"
+            );
+            future["when"]["on_appearance"] = json!(false);
+            assert!(coordinate_grounding(&context, name, &future).is_err());
             let output = coordinate_grounding(&context, name, &args).unwrap_err();
             let value = tool_value(&output).unwrap();
             assert_eq!(value["success"], false);

@@ -26,7 +26,7 @@ struct Snapshot {
 enum Evidence {
     Controls(Option<OcrEvidence>),
     Motion(u64),
-    Cue(wire::SwipeAction),
+    Cue(wire::device_action_request::Action),
 }
 struct OcrEvidence {
     png: Vec<u8>,
@@ -448,7 +448,8 @@ pub async fn observe(
     let mut note = String::new();
     if motion {
         evidence = Evidence::Motion(xxh3_64(&png));
-        note = "动态画面可直接滑动或拖动，也可用 phone_swipe 的 when 等待视觉信号。".into();
+        note = "可直接滑动或拖动。对即将出现的目标，提前在 phone_tap 或 phone_swipe 中设置 when。"
+            .into();
     } else if !native_content_available(&targets, height)
         || ["always", "only"].contains(&request.ocr_mode.as_str())
     {
@@ -529,6 +530,7 @@ pub async fn observe(
         },
         screen_sequence: ledger.sequence,
         control_epoch: epoch,
+        last_manual_control_epoch: ledger.last_manual_control_epoch,
         controller: ledger.controller.clone(),
         root_identity: if runner.root_ready.load(Ordering::Acquire) {
             "0".into()
@@ -553,10 +555,10 @@ fn validate_snapshot(snapshot: &Snapshot, epoch: u64, revision: u64) -> Result<(
     }
     Ok(())
 }
-pub(super) async fn watch_swipe(
+pub(super) async fn watch_action(
     runner: &Runner,
-    mut request: wire::SwipeCueRequest,
-) -> Result<wire::SwipeCueMatch, String> {
+    mut request: wire::ActionCueRequest,
+) -> Result<wire::ActionCueMatch, String> {
     let (epoch, revision) = {
         let ledger = runner.ledger.lock().await;
         if ledger.epoch != request.control_epoch || ledger.controller != "agent" {
@@ -572,10 +574,14 @@ pub(super) async fn watch_swipe(
         .iter()
         .find(|s| s.id == request.observation_id)
         .cloned()
-        .ok_or("缺少当前游戏观察")?;
+        .ok_or("缺少当前手机观察")?;
     validate_snapshot(&source, epoch, revision)?;
     let area = request.region.ok_or("缺少观察区域")?;
-    let swipe = request.swipe.ok_or("缺少滑动手势")?;
+    use wire::{action_cue_request::Gesture, device_action_request::Action};
+    let action = match request.gesture.ok_or("缺少触发动作")? {
+        Gesture::Swipe(swipe) => Action::Swipe(swipe),
+        Gesture::Tap(tap) => Action::Tap(tap),
+    };
     if matches!(source.evidence, Evidence::Cue(_))
         || area.right > source.width
         || area.bottom > source.height
@@ -585,7 +591,7 @@ pub(super) async fn watch_swipe(
     (request.source_width, request.source_height) = (source.width, source.height);
     let reply = runner
         .local
-        .post(format!("{}/swipe-cue", runner.media_url))
+        .post(format!("{}/action-cue", runner.media_url))
         .bearer_auth(&runner.token)
         .header("content-type", MEDIA)
         .body(request.encode_to_vec())
@@ -594,15 +600,15 @@ pub(super) async fn watch_swipe(
         .map_err(|e| e.to_string())?
         .error_for_status()
         .map_err(|e| e.to_string())?;
-    let mut hit = wire::SwipeCueMatch::decode(reply.bytes().await.map_err(|e| e.to_string())?)
+    let mut hit = wire::ActionCueMatch::decode(reply.bytes().await.map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     if hit.matched {
         if (hit.width, hit.height) != (source.width, source.height) {
-            return Err("stale_target:游戏画面方向或尺寸已变化".into());
+            return Err("stale_target:画面方向或尺寸已变化".into());
         }
         let age = Duration::from_millis(media::now().saturating_sub(hit.observed_at_ms));
         if age > CUE_MAX_AGE {
-            return Err("stale_target:游戏画面已过期".into());
+            return Err("stale_target:画面触发信号已过期".into());
         }
         hit.observation_id = Uuid::new_v4().to_string();
         runner.grounding.lock().await.remember(Snapshot {
@@ -614,7 +620,7 @@ pub(super) async fn watch_swipe(
             height: hit.height,
             created: Instant::now() - age,
             targets: Arc::default(),
-            evidence: Evidence::Cue(swipe),
+            evidence: Evidence::Cue(action),
         });
     }
     Ok(hit)
@@ -685,7 +691,7 @@ pub async fn resolve(
         let action = request.action.as_ref().ok_or("缺少动作")?;
         match (&snapshot.evidence, action) {
             (Evidence::Motion(_), Action::Swipe(_) | Action::Drag(_)) => {}
-            (Evidence::Cue(expected), Action::Swipe(actual)) if expected == actual => {}
+            (Evidence::Cue(expected), actual) if expected == actual => {}
             _ => return Err("stale_target:动作与当前画面依据不符，请重新观察".into()),
         }
         let (app, size) = tokio::join!(foreground(runner), dimensions(runner));
@@ -694,7 +700,7 @@ pub async fn resolve(
         }
         if snapshot.created.elapsed() > CUE_MAX_AGE {
             let Evidence::Motion(original) = &snapshot.evidence else {
-                return Err("stale_target:滑动信号已过期".into());
+                return Err("stale_target:画面触发信号已过期".into());
             };
             let (png, w, h) = capture_frame(runner).await?;
             if (w, h) != size

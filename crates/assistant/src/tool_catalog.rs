@@ -15,6 +15,16 @@ pub(crate) fn function(
 }
 
 pub(crate) fn tools() -> Value {
+    let visual_condition = json!({"type":"object","properties":{
+                    "region":{"type":"array","description":"最近截图中的 [左,上,右,下] 像素","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
+                    "sample_points":{"type":"array","description":"在最近真实截图中点选目标特征色 [x,y]，与 colors 合计一至四个","items":{"type":"array","items":{"type":"integer","minimum":0},"minItems":2,"maxItems":2},"minItems":1,"maxItems":4},
+                    "colors":{"type":"array","description":"已知的 #RRGGBB 颜色，也可只用 sample_points","items":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"minItems":1,"maxItems":4},
+                    "clear_region":{"type":"array","description":"目标区域 [左,上,右,下]，有阻挡时等待","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
+                    "avoid_points":{"type":"array","description":"从最近截图的其他阻挡物取色，clear_region 会同时检查触发色和这些颜色","items":{"type":"array","items":{"type":"integer","minimum":0},"minItems":2,"maxItems":2},"minItems":1,"maxItems":4},
+                    "any_color":{"type":"boolean","description":"任意一种颜色达标时响应，默认要求每种达标"},
+                    "coverage_percent":{"type":"integer","description":"每种颜色分别占区域的最小百分比","minimum":1,"maximum":100},
+                    "on_appearance":{"type":"boolean","description":"先看到条件不成立，首次观察到条件成立时执行"},"timeout_ms":{"type":"integer","minimum":100,"maximum":15000}
+                },"required":["region","coverage_percent","timeout_ms"],"additionalProperties":false});
     let mut catalog = vec![
         function(
             "todo_list",
@@ -78,8 +88,8 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_tap",
-            "点击无匹配控件ID的图标或画布，说明使用坐标的原因。",
-            json!({"x":{"type":"integer"},"y":{"type":"integer"},"fallback_reason":{"type":"string"}}),
+            "点击图标或画布。如果目标将随画面变化出现，提前提交 when；本机命中后立即点击一次。",
+            json!({"x":{"type":"integer"},"y":{"type":"integer"},"fallback_reason":{"type":"string"},"when":visual_condition}),
             vec!["x", "y", "fallback_reason"],
         ),
         function(
@@ -96,18 +106,9 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_swipe",
-            "在已经看清的画布上直接滑动。等待将要出现的视觉信号时才使用 when，连续两帧命中即滑动一次。列表用 phone_scroll。",
+            "在可见画布上滑动。预测将出现的信号时提前提交 when，本机命中条件即滑动一次。列表用 phone_scroll。",
             json!({"x1":{"type":"integer"},"y1":{"type":"integer"},"x2":{"type":"integer"},"y2":{"type":"integer"},"duration_ms":{"type":"integer"},"fallback_reason":{"type":"string"},
-                "when":{"type":"object","properties":{
-                    "region":{"type":"array","description":"最近截图中的 [左,上,右,下] 像素","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
-                    "sample_points":{"type":"array","description":"在最近真实截图中点选目标特征色 [x,y]，与 colors 合计一至四个","items":{"type":"array","items":{"type":"integer","minimum":0},"minItems":2,"maxItems":2},"minItems":1,"maxItems":4},
-                    "colors":{"type":"array","description":"已知的 #RRGGBB 颜色，也可只用 sample_points","items":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"minItems":1,"maxItems":4},
-                    "clear_region":{"type":"array","description":"目标区域 [左,上,右,下]，有阻挡时不滑动","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
-                    "avoid_points":{"type":"array","description":"从最近截图的其他阻挡物取色，clear_region 会同时检查触发色和这些颜色","items":{"type":"array","items":{"type":"integer","minimum":0},"minItems":2,"maxItems":2},"minItems":1,"maxItems":4},
-                    "any_color":{"type":"boolean","description":"任意一种颜色达标时响应，默认要求每种达标"},
-                    "coverage_percent":{"type":"integer","description":"每种颜色分别占区域的最小百分比","minimum":1,"maximum":100},
-                    "timeout_ms":{"type":"integer","minimum":100,"maximum":5000}
-                },"required":["region","coverage_percent","timeout_ms"],"additionalProperties":false}}),
+                "when":visual_condition}),
             vec!["x1", "y1", "x2", "y2", "duration_ms", "fallback_reason"],
         ),
         function(
@@ -258,7 +259,7 @@ pub(crate) fn tools() -> Value {
         function(
             "task_finish",
             "结束任务。交付文件时，files 填设备ID及绝对路径，系统会存入工作文件并附到回复。",
-            json!({"status":{"type":"string","enum":["completed","needs_input"]},"summary":{"type":"string","description":"给用户的一至三句交付结果：成果文件、关键核验结论或真实阻碍。"},"files":{"type":"array","items":{"type":"object","properties":{"device_id":{"type":"string"},"path":{"type":"string"}},"required":["device_id","path"],"additionalProperties":false}}}),
+            json!({"status":{"type":"string","enum":["completed","needs_input"]},"summary":{"type":"string","description":"给用户的一至三句交付结果：成果文件、关键核验结论或真实阻碍。"},"notification_only":{"type":"boolean","description":"仅登记安卓系统状态已读时为 true。"},"files":{"type":"array","items":{"type":"object","properties":{"device_id":{"type":"string"},"path":{"type":"string"}},"required":["device_id","path"],"additionalProperties":false}}}),
             vec!["status", "summary"],
         ),
         function(
@@ -295,6 +296,20 @@ pub(crate) fn tools() -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn visual_conditions_are_shared_by_tap_and_swipe() {
+        let tools = super::tools();
+        let condition = |name: &str| {
+            &tools
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|tool| tool["name"] == name)
+                .unwrap()["parameters"]["properties"]["when"]
+        };
+        assert!(condition("phone_tap").is_object());
+        assert_eq!(condition("phone_tap"), condition("phone_swipe"));
+    }
     use super::*;
     #[test]
     fn model_tool_catalog_is_unambiguous_and_requires_visible_device_intent() {

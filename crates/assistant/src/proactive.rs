@@ -1043,7 +1043,7 @@ async fn supervise_phone(app: &App) {
     {
         if epoch > 0
             && observation.controller == "manual"
-            && observation.control_epoch > epoch as u64
+            && observation.last_manual_control_epoch > epoch as u64
         {
             let _ = stop_exploration(app, "你已接管手机，自主探索已暂停").await;
             let _=sqlx::query("UPDATE proactive_state SET wechat_quiet_until=now()+interval '60 seconds',control_epoch=$1").bind(observation.control_epoch as i64).execute(&app.db).await;

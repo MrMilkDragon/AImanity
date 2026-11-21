@@ -279,7 +279,7 @@ pub async fn run(adb_media: bool) -> Result<()> {
         .route("/status", get(status))
         .route("/screen", get(screen))
         .route("/snapshot", get(snapshot))
-        .route("/swipe-cue", post(cue::watch))
+        .route("/action-cue", post(cue::watch))
         .route("/audio", get(audio))
         .route("/cursor", get(cursor))
         .route("/action", post(action))

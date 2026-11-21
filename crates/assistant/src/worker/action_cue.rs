@@ -16,6 +16,8 @@ struct Condition {
     avoid_points: Vec<[u32; 2]>,
     #[serde(default)]
     any_color: bool,
+    #[serde(default)]
+    on_appearance: bool,
     coverage_percent: u32,
     timeout_ms: u32,
 }
@@ -23,7 +25,7 @@ struct Condition {
 pub(super) async fn visual_condition(
     value: &Value,
     context: &[Value],
-) -> Result<wire::SwipeCueRequest, String> {
+) -> Result<wire::ActionCueRequest, String> {
     let cue = Condition::deserialize(value).map_err(|_| "视觉触发条件格式无效")?;
     if !(1..=4).contains(&(cue.colors.len() + cue.sample_points.len())) {
         return Err("请从当前画面选一至四个取色点或颜色".into());
@@ -86,12 +88,13 @@ pub(super) async fn visual_condition(
         right,
         bottom,
     };
-    Ok(wire::SwipeCueRequest {
+    Ok(wire::ActionCueRequest {
         region: Some(bounds(cue.region)),
         clear_region: cue.clear_region.map(bounds),
         rgb,
         avoid_rgb,
         any_color: cue.any_color,
+        on_appearance: cue.on_appearance,
         coverage_percent: cue.coverage_percent,
         timeout_ms: cue.timeout_ms,
         ..Default::default()

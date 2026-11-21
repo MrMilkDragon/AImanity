@@ -115,12 +115,22 @@ impl Avo {
         .await?
     }
 
-    pub(super) fn cue_samples<'a>(&self, media: &'a Media, cue: Arc<Cue>) -> Samples<'a> {
+    pub(super) fn cue_samples<'a>(
+        &self,
+        media: &'a Media,
+        cue: Arc<Cue>,
+        on_appearance: bool,
+    ) -> Samples<'a> {
         let mut frames = self.frame.subscribe();
-        let last = frames.borrow_and_update().clone().map(|d| {
-            let seq = d.sequence();
-            (d, seq)
-        });
+        let last = if on_appearance {
+            frames.mark_changed();
+            None
+        } else {
+            frames.borrow_and_update().clone().map(|d| {
+                let seq = d.sequence();
+                (d, seq)
+            })
+        };
         stream::unfold(
             (frames, last, cue),
             move |(mut frames, mut last, cue)| async move {

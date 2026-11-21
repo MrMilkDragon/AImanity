@@ -53,6 +53,8 @@ struct Ledger {
     #[serde(default)]
     archive_version: u32,
     epoch: u64,
+    #[serde(default)]
+    last_manual_control_epoch: u64,
     controller: String,
     sequence: u64,
     #[serde(default)]
@@ -66,6 +68,7 @@ impl Default for Ledger {
         Self {
             archive_version: action_store::ARCHIVE_VERSION,
             epoch: 1,
+            last_manual_control_epoch: 0,
             controller: "manual".into(),
             sequence: 0,
             revision: 0,
@@ -471,6 +474,7 @@ async fn observe(
             ui_tree,
             screen_sequence: ledger.sequence,
             control_epoch: ledger.epoch,
+            last_manual_control_epoch: ledger.last_manual_control_epoch,
             controller: ledger.controller.clone(),
             root_identity: if runner.root_ready.load(Ordering::Acquire) {
                 "0".into()
@@ -491,19 +495,19 @@ async fn observe(
     }
 }
 
-async fn swipe_cue(
+async fn action_cue(
     State(runner): State<Arc<Runner>>,
     headers: HeaderMap,
     body: Result<Bytes, BytesRejection>,
 ) -> Response {
-    let req: wire::SwipeCueRequest = match request(&runner, &headers, body) {
+    let req: wire::ActionCueRequest = match request(&runner, &headers, body) {
         Ok(req) => req,
         Err(e) => return e.into(),
     };
     if let Err(e) = scope(&runner, &req.phone_id, &req.owner_id) {
         return e.into();
     }
-    match grounding::watch_swipe(&runner, req).await {
+    match grounding::watch_action(&runner, req).await {
         Ok(hit) => pb(StatusCode::OK, hit),
         Err(error) if error == "stale_control" => {
             err(StatusCode::CONFLICT, "stale_control", &error)
@@ -610,6 +614,9 @@ async fn take_control(
     }
     ledger.epoch += 1;
     ledger.controller = request.controller;
+    if ledger.controller == "manual" {
+        ledger.last_manual_control_epoch = ledger.epoch;
+    }
     if let Err(e) = save(&runner, &ledger) {
         return err(StatusCode::INTERNAL_SERVER_ERROR, "persistence_failed", &e);
     }
@@ -1109,7 +1116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     let app = Router::new()
         .route("/v1/observe", post(observe))
-        .route("/v1/swipe-cue", post(swipe_cue))
+        .route("/v1/action-cue", post(action_cue))
         .route("/v1/notifications", post(notifications))
         .route("/v1/orientation", post(read_orientation))
         .route("/v1/cursor", post(cursor::read))
@@ -1285,6 +1292,7 @@ mod observation_tests {
             .unwrap();
         let control = wire::ControlState::decode(bytes).unwrap();
         assert_eq!(control.control_epoch, 3);
+        assert_eq!(runner.ledger.lock().await.last_manual_control_epoch, 2);
         assert_eq!(control.controller, "agent");
     }
 

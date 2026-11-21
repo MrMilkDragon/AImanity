@@ -73,13 +73,13 @@ impl Cue {
 
 pub(super) type Samples<'a> = BoxStream<'a, super::Result<(bool, Instant)>>;
 
-fn samples<'a>(media: &'a Media, cue: Arc<Cue>) -> Samples<'a> {
+fn samples<'a>(media: &'a Media, cue: Arc<Cue>, on_appearance: bool) -> Samples<'a> {
     #[cfg(target_os = "macos")]
     if let Some(avo) = &media.avo {
-        return avo.cue_samples(media, cue);
+        return avo.cue_samples(media, cue, on_appearance);
     }
     let mut last = match &*media.screen.frames.borrow() {
-        hub::Frame::Image(frame) => Some(frame.captured),
+        hub::Frame::Image(frame) if !on_appearance => Some(frame.captured),
         _ => None,
     };
     media
@@ -114,7 +114,7 @@ fn samples<'a>(media: &'a Media, cue: Arc<Cue>) -> Samples<'a> {
 }
 
 pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Response {
-    let Ok(request) = wire::SwipeCueRequest::decode(body) else {
+    let Ok(request) = wire::ActionCueRequest::decode(body) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
     let Some(region) = request.region else {
@@ -139,7 +139,7 @@ pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Respo
             .chain(&request.avoid_rgb)
             .any(|v| *v > 0xffffff)
         || !(1..=100).contains(&request.coverage_percent)
-        || !(100..=5000).contains(&request.timeout_ms)
+        || !(100..=15000).contains(&request.timeout_ms)
     {
         return StatusCode::BAD_REQUEST.into_response();
     }
@@ -167,25 +167,38 @@ pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Respo
         any_color: request.any_color,
     });
     let started = Instant::now();
-    let mut result = wire::SwipeCueMatch::default();
-    let mut frames = samples(&media, cue);
+    let mut result = wire::ActionCueMatch::default();
+    let mut frames = samples(&media, cue, request.on_appearance);
     let observe = async {
         let mut previous = None;
         let max_age = crate::grounding::CUE_MAX_AGE;
         while let Some(sample) = frames.next().await {
             let (matched, at) = sample?;
+            if at.elapsed() > max_age {
+                previous = None;
+                continue;
+            }
             result.frames += 1;
-            let current = matched && at.elapsed() <= max_age;
-            if current
-                && previous.is_some_and(|prior| at.saturating_duration_since(prior) <= max_age)
-            {
+            if request.on_appearance && result.frames == 1 && matched {
+                result.already_present = true;
+                return Ok(());
+            }
+            let first = if request.on_appearance {
+                Some(at)
+            } else {
+                previous.filter(|&prior| at.saturating_duration_since(prior) <= max_age)
+            };
+            if matched && let Some(first) = first {
                 result.matched = true;
                 (result.width, result.height) = (request.source_width, request.source_height);
                 result.observed_at_ms =
                     super::now().saturating_sub(at.elapsed().as_millis() as u64);
+                result.first_match_at_ms = result
+                    .observed_at_ms
+                    .saturating_sub(at.saturating_duration_since(first).as_millis() as u64);
                 return Ok::<_, Box<dyn std::error::Error + Send + Sync>>(());
             }
-            previous = current.then_some(at);
+            previous = matched.then_some(at);
         }
         Err("设备画面已断开".into())
     };
