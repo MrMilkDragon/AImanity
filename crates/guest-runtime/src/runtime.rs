@@ -90,6 +90,7 @@ impl<S: Screen, R: Runner> DesktopRuntime<S, R> {
                 .map(|frame| Response::Bytes(frame.encode_to_vec())),
             "zoom" => imaging::zoom(args).map(Response::Json),
             "files" => self.files(args).map(Response::Json),
+            "applications" => crate::files::applications(&self.settings.home).map(Response::Json),
             _ => Err("未知操作".into()),
         }
     }

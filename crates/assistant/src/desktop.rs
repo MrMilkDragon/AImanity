@@ -100,7 +100,7 @@ async fn helper_bytes(op: &str, args: Value) -> Result<Vec<u8>> {
     )
     .await
 }
-async fn helper(op: &str, args: Value) -> Result<Value> {
+pub(crate) async fn helper(op: &str, args: Value) -> Result<Value> {
     serde_json::from_slice(&helper_bytes(op, args).await?).map_err(|e| e.to_string())
 }
 async fn helper_frame(op: &str, args: Value) -> Result<wire::DesktopBridgeFrame> {

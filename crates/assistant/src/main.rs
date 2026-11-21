@@ -19,6 +19,7 @@ use uuid::Uuid;
 mod agent_loop;
 mod anthropic_messages;
 mod app_learning;
+mod app_mcp;
 mod application_identity;
 mod auth;
 mod backup;
@@ -238,6 +239,13 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
     let root = std::env::var_os("AI_PHONE_PROJECT_ROOT")
         .map(PathBuf::from)
         .unwrap_or(std::env::current_dir()?);
+    if let [flag, app_id] = arguments.as_slice()
+        && flag == "--app-mcp"
+    {
+        let app_id = app_id.to_str().ok_or("invalid application ID")?;
+        let db = database::connect(&root, false).await?;
+        return app_mcp::stdio(&db, app_id).await;
+    }
     if arguments
         .first()
         .is_some_and(|argument| argument == "--prepare-database")
@@ -334,6 +342,7 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
         }
         tokio::spawn(worker::work(tasks.clone()));
         tokio::spawn(proactive::work(tasks.clone()));
+        tokio::spawn(app_mcp::work(tasks.clone()));
         tokio::spawn(device_exchange::work(tasks));
     });
     tokio::spawn(location::work(app.clone()));

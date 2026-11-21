@@ -98,8 +98,8 @@
     },
     {
       "path": "Cargo.lock",
-      "size": 138828,
-      "sha256": "5a49d489c7ecf4025dfc9b72c834fcf1b60480e2324d263d2eae1ad7965b42e7"
+      "size": 141636,
+      "sha256": "c3dddc8f785f9c5d9b6e567045b19e8e8944f4eb6c7fd047fa923dea79d095b1"
     },
     {
       "path": "Cargo.toml",
@@ -143,8 +143,8 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 15353,
-      "sha256": "b380954c4aff3aded50d946b5ff9c294d2b03065e9bb69bf38840bfa87c7fcc5"
+      "size": 15533,
+      "sha256": "cb75e879fefbfacbac85b03e1c3730b6b11192679b1db7e38e3e5208eb86bac3"
     },
     {
       "path": "ai-phone",
@@ -708,8 +708,8 @@
     },
     {
       "path": "crates/assistant/Cargo.toml",
-      "size": 2006,
-      "sha256": "9e3784246844d26854a9c339590a8721b69a2b8c63a315af91575899960ac314"
+      "size": 2111,
+      "sha256": "cd8caff9f42770dca0d60f67f6707fb996d01bb4f96a075b37307a6117b8287e"
     },
     {
       "path": "crates/assistant/build.rs",
@@ -972,6 +972,11 @@
       "sha256": "0990308a471ce0cadf4c50f1ea6d959917723e413524d823907d19eb372aa8ee"
     },
     {
+      "path": "crates/assistant/migrations/0053_app_mcp.sql",
+      "size": 1407,
+      "sha256": "e387571cd8221f9cff3132b08c1699feffb330926108dd3c363741712091b217"
+    },
+    {
       "path": "crates/assistant/src/agent_loop.rs",
       "size": 15387,
       "sha256": "af8d7f4e707ef7324c97f99371935507719de3f90af75b160bdbc189dfa545c7"
@@ -995,6 +1000,26 @@
       "path": "crates/assistant/src/app_learning.rs",
       "size": 23742,
       "sha256": "5e8fe15ffc6dd271f32c45297be75a9d08a608cf67779b48a0b7bbf89a32e48a"
+    },
+    {
+      "path": "crates/assistant/src/app_mcp/author.rs",
+      "size": 12068,
+      "sha256": "a5a330598a343851215a6342bb19b72a4c9b622c2a0d677ff7f2c4d05ec7512e"
+    },
+    {
+      "path": "crates/assistant/src/app_mcp/inventory.rs",
+      "size": 3584,
+      "sha256": "6393b3e6ad1aa70b57337a6d1f5b1603f5adc70beb883cf92cedce7c8faf5050"
+    },
+    {
+      "path": "crates/assistant/src/app_mcp/program.rs",
+      "size": 6922,
+      "sha256": "ba7e87de757d8a0dae867cce3f5c3e606030e3c2b684f2383f625487c61ce987"
+    },
+    {
+      "path": "crates/assistant/src/app_mcp.rs",
+      "size": 6616,
+      "sha256": "aad2f5976b74824084e1eee852cddfd00e1f95c6e1faae533f8f500e22c226a2"
     },
     {
       "path": "crates/assistant/src/application_identity.rs",
@@ -1143,8 +1168,8 @@
     },
     {
       "path": "crates/assistant/src/desktop.rs",
-      "size": 86238,
-      "sha256": "c0724621dd970a66512d9c5b40059f1deb08aa2b4e579d93361c3804d6625972"
+      "size": 86249,
+      "sha256": "37b44858a187b57784ff29a3141b928d2b1d7d733d84d03773da33329b4f7b50"
     },
     {
       "path": "crates/assistant/src/device_exchange/kafka.rs",
@@ -1243,8 +1268,8 @@
     },
     {
       "path": "crates/assistant/src/http.rs",
-      "size": 55437,
-      "sha256": "33152ce98f593cc065cab7ce24eb9ad72266f8747aa1ff0d07ccbed6acfa6400"
+      "size": 55498,
+      "sha256": "0ee443b8c150ec52d405a5f05c78d2449b0c68cfe25c8dbab9ad618c8dac81c0"
     },
     {
       "path": "crates/assistant/src/location.rs",
@@ -1263,8 +1288,8 @@
     },
     {
       "path": "crates/assistant/src/main.rs",
-      "size": 14101,
-      "sha256": "9a3303d665fda1ac5a07179ea645d33e6f74c440a326a765ea797aadf1b91ca9"
+      "size": 14436,
+      "sha256": "b291f61d018911888699a3c6a3051fa8ebf451a3fe7b1c5b1ccd326417513298"
     },
     {
       "path": "crates/assistant/src/model_adapter.rs",
@@ -1368,8 +1393,8 @@
     },
     {
       "path": "crates/assistant/src/run_signals.rs",
-      "size": 7003,
-      "sha256": "8c8dfa1cc972a36536924583f0f17e910858f96fde51960ba86f3b5e236021b2"
+      "size": 7130,
+      "sha256": "e6d23ce76ea50c93d83aa671d0691c69367e173eaaf70f5ecd0804fe16c506e9"
     },
     {
       "path": "crates/assistant/src/settings.rs",
@@ -1389,7 +1414,7 @@
     {
       "path": "crates/assistant/src/skill_resources.rs",
       "size": 6518,
-      "sha256": "e68a530a0e7e38176713bb8285e274018661846fd558915c0182b77362952c00"
+      "sha256": "e9a4d2fb6cb0e6a1ed2b29903568a27200bcfecf0b0d61c9dbf114a3a15cf860"
     },
     {
       "path": "crates/assistant/src/speech/activity.rs",
@@ -1468,8 +1493,8 @@
     },
     {
       "path": "crates/assistant/src/workbench.rs",
-      "size": 52819,
-      "sha256": "c191ebed87e07c1a9b89ae8be2f7f7652e775d17e72eceb81595b97ec40034c5"
+      "size": 52979,
+      "sha256": "ecf9639413cdb4535656d676f8911676d5dc08e00e23373178d306cb6b286e60"
     },
     {
       "path": "crates/assistant/src/worker/action_cue.rs",
@@ -1493,8 +1518,8 @@
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 263402,
-      "sha256": "d38fcf5dc5c508b27341a8dc03ce431ffdf42f8e4f33ce18bb9b6673bc0a0d62"
+      "size": 264545,
+      "sha256": "077c32afad9f70279a93d2fbd0d6ad61c499531700bdd3c7bdc1313aa387a103"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -1538,8 +1563,8 @@
     },
     {
       "path": "crates/guest-runtime/src/files.rs",
-      "size": 1404,
-      "sha256": "d7eea344de77314de54f4ae2741b2550e92f5870af6c904fb6c37e8e0f92e639"
+      "size": 3027,
+      "sha256": "30487b62a3722e18fe6ee2bd34bdf2419884938042044363ab631dfc157041f1"
     },
     {
       "path": "crates/guest-runtime/src/home_identity.rs",
@@ -1618,8 +1643,8 @@
     },
     {
       "path": "crates/guest-runtime/src/runtime.rs",
-      "size": 6690,
-      "sha256": "cda664e3b8d181aa94ee0782195cc7fecbae1b28be70fe529793c5ba56cd738b"
+      "size": 6789,
+      "sha256": "893729a11aa29bceac2e30f39c464475d62e7b7841923fec021b8d3c5bbcb70e"
     },
     {
       "path": "crates/guest-runtime/src/screen.rs",
@@ -2443,13 +2468,13 @@
     },
     {
       "path": "docs/public/architecture.en.md",
-      "size": 8173,
-      "sha256": "d0c8101baeb6e19d6886460c07b67b9bebe169a9209a8a87d435f6aa22fbb514"
+      "size": 8679,
+      "sha256": "3807a98a42e32fee1347e12301cdd8d44ff7b9f6bc444d053aba5e272a9677ff"
     },
     {
       "path": "docs/public/architecture.zh-CN.md",
-      "size": 7386,
-      "sha256": "0de58035f4cc2c8f85e42c90f6428f3953e48b1b32bd6912bc81d01728a9cf0a"
+      "size": 7873,
+      "sha256": "f8d50540144a35aeaa7f7e9d0ffb2d96f1e5b6037f9df43b0c156394bcdf4770"
     },
     {
       "path": "docs/public/autonomous-exploration.md",
@@ -2945,6 +2970,11 @@
       "path": "docs/public/licenses/native/ff92bed461f50338-r-efi-AUTHORS",
       "size": 3693,
       "sha256": "ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7"
+    },
+    {
+      "path": "docs/public/licenses/native/rhai-LICENSE-MIT.txt",
+      "size": 1023,
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
     },
     {
       "path": "docs/public/licenses/native/whisper-rs-LICENSE",

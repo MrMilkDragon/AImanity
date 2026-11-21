@@ -106,6 +106,7 @@ async fn finish_attempt(
     if result.is_err() {
         app.run_signals.chat_changed(conversation);
     }
+    app.run_signals.app_tools_activity.send_replace(());
     if trace != "waiting" {
         app.run_signals.host.revoke(id);
         app.run_signals.channel_update.notify_one();
@@ -123,6 +124,7 @@ pub async fn work(app: Shared) {
     let mut attempts = tokio::task::JoinSet::new();
     loop {
         if let Ok(Some((id, _))) = claim_due_run(&app).await {
+            app.run_signals.app_tools_activity.send_replace(());
             let cancel = CancellationToken::new();
             app.active.lock().await.insert(id, cancel.clone());
             attempts.spawn(attempt(app.clone(), id, cancel));
@@ -3389,10 +3391,19 @@ async fn respond(
     model_replay_boundary: usize,
     timing: &mut crate::model_timing::Timing,
 ) -> Result<Vec<Value>, String> {
-    let (config, authority) = tokio::try_join!(
-        crate::settings::for_run(app, run),
-        execution_policy::owner_command(&app.db, run),
-    )?;
+    let application = matches!(scope, ModelTools::All)
+        .then(|| current_learning_application(context))
+        .flatten();
+    let (settings, app_tool) = tokio::join!(
+        async {
+            tokio::try_join!(
+                crate::settings::for_run(app, run),
+                execution_policy::owner_command(&app.db, run),
+            )
+        },
+        crate::app_mcp::model_tool(&app.db, application.as_deref())
+    );
+    let (config, authority) = settings?;
     let grant = app.run_signals.host.session(run);
     let host = grant.is_some();
     let projected = crate::model_context::scope_host_images(
@@ -3414,6 +3425,9 @@ async fn respond(
     }
     input.push(json!({"role":"system","content":[{"type":"input_text","text":guidance}]}));
     let mut tools = execution_tools(authority);
+    if let Some(tool) = app_tool {
+        tools.as_array_mut().expect("tool catalog").push(tool);
+    }
     match scope {
         ModelTools::KnowledgeReview => tools.as_array_mut().unwrap().retain(|tool| {
             crate::proactive::knowledge_review::allows(tool["name"].as_str().unwrap())
@@ -3535,6 +3549,7 @@ async fn recorded_tool(
         "phone_key" => "手机按键",
         "skill_read" => "读取 Skill",
         "skill_list" => "查找 Skill",
+        name if name.starts_with("app_mcp_") => "处理应用数据",
         "skill_install" => "安装 Skill",
         "skill_create" => "创建并启用 Skill",
         "skill_edit" => "编辑 Skill",
@@ -3714,6 +3729,12 @@ async fn recorded_tool(
 
 // Reads can be restarted. The few writes here deduplicate on local_action_id.
 fn can_restart_tool(call: &Value) -> bool {
+    if call["name"]
+        .as_str()
+        .is_some_and(|name| name.starts_with("app_mcp_"))
+    {
+        return true;
+    }
     matches!(
         call["name"].as_str().unwrap_or(""),
         "phone_observe"
@@ -3777,6 +3798,12 @@ async fn tool(
     let arguments: Value =
         serde_json::from_str(call["arguments"].as_str().unwrap_or("{}")).unwrap_or(json!({}));
     let read_only_notification = crate::proactive::guard_tool(app, run, name).await?;
+    if let Some(tool_name) = name.strip_prefix("app_mcp_") {
+        let application = current_learning_application(context).ok_or("缺少当前应用的实际观察")?;
+        let value =
+            crate::app_mcp::call(&app.db, &application, tool_name, &arguments, Some(run)).await?;
+        return Ok(json!([{"type":"input_text","text":json!({"derived_data":value}).to_string()}]));
+    }
     let command = execution_policy::command_tool(name);
     let authority = if command {
         execution_policy::owner_command(&app.db, run).await?

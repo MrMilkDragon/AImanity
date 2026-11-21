@@ -3,6 +3,7 @@ use crate::*;
 pub(crate) mod knowledge_images;
 #[path = "skill_resources.rs"]
 mod skill_resources;
+pub(crate) use skill_resources::commit as commit_skill;
 
 #[cfg(test)]
 #[path = "persistence_tests.rs"]
@@ -196,6 +197,9 @@ async fn skill_edit(
     let previous = skill(&row);
     if previous.builtin {
         return Err("内置Skill不可修改".into());
+    }
+    if previous.source == "agent-mcp" {
+        crate::app_mcp::verify_document(&input.content)?;
     }
     if !crate::request_digest::matches(
         &input.expected_content_version,

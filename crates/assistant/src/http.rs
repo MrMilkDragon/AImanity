@@ -446,6 +446,7 @@ async fn send_input(
         tx.commit().await?;
         if local_run { app.run_signals.host.bind(request_id, run, use_host_desktop); }
         app.run_signals.queue.notify_one();
+        app.run_signals.app_tools_activity.send_replace(());
         app.run_signals.input.notify_waiters();
         if let Some(voice) = &voice {
             voice.release_activity(&app.run_signals.speech, id);

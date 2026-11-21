@@ -128,7 +128,7 @@ pub(super) async fn publish(db: &PgPool, root: &Path, id: &str) -> Result<PgRow,
     Ok(row)
 }
 
-pub(super) async fn commit(
+pub(crate) async fn commit(
     tx: Transaction<'_, Postgres>,
     db: &PgPool,
     root: &Path,
