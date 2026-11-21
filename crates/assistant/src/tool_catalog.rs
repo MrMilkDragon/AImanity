@@ -60,7 +60,7 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_observe",
-            "读取当前手机画面、前台应用及控件ID。always 补充文字，motion 直接观察实时游戏画面。",
+            "读取当前手机画面、前台应用及控件ID。always 补充文字。游戏、地图和连续变化的画布用 motion 看实景，再滑动或拖动。",
             json!({"include_ui_tree":{"type":"boolean"},"ocr_mode":{"type":"string","enum":["auto","always","motion"]}}),
             vec![],
         ),
@@ -96,16 +96,18 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "phone_swipe",
-            "在画布上滑动。实时游戏可提前用 when 指定观察区域和障碍颜色，连续两帧命中即滑动一次。列表用 phone_scroll。",
+            "在已经看清的画布上直接滑动。等待将要出现的视觉信号时才使用 when，连续两帧命中即滑动一次。列表用 phone_scroll。",
             json!({"x1":{"type":"integer"},"y1":{"type":"integer"},"x2":{"type":"integer"},"y2":{"type":"integer"},"duration_ms":{"type":"integer"},"fallback_reason":{"type":"string"},
                 "when":{"type":"object","properties":{
                     "region":{"type":"array","description":"最近截图中的 [左,上,右,下] 像素","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
-                    "colors":{"type":"array","description":"障碍的 #RRGGBB 颜色","items":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"minItems":1,"maxItems":4},
-                    "clear_region":{"type":"array","description":"可选的目标轨道区域，同一帧内任何障碍色达标时暂停滑动","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
+                    "sample_points":{"type":"array","description":"在最近真实截图中点选目标特征色 [x,y]，与 colors 合计一至四个","items":{"type":"array","items":{"type":"integer","minimum":0},"minItems":2,"maxItems":2},"minItems":1,"maxItems":4},
+                    "colors":{"type":"array","description":"已知的 #RRGGBB 颜色，也可只用 sample_points","items":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"minItems":1,"maxItems":4},
+                    "clear_region":{"type":"array","description":"目标区域 [左,上,右,下]，有阻挡时不滑动","items":{"type":"integer","minimum":0},"minItems":4,"maxItems":4},
+                    "avoid_points":{"type":"array","description":"从最近截图的其他阻挡物取色，clear_region 会同时检查触发色和这些颜色","items":{"type":"array","items":{"type":"integer","minimum":0},"minItems":2,"maxItems":2},"minItems":1,"maxItems":4},
                     "any_color":{"type":"boolean","description":"任意一种颜色达标时响应，默认要求每种达标"},
                     "coverage_percent":{"type":"integer","description":"每种颜色分别占区域的最小百分比","minimum":1,"maximum":100},
                     "timeout_ms":{"type":"integer","minimum":100,"maximum":5000}
-                },"required":["region","colors","coverage_percent","timeout_ms"],"additionalProperties":false}}),
+                },"required":["region","coverage_percent","timeout_ms"],"additionalProperties":false}}),
             vec!["x1", "y1", "x2", "y2", "duration_ms", "fallback_reason"],
         ),
         function(

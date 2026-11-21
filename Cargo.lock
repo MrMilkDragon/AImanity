@@ -220,6 +220,7 @@ dependencies = [
  "tonic-prost",
  "tonic-prost-build",
  "uuid",
+ "xxhash-rust",
 ]
 
 [[package]]

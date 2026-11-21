@@ -98,8 +98,8 @@
     },
     {
       "path": "Cargo.lock",
-      "size": 138812,
-      "sha256": "4293a5c4dd498027c003ce596ba93bf9a47c6cb9381e0d40ab6b92648e2f90ff"
+      "size": 138828,
+      "sha256": "5a49d489c7ecf4025dfc9b72c834fcf1b60480e2324d263d2eae1ad7965b42e7"
     },
     {
       "path": "Cargo.toml",
@@ -1443,8 +1443,8 @@
     },
     {
       "path": "crates/assistant/src/tool_catalog.rs",
-      "size": 19205,
-      "sha256": "3c004b094c740fceb9705a9fb5349c572c4e6cfbcd70606f58a8dc104ccd0039"
+      "size": 19802,
+      "sha256": "9e5609c5108cfd9615055bffb1ce27d1b3efc236d41a78fa543317537780dd67"
     },
     {
       "path": "crates/assistant/src/voice_input.rs",
@@ -1472,14 +1472,19 @@
       "sha256": "13bed3c46780569b98be6dc9fbc06a621a06f5f62ae0f4eac1dd05b9b89bb89e"
     },
     {
+      "path": "crates/assistant/src/worker/swipe_cue.rs",
+      "size": 4809,
+      "sha256": "6f2285ff2c2b507bd1e1bbd90eccde86ca734065197ff8b4a1e89051500ee557"
+    },
+    {
       "path": "crates/assistant/src/worker/work_intent.rs",
       "size": 9628,
       "sha256": "e1e8fa28226984318d3738db8548d996f7985dd08b4d8d574bf7f98eaf9c6e5a"
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 253236,
-      "sha256": "e2cd361768d895cd6e1e1a26d0b6614e7e1eb8b59b81971d1bd168a9ac215421"
+      "size": 253423,
+      "sha256": "b23afe9bcb9e9b0f5dd478c5d572c70f10a3f9f334088c2130879de5bace80ab"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -2123,8 +2128,8 @@
     },
     {
       "path": "crates/phone-runner/Cargo.toml",
-      "size": 1242,
-      "sha256": "7656489d5abe735f8ae5b8d82eea6bfff214c95cff841045440ef006352a9d35"
+      "size": 1301,
+      "sha256": "91643cf3dce58004d5a8475e51233f4bdcd45b441ceea1109a1b6744e9524df6"
     },
     {
       "path": "crates/phone-runner/build.rs",
@@ -2153,8 +2158,8 @@
     },
     {
       "path": "crates/phone-runner/src/grounding.rs",
-      "size": 42692,
-      "sha256": "f1da923fe7d91df6a8c5dd54ff21654f66bf4c6b9ebcebb9021e968dc9e45ec6"
+      "size": 43802,
+      "sha256": "a8ce0da0d3b06d916e1f59288417f63b996e4e2b39077507cda6eefb700ce280"
     },
     {
       "path": "crates/phone-runner/src/location.rs",
@@ -2163,8 +2168,8 @@
     },
     {
       "path": "crates/phone-runner/src/main.rs",
-      "size": 69926,
-      "sha256": "fadfea458bebf27b1f04bb6d181e2985dae9c72687efe719c6abcbf5e8778282"
+      "size": 71878,
+      "sha256": "7c64240fbb15db34f283637c710eec766ce3c67fb3a696a643fc9f35478c1cd5"
     },
     {
       "path": "crates/phone-runner/src/media/actions.rs",
@@ -2178,13 +2183,13 @@
     },
     {
       "path": "crates/phone-runner/src/media/avo.rs",
-      "size": 14495,
-      "sha256": "7d875c464fe268ee22fa96380f05f0811b5db996981505664f913bbabb2e2346"
+      "size": 14978,
+      "sha256": "4710b217c78ea335734736ba77b7c5aaebb2e6061dcc0307d2ccaa1ea57797e5"
     },
     {
       "path": "crates/phone-runner/src/media/cue.rs",
-      "size": 7599,
-      "sha256": "d58017d6390d114d500f10e89737ff3de5361b718774af4003613b0333a59ac5"
+      "size": 8612,
+      "sha256": "f94156560c1dcca209f5fdea84ca2d88caad9d4abbae0a97eea577af3e539954"
     },
     {
       "path": "crates/phone-runner/src/media/desktop.rs",
@@ -3393,8 +3398,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/phone_runtime.proto",
-      "size": 5205,
-      "sha256": "87e1ef3d3c85f6fb43d2f349e30a36c7e4a3f7256091bb5eec16b112e182265b"
+      "size": 5239,
+      "sha256": "9b4cfcbcbb279062de87517ffb405dcc09aeec81f6b3858f3b19087aee8cdc71"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/proactive.proto",
@@ -3608,8 +3613,8 @@
     },
     {
       "path": "skills/builtin/phone-use/SKILL.md",
-      "size": 10613,
-      "sha256": "1318e7a1afe852055a9258c206e6bec47c8528b1f48e2c15882fcb1c5a0178a2"
+      "size": 10685,
+      "sha256": "815d2b071671c4e58558725b808c5579e5e19d0f79a633f1e58ac33fe971edfd"
     },
     {
       "path": "skills/builtin/wechat/SKILL.md",

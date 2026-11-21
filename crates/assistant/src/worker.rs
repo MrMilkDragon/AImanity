@@ -8,6 +8,7 @@ use sqlx::{Row, types::Json};
 mod execution_policy;
 use execution_policy::{execution_tools, gui_execution, initial_observation, lookup_evidence};
 mod model_trace;
+mod swipe_cue;
 mod work_intent;
 
 #[cfg(test)]
@@ -1098,13 +1099,15 @@ fn grounding_metadata(observation: &wire::DeviceObservation) -> Value {
         "grounding_note":observation.grounding_note,"scroll_feedback":observation.scroll_feedback,
         "elements":observation.elements.iter().map(|e|json!({"id":e.id,"text":e.text,"resource_id":e.resource_id,"bounds":e.bounds.as_ref().map(|b|vec![b.left,b.top,b.right,b.bottom]),"clickable":e.clickable,"scrollable":e.scrollable,"editable":e.editable,"source":e.source,"confidence":e.confidence})).collect::<Vec<_>>()})
 }
-fn latest_grounding(context: &[Value]) -> Option<Value> {
+fn latest_phone_observation(context: &[Value]) -> Option<&Value> {
     context
         .iter()
         .skip(evidence_start(context))
         .rev()
         .find(|call| phone_observation(call, context))
-        .and_then(|call| tool_output(context, call))?
+}
+fn latest_grounding(context: &[Value]) -> Option<Value> {
+    tool_output(context, latest_phone_observation(context)?)?
         .as_array()?
         .iter()
         .filter_map(|part| part["text"].as_str())
@@ -1288,7 +1291,13 @@ fn queue_post_action_observation(
     }) {
         return false;
     }
-    let arguments = if receipt.is_some_and(|v| v["cue"]["matched"] == true) {
+    let surface_gesture = matches!(call["name"].as_str(), Some("phone_swipe" | "phone_drag"));
+    let motion = receipt.is_some_and(|v| v["cue"]["matched"] == true)
+        || surface_gesture
+            && latest_phone_observation(context)
+                .and_then(|read| serde_json::from_str::<Value>(read["arguments"].as_str()?).ok())
+                .is_some_and(|args| args["ocr_mode"] == "motion");
+    let arguments = if motion {
         r#"{"ocr_mode":"motion"}"#
     } else {
         "{}"
@@ -4254,47 +4263,13 @@ async fn tool(
     if let Action::Swipe(swipe) = &action
         && let Some(when) = arguments.get("when")
     {
-        #[derive(serde::Deserialize)]
-        struct Cue {
-            region: [u32; 4],
-            clear_region: Option<[u32; 4]>,
-            colors: Vec<String>,
-            #[serde(default)]
-            any_color: bool,
-            coverage_percent: u32,
-            timeout_ms: u32,
-        }
-        let cue: Cue =
-            serde::Deserialize::deserialize(when).map_err(|_| "游戏观察区域或颜色无效")?;
-        let bounds = |[left, top, right, bottom]: [u32; 4]| wire::PhoneBounds {
-            left,
-            top,
-            right,
-            bottom,
-        };
-        let rgb = cue
-            .colors
-            .iter()
-            .map(|s| {
-                s.strip_prefix('#')
-                    .filter(|v| v.len() == 6)
-                    .and_then(|v| u32::from_str_radix(v, 16).ok())
-                    .ok_or("颜色格式应为 #RRGGBB")
-            })
-            .collect::<Result<_, _>>()?;
         let req = wire::SwipeCueRequest {
             phone_id: phone_id.clone(),
             owner_id: "local-user".into(),
             control_epoch: *epoch,
             observation_id,
             swipe: Some(*swipe),
-            region: Some(bounds(cue.region)),
-            clear_region: cue.clear_region.map(bounds),
-            rgb,
-            any_color: cue.any_color,
-            coverage_percent: cue.coverage_percent,
-            timeout_ms: cue.timeout_ms,
-            ..Default::default()
+            ..swipe_cue::visual_condition(when, context).await?
         };
         let hit: wire::SwipeCueMatch = tokio::select! { biased;
             _ = cancel.cancelled() => return Err("canceled".into()),
@@ -4702,6 +4677,27 @@ mod verification_tests {
             &json!({"element_id":"n1"})
         ));
     }
+    #[test]
+    fn motion_swipe_keeps_motion_feedback_until_an_ordinary_observation() {
+        let mut context = observe("canvas");
+        context[0]["arguments"] = json!(r#"{"ocr_mode":"motion"}"#);
+        for (id, expected) in [("on-canvas", Some("motion")), ("in-menu", None)] {
+            let performed = action(id, "phone_swipe", json!({}));
+            context.extend(performed.clone());
+            let mut pending = Vec::new();
+            assert!(queue_post_action_observation(
+                &performed[0],
+                Some(&json!({"success":true})),
+                &mut context,
+                &mut pending
+            ));
+            let args: Value =
+                serde_json::from_str(pending[0]["arguments"].as_str().unwrap()).unwrap();
+            assert_eq!(args["ocr_mode"].as_str(), expected);
+            context.extend(observe("menu"));
+        }
+    }
+
     #[test]
     fn successful_gui_actions_queue_one_durable_read_without_a_model_turn() {
         for name in [

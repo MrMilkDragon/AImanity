@@ -11,7 +11,7 @@ use tokio::time::timeout;
 pub(super) struct Cue {
     source: (u32, u32),
     region: wire::PhoneBounds,
-    clear_region: Option<wire::PhoneBounds>,
+    clear_region: Option<(wire::PhoneBounds, Vec<[u8; 3]>)>,
     palette: Vec<[u8; 3]>,
     percent: u32,
     any_color: bool,
@@ -23,10 +23,11 @@ impl Cue {
         if u64::from(w) * u64::from(self.source.1) != u64::from(h) * u64::from(self.source.0) {
             return false;
         }
-        self.occupied(self.region, size, &pixel, self.any_color)
+        self.occupied(self.region, size, &pixel, &self.palette, self.any_color)
             && self
                 .clear_region
-                .is_none_or(|area| !self.occupied(area, size, &pixel, true))
+                .as_ref()
+                .is_none_or(|(area, colors)| !self.occupied(*area, size, &pixel, colors, true))
     }
 
     fn occupied(
@@ -34,6 +35,7 @@ impl Cue {
         area: wire::PhoneBounds,
         (w, h): (u32, u32),
         pixel: &impl Fn(u32, u32) -> [u8; 3],
+        colors: &[[u8; 3]],
         any: bool,
     ) -> bool {
         let scale =
@@ -45,12 +47,12 @@ impl Cue {
         }
         let dx = (x.end - x.start).div_ceil(40) as usize;
         let dy = (y.end - y.start).div_ceil(40) as usize;
-        let mut hits = [0; 4];
+        let mut hits = [0; 8];
         let mut total = 0;
         for row in y.step_by(dy) {
             for col in x.clone().step_by(dx) {
                 let p = pixel(col, row);
-                for (i, color) in self.palette.iter().enumerate() {
+                for (i, color) in colors.iter().enumerate() {
                     if p.iter().zip(color).all(|(a, b)| a.abs_diff(*b) <= 24) {
                         hits[i] += 1;
                     }
@@ -58,7 +60,7 @@ impl Cue {
                 total += 1;
             }
         }
-        let mut matches = hits[..self.palette.len()]
+        let mut matches = hits[..colors.len()]
             .iter()
             .map(|h| h * 100 >= total * self.percent);
         if any {
@@ -129,24 +131,38 @@ pub(super) async fn watch(State(media): State<Arc<Media>>, body: Bytes) -> Respo
                     || r.bottom > request.source_height
             })
         || !(1..=4).contains(&request.rgb.len())
-        || request.rgb.iter().any(|v| *v > 0xffffff)
+        || request.avoid_rgb.len() > 4
+        || (!request.avoid_rgb.is_empty() && request.clear_region.is_none())
+        || request
+            .rgb
+            .iter()
+            .chain(&request.avoid_rgb)
+            .any(|v| *v > 0xffffff)
         || !(1..=100).contains(&request.coverage_percent)
         || !(100..=5000).contains(&request.timeout_ms)
     {
         return StatusCode::BAD_REQUEST.into_response();
     }
+    let colors = |values: &[u32]| {
+        values
+            .iter()
+            .map(|v| {
+                let [_, r, g, b] = v.to_be_bytes();
+                [r, g, b]
+            })
+            .collect::<Vec<_>>()
+    };
+    let palette = colors(&request.rgb);
+    let clear_region = request.clear_region.map(|area| {
+        let mut blocked = palette.clone();
+        blocked.extend(colors(&request.avoid_rgb));
+        (area, blocked)
+    });
     let cue = Arc::new(Cue {
         source: (request.source_width, request.source_height),
         region,
-        clear_region: request.clear_region,
-        palette: request
-            .rgb
-            .into_iter()
-            .map(|rgb| {
-                let [_, r, g, b] = rgb.to_be_bytes();
-                [r, g, b]
-            })
-            .collect(),
+        clear_region,
+        palette,
         percent: request.coverage_percent,
         any_color: request.any_color,
     });
@@ -202,13 +218,24 @@ mod tests {
         };
         let window = |x, _| if x < 4 { [255, 0, 0] } else { [0, 0, 0] };
         assert!(cue.matches((8, 8), window));
-        cue.clear_region = Some(wire::PhoneBounds {
+        let destination = wire::PhoneBounds {
             left: 0,
             top: 5,
             right: 2,
             bottom: 7,
-        });
+        };
+        cue.clear_region = Some((destination, cue.palette.clone()));
         assert!(!cue.matches((8, 8), window));
+        let maroon_car = |x, y| if x < 2 { [125, 43, 61] } else { window(x, y) };
+        assert!(cue.matches((8, 8), maroon_car));
+        cue.clear_region.as_mut().unwrap().1.push([125, 43, 61]);
+        assert!(!cue.matches((8, 8), maroon_car));
+        assert!(!cue.matches((8, 8), window));
+        assert!(cue.matches((8, 8), |x, y| if x < 2 {
+            [50, 80, 60]
+        } else {
+            window(x, y)
+        }));
         cue.clear_region = None;
         cue.percent = 51;
         assert!(!cue.matches((8, 8), window));

@@ -2,8 +2,14 @@ use super::cue::{Cue, Samples};
 use super::{Arc, Bytes, Duration, Media, Ordering, Result, now};
 use axum::body::Body;
 use futures_util::{StreamExt, stream};
-use image::{ImageBuffer, RgbImage, codecs::jpeg::JpegEncoder};
-use std::{io, io::Cursor, path::PathBuf};
+use image::{
+    ExtendedColorType, ImageBuffer, ImageEncoder, RgbImage,
+    codecs::{
+        jpeg::JpegEncoder,
+        png::{CompressionType, FilterType, PngEncoder},
+    },
+};
+use std::{io, path::PathBuf};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::UnixStream,
@@ -96,9 +102,15 @@ impl Avo {
         let rotation = media.orientation().await?;
         tokio::task::spawn_blocking(move || {
             let (image, captured) = frame.read(rotation)?;
-            let mut png = Cursor::new(Vec::new());
-            image.write_to(&mut png, image::ImageFormat::Png)?;
-            Ok((png.into_inner(), captured))
+            let mut png = Vec::new();
+            PngEncoder::new_with_quality(&mut png, CompressionType::Fast, FilterType::Paeth)
+                .write_image(
+                    image.as_raw(),
+                    image.width(),
+                    image.height(),
+                    ExtendedColorType::Rgb8,
+                )?;
+            Ok((png, captured))
         })
         .await?
     }
@@ -338,12 +350,15 @@ impl Display {
         } else {
             [0, 1, 2]
         };
-        let rgb = raw
-            .chunks_exact(4)
-            .flat_map(|p| [p[order[0]], p[order[1]], p[order[2]]])
-            .collect();
+        let pixels = (self.width * self.height) as usize;
+        for i in 0..pixels {
+            let source = &raw[i * 4..i * 4 + 4];
+            let rgb = [source[order[0]], source[order[1]], source[order[2]]];
+            raw[i * 3..i * 3 + 3].copy_from_slice(&rgb);
+        }
+        raw.truncate(pixels * 3);
         let image =
-            ImageBuffer::from_raw(self.width, self.height, rgb).ok_or("invalid RGB frame")?;
+            ImageBuffer::from_raw(self.width, self.height, raw).ok_or("invalid RGB frame")?;
         let portrait = self.width < self.height;
         Ok((
             match rotation {

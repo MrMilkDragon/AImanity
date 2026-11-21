@@ -1728,6 +1728,61 @@ printf 'home-completed'
     }
 
     #[tokio::test]
+    async fn motion_swipe_uses_visible_frame_and_rechecks_after_a_delay() {
+        let fixture = Fixture::new();
+        let image = fixture.0.join("surface.png");
+        image::RgbImage::new(64, 128).save(&image).unwrap();
+        let mut runner = fixture.runner(&format!(
+            "#!/bin/sh\ncase \"$6\" in *dumpsys*) echo 'mCurrentFocus=Window{{1 u0 test.canvas/.View}}';; *screencap*) cat {};; *) exit 1;; esac",
+            guest_quote(image.to_str().unwrap())
+        ));
+        runner.adb_media = true;
+        let frame = grounding::observe(
+            &runner,
+            &wire::DeviceRequest {
+                include_elements: true,
+                ocr_mode: "motion".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let request = wire::DeviceActionRequest {
+            observation_id: frame.observation_id,
+            action: Some(wire::device_action_request::Action::Swipe(
+                wire::SwipeAction {
+                    x1: 25,
+                    y1: 95,
+                    x2: 25,
+                    y2: 45,
+                    duration_ms: 80,
+                },
+            )),
+            ..Default::default()
+        };
+        let ledger = runner.ledger.lock().await;
+        assert!(
+            grounding::resolve(&runner, &request, ledger.epoch, ledger.revision)
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(grounding::CUE_MAX_AGE).await;
+        assert!(
+            grounding::resolve(&runner, &request, ledger.epoch, ledger.revision)
+                .await
+                .is_ok()
+        );
+        image::RgbImage::from_pixel(64, 128, image::Rgb([255, 255, 255]))
+            .save(image)
+            .unwrap();
+        assert!(
+            grounding::resolve(&runner, &request, ledger.epoch, ledger.revision)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
     async fn live_native_hierarchy_avoids_the_legacy_idle_wait() {
         let fixture = Fixture::new();
         let legacy = fixture.0.join("legacy-called");

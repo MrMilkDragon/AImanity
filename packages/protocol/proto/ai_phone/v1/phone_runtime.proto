@@ -81,6 +81,7 @@ message SwipeCueRequest {
   uint32 source_height = 11;
   bool any_color = 12;
   PhoneBounds clear_region = 13;
+  repeated uint32 avoid_rgb = 14;
 }
 message SwipeCueMatch {
   string observation_id = 1;

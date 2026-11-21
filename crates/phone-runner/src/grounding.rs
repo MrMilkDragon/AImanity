@@ -3,6 +3,7 @@ use std::{
     collections::{HashSet, VecDeque},
     time::Instant,
 };
+use xxhash_rust::xxh3::xxh3_64;
 
 const MAX_TARGETS: usize = 160;
 const MAX_AGE: Duration = Duration::from_secs(60);
@@ -20,8 +21,12 @@ struct Snapshot {
     height: u32,
     created: Instant,
     targets: Arc<Vec<Target>>,
-    ocr: Option<OcrEvidence>,
-    cue_swipe: Option<wire::SwipeAction>,
+    evidence: Evidence,
+}
+enum Evidence {
+    Controls(Option<OcrEvidence>),
+    Motion(u64),
+    Cue(wire::SwipeAction),
 }
 struct OcrEvidence {
     png: Vec<u8>,
@@ -400,6 +405,7 @@ pub async fn observe(
         (ledger.epoch, ledger.revision)
     };
     let motion = request.ocr_mode == "motion";
+    let capture_started = Instant::now();
     let (app, xml, (png, width, height)) = if motion {
         let (app, frame) = tokio::try_join!(foreground(runner), capture_frame(runner))?;
         (app, String::new(), frame)
@@ -413,19 +419,20 @@ pub async fn observe(
         (app, xml, capture_frame(runner).await?)
     };
     let mut targets = parse_native(&xml, &app, width, height);
-    let mut ocr_evidence = None;
+    let mut evidence = Evidence::Controls(None);
     let mut note = String::new();
     if motion {
-        note = "游戏实景帧；可用 phone_swipe 的 when 预置反应，菜单控件用普通观察。".into();
+        evidence = Evidence::Motion(xxh3_64(&png));
+        note = "动态画面可直接滑动或拖动，也可用 phone_swipe 的 when 等待视觉信号。".into();
     } else if !native_content_available(&targets, height)
         || ["always", "only"].contains(&request.ocr_mode.as_str())
     {
         match ocr(runner, &png, width, height).await {
             Ok((mut recognized, visual)) => {
-                ocr_evidence = Some(OcrEvidence {
+                evidence = Evidence::Controls(Some(OcrEvidence {
                     png: png.clone(),
                     grid: visual,
-                });
+                }));
                 targets.append(&mut recognized);
                 note = "OCR文字仅为可见文字区域，不保证是按钮".into();
             }
@@ -477,10 +484,13 @@ pub async fn observe(
         app: app.clone(),
         width,
         height,
-        created: Instant::now(),
+        created: if motion {
+            capture_started
+        } else {
+            Instant::now()
+        },
         targets: Arc::new(targets),
-        ocr: ocr_evidence,
-        cue_swipe: None,
+        evidence,
     });
     Ok(wire::DeviceObservation {
         phone_id: runner.phone_id.clone(),
@@ -539,7 +549,10 @@ pub(super) async fn watch_swipe(
     validate_snapshot(&source, epoch, revision)?;
     let area = request.region.ok_or("缺少观察区域")?;
     let swipe = request.swipe.ok_or("缺少滑动手势")?;
-    if source.cue_swipe.is_some() || area.right > source.width || area.bottom > source.height {
+    if matches!(source.evidence, Evidence::Cue(_))
+        || area.right > source.width
+        || area.bottom > source.height
+    {
         return Err("观察区域必须来自当前手机截图".into());
     }
     (request.source_width, request.source_height) = (source.width, source.height);
@@ -574,8 +587,7 @@ pub(super) async fn watch_swipe(
             height: hit.height,
             created: Instant::now() - age,
             targets: Arc::default(),
-            ocr: None,
-            cue_swipe: Some(swipe),
+            evidence: Evidence::Cue(swipe),
         });
     }
     Ok(hit)
@@ -642,21 +654,35 @@ pub async fn resolve(
     }
     .ok_or("stale_target:观察记录不存在或服务已重启，请重新观察")?;
     validate_snapshot(&snapshot, epoch, revision)?;
-    if let Some(swipe) = snapshot.cue_swipe {
+    let Evidence::Controls(ocr) = &snapshot.evidence else {
+        let action = request.action.as_ref().ok_or("缺少动作")?;
+        match (&snapshot.evidence, action) {
+            (Evidence::Motion(_), Action::Swipe(_) | Action::Drag(_)) => {}
+            (Evidence::Cue(expected), Action::Swipe(actual)) if expected == actual => {}
+            _ => return Err("stale_target:动作与当前画面依据不符，请重新观察".into()),
+        }
         let (app, size) = tokio::join!(foreground(runner), dimensions(runner));
-        if request.action.as_ref() != Some(&Action::Swipe(swipe))
-            || app? != snapshot.app
-            || size != (snapshot.width, snapshot.height)
-            || snapshot.created.elapsed() > CUE_MAX_AGE
-        {
-            return Err("stale_target:游戏信号或对应的手势已过期".into());
+        if app? != snapshot.app || size != (snapshot.width, snapshot.height) {
+            return Err("stale_target:前台应用或显示尺寸已改变".into());
+        }
+        if snapshot.created.elapsed() > CUE_MAX_AGE {
+            let Evidence::Motion(original) = &snapshot.evidence else {
+                return Err("stale_target:滑动信号已过期".into());
+            };
+            let (png, w, h) = capture_frame(runner).await?;
+            if (w, h) != size
+                || xxh3_64(&png) != *original
+                || foreground(runner).await? != snapshot.app
+            {
+                return Err("stale_target:动态画面已改变，请重新观察或用 when 等待新帧".into());
+            }
         }
         return Ok(Some(ResolvedAction {
-            action: Action::Swipe(swipe),
+            action: action.clone(),
             scroll: None,
             dimensions: size,
         }));
-    }
+    };
     if foreground(runner).await? != snapshot.app {
         return Err("stale_target:前台应用已变化，请重新观察".into());
     }
@@ -671,9 +697,12 @@ pub async fn resolve(
         .transpose()?;
     let requires_ocr = target
         .map(|t| t.element.source == "ocr")
-        .unwrap_or(snapshot.ocr.is_some() || !has_native_targets(&snapshot.targets));
+        .unwrap_or(ocr.is_some() || !has_native_targets(&snapshot.targets));
     if requires_ocr {
-        validate_ocr(runner, &snapshot, target).await?;
+        let original = ocr
+            .as_ref()
+            .ok_or("stale_target:没有可复查的OCR画面，请重新观察")?;
+        validate_ocr(runner, &snapshot, original, target).await?;
     } else {
         let fresh = parse_native(
             &capture_ui_tree(runner).await,
@@ -781,12 +810,9 @@ pub async fn resolve(
 async fn validate_ocr(
     runner: &Runner,
     snapshot: &Snapshot,
+    previous: &OcrEvidence,
     target: Option<&Target>,
 ) -> Result<(), String> {
-    let previous = snapshot
-        .ocr
-        .as_ref()
-        .ok_or("stale_target:没有可复查的OCR画面，请重新观察")?;
     let (png, width, height) = capture_frame(runner).await?;
     if (width, height) != (snapshot.width, snapshot.height) {
         return Err("stale_target:画面已变化，请重新观察".into());
@@ -1033,8 +1059,7 @@ mod tests {
             height: 1440,
             created: Instant::now(),
             targets: Arc::new(vec![]),
-            ocr: None,
-            cue_swipe: None,
+            evidence: Evidence::Controls(None),
         };
         assert!(validate_snapshot(&s, 3, 4).is_ok());
         assert!(validate_snapshot(&s, 4, 4).is_err());
