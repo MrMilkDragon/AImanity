@@ -628,8 +628,8 @@
     },
     {
       "path": "config/native-notice-supplements.json",
-      "size": 68087,
-      "sha256": "8973ba0536f040d2f668a9b08de4951e5d01e00403eb284bdc000e2b4e62aa93"
+      "size": 69875,
+      "sha256": "f54de9a7c6885d32d7811b5f6f25b21ccdb31a47241704acb5c7f2bbb3d6ff5b"
     },
     {
       "path": "config/ocr-models.json",
