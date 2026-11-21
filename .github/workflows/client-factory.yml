@@ -10,7 +10,7 @@ concurrency:
   group: europium-mac-candidate
   cancel-in-progress: false
 env:
-  PRODUCT_SOURCE: 28dfdfa8224bb361e8f9f5b8086b54e5835323c7
+  PRODUCT_SOURCE: a7608b15db3244e664908676ee546a4e410d169c
   CARGO_BUILD_JOBS: '2'
   CARGO_INCREMENTAL: '0'
 jobs:
@@ -105,6 +105,14 @@ jobs:
           jq -e --arg rev "$PRODUCT_SOURCE" '.version == "0.0.5" and .source_commit == $rev and .complete_device_bundle and .installer_delivery.github_asset_eligible' "$dmg.manifest.json"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
+          name: europium-macos-receipts
+          path: |
+            source/dist/AImanity-0.0.5-macos-arm64.dmg.manifest.json
+            source/dist/macos-full-factory-report.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
           name: europium-complete-macos-candidate
           path: |
             source/dist/AImanity-0.0.5-macos-arm64.dmg
@@ -113,3 +121,16 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
+      - name: Retain the source-bound service build for a factory retry
+        if: failure() && hashFiles('source/target/release/native-service-build.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: macos-native-service-checkpoint
+          path: |
+            source/target/release/native-service-build.json
+            source/target/release/ai-phone-assistant
+            source/target/release/ai-phone-runner
+            source/target/release/ai-phone-vision
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 2
