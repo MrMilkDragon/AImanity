@@ -920,7 +920,7 @@ pub async fn route(
             let Ok(after) = i64::try_from(input.after_ms) else {
                 return issue("时间范围无效".into());
             };
-            let rows=match sqlx::query("SELECT e.id,e.message_id,e.kind,e.title,e.content,e.status,CASE WHEN e.kind='model' THEN e.result ELSE NULL END model_timing,((extract(epoch FROM e.created_at)*1000)::bigint) at_ms,COALESCE((extract(epoch FROM e.finished_at)*1000)::bigint,0) end_ms FROM harness_events e JOIN runs r ON r.id=e.run_id JOIN conversations c ON c.id=r.conversation_id WHERE e.run_id=$1 AND c.owner_id='local-user' AND (e.kind='task' OR (($2::uuid IS NULL OR e.message_id=$2) AND (extract(epoch FROM GREATEST(e.created_at,COALESCE(e.finished_at,e.created_at)))*1000)>$3)) ORDER BY e.created_at,e.id").bind(id).bind(message).bind(after).fetch_all(&app.db).await{Ok(v)=>v,Err(e)=>return issue(e.to_string())};
+            let rows=match sqlx::query("SELECT e.id,e.message_id,e.kind,e.title,e.content,e.status,CASE WHEN e.kind IN ('model','audit') THEN e.result END model_timing,((extract(epoch FROM e.created_at)*1000)::bigint) at_ms,COALESCE((extract(epoch FROM e.finished_at)*1000)::bigint,0) end_ms FROM harness_events e JOIN runs r ON r.id=e.run_id JOIN conversations c ON c.id=r.conversation_id WHERE e.run_id=$1 AND c.owner_id='local-user' AND (e.kind='task' OR (($2::uuid IS NULL OR e.message_id=$2) AND (extract(epoch FROM GREATEST(e.created_at,COALESCE(e.finished_at,e.created_at)))*1000)>$3)) ORDER BY e.created_at,e.id").bind(id).bind(message).bind(after).fetch_all(&app.db).await{Ok(v)=>v,Err(e)=>return issue(e.to_string())};
             pb(
                 StatusCode::OK,
                 wire::HarnessEventList {

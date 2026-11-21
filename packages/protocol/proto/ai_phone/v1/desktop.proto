@@ -1,6 +1,8 @@
 syntax = "proto3";
 package ai_phone.v1;
 message DesktopRequest { string device_id = 1; }
+// Length-delimited prefix before the final frame when an Agent requests input progress.
+message DesktopInputReceipt { string action_id = 1; }
 enum DesktopFrameState {
   DESKTOP_FRAME_STATE_UNSPECIFIED = 0;
   DESKTOP_FRAME_STATE_STABLE = 1;

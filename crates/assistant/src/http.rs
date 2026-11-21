@@ -54,7 +54,10 @@ async fn message_rows(
     SELECT jsonb_agg(jsonb_build_object('id',a.id,'name',a.name,'media_type',a.media_type,'size_bytes',a.size_bytes) ORDER BY ref.ordinal)
     FROM unnest(m.attachment_ids) WITH ORDINALITY ref(id,ordinal)
     JOIN attachments a ON a.id=ref.id AND a.owner_id='local-user'
-) END files FROM messages m LEFT JOIN chat_voice_inputs v ON v.message_id=m.id LEFT JOIN runs r ON r.assistant_message_id=m.id LEFT JOIN runs source ON source.id=COALESCE(m.run_id,r.id) WHERE m.conversation_id=$1";
+) END files, (SELECT jsonb_agg(jsonb_build_array(e.id,e.title,(extract(epoch FROM e.input_received_at)*1000)::bigint)
+                ORDER BY e.input_received_at,e.id) FROM harness_events e
+              WHERE e.message_id=m.id AND e.input_received_at IS NOT NULL) action_receipts
+    FROM messages m LEFT JOIN chat_voice_inputs v ON v.message_id=m.id LEFT JOIN runs r ON r.assistant_message_id=m.id LEFT JOIN runs source ON source.id=COALESCE(m.run_id,r.id) WHERE m.conversation_id=$1";
     let statement = match selected {
         MessageSelection::All => format!("{PROJECTION} ORDER BY m.ordinal"),
         MessageSelection::Ids(_) => format!("{PROJECTION} AND m.id=ANY($2) ORDER BY m.ordinal"),
@@ -118,6 +121,18 @@ pub(crate) async fn chat_messages(
                 ordinal: r.get::<i64, _>("ordinal") as u64,
                 active: r.get("active"),
                 has_activity: r.get("has_activity"),
+                action_receipts: r
+                    .get::<Option<sqlx::types::Json<Vec<(String, String, u64)>>>, _>(
+                        "action_receipts",
+                    )
+                    .into_iter()
+                    .flat_map(|rows| rows.0)
+                    .map(|(id, title, received_at_ms)| wire::ChatActionReceipt {
+                        id,
+                        title,
+                        received_at_ms,
+                    })
+                    .collect(),
                 voice: crate::voice_input::from_row(r),
                 role,
                 text,

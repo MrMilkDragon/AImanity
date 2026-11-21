@@ -27,10 +27,21 @@ fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 pub(crate) async fn process(
+    command: Command,
+    input: Vec<u8>,
+    limit: usize,
+    seconds: u64,
+) -> Result<Vec<u8>> {
+    process_output(command, input, limit, seconds, None).await
+}
+type InputReceipt<'a> = (&'a App, Uuid, Uuid);
+
+async fn process_output(
     mut command: Command,
     input: Vec<u8>,
     limit: usize,
     seconds: u64,
+    receipt: Option<InputReceipt<'_>>,
 ) -> Result<Vec<u8>> {
     command
         .stdin(std::process::Stdio::piped())
@@ -39,7 +50,7 @@ pub(crate) async fn process(
         .kill_on_drop(true);
     let mut child = command.spawn().map_err(|e| e.to_string())?;
     let mut stdin = child.stdin.take().unwrap();
-    let stdout = child.stdout.take().unwrap();
+    let mut stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
     let work = async {
         let write = async {
@@ -49,6 +60,22 @@ pub(crate) async fn process(
         };
         let read = async {
             let mut data = vec![];
+            if let Some((app, run, action)) = receipt {
+                let expected = wire::DesktopInputReceipt {
+                    action_id: action.to_string(),
+                }
+                .encode_length_delimited_to_vec();
+                (&mut stdout)
+                    .take(expected.len() as u64)
+                    .read_to_end(&mut data)
+                    .await?;
+                if data == expected {
+                    data.clear();
+                    if let Err(e) = crate::worker::acknowledge_input(app, run, action).await {
+                        eprintln!("Desktop input receipt {action}: {e}");
+                    }
+                }
+            }
             stdout
                 .take((limit + 1) as u64)
                 .read_to_end(&mut data)
@@ -90,21 +117,26 @@ pub(crate) async fn process(
         .await
         .map_err(|_| "操作超时，结果可能未知，请先观察或核对文件".to_string())?
 }
-async fn helper_bytes(op: &str, args: Value) -> Result<Vec<u8>> {
+async fn helper_bytes(op: &str, args: Value, receipt: Option<InputReceipt<'_>>) -> Result<Vec<u8>> {
     let c = ai_phone_host_runtime::desktop_bridge::operation(&[op]).map_err(|e| e.to_string())?;
-    process(
+    process_output(
         c,
         args.to_string().into_bytes(),
         12 * 1024 * 1024,
         if op == "run" { 95 } else { 15 },
+        receipt,
     )
     .await
 }
 pub(crate) async fn helper(op: &str, args: Value) -> Result<Value> {
-    serde_json::from_slice(&helper_bytes(op, args).await?).map_err(|e| e.to_string())
+    serde_json::from_slice(&helper_bytes(op, args, None).await?).map_err(|e| e.to_string())
 }
-async fn helper_frame(op: &str, args: Value) -> Result<wire::DesktopBridgeFrame> {
-    let bytes = helper_bytes(op, args).await?;
+async fn helper_frame(
+    op: &str,
+    args: Value,
+    receipt: Option<InputReceipt<'_>>,
+) -> Result<wire::DesktopBridgeFrame> {
+    let bytes = helper_bytes(op, args, receipt).await?;
     let frame = wire::DesktopBridgeFrame::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
     if frame.png.is_empty() {
         return Err("电脑没有返回画面".into());
@@ -121,7 +153,7 @@ pub(crate) async fn notification_feed(
     include_window: bool,
 ) -> Result<(
     wire::PhoneNotificationList,
-    Option<(u32, u32, String, String)>,
+    Option<crate::proactive::screen_attention::Sample>,
 )> {
     available(app, device).await?;
     let value = helper("notifications", json!({"include_window":include_window})).await?;
@@ -295,7 +327,7 @@ pub async fn observe(
     take: bool,
 ) -> Result<wire::DesktopObservation> {
     let epoch = control(app, device, run, take).await?;
-    let frame = helper_frame("observe", json!({})).await?;
+    let frame = helper_frame("observe", json!({}), None).await?;
     save_observation(app, device, epoch, frame).await
 }
 fn validate_pointer(r: &wire::DesktopActionRequest) -> Result<()> {
@@ -550,7 +582,7 @@ pub async fn action(
     let receipt_only = run.is_none() && !r.wait_for_paint && r.kind != "text";
     let result = if receipt_only {
         input["receipt_only"] = json!(true);
-        helper_bytes("action", input)
+        helper_bytes("action", input, None)
             .await
             .map(|_| wire::DesktopObservation {
                 device_id: r.device_id.clone(),
@@ -558,7 +590,10 @@ pub async fn action(
                 ..Default::default()
             })
     } else {
-        match helper_frame("action", input).await {
+        if run.is_some() {
+            input["report_input"] = true.into();
+        }
+        match helper_frame("action", input, run.map(|run| (app, run, id))).await {
             Ok(frame) => save_observation(app, &r.device_id, r.epoch as i64, frame).await,
             Err(e) => Err(e),
         }
@@ -1393,7 +1428,8 @@ pub fn catalog() -> Vec<Value> {
         function(
             "computer_click",
             "点击当前电脑画面中的目标；双击clicks=2，右键button=3。动作后自动返回新截图。",
-            json!({"device_id":id,"observation_id":id,"x":num,"y":num,"button":num,"clicks":num}),
+            json!({"device_id":id,"observation_id":id,"x":num,"y":num,"button":num,"clicks":num,
+                "finish":{"type":"boolean","description":"最后一步填 true，由核验读回原任务要求的结果。"}}),
             vec!["device_id", "observation_id", "x", "y"],
         ),
         function(
@@ -1535,7 +1571,7 @@ async fn install(app: &App, id: Uuid) -> Result<()> {
     .await?;
     install_step(app, id, "验证画面与控制").await?;
     for attempt in 1..=30 {
-        match helper_frame("observe", json!({})).await {
+        match helper_frame("observe", json!({}), None).await {
             Ok(_) => break,
             Err(error) if attempt == 30 => return Err(format!("桌面没有返回可验证画面 · {error}")),
             Err(_) => tokio::time::sleep(Duration::from_secs(1)).await,

@@ -1,4 +1,6 @@
+use ai_phone_api::wire::DesktopInputReceipt;
 use ai_phone_guest_runtime::{DesktopRuntime, Response, Result, Settings};
+use prost::Message;
 use serde_json::json;
 use std::{
     io::{Read, Write},
@@ -63,7 +65,15 @@ async fn run(operation: &str) -> Result<()> {
     let request = request(operation)?;
     let runtime = DesktopRuntime::new(Settings::from_env());
     let result = tokio::select! {
-        result = runtime.dispatch(operation, request) => result,
+        result = async {
+            if operation == "action" && request["report_input"] == true {
+                let receipt = DesktopInputReceipt { action_id: request["action_id"].as_str().ok_or("missing action id")?.to_owned() };
+                let frame = runtime.perform_action(request, || emit(Response::Bytes(receipt.encode_length_delimited_to_vec()))).await?;
+                Ok(Response::Bytes(frame.encode_to_vec()))
+            } else {
+                runtime.dispatch(operation, request).await
+            }
+        } => result,
         result = interrupted() => { result?; Err("操作已中断，结果可能未知，请先观察".into()) }
     }?;
     emit(result)

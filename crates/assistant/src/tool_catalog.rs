@@ -280,7 +280,7 @@ pub(crate) fn tools() -> Value {
             .any(|prefix| name.starts_with(prefix));
         if matches!(
             name,
-            "phone_tap_element" | "phone_tap" | "phone_swipe" | "computer_type" | "computer_click"
+            "phone_tap_element" | "phone_tap" | "phone_swipe" | "computer_type"
         ) {
             let description = item["description"].as_str().unwrap();
             item["description"] = json!(format!(

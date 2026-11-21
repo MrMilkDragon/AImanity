@@ -1058,29 +1058,28 @@ fn has_current_observation(context: &[Value]) -> bool {
         .any(|call| phone_observation(call, context))
 }
 
-fn has_grounded_initial_desktop_frame(context: &[Value]) -> bool {
-    let mut grounded = false;
+fn initial_desktop_frame(context: &[Value]) -> Option<Value> {
+    let mut grounded = None;
     for call in context[evidence_start(context)..]
         .iter()
         .filter(|item| item["type"] == "function_call")
     {
-        let Some(output) = tool_output(context, call) else {
-            return false;
-        };
+        let output = tool_output(context, call)?;
         let metadata = tool_value(output);
         if tool_outcome(metadata.as_ref()) != ToolOutcome::Completed {
-            return false;
+            return None;
         }
         match call["name"].as_str() {
             Some("skill_read" | "device_list") => {}
             Some("computer_observe") => {
-                grounded = metadata.is_some_and(|value| {
-                    value["observation_id"]
-                        .as_str()
-                        .is_some_and(|id| !id.is_empty())
-                }) && output.as_array().is_some_and(|parts| has_live_png(parts));
+                grounded = metadata.filter(|value| {
+                    ["device_id", "observation_id"]
+                        .iter()
+                        .all(|key| value[key].as_str().is_some_and(|id| !id.is_empty()))
+                        && output.as_array().is_some_and(|parts| has_live_png(parts))
+                });
             }
-            _ => return false,
+            _ => return None,
         }
     }
     grounded
@@ -1987,7 +1986,11 @@ fn hinted_device_completion(context: &[Value]) -> Option<Value> {
         _ => return None,
     };
     let arguments: Value = serde_json::from_str(action["arguments"].as_str()?).ok()?;
-    let summary = arguments["completion_summary"].as_str()?.trim();
+    let summary = if action["name"] == "computer_click" && arguments["finish"] == true {
+        "已点击，按原任务读回结果。"
+    } else {
+        arguments["completion_summary"].as_str()?.trim()
+    };
     if summary.is_empty() || summary.chars().count() > 400 {
         return None;
     }
@@ -3054,9 +3057,9 @@ async fn execute(
             && gui
             && state.model_retries == 0
             && execution_policy::desktop_target(&context)
-            && has_grounded_initial_desktop_frame(&context)
+            && let Some(frame) = initial_desktop_frame(&context)
         {
-            ("none", ModelTools::All)
+            ("none", ModelTools::DesktopFrame(frame))
         } else {
             ("low", ModelTools::All)
         };
@@ -3358,9 +3361,9 @@ async fn admit_model(
     }
 }
 
-#[derive(Clone, Copy)]
 enum ModelTools {
     All,
+    DesktopFrame(Value),
     PhoneObserve,
     Screen,
     KnowledgeReview,
@@ -3415,7 +3418,7 @@ async fn respond(
     model_replay_boundary: usize,
     timing: &mut crate::model_timing::Timing,
 ) -> Result<Vec<Value>, String> {
-    let application = matches!(scope, ModelTools::All)
+    let application = matches!(scope, ModelTools::All | ModelTools::DesktopFrame(_))
         .then(|| current_learning_application(context))
         .flatten();
     let (settings, app_tool) = tokio::join!(
@@ -3453,6 +3456,20 @@ async fn respond(
         tools.as_array_mut().expect("tool catalog").push(tool);
     }
     match scope {
+        ModelTools::DesktopFrame(_) => {
+            if let Some(click) = tools
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|tool| tool["name"] == "computer_click")
+            {
+                let properties = click["parameters"]["properties"].as_object_mut().unwrap();
+                for key in ["device_id", "observation_id", "intent"] {
+                    properties.remove(key);
+                }
+                click["parameters"]["required"] = json!(["x", "y"]);
+            }
+        }
         ModelTools::KnowledgeReview => tools.as_array_mut().unwrap().retain(|tool| {
             crate::proactive::knowledge_review::allows(tool["name"].as_str().unwrap())
         }),
@@ -3484,9 +3501,29 @@ async fn respond(
         _ => {}
     }
     let client = app.settings.http_client(&config.proxy_url)?;
-    let output =
+    let mut output =
         crate::model_adapter::request_tracked(&config, &client, body, cancel, timing).await?;
     crate::model_adapter::validate_call_ids(context, &output)?;
+    if let ModelTools::DesktopFrame(frame) = scope {
+        for click in output
+            .iter_mut()
+            .filter(|call| call["type"] == "function_call" && call["name"] == "computer_click")
+        {
+            let mut args: Value =
+                serde_json::from_str(click["arguments"].as_str().ok_or("缺少点击参数")?)
+                    .map_err(|e| e.to_string())?;
+            if !args.is_object() {
+                return Err("点击参数必须为对象".into());
+            }
+            for key in ["device_id", "observation_id"] {
+                if args.get(key).is_some_and(|value| value != &frame[key]) {
+                    return Err("点击目标与当前画面不符".into());
+                }
+                args[key] = frame[key].clone();
+            }
+            click["arguments"] = args.to_string().into();
+        }
+    }
     Ok(output)
 }
 
@@ -3714,30 +3751,27 @@ async fn recorded_tool(
         "输入\n{input}\n\n输出\n{}",
         output.chars().take(96000).collect::<String>()
     );
-    let receipt = (status == "completed"
+    let confirmed = status == "completed"
         && (phone_gesture(name) || execution_policy::visible_action(name))
         && result
             .as_ref()
             .ok()
             .and_then(tool_value)
             .as_ref()
-            .is_some_and(confirmed_input))
-    .then(|| format!("{title} · 已执行"));
+            .is_some_and(confirmed_input);
     let conversation = sqlx::query_scalar::<_, Uuid>(
         "WITH finished AS (
-           UPDATE harness_events SET content=$2,status=$3,result=$4,finished_at=now()
-           WHERE id=$1 AND run_id=$5 AND kind='tool' RETURNING message_id,run_id
-         ) UPDATE messages m SET text=$6 FROM finished f JOIN runs r ON r.id=f.run_id
-           WHERE $6::text IS NOT NULL AND m.id=f.message_id AND m.id=r.assistant_message_id
-             AND r.status='running' AND r.origin='user'
-           RETURNING m.conversation_id",
+           UPDATE harness_events SET content=$2,status=$3,result=$4,finished_at=now(),
+             input_received_at=COALESCE(input_received_at,CASE WHEN $6 THEN now() END)
+           WHERE id=$1 AND run_id=$5 AND kind='tool' RETURNING run_id
+         ) SELECT r.conversation_id FROM finished f JOIN runs r ON r.id=f.run_id WHERE $6",
     )
     .bind(id)
     .bind(content)
     .bind(status)
     .bind(result.as_ref().ok())
     .bind(run)
-    .bind(receipt)
+    .bind(confirmed)
     .fetch_optional(&app.db)
     .await
     .map_err(|e| e.to_string())?;
@@ -3750,6 +3784,23 @@ async fn recorded_tool(
         retain_tool_observation(app, run, id, call, output).await?;
     }
     result
+}
+
+pub(crate) async fn acknowledge_input(app: &App, run: Uuid, action: Uuid) -> Result<(), String> {
+    let conversation: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE harness_events e SET input_received_at=now() FROM runs r
+         WHERE e.id=$1 AND e.run_id=$2 AND r.id=e.run_id AND e.kind='tool'
+           AND e.input_received_at IS NULL RETURNING r.conversation_id",
+    )
+    .bind(action)
+    .bind(run)
+    .fetch_optional(&app.db)
+    .await
+    .map_err(|error| error.to_string())?;
+    if let Some(conversation) = conversation {
+        app.run_signals.chat_changed(conversation);
+    }
+    Ok(())
 }
 
 // Reads can be restarted. The few writes here deduplicate on local_action_id.
@@ -4686,20 +4737,20 @@ mod verification_tests {
             .unwrap()
             .push(json!({"type":"input_text", "text":"{\"observation_id\":\"initial\"}"}));
         context.extend(frame);
-        assert!(!has_grounded_initial_desktop_frame(&context));
+        assert!(initial_desktop_frame(&context).is_none());
 
         let mut context = request("在电脑输入一行文字。");
         context.extend([json!({"type":"function_call","name":"computer_observe","call_id":"desktop"}),
-            json!({"type":"function_call_output","call_id":"desktop","output":[{"type":"input_text","text":"{\"success\":true,\"observation_id\":\"desktop\"}"}]})]);
-        assert!(!has_grounded_initial_desktop_frame(&context));
+            json!({"type":"function_call_output","call_id":"desktop","output":[{"type":"input_text","text":"{\"success\":true,\"device_id\":\"linux\",\"observation_id\":\"desktop\"}"}]})]);
+        assert!(initial_desktop_frame(&context).is_none());
         context.last_mut().unwrap()["output"].as_array_mut().unwrap().push(json!({"type":"input_image","image_url":"data:image/png;base64,real-desktop-frame-test"}));
-        assert!(has_grounded_initial_desktop_frame(&context));
+        assert!(initial_desktop_frame(&context).is_some());
         let mut executed = context.clone();
         executed.extend(action("type", "computer_type", json!({})));
-        assert!(!has_grounded_initial_desktop_frame(&executed));
+        assert!(initial_desktop_frame(&executed).is_none());
         context.last_mut().unwrap()["output"][0]["text"] =
-            json!("{\"success\":false,\"observation_id\":\"desktop\"}");
-        assert!(!has_grounded_initial_desktop_frame(&context));
+            json!("{\"success\":false,\"device_id\":\"linux\",\"observation_id\":\"desktop\"}");
+        assert!(initial_desktop_frame(&context).is_none());
     }
 
     #[test]

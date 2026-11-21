@@ -456,6 +456,8 @@ pub async fn verify(
     };
     let result =
         tokio::select! {_ = cancel.cancelled() => Err("canceled".into()), result = audit => result};
+    let mut audit_timing = timing.snapshot();
+    audit_timing["compact"] = json!(compact);
     if !compact
         && let Ok(report) = &result
         && let Some(candidate) = report.experience.as_ref().filter(|_| !needs_input)
@@ -487,8 +489,6 @@ pub async fn verify(
             error.clone(),
         ),
     };
-    let mut audit_timing = timing.snapshot();
-    audit_timing["compact"] = json!(compact);
     sqlx::query(
         "UPDATE harness_events SET status=$2,content=$3,result=$4,finished_at=now() WHERE id=$1",
     )

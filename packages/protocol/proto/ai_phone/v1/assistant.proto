@@ -29,6 +29,12 @@ message ChatMessage {
   ChatVoiceInput voice = 10;
   // Historical operational notices are preserved separately from dialogue.
   string system_notice = 11;
+  repeated ChatActionReceipt action_receipts = 12;
+}
+message ChatActionReceipt {
+  string id = 1;
+  string title = 2;
+  uint64 received_at_ms = 3;
 }
 message ChatHistoryRequest {
   string conversation_id = 1;

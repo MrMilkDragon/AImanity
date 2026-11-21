@@ -117,6 +117,8 @@ pub fn tab_button<'a, M: Clone + 'a>(
     .on_press_maybe(action)
     .into()
 }
+pub const ICON_SIZE: f32 = 18.;
+
 impl Icon {
     pub fn view<'a>(self) -> svg::Svg<'a> {
         let path = match self {
@@ -222,8 +224,8 @@ impl Icon {
             [const { OnceLock::new() }; Icon::MicOff as usize + 1];
         let handle = HANDLES[self as usize].get_or_init(|| svg::Handle::from_memory(format!("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='#171717' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'>{path}</svg>").into_bytes()));
         svg(handle.clone())
-            .width(18)
-            .height(18)
+            .width(ICON_SIZE)
+            .height(ICON_SIZE)
             .style(|theme: &iced::Theme, _| svg::Style {
                 color: Some(theme.palette().text),
             })
