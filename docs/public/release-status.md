@@ -5,7 +5,7 @@ Each installer includes Android, the Linux desktop and the local services.
 | Platform | Requirements | Installer | Factory |
 | --- | --- | --- | --- |
 | macOS | Apple Silicon, macOS 15+ | [0.0.5 Europium · DMG](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) | [macOS](engineering/macos-full-runtime.md) |
-| Windows | Windows 11 x64, hardware virtualization | [0.0.4 Dysprosium · EXE](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe) | [Windows](windows-client-factory.md) |
+| Windows | Windows 11 x64, hardware virtualization | [0.0.5 Europium · EXE](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) | [Windows](windows-client-factory.md) |
 
 Open the app, choose your device settings, then add a model in Configuration. The macOS app uses an ad hoc signature. The Windows installer uses self-signed Authenticode.
 
@@ -19,9 +19,9 @@ Open the app, choose your device settings, then add a model in Configuration. Th
 
 ## Updating from 0.0.4 / 从 0.0.4 更新
 
-To install Europium on a Mac now, quit AImanity and copy the app from the DMG into Applications, replacing the existing copy. Your devices, conversations and model settings live separately. The 0.0.4 client will offer the update once both desktop installers are available.
+Open the update icon at the top right of the 0.0.4 workbench and confirm the update. AImanity downloads the installer, restarts and reopens with your existing devices, conversations and model settings.
 
-Mac 用户现在即可退出 AImanity，将 DMG 中的应用拖到「应用程序」并替换旧版。设备、聊天和模型配置位于独立的数据目录。两端安装包都发布后，0.0.4 客户端将提供 Europium 更新。
+在 0.0.4 工作台右上角打开更新图标，选择「确认更新」。AImanity 会下载安装包并重启，原有设备、聊天和模型配置会保留。
 
 ## Moving from Calcium
 

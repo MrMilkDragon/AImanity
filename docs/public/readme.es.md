@@ -4,9 +4,7 @@
 
 ## Descargas y estado
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.4 Dysprosium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe)
-
-La versión 0.0.4 ofrecerá la actualización a Europium desde la aplicación cuando estén disponibles ambos instaladores.
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
 
 Requiere macOS 15.0 o posterior con Apple Silicon, o Windows 11 x64. Cada instalador incluye Android, Linux, el emulador y los servicios locales.
 

@@ -4,9 +4,7 @@
 
 ## 다운로드와 현황
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.4 Dysprosium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe)
-
-두 플랫폼의 설치 파일이 모두 공개되면 0.0.4 앱에서 Europium으로 업데이트할 수 있습니다.
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
 
 Apple Silicon이 탑재된 macOS 15.0 이상 또는 Windows 11 x64가 필요합니다. 각 설치 파일에 Android, Linux, 에뮬레이터와 로컬 서비스가 들어 있습니다.
 
