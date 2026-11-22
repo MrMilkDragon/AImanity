@@ -28,7 +28,7 @@ PostgreSQL 使用 Linux 客体内的私有存储。备份包含数据库、Andro
 
 ## 客户端更新
 
-客户端选择当前平台的正式发行，核验 Ed25519 签名和安装包摘要后安装。macOS 替换应用包并重新打开。Windows 运行现有 Inno 安装器并重新打开客户端，沿用已发布的 QEMU 底盘和原写入层。设备、模型与聊天使用独立的持久数据目录。
+macOS 和 Windows 从工作台下载安装包，核验 Ed25519 签名和摘要。macOS 替换应用包，Windows 运行 Inno 安装器，随后重新打开客户端。Linux 通过包管理器安装同格式的新版 DEB 或 RPM。设备和聊天保存在 `$XDG_DATA_HOME/dev.aimanity.native/host`，默认路径为 `~/.local/share/dev.aimanity.native/host`。[Linux 安装方式](release-status.md#linux)
 
 两端安装包验收后，在发行维护者本机签署更新清单。
 
@@ -39,6 +39,6 @@ cargo run --quiet --locked -p ai-phone-release-tools -- sign-update /path/to/off
 
 顺序打包时，本地保留两份安装包回执和一个安装包。另一端的安装包通过管道传给 `sign-update --stdin macos` 或 `sign-update --stdin windows`，后接原有四个参数。工具按传入的文件名读取同目录回执。两端安装包都可下载后再发布共享更新清单。
 
-在 GitHub 发行页附上 DMG 和 EXE，将签名清单 `native-stable.json` 提交到 `update-feed` 分支。Calcium 用户先卸载 0.0.3，再从 Releases 下载 0.0.4 全新安装。此后的版本通过 Dysprosium 客户端内更新。
+在 GitHub 发行页上传 DMG、EXE、DEB 和 RPM，将 macOS 与 Windows 的签名更新清单 `native-stable.json` 提交到 `update-feed` 分支。
 
 完整包必须包含干净Android/Linux基础、模拟器、预编译服务与匹配运行环境，并附来源、声明和适用对应源码。详见[发行要求](distribution-requirements.md)、[当前状态](release-status.md)和[备份恢复](backup-restore.zh-CN.md)。

@@ -29,7 +29,7 @@ The platform factory packages the Rust workbench with the complete offline paylo
 
 ## Released client
 
-The Rust native client manages local setup. Both platforms run native Android. macOS uses Lima for the Linux environment. Windows starts the bundled Linux guest with QEMU and Windows Hypervisor Platform. The workbench connects to the local services after initialization.
+The Rust client runs setup and opens the workbench when the local services are ready. macOS uses Avo for Android and Lima for Linux. Windows and Linux run the bundled Android and Linux guests under QEMU, with WHPX on Windows and KVM on Linux.
 
 The setup screen supports ten languages, keyboard-accessible selectors, retry and cancellation. Return to setup through **AImanity → Setup**.
 
@@ -39,6 +39,6 @@ The setup screen supports ten languages, keyboard-accessible selectors, retry an
 cargo build --release --locked --manifest-path apps/native/Cargo.toml
 ```
 
-This command builds a development client. For complete packages, see the [macOS factory](engineering/macos-full-runtime.md) and [Windows factory](windows-client-factory.md).
+The macOS, Windows and Linux factories add the offline systems and services to the native binary. [macOS factory](engineering/macos-full-runtime.md) · [Windows factory](windows-client-factory.md) · [Linux workflow](../../.github/workflows/linux-packages.yml)
 
-macOS requires Apple Silicon and macOS 15.0 or later. The Windows installer targets Windows 11 x64. [Downloads and status](release-status.md)
+[Downloads and host requirements](release-status.md)

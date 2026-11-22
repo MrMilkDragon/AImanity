@@ -4,9 +4,11 @@
 
 ## 下載與現況
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
 
 支援 Apple Silicon macOS 15.0 以上與 Windows 11 x64。安裝包內建 Android、Linux、模擬器及本機服務。
+
+Linux x86_64 需啟用 KVM 並使用 glibc 2.36 以上。Debian／Ubuntu 請選 DEB，Fedora／Enterprise Linux 10 請選 RPM。更新時安裝同格式的新版套件，即可保留裝置與聊天。 [安裝指令](release-status.md#linux)
 
 ## 功能與情境
 

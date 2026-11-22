@@ -1,6 +1,6 @@
 # Self-contained host runtime
 
-The installed client creates its phone, computer and model configuration without a manual server deployment. The target distributions are one Apple Silicon macOS DMG and one Windows x64 EXE. See [release status](release-status.md) for actual installer availability and qualification.
+The client creates the phone, computer and model configuration locally. Install the Apple Silicon DMG, Windows x64 EXE, or Linux x86_64 DEB or RPM. [Downloads and requirements](release-status.md)
 
 ## Host architecture
 
@@ -8,6 +8,7 @@ The installed client creates its phone, computer and model configuration without
 |---|---|---|
 | macOS Apple Silicon | Native ARM64 Android Emulator using HVF | App-owned Lima/VZ container host |
 | Windows x64 | Native x64 Android Emulator using WHPX | App-owned QEMU Linux guest using WHPX |
+| Linux x86_64 | AOSP on QEMU/KVM | App-owned QEMU Linux guest using KVM |
 
 The default guests are Android 15 and Debian 13/Openbox. CPU, memory and initial phone storage are configurable. Existing device storage is preserved when creation defaults change. The Linux desktop shares its container host's kernel.
 
@@ -29,7 +30,7 @@ See [release status](release-status.md) for package availability and platform ch
 
 ## 中文
 
-发行目标为 Apple Silicon macOS DMG 和 Windows x64 EXE，随包包含系统、模拟器、容器宿主、应用和服务。用户在客户端选择语言、设备资源并配置模型后使用，无需另外部署服务。
+安装包包括 Apple Silicon macOS DMG、Windows x64 EXE 和 Linux x86_64 DEB／RPM，内置两台设备的系统镜像与运行服务。用户在客户端选择语言、设备资源并配置模型。
 
 Rust 负责安装、恢复、进程、设备、媒体和渠道，SQLx 负责数据库角色和迁移。程序版本与用户数据分开保存，恢复已有安装不重建设备或覆盖账号聊天。双设备就绪由 protobuf 回执确认。
 

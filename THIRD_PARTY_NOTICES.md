@@ -57,7 +57,7 @@ Binary releases include the component notices and applicable corresponding-sourc
 
 The native client bundles licence texts generated from the locked Rust dependencies for each platform.
 
-The 40 native-client notice supplements record source URLs, exact revisions or archive checksums, and licence text hashes in `config/native-notice-supplements.json`. The objc2 grant includes the original Apple SDK provision, MIT text and attribution.
+The native-client notice supplements record source URLs, exact revisions or archive checksums, and licence text hashes in `config/native-notice-supplements.json`. The objc2 grant includes the original Apple SDK provision, MIT text and attribution.
 
 ## Source availability and Linux system libraries
 
