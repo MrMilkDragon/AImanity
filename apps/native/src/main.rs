@@ -174,8 +174,8 @@ struct App {
     host_home: std::path::PathBuf,
     updates: updates::State,
     uninstall: Option<uninstall::Plan>,
-    #[cfg(windows)]
-    instance_guard: Option<std::os::windows::io::OwnedHandle>,
+    #[cfg(any(windows, target_os = "linux"))]
+    instance_guard: Option<host::InstanceGuard>,
     phase: String,
     after_stop: Option<AfterStop>,
     connection: Option<Connection>,
@@ -244,8 +244,8 @@ impl App {
             host_home: std::path::PathBuf::new(),
             updates: Default::default(),
             uninstall: None,
-            #[cfg(windows)]
-            instance_guard: host::windows_guard().ok(),
+            #[cfg(any(windows, target_os = "linux"))]
+            instance_guard: host::instance_guard().ok(),
             phase: String::new(),
             after_stop: None,
             connection: None,
@@ -305,7 +305,7 @@ impl App {
             started: Instant::now(),
             input_started: None,
         };
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "linux"))]
         if app.instance_guard.is_none() {
             return (app, iced::exit());
         }
@@ -425,12 +425,12 @@ impl App {
     }
     fn finish_exit(&mut self) -> Task<Message> {
         if let Some(plan) = self.uninstall.take() {
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "linux"))]
             drop(self.instance_guard.take());
             if let Err(error) = plan.launch() {
-                #[cfg(windows)]
+                #[cfg(any(windows, target_os = "linux"))]
                 {
-                    self.instance_guard = host::windows_guard().ok();
+                    self.instance_guard = host::instance_guard().ok();
                 }
                 self.phase.clear();
                 self.error = error;
@@ -599,7 +599,10 @@ impl App {
                 return task;
             }
             Message::Host(host::Event::Failed(error)) => {
-                self.error = error;
+                self.error = match error.as_str() {
+                    "vm_kvm_access" => self.locale.tr("请启用 KVM 并授予当前账号 /dev/kvm 读写权限。加入 kvm 组后请重新登录。").into(),
+                    _ => error,
+                };
                 self.phase.clear();
             }
             Message::Host(host::Event::Stopped(result)) => {
@@ -2605,7 +2608,7 @@ fn main() -> iced::Result {
     if let Some(code) = client_update::run(&arguments) {
         std::process::exit(code);
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     if let Some(code) = uninstall::run(&arguments) {
         std::process::exit(code);
     }

@@ -11,13 +11,17 @@ pub const MUTED: Color = Color::from_rgb8(0x59, 0x59, 0x59);
 pub const ERROR: Color = Color::from_rgb8(0xb5, 0x25, 0x25);
 pub const LATIN_FONT: iced::Font = iced::Font::with_name(if cfg!(target_os = "macos") {
     "Helvetica Neue"
-} else {
+} else if cfg!(windows) {
     "Segoe UI"
+} else {
+    "Noto Sans"
 });
 pub const CJK_FONT: iced::Font = iced::Font::with_name(if cfg!(target_os = "macos") {
     "PingFang SC"
-} else {
+} else if cfg!(windows) {
     "Microsoft YaHei"
+} else {
+    "Noto Sans CJK SC"
 });
 pub const ACCENT: Color = Color::from_rgb8(0xea, 0xea, 0xea);
 pub const CONTROL_FILL: Color = Color {

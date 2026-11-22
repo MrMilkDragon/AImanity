@@ -13,7 +13,7 @@ use std::{
 use tokio::sync::watch;
 
 pub const CONTRACT: &str = "ai-phone-phone-peer-v2";
-pub(super) const WHPX_SERIAL: &str = "127.0.0.1:5565";
+pub(super) const CUTTLEFISH_SERIAL: &str = "127.0.0.1:5565";
 const LIMIT: u64 = 16384;
 struct Claim {
     initial_owner: bool,
@@ -32,7 +32,7 @@ impl Plan {
                 .take()
                 .ok_or(Error::Invalid("phone_peer_configuration"))?,
         )?;
-        config.adb_only = request.serial == WHPX_SERIAL;
+        config.adb_only = request.serial == CUTTLEFISH_SERIAL;
         let valid_phone = if config.adb_only {
             request.grpc_token.is_empty()
         } else {
@@ -117,8 +117,8 @@ impl Plan {
         Ok(metadata)
     }
     fn metadata(&self, transport: &DeviceBridgeStarted) -> Vec<u8> {
-        if self.request.serial == WHPX_SERIAL {
-            return format!("{}aiphone.serial={}\n", self.marker(), WHPX_SERIAL).into_bytes();
+        if self.request.serial == CUTTLEFISH_SERIAL {
+            return format!("{}aiphone.serial={}\n", self.marker(), CUTTLEFISH_SERIAL).into_bytes();
         }
         format!(
             "{}port.serial={}\ngrpc.port={}\ngrpc.token={}\n",

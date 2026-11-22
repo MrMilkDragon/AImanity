@@ -183,8 +183,11 @@ pub fn data_home() -> Result<PathBuf, String> {
         .map(|home| home.join("Library/Application Support"));
     #[cfg(windows)]
     return crate::host::windows_data_home();
-    #[cfg(not(any(target_os = "macos", windows)))]
-    let base: Option<PathBuf> = None;
+    #[cfg(target_os = "linux")]
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")));
     #[cfg(not(windows))]
     base.map(|p| p.join(crate::APP_ID).join("host"))
         .ok_or_else(|| "Application data directory unavailable".into())
@@ -194,7 +197,7 @@ pub fn bundle_inventory(resource: &Path) -> Result<BTreeMap<String, String>, Str
     let inventory: BTreeMap<String, String> =
         serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/integrity.json")))
             .map_err(|e| e.to_string())?;
-    let platform = if cfg!(windows) {
+    let platform = if cfg!(any(windows, target_os = "linux")) {
         "qemu/manifest.json"
     } else {
         "images.payload"
@@ -315,7 +318,7 @@ impl Bundle {
         if !admitted {
             request.store(&self.home)?;
         }
-        let images = if cfg!(windows) {
+        let images = if cfg!(any(windows, target_os = "linux")) {
             self.inventory.get("qemu/manifest.json")
         } else {
             self.inventory.get("images.payload")
@@ -580,8 +583,10 @@ impl Setup {
                     column![
                         text(if cfg!(target_os = "macos") {
                             "macOS · Apple Silicon"
-                        } else {
+                        } else if cfg!(windows) {
                             "Windows 11"
+                        } else {
+                            "Linux · x86_64"
                         })
                         .size(12)
                         .font(SETUP_TITLE),

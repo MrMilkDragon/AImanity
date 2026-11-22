@@ -3,7 +3,6 @@ mod android_native;
 mod android_package;
 mod assets;
 mod capsule;
-#[cfg(any(target_os = "macos", windows))]
 mod client_installer;
 mod client_payload;
 mod cuttlefish;
@@ -45,6 +44,10 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         "source" => source::run(rest),
         #[cfg(any(target_os = "macos", windows))]
         "client-installer" => client_installer::run(rest).map(Some),
+        #[cfg(target_os = "linux")]
+        "linux-payload" => client_installer::linux_payload::prepare(rest).map(Some),
+        #[cfg(target_os = "linux")]
+        "linux-packages" => client_installer::linux_packages::build(rest).map(Some),
         "client-payload" => client_payload::run(rest).map(Some),
         #[cfg(target_os = "macos")]
         "macos-factory" => macos_factory::run(rest).map(Some),

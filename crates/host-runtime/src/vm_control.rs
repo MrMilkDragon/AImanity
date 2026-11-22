@@ -35,7 +35,7 @@ pub async fn native_credentials(
 }
 
 /// Bind the four local data-plane sockets for the client lifetime.
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 pub async fn expose_native_services(key: &Path) -> Result<tokio::task::JoinSet<()>> {
     use ai_phone_api::wire::LinuxVmNativeService;
     use std::sync::Arc;
@@ -141,7 +141,7 @@ async fn empty(port: u16, key: &Path, operation: LinuxVmOperation) -> Result<()>
     Ok(())
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 pub(crate) async fn version(port: u16, key: &Path) -> Result<Vec<u8>> {
     let (_, payload) = tokio::time::timeout(
         Duration::from_secs(15),

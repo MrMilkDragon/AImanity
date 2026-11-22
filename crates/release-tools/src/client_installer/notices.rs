@@ -8,6 +8,29 @@ use std::{
     process::Command,
 };
 
+pub(super) const NOTICES: &str = ".tools/iced-workbench-licenses.txt";
+pub(super) const LEGAL: [(&str, &str); 10] = [
+    ("LICENSE", "LICENSE"),
+    ("NOTICE", "NOTICE"),
+    ("PRIVACY.md", "PRIVACY.md"),
+    ("DISCLAIMER.md", "DISCLAIMER.md"),
+    ("THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.md"),
+    ("docs/public/licenses/guest-apps/GPL-3.0.txt", "GPL-3.0.txt"),
+    (NOTICES, "native-client-licenses.txt"),
+    (
+        "docs/public/licenses/whisper/LICENSE",
+        "whisper-LICENSE.txt",
+    ),
+    (
+        "docs/public/licenses/native/whisper-rs-LICENSE",
+        "whisper-rs-LICENSE.txt",
+    ),
+    (
+        "docs/public/licenses/native/whisper.cpp-LICENSE",
+        "whisper.cpp-LICENSE.txt",
+    ),
+];
+
 fn metadata(manifest: &str, option: &str, target: Option<&str>) -> Result<Value> {
     let mut cargo = Command::new("cargo");
     cargo.args([

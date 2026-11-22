@@ -1,0 +1,39 @@
+name: Linux offline guest inputs
+on:
+  push:
+    branches: [build/linux-inputs]
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  guests:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Extract the published Europium guest files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          rustup toolchain install 1.96.0 --profile minimal
+          $installer = Join-Path $env:RUNNER_TEMP 'AImanity-0.0.5-windows-x64-setup.exe'
+          $url = 'https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe'
+          curl.exe -fLsS --retry 3 -o $installer $url
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne '6fde29eb0fea8a8d7daab9d79a2163022c57d95eeb4b614b3fb14dbd0038937e') { throw 'Published installer identity mismatch' }
+          $dest = Join-Path $env:RUNNER_TEMP 'guest-inputs'
+          $items = @('{app}\host\android.payload','{app}\host\qemu\guest\*','{app}\host\qemu\manifest.json','{app}\host\speech\*')
+          cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory unpack . $installer $dest @items
+          foreach ($p in @('android.payload','qemu/guest/bzImage','qemu/guest/guest.qcow2','qemu/guest/release.ext4','qemu/guest/release-init.cpio.gz','qemu/manifest.json','speech/ggml-tiny-q5_1.bin')) {
+            if (!(Test-Path -PathType Leaf (Join-Path "$dest/host" $p))) { throw "Missing $p" }
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: linux-offline-guest-inputs
+          path: ${{ runner.temp }}/guest-inputs/host/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

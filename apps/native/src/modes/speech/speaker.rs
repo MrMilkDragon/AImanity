@@ -51,25 +51,38 @@ pub fn phrase_len(value: &str, complete: bool) -> Option<usize> {
     complete.then_some(value.len())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 pub async fn speak(
     text: String,
     language: String,
     mut cancel: oneshot::Receiver<()>,
 ) -> Result<(), String> {
-    use objc2_avf_audio::AVSpeechSynthesisVoice;
-    use objc2_foundation::NSString;
     use std::process::Stdio;
     use tokio::{io::AsyncWriteExt, process::Command};
-    let voice =
-        unsafe { AVSpeechSynthesisVoice::voiceWithLanguage(Some(&NSString::from_str(&language))) }
-            .map(|v| unsafe { v.name() }.to_string());
-    let mut command = Command::new("/usr/bin/say");
-    if let Some(voice) = voice {
-        command.args(["-v", &voice]);
-    }
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        use objc2_avf_audio::AVSpeechSynthesisVoice;
+        use objc2_foundation::NSString;
+        let mut command = Command::new("/usr/bin/say");
+        if let Some(voice) = unsafe {
+            AVSpeechSynthesisVoice::voiceWithLanguage(Some(&NSString::from_str(&language)))
+        } {
+            command.arg("-v").arg(unsafe { voice.name() }.to_string());
+        }
+        command.args(["-f", "-"]);
+        command
+    };
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut command = Command::new("espeak-ng");
+        let voice = match language.as_str() {
+            "zh-CN" | "zh-TW" => "cmn",
+            other => other,
+        };
+        command.args(["-v", voice, "--stdin"]);
+        command
+    };
     let mut speech = command
-        .args(["-f", "-"])
         .stdin(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
@@ -165,13 +178,4 @@ pub async fn speak(
     })
     .await
     .map_err(|e| e.to_string())?
-}
-
-#[cfg(not(any(target_os = "macos", windows)))]
-pub async fn speak(
-    _text: String,
-    _language: String,
-    _cancel: oneshot::Receiver<()>,
-) -> Result<(), String> {
-    Err("当前系统没有本机语音播报服务".into())
 }

@@ -91,7 +91,7 @@ fn space(plan: &Plan) -> Result<()> {
         Engine::Avo if !plan.avd.join("cuttlefish/super.img").try_exists()? => {
             std::fs::metadata(images.join("super.img"))?.len()
         }
-        Engine::Avo | Engine::Whpx => 0,
+        Engine::Avo | Engine::Cuttlefish => 0,
     };
     let needed = crate::control::RESERVE + allocation;
     if fs2::available_space(&plan.home)? < needed {
@@ -168,13 +168,13 @@ impl Phone {
         Ok(value)
     }
     async fn boot(&mut self, stop: &mut watch::Receiver<bool>) -> Result<NativeAndroidBooted> {
-        #[cfg(windows)]
-        if self.plan.engine == Engine::Whpx {
+        #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+        if self.plan.engine == Engine::Cuttlefish {
             self.plan.prepare_adb_keys(&self.log).await?;
         }
         self.adb = Some(spawn(self.plan.adb_server()?, &self.log)?);
         await_server(&mut self.adb, &client(&self.plan), stop).await?;
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
         let mut console = None;
         let command = match self.plan.engine {
             Engine::Goldfish => self.plan.emulator()?,
@@ -183,18 +183,18 @@ impl Phone {
                 self.relay = Some(super::avo::Relay::start(self.plan.ports.console)?);
                 super::avo::command(&self.plan)?
             }
-            #[cfg(windows)]
-            Engine::Whpx => {
+            #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+            Engine::Cuttlefish => {
                 let listener =
                     tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
                 let port = listener.local_addr()?.port();
                 console = Some(listener);
-                super::windows_cuttlefish::command(&self.plan, port).await?
+                super::cuttlefish::command(&self.plan, port).await?
             }
             _ => return Err(Error::Invalid("android_host_unsupported")),
         };
         self.emulator = Some(spawn(command, &self.log)?);
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
         if let Some(console) = console {
             let emulator = self
                 .emulator
@@ -203,7 +203,7 @@ impl Phone {
             tokio::select! {
                 provision = tokio::time::timeout(
                     Duration::from_secs(120),
-                    super::windows_cuttlefish::provision_adb(&self.plan, console),
+                    super::cuttlefish::provision_adb(&self.plan, console),
                 ) => provision.map_err(|_| Error::Invalid("android_console_timeout"))??,
                 _ = emulator.wait() => return Err(Error::Invalid("android_emulator_exited")),
                 _ = stop.changed() => return Err(Error::Cancelled),
@@ -217,9 +217,9 @@ impl Phone {
                 _ = stop.changed() => return Err(Error::Cancelled),
             }
         }
-        #[cfg(windows)]
-        if self.plan.engine == Engine::Whpx {
-            super::windows_cuttlefish::prepare_guest(&self.plan).await?;
+        #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+        if self.plan.engine == Engine::Cuttlefish {
+            super::cuttlefish::prepare_guest(&self.plan).await?;
         }
         Ok(receipt)
     }
@@ -284,8 +284,8 @@ impl Phone {
         match self.plan.engine {
             #[cfg(target_os = "macos")]
             Engine::Avo => return super::avo::shutdown(emulator).await,
-            #[cfg(windows)]
-            Engine::Whpx => return super::windows_cuttlefish::shutdown(&self.plan, emulator).await,
+            #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+            Engine::Cuttlefish => return super::cuttlefish::shutdown(&self.plan, emulator).await,
             _ => {}
         }
         let until = Instant::now() + Duration::from_secs(15);

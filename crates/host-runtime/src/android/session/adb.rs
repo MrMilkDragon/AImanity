@@ -27,7 +27,11 @@ impl Adb {
             .await
             .map_err(error)
     }
-    #[cfg(any(target_os = "macos", windows))]
+    #[cfg(any(
+        target_os = "macos",
+        windows,
+        all(target_os = "linux", target_arch = "x86_64")
+    ))]
     pub async fn sync(&self) -> Result<()> {
         let receipt = self
             .client()?

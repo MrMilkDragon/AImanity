@@ -90,7 +90,7 @@ fn name(value: &str, platform: Platform, engine: Engine) -> Result<()> {
     let engine_path = match engine {
         Engine::Goldfish => value.starts_with("sdk/emulator/") || value.starts_with(&prefix),
         Engine::Avo => value.starts_with("sdk/avo/"),
-        Engine::Whpx => value.starts_with("sdk/cuttlefish/"),
+        Engine::Cuttlefish => value.starts_with("sdk/cuttlefish/"),
     };
     if !value.starts_with("sdk/platform-tools/") && !engine_path {
         return Err(Error::Invalid("android_resource_path"));
@@ -153,17 +153,22 @@ fn programs(value: &Manifest, platform: Platform) -> Result<()> {
         .iter()
         .map(|row| (row.path.as_str(), row))
         .collect();
-    let executable = match value.engine {
-        Engine::Goldfish => format!("sdk/emulator/emulator{}", platform.spec().suffix),
-        Engine::Avo => "sdk/avo/avo-vmm".into(),
-        Engine::Whpx => "sdk/cuttlefish/qemu-system-x86_64.exe".into(),
-    };
-    for path in [
-        executable,
-        format!("sdk/platform-tools/adb{}", platform.spec().suffix),
-    ] {
-        if index.get(path.as_str()).is_none_or(|r| r.mode != 0o755) {
-            return Err(Error::Invalid("android_resource_programs"));
+    if !matches!(
+        (value.engine, platform),
+        (Engine::Cuttlefish, Platform::LinuxX64)
+    ) {
+        let executable = match value.engine {
+            Engine::Goldfish => format!("sdk/emulator/emulator{}", platform.spec().suffix),
+            Engine::Avo => "sdk/avo/avo-vmm".into(),
+            Engine::Cuttlefish => "sdk/cuttlefish/qemu-system-x86_64.exe".into(),
+        };
+        for path in [
+            executable,
+            format!("sdk/platform-tools/adb{}", platform.spec().suffix),
+        ] {
+            if index.get(path.as_str()).is_none_or(|r| r.mode != 0o755) {
+                return Err(Error::Invalid("android_resource_programs"));
+            }
         }
     }
     let images = value.engine.sdk_images(platform.spec().abi);
@@ -183,7 +188,7 @@ fn programs(value: &Manifest, platform: Platform) -> Result<()> {
             "vbmeta.img",
             "userdata.img",
         ],
-        Engine::Whpx => &[
+        Engine::Cuttlefish => &[
             "aimanity-audio.jar",
             "bzImage",
             "initrd.img",
@@ -191,12 +196,17 @@ fn programs(value: &Manifest, platform: Platform) -> Result<()> {
             "userdata-16.qcow2",
             "userdata-24.qcow2",
             "userdata-32.qcow2",
+        ],
+    };
+    let firmware: &[&str] = match (value.engine, platform) {
+        (Engine::Cuttlefish, Platform::WindowsX64) => &[
             "qemu-img.exe",
             "share/bios-256k.bin",
             "share/linuxboot_dma.bin",
         ],
+        _ => &[],
     };
-    for part in required {
+    for part in required.iter().chain(firmware) {
         let path = format!("sdk/{}/{part}", images.to_string_lossy().replace('\\', "/"));
         if !index.contains_key(path.as_str()) {
             return Err(Error::Invalid("android_resource_image"));
@@ -215,7 +225,10 @@ pub(super) fn parse(raw: &[u8], platform: Platform) -> Result<Manifest> {
             (value.engine, platform),
             (Engine::Goldfish, _)
                 | (Engine::Avo, Platform::MacArm64)
-                | (Engine::Whpx, Platform::WindowsX64)
+                | (
+                    Engine::Cuttlefish,
+                    Platform::WindowsX64 | Platform::LinuxX64
+                )
         )
     {
         return Err(Error::Invalid("android_resource_manifest"));

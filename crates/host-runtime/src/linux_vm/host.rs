@@ -1,4 +1,4 @@
-//! Windows owner for one persistent Linux guest and its loopback endpoints.
+//! Owns a persistent Linux guest and its loopback endpoints.
 use crate::{Error, Result, filesystem, linux_vm, native_ipc, vm_control};
 use ai_phone_api::wire::{LinuxVmBootstrapReply, LinuxVmBootstrapRequest};
 use ring::hmac;
@@ -21,7 +21,51 @@ use tokio::{
 const START_LIMIT: Duration = Duration::from_secs(1950);
 const STOP_LIMIT: Duration = Duration::from_secs(30);
 const PROFILE_FRAME: usize = 8192 + 8;
-const HIDDEN: u32 = 0x08000000;
+
+#[cfg(windows)]
+pub(crate) const MACHINE: &str = "q35,accel=whpx";
+#[cfg(target_os = "linux")]
+pub(crate) const MACHINE: &str = "q35,accel=kvm";
+#[cfg(windows)]
+pub(crate) const CPU: &str = "Nehalem";
+#[cfg(target_os = "linux")]
+pub(crate) const CPU: &str = "host";
+#[cfg(windows)]
+const BACKEND: &str = "qemu-whpx-backend";
+#[cfg(target_os = "linux")]
+const BACKEND: &str = "qemu-kvm-backend";
+
+#[cfg(target_os = "linux")]
+pub(crate) fn bundled_tools() -> Result<PathBuf> {
+    Ok(std::env::current_exe()?
+        .parent()
+        .ok_or(Error::Invalid("vm_bundle_invalid"))?
+        .join("host/tools"))
+}
+
+pub(crate) fn firmware(runtime: &Path) -> PathBuf {
+    #[cfg(windows)]
+    let folder = "share";
+    #[cfg(target_os = "linux")]
+    let folder = "share/qemu";
+    runtime.join(folder)
+}
+
+pub(crate) fn tool(runtime: &Path, name: &str) -> Result<Command> {
+    #[cfg(windows)]
+    let path = runtime.join(format!("{name}.exe"));
+    #[cfg(target_os = "linux")]
+    let path = runtime.join("bin").join(name);
+    filesystem::regular(&path)?;
+    let mut command = Command::new(path);
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    #[cfg(target_os = "linux")]
+    command
+        .env("LD_LIBRARY_PATH", runtime.join("lib"))
+        .env("QEMU_MODULE_DIR", runtime.join("lib/qemu"));
+    Ok(command)
+}
 
 struct QemuVmConfig<'a> {
     runtime: &'a Path,
@@ -96,6 +140,8 @@ impl<'a> QemuVmConfig<'a> {
 
     fn worker_command(&self) -> Result<Command> {
         let mut command = Command::new(std::env::current_exe()?);
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
         command
             .arg("--qemu-backend-owner")
             .args([self.runtime, self.guest, self.home])
@@ -106,7 +152,6 @@ impl<'a> QemuVmConfig<'a> {
             ])
             .arg(self.base_sha256)
             .arg(self.release_sha256)
-            .creation_flags(HIDDEN)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(log(self.home, "owner.log")?);
@@ -142,13 +187,10 @@ impl<'a> QemuVmConfig<'a> {
             return Err(Error::Invalid("vm_disk_base_changed"));
         }
         let staging = tempfile::tempdir_in(self.home)?;
-        let image = self.runtime.join("qemu-img.exe");
-        filesystem::regular(&image)?;
-        let status = Command::new(image)
+        let status = tool(self.runtime, "qemu-img")?
             .args(["create", "-f", "qcow2", "-F", "qcow2", "-b"])
             .arg(base)
             .arg(staging.path().join("user.qcow2"))
-            .creation_flags(HIDDEN)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(log(self.home, "owner.log")?)
@@ -178,11 +220,10 @@ impl<'a> QemuVmConfig<'a> {
         if previous >= (u64::from(storage_gb) << 30) {
             return Ok(());
         }
-        let status = Command::new(self.runtime.join("qemu-img.exe"))
+        let status = tool(self.runtime, "qemu-img")?
             .args(["resize", "-f", "qcow2"])
             .arg(overlay)
             .arg(format!("{storage_gb}G"))
-            .creation_flags(HIDDEN)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(log(self.home, "owner.log")?)
@@ -223,11 +264,11 @@ impl<'a> QemuVm<'a> {
         let control = TcpListener::bind((Ipv4Addr::LOCALHOST, config.control_port)).await?;
         let bootstrap = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let bootstrap_port = bootstrap.local_addr()?.port();
-        let program = config.runtime.join("qemu-system-x86_64.exe");
-        let firmware = config.runtime.join("share");
+        let mut command = tool(config.runtime, "qemu-system-x86_64")?;
+        let firmware = firmware(config.runtime);
         let base = config.guest.join("guest.qcow2");
         let kernel = config.guest.join("bzImage");
-        for file in [&program, &base, &kernel] {
+        for file in [&base, &kernel] {
             filesystem::regular(file)?;
         }
         filesystem::existing_directory(&firmware)?;
@@ -258,13 +299,12 @@ impl<'a> QemuVm<'a> {
         );
         // The key filename is relative to QEMU's working directory, so paths
         // with commas cannot become extra -fw_cfg options.
-        let mut command = Command::new(program);
         command
             .args([
                 "-machine",
-                "q35,accel=whpx",
+                MACHINE,
                 "-cpu",
-                "Nehalem",
+                CPU,
                 "-nodefaults",
                 "-display",
                 "none",
@@ -310,7 +350,6 @@ impl<'a> QemuVm<'a> {
                 "file:boot.log",
             ])
             .current_dir(config.home)
-            .creation_flags(HIDDEN)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(log(config.home, "qemu.log")?)
@@ -422,7 +461,7 @@ pub async fn ensure(
 ) -> Result<()> {
     let manifest: VmManifest = serde_json::from_reader(File::open(bundle.join("manifest.json"))?)
         .map_err(|_| Error::Invalid("vm_bundle_invalid"))?;
-    if manifest.format != 1 || manifest.runtime != "qemu-whpx-backend" {
+    if manifest.format != 1 || manifest.runtime != BACKEND {
         return Err(Error::Invalid("vm_bundle_invalid"));
     }
     let file = |name: &str| {
@@ -438,8 +477,12 @@ pub async fn ensure(
         Ok((path, &record.sha256))
     };
     let (_, base_sha256) = file("guest/guest.qcow2")?;
+    #[cfg(windows)]
+    let runtime = bundle.join("runtime");
+    #[cfg(target_os = "linux")]
+    let runtime = bundled_tools()?;
     let config = QemuVmConfig {
-        runtime: &bundle.join("runtime"),
+        runtime: &runtime,
         guest: &bundle.join("guest"),
         home,
         cpu,

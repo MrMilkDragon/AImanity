@@ -35,7 +35,19 @@ pub(crate) fn total_memory_bytes() -> u64 {
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(target_os = "linux")]
 pub(crate) fn total_memory_bytes() -> u64 {
-    0
+    std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|info| {
+            info.lines().find_map(|line| {
+                line.strip_prefix("MemTotal:")?
+                    .split_whitespace()
+                    .next()?
+                    .parse::<u64>()
+                    .ok()
+            })
+        })
+        .unwrap_or(0)
+        * 1024
 }

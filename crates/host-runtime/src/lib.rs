@@ -20,7 +20,7 @@ pub mod network_observation;
 pub mod network_paths;
 mod profile;
 pub use profile::{DESKTOP_STORAGE_GB, desktop_host_memory_mib};
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 #[path = "linux_vm/host.rs"]
 pub mod qemu_host;
 #[cfg(unix)]
@@ -36,9 +36,9 @@ mod unix_initializer;
 pub use unix_initializer::shutdown as stop_macos_installation;
 #[cfg(target_os = "macos")]
 pub use unix_initializer::uninstall as remove_macos_devices;
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+pub mod qemu_native;
 pub mod vm_control;
-#[cfg(windows)]
-pub mod windows_native;
 pub mod wsl;
 
 use std::{

@@ -1,4 +1,4 @@
-//! Deployment of the offline Windows workbench on the existing owned QEMU disks.
+//! Deploys the offline x86 workbench on persistent QEMU disks.
 use crate::{Installation, android, desktop_host_memory_mib, profile, qemu_host, vm_control};
 use ai_phone_api::wire::NativeAndroidVmEndpoint;
 use sha2::{Digest, Sha256};
@@ -39,6 +39,12 @@ impl Deployment<'_> {
         if cancel() {
             return Err("installation_cancelled".into());
         }
+        #[cfg(target_os = "linux")]
+        fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("/dev/kvm")
+            .map_err(|_| "vm_kvm_access")?;
         phase("android");
         let cached = if self.resume {
             installation.resume_android(self.android).map_err(error)?
@@ -70,7 +76,7 @@ impl Deployment<'_> {
         let mut guest_profile: serde_json::Value =
             serde_json::from_slice(&bytes).map_err(|_| "invalid_device_resources")?;
         guest_profile["android_qemu"] = serde_json::Value::Bool(
-            android::Engine::installed(&phone.sdk_root) == android::Engine::Whpx,
+            android::Engine::installed(&phone.sdk_root) == android::Engine::Cuttlefish,
         );
         let guest_profile =
             serde_json::to_vec(&guest_profile).map_err(|_| "invalid_device_resources")?;

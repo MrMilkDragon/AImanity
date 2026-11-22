@@ -147,12 +147,13 @@ pub(super) fn seal(arguments: &[OsString]) -> Result<Value> {
         [] if cfg!(all(target_os = "macos", target_arch = "aarch64")) => "macos-arm64",
         [] if cfg!(all(target_os = "windows", target_arch = "x86_64")) => "windows-x64",
         [host] => host.to_str().ok_or("Invalid Android capsule host")?,
-        _ => return Err("Android capsule host must be macos-arm64 or windows-x64".into()),
+        _ => return Err("Unsupported Android capsule host".into()),
     };
     let (engine, directory, api, abi, architecture) = match host {
         "macos-arm64" => ("avo", "avo", 37, "arm64-v8a", "arm64"),
+        "linux-x64" => ("kvm", "cuttlefish", 35, "x86_64", "amd64"),
         "windows-x64" => ("whpx", "cuttlefish", 35, "x86_64", "amd64"),
-        _ => return Err("Android capsule host must be macos-arm64 or windows-x64".into()),
+        _ => return Err("Unsupported Android capsule host".into()),
     };
     let preset: u32 = preset.to_str().ok_or("Invalid XZ preset")?.parse()?;
     let sdk = Path::new(sdk);
@@ -161,8 +162,9 @@ pub(super) fn seal(arguments: &[OsString]) -> Result<Value> {
         mach_arm(&sdk.join("platform-tools/adb"))?;
     }
     let mut files = Vec::new();
-    for name in [directory, "platform-tools"] {
-        collect(sdk, Path::new(name), &mut files)?;
+    collect(sdk, Path::new(directory), &mut files)?;
+    if engine != "kvm" {
+        collect(sdk, Path::new("platform-tools"), &mut files)?;
     }
     files.sort_unstable_by(|left, right| left.1.path.cmp(&right.1.path));
     let manifest = serde_json::to_vec(
@@ -179,7 +181,7 @@ pub(super) fn seal(arguments: &[OsString]) -> Result<Value> {
     }
     let mut pending = tempfile::NamedTempFile::new_in(folder)?;
     if let Some(xz) = env::var_os("AIMANITY_FACTORY_XZ") {
-        let args = if engine == "whpx" && preset == 6 {
+        let args = if matches!(engine, "whpx" | "kvm") && preset == 6 {
             vec![
                 "-T2".into(),
                 "--block-size=128MiB".into(),

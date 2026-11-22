@@ -1,19 +1,35 @@
+#[cfg(any(target_os = "macos", windows))]
 mod bundle;
+#[cfg(target_os = "linux")]
+pub(super) mod linux_packages;
+#[cfg(target_os = "linux")]
+pub(super) mod linux_payload;
 mod notices;
+#[cfg(any(target_os = "macos", windows))]
 mod resources;
 
-use crate::{Result, source};
+use crate::Result;
+#[cfg(any(target_os = "macos", windows))]
+use crate::source;
+#[cfg(any(target_os = "macos", windows))]
 use base64::{Engine, engine::general_purpose::STANDARD};
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256, Sha512};
+use serde_json::Value;
+#[cfg(any(target_os = "macos", windows))]
+use serde_json::json;
+#[cfg(any(target_os = "macos", windows))]
+use sha2::Sha512;
+use sha2::{Digest, Sha256};
 use std::{
-    ffi::OsString,
     fs::{self, File},
-    io::{self, Read},
-    path::{Path, PathBuf},
+    io,
+    path::Path,
     process::Command,
 };
 
+#[cfg(any(target_os = "macos", windows))]
+use std::{ffi::OsString, io::Read, path::PathBuf};
+
+#[cfg(any(target_os = "macos", windows))]
 #[derive(Clone, Copy, PartialEq)]
 enum Signing {
     Unsigned,
@@ -49,6 +65,7 @@ pub(super) fn file_digest(file: &Path) -> Result<String> {
     Ok(format!("{:x}", hash.finalize()))
 }
 
+#[cfg(any(target_os = "macos", windows))]
 fn build_binary(root: &Path, triple: &str) -> Result<PathBuf> {
     if output(Command::new("rustc").arg("--version"))?
         .split_whitespace()
@@ -109,6 +126,7 @@ fn build_binary(root: &Path, triple: &str) -> Result<PathBuf> {
         }))
 }
 
+#[cfg(any(target_os = "macos", windows))]
 fn installer_manifest(
     root: &Path,
     installer: &Path,
@@ -190,6 +208,7 @@ fn installer_manifest(
     Ok(manifest)
 }
 
+#[cfg(any(target_os = "macos", windows))]
 pub(super) fn run(args: &[OsString]) -> Result<Value> {
     let signing = match args {
         [] => Signing::Unsigned,

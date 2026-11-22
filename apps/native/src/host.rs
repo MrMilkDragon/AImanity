@@ -134,12 +134,12 @@ impl Host {
         })
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     pub fn events(
         self,
         mut stop: oneshot::Receiver<()>,
     ) -> impl futures_util::Stream<Item = Event> {
-        use ai_phone_host_runtime::{qemu_host, vm_control, windows_native::Deployment};
+        use ai_phone_host_runtime::{qemu_host, qemu_native::Deployment, vm_control};
         use std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -216,7 +216,7 @@ impl Host {
     pub async fn stop(home: PathBuf) -> Result<(), String> {
         #[cfg(target_os = "macos")]
         let result = ai_phone_host_runtime::stop_macos_installation(&home).await;
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "linux"))]
         let result = ai_phone_host_runtime::qemu_host::stop_installed(&home).await;
         result.map_err(|e| e.to_string())
     }
@@ -231,7 +231,7 @@ pub async fn credentials(root: &Path) -> Result<(String, String), String> {
         )
         .map_err(|e| e.to_string())
     }
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     {
         let key = ai_phone_host_runtime::qemu_host::key_path(&root.join("user/qemu"));
         ai_phone_host_runtime::vm_control::native_credentials(&key)
@@ -247,8 +247,20 @@ mod lifecycle {
 }
 
 #[cfg(windows)]
-pub fn windows_guard() -> std::io::Result<std::os::windows::io::OwnedHandle> {
+pub type InstanceGuard = std::os::windows::io::OwnedHandle;
+
+#[cfg(windows)]
+pub fn instance_guard() -> std::io::Result<InstanceGuard> {
     lifecycle::open_guard()
+}
+
+#[cfg(target_os = "linux")]
+pub type InstanceGuard = std::os::unix::net::UnixListener;
+
+#[cfg(target_os = "linux")]
+pub fn instance_guard() -> std::io::Result<InstanceGuard> {
+    use std::os::{linux::net::SocketAddrExt, unix::net::SocketAddr};
+    InstanceGuard::bind_addr(&SocketAddr::from_abstract_name(crate::APP_ID)?)
 }
 
 #[cfg(windows)]

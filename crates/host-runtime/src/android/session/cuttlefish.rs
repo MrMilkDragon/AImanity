@@ -61,12 +61,16 @@ pub(super) async fn command(plan: &Plan, console: u16) -> Result<Command> {
         })
         .to_string())
     };
+    #[cfg(windows)]
+    let firmware = crate::qemu_host::firmware(&sdk);
+    #[cfg(target_os = "linux")]
+    let firmware = crate::qemu_host::firmware(&crate::qemu_host::bundled_tools()?);
     let mut command = plan.command("cuttlefish", "qemu-system-x86_64")?;
     command
         .current_dir(&directory)
-        .args(["-machine", "q35,accel=whpx", "-nodefaults", "-display", "none", "-no-reboot"])
-        .args(["-cpu", "Nehalem"])
-        .arg("-L").arg(device::text(&sdk.join("share"))?)
+        .args(["-machine", crate::qemu_host::MACHINE, "-nodefaults", "-display", "none", "-no-reboot"])
+        .args(["-cpu", crate::qemu_host::CPU])
+        .arg("-L").arg(firmware)
         .arg("-kernel").arg(device::text(&kernel)?)
         .arg("-initrd").arg(device::text(&initrd)?)
         .args(["-append", "console=ttyS0 printk.devkmsg=on audit=1 panic=-1 8250.nr_uarts=1 loop.max_part=7 init=/init bootconfig"])
