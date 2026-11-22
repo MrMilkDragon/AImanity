@@ -28,7 +28,7 @@ PostgreSQL uses private storage in the Linux guest. Backups capture the database
 
 ## Native client updates
 
-The client downloads the stable release for its platform and verifies its Ed25519 manifest and installer digest. macOS replaces the application bundle and reopens it. Windows runs the existing Inno installer and relaunches the installed client. The persistent host directory stays outside the application bundle and installer payload. Windows updates reuse the pinned QEMU base and existing writable disk.
+macOS and Windows download their installer through the workbench and verify its Ed25519 manifest and digest. macOS replaces the app bundle. Windows runs the Inno installer. Both reopen the updated client. Linux users install the newer DEB or RPM with the same package manager. Linux keeps devices and conversations under `$XDG_DATA_HOME/dev.aimanity.native/host`, which defaults to `~/.local/share/dev.aimanity.native/host`. [Linux installation](release-status.md#linux)
 
 After verifying both installers, sign the update manifest on the release maintainer's machine:
 
@@ -39,6 +39,6 @@ cargo run --quiet --locked -p ai-phone-release-tools -- sign-update /path/to/off
 
 For sequential builds, keep both installer receipts and one installer locally. Pipe the other installer into `sign-update --stdin macos` or `sign-update --stdin windows` before the four usual arguments. The streamed installer filename locates its adjacent receipt. Publish the shared update feed after both downloads are live.
 
-Attach the DMG and EXE to the GitHub release. Publish the signed `native-stable.json` on the `update-feed` branch. To move from Calcium to Dysprosium, first uninstall 0.0.3, then download and install 0.0.4 from Releases. The updater handles later releases from the Dysprosium installation.
+Attach the DMG, EXE, DEB and RPM to the GitHub release. Publish the macOS and Windows `native-stable.json` on the `update-feed` branch.
 
 Full packages must contain clean Android/Linux baselines, emulator, prebuilt services and matched runtime components, with provenance, notices and applicable corresponding source. See [distribution requirements](distribution-requirements.md), [release status](release-status.md), and [backup/recovery](backup-restore.en.md).

@@ -35,7 +35,7 @@ fn advertised_serial(home: &Path, expected: &DeviceBridgePeerOwner) -> Result<St
     )?)?;
     match rows.get("aiphone.serial") {
         Some(serial)
-            if serial == super::peer::WHPX_SERIAL
+            if serial == super::peer::CUTTLEFISH_SERIAL
                 && rows.get("aiphone.bridge") == Some(&expected.bridge_id) =>
         {
             Ok(serial.clone())

@@ -29,7 +29,7 @@ apps/native/target/release/aimanity-native /absolute/path/native-launch.json
 
 ## 已发行客户端
 
-Rust 原生客户端负责本机配置。两端都运行原生 Android。macOS 使用 Lima 运行 Linux 环境，Windows 使用 QEMU 和 Windows Hypervisor Platform 启动内置 Linux 客体。初始化完成后，工作台连接本地服务。
+Rust 原生客户端负责本机配置，在本地服务就绪后打开工作台。macOS 通过 Avo 运行 Android，通过 Lima 运行 Linux。Windows 和 Linux 宿主分别使用 WHPX 和 KVM，为 QEMU 中的双设备提供硬件加速。
 
 配置界面支持十种语言、键盘操作、重试和取消。通过 **AImanity → 设置** 返回配置。
 
@@ -39,6 +39,6 @@ Rust 原生客户端负责本机配置。两端都运行原生 Android。macOS �
 cargo build --release --locked --manifest-path apps/native/Cargo.toml
 ```
 
-这条命令构建开发客户端。完整安装包见 [macOS 工厂](engineering/macos-full-runtime.md)及 [Windows 工厂](windows-client-factory.md)。
+各平台工厂在原生二进制文件之外打包离线系统与服务。[macOS 工厂](engineering/macos-full-runtime.md) · [Windows 工厂](windows-client-factory.md) · [Linux 工作流](../../.github/workflows/linux-packages.yml)
 
-macOS 需要 Apple Silicon 和 macOS 15.0 或更高版本。Windows 安装包适用于 Windows 11 x64。[下载与状态](release-status.md)
+[下载与宿主要求](release-status.md)

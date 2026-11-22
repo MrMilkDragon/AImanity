@@ -37,7 +37,7 @@ impl Connection {
             .transport
             .as_mut()
             .ok_or(Error::Invalid("phone_peer_configuration"))?;
-        let adb_only = guest.serial == super::peer::WHPX_SERIAL;
+        let adb_only = guest.serial == super::peer::CUTTLEFISH_SERIAL;
         let mut host_config = Config::try_from(DeviceBridgeConfig {
             version: config.version,
             role: DeviceBridgeRole::Host as i32,

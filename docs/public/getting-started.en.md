@@ -10,7 +10,7 @@ The instructions below build the project from source on Apple Silicon. For the W
 
 ## Update the installed client
 
-When an update is available, the workbench shows an update icon at the top right. Open it to read the version, release name and notes, then select **Install Update**. AI Phone verifies the package, installs it and reopens using your existing devices, model settings and conversations. Windows may show a system approval prompt.
+On macOS and Windows, open the update icon at the top right of the workbench, read the release notes and select **Install Update**. AImanity restarts with your existing devices, model settings and conversations. On Linux, quit AImanity and install the newer [DEB or RPM](release-status.md#linux) using the same package format.
 
 ## Source alternative: prerequisites
 

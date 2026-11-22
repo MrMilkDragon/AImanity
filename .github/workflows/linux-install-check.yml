@@ -1,0 +1,102 @@
+name: Linux signed installer checks
+on:
+  workflow_dispatch:
+    inputs:
+      signed_run:
+        description: Run containing europium-signed-linux
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      signed_run:
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: debian:12
+            package: deb
+          - distro: almalinux:10
+            package: rpm
+    name: Install ${{ matrix.package }} on ${{ matrix.distro }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      DISTRO: ${{ matrix.distro }}
+      PACKAGE: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Make room on the disposable runner
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "$ANDROID_HOME"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: europium-signed-linux
+          run-id: ${{ inputs.signed_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/signed
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: linux-package-key
+          run-id: ${{ inputs.signed_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/package-key
+      - name: Install the signed package on a clean distribution
+        run: |
+          set -euo pipefail
+          mapfile -t installer < <(find "$RUNNER_TEMP/signed" -type f -name "*.$PACKAGE")
+          test "${#installer[@]}" -eq 1
+          devices=()
+          if [[ "$PACKAGE" == deb && -c /dev/kvm ]]; then devices+=(--device=/dev/kvm); fi
+          docker run --detach --name distro "${devices[@]}" \
+            -v "${installer[0]}:/candidate.$PACKAGE:ro" \
+            -v "$RUNNER_TEMP/package-key/AImanity-Europium.asc:/package-key.asc:ro" \
+            -v "$PWD/scripts/check-linux-guests.sh:/check-linux-guests.sh:ro" "$DISTRO" sleep infinity
+          if [[ "$PACKAGE" == deb ]]; then
+            gpg --batch --dearmor -o "$RUNNER_TEMP/package-key.gpg" "$RUNNER_TEMP/package-key/AImanity-Europium.asc"
+            ar p "${installer[0]}" _gpgorigin > "$RUNNER_TEMP/deb-origin.sig"
+            ar p "${installer[0]}" debian-binary control.tar.zst data.tar.zst |
+              gpgv --keyring "$RUNNER_TEMP/package-key.gpg" "$RUNNER_TEMP/deb-origin.sig" -
+            docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc '
+              apt-get update -qq
+              apt-get install -y --no-install-recommends /candidate.deb
+              dpkg-query -W -f="\${Status} \${Version}\n" aimanity
+            '
+          else
+            docker exec distro bash -euc 'rpm --import /package-key.asc && dnf --setopt=localpkg_gpgcheck=1 install -y /candidate.rpm && rpm -q aimanity && rpm -V aimanity'
+          fi
+          docker exec distro aimanity --verify-bundled-host /usr/lib/aimanity/host
+          docker exec distro aimanity --android-session-contract
+          echo "- $DISTRO installed the signed $PACKAGE and verified its offline resources." >> "$GITHUB_STEP_SUMMARY"
+      - name: Boot both installed guests on the runner's KVM
+        if: matrix.package == 'deb'
+        run: |
+          set -euo pipefail
+          if [[ ! -c /dev/kvm ]]; then
+            echo "::warning::This runner did not expose /dev/kvm. Guest boot was not exercised."
+            echo "- Guest boot was not exercised because the runner did not expose /dev/kvm." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc '
+            apt-get install -y --no-install-recommends xvfb xauth openbox wmctrl mesa-vulkan-drivers libgl1-mesa-dri jq curl procps
+            gid=$(stat -c %g /dev/kvm)
+            group=$(getent group "$gid" | cut -d: -f1)
+            if [ -z "$group" ]; then group=runner-kvm; groupadd -g "$gid" "$group"; fi
+            useradd -m -G "$group" tester
+          '
+          docker network disconnect bridge distro
+          docker exec -u tester -e HOME=/home/tester distro \
+            xvfb-run -a -s '-screen 0 1600x1000x24' bash /check-linux-guests.sh
+          echo "- With the network disconnected, the installed client booted Android and Linux, returned a root ADB screenshot, reached the Linux workbench, and shut down both QEMU guests." >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove the disposable installation
+        if: always()
+        run: if docker inspect distro >/dev/null 2>&1; then docker rm -f distro; fi

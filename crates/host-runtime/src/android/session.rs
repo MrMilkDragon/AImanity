@@ -3,19 +3,23 @@ mod adb;
 #[cfg(target_os = "macos")]
 mod avo;
 mod cli;
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+mod cuttlefish;
 mod link;
 mod plan;
 mod process;
 mod readiness;
-#[cfg(windows)]
-mod windows_cuttlefish;
 #[cfg(target_os = "macos")]
 pub use avo::runtime as avo_runtime;
 pub use cli::run;
 use std::time::Duration;
 pub const CONTRACT: &str = "ai-phone-native-android-session-v1";
 
-#[cfg(any(target_os = "macos", windows))]
+#[cfg(any(
+    target_os = "macos",
+    windows,
+    all(target_os = "linux", target_arch = "x86_64")
+))]
 pub(crate) async fn flush_attached(home: &std::path::Path) -> crate::Result<()> {
     use crate::{Error, filesystem};
     let dir = home.join("user/data/android");

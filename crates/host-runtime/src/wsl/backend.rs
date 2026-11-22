@@ -361,7 +361,7 @@ async fn initialize<E: Execute>(
         filesystem::directory(Path::new(crate::device_bridge::guest::RUNTIME), true)?;
         backend.env.insert(
             "AI_PHONE_SERIAL".into(),
-            crate::android::Engine::Whpx.serial(5564),
+            crate::android::Engine::Cuttlefish.serial(5564),
         );
         backend
             .env

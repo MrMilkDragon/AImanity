@@ -6,10 +6,10 @@ use ai_phone_api::wire::{LinuxVmBootstrapReply, LinuxVmBootstrapRequest};
 use ring::hmac;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::ffi::OsString;
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 use std::time::Duration;
 use std::{fs, path::Path};
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 use tokio::net::TcpListener;
 
 #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
@@ -39,7 +39,7 @@ pub(crate) fn verify(
         .map_err(|_| Error::Invalid("vm_bootstrap_authentication"))
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 pub(crate) async fn authenticate(
     listener: TcpListener,
     key: &hmac::Key,

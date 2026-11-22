@@ -4,9 +4,11 @@
 
 ## 다운로드와 현황
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
 
 Apple Silicon이 탑재된 macOS 15.0 이상 또는 Windows 11 x64가 필요합니다. 각 설치 파일에 Android, Linux, 에뮬레이터와 로컬 서비스가 들어 있습니다.
+
+Linux x86_64에는 KVM과 glibc 2.36 이상이 필요합니다. Debian/Ubuntu에서는 DEB, Fedora/Enterprise Linux 10에서는 RPM을 선택하세요. 같은 형식의 새 패키지로 업데이트하면 기기와 대화가 유지됩니다. [설치 명령](release-status.md#linux)
 
 ## 기능과 사용 시나리오
 

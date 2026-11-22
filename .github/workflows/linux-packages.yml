@@ -1,0 +1,95 @@
+name: Linux desktop packages
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: false
+        type: string
+      guest_run:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        required: false
+        type: string
+      guest_run:
+        description: Successful Linux offline guest inputs run ID
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 115
+    env:
+      CARGO_INCREMENTAL: '0'
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          persist-credentials: false
+      - name: Set up the Debian 12 build root
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "$ANDROID_HOME"
+          sudo apt-get update -qq && sudo apt-get install --no-install-recommends -y debootstrap
+          root="$RUNNER_TEMP/bookworm"
+          sudo debootstrap --variant=minbase --include=ca-certificates bookworm "$root" https://deb.debian.org/debian
+          sudo mount -t proc proc "$root/proc"
+          sudo mount --rbind /dev "$root/dev"
+          sudo mount --make-rslave "$root/dev"
+          sudo mkdir -p "$root/work" "$root/factory"
+          sudo mount --bind "$GITHUB_WORKSPACE" "$root/work"
+          printf '%s\n' 'deb https://deb.debian.org/debian bookworm-backports main' | sudo tee "$root/etc/apt/sources.list.d/backports.list"
+          sudo chroot "$root" /bin/bash -euc '
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y --no-install-recommends git curl build-essential pkg-config cmake clang libclang-dev libssl-dev libasound2-dev libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxcb1-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libpipewire-0.3-dev libspa-0.2-dev libgbm-dev libegl1-mesa-dev libdrm-dev libdbus-1-dev rpm xz-utils zstd adb dpkg-dev
+            apt-get install -y --no-install-recommends -t bookworm-backports qemu-system-x86 qemu-utils
+          '
+          rustup toolchain install 1.96.0 --profile minimal
+          for tool in cargo rustc rustdoc; do sudo cp "$(rustup which --toolchain 1.96.0 "$tool")" "$root/usr/local/bin/$tool"; done
+          sysroot=$(rustc +1.96.0 --print sysroot)
+          sudo mkdir -p "$root/usr/local/lib"
+          sudo cp -a "$sysroot/lib/." "$root/usr/local/lib/"
+          sudo chroot "$root" git config --global --add safe.directory /work
+          echo "BUILD_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Build native release tools and stage QEMU and ADB
+        run: |
+          sudo chroot "$BUILD_ROOT" /bin/bash -euc '
+            cd /work
+            scripts/stage-linux-tools.sh /factory/tools
+            LD_LIBRARY_PATH=/factory/tools/lib /factory/tools/bin/qemu-system-x86_64 -netdev help | grep -wx user
+            export LD_LIBRARY_PATH=/factory/tools/lib
+            /factory/tools/bin/adb keygen /factory/adb-test-key
+            unset LD_LIBRARY_PATH
+            cargo build --release --locked -p ai-phone-release-tools --bin release-tools
+          '
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: ${{ inputs.guest_run }}
+          github-token: ${{ github.token }}
+          name: linux-offline-guest-inputs
+          path: .tools/linux-guest-inputs
+      - name: Build the workbench and package both distributions
+        run: |
+          sudo chroot "$BUILD_ROOT" /bin/bash -euc '
+            cd /work
+            target/release/release-tools linux-payload "$PWD/.tools/linux-guest-inputs" /factory/tools
+            export AIMANITY_BUNDLE_INTEGRITY=$PWD/apps/native/gen/host/integrity.json
+            cargo build --release --locked --manifest-path apps/native/Cargo.toml --bin aimanity-native
+            apps/native/target/release/aimanity-native --verify-bundled-host "$PWD/apps/native/gen/host"
+            target/release/release-tools linux-packages "$PWD/apps/native/gen/host" "$PWD/apps/native/target/release/aimanity-native" "$PWD/dist"
+          '
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: europium-linux-installers
+          path: |
+            dist/*.deb
+            dist/*.rpm
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7

@@ -101,7 +101,7 @@ pub(super) async fn start(
     plan: &Plan,
     stop: &mut watch::Receiver<bool>,
 ) -> Result<(Connection, NativeAndroidBooted)> {
-    let token = if plan.engine == crate::android::Engine::Whpx {
+    let token = if plan.engine == crate::android::Engine::Cuttlefish {
         String::new()
     } else {
         token(plan)?

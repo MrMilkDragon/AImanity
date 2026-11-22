@@ -212,9 +212,34 @@ unsafe extern "system" fn size_workbench(
     unsafe { DefSubclassProc(hwnd, message, edge, lparam) }
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
-pub fn lock_aspect(_id: window::Id, _aspect: Size) -> Task<()> {
-    Task::none()
+#[cfg(target_os = "linux")]
+pub fn lock_aspect(id: window::Id, aspect: Size) -> Task<()> {
+    use window::raw_window_handle::RawWindowHandle;
+    use x11rb::properties::{AspectRatio, WmSizeHints};
+
+    window::run(id, move |window| {
+        let Ok(handle) = window.window_handle() else {
+            return;
+        };
+        let window_id = match handle.as_raw() {
+            RawWindowHandle::Xlib(handle) => handle.window as u32,
+            RawWindowHandle::Xcb(handle) => handle.window.get(),
+            _ => return,
+        };
+        let apply = || -> Result<(), Box<dyn std::error::Error>> {
+            let (connection, _) = x11rb::connect(None)?;
+            let mut hints = WmSizeHints::get_normal_hints(&connection, window_id)?
+                .reply()?
+                .unwrap_or_default();
+            let ratio = AspectRatio::new(aspect.width as i32, aspect.height as i32);
+            hints.aspect = Some((ratio, ratio));
+            hints.set_normal_hints(&connection, window_id)?.check()?;
+            Ok(())
+        };
+        if let Err(error) = apply() {
+            eprintln!("Window aspect ratio: {error}");
+        }
+    })
 }
 
 #[cfg(not(any(windows, target_os = "macos")))]

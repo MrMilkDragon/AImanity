@@ -7,7 +7,7 @@ use std::{
 pub mod cli;
 mod device;
 pub mod input;
-#[cfg(any(windows, test))]
+#[cfg(any(windows, test, all(target_os = "linux", target_arch = "x86_64")))]
 pub mod launch;
 pub mod maintenance;
 mod manifest;
@@ -45,13 +45,14 @@ pub enum Engine {
     #[default]
     Goldfish,
     Avo,
-    Whpx,
+    #[serde(rename = "whpx", alias = "kvm")]
+    Cuttlefish,
 }
 
 impl Engine {
     pub const fn boot_timeout(self) -> Duration {
         Duration::from_secs(match self {
-            Self::Whpx => 180,
+            Self::Cuttlefish => 180,
             Self::Goldfish | Self::Avo => 120,
         })
     }
@@ -60,7 +61,8 @@ impl Engine {
         match self {
             Self::Goldfish => "avd",
             Self::Avo => "avo-avd",
-            Self::Whpx => "whpx-avd",
+            Self::Cuttlefish if cfg!(target_os = "linux") => "kvm-avd",
+            Self::Cuttlefish => "whpx-avd",
         }
     }
 
@@ -68,7 +70,7 @@ impl Engine {
         if sdk.join("avo/avo-vmm").is_file() {
             Self::Avo
         } else if sdk.join("cuttlefish/bzImage").is_file() {
-            Self::Whpx
+            Self::Cuttlefish
         } else {
             Self::Goldfish
         }
@@ -78,14 +80,14 @@ impl Engine {
         match self {
             Self::Goldfish => format!("system-images/android-35/default/{abi}").into(),
             Self::Avo => "avo/images".into(),
-            Self::Whpx => "cuttlefish".into(),
+            Self::Cuttlefish => "cuttlefish".into(),
         }
     }
 
     fn api(self) -> u32 {
         match self {
             Self::Avo => 37,
-            Self::Goldfish | Self::Whpx => 35,
+            Self::Goldfish | Self::Cuttlefish => 35,
         }
     }
 
@@ -99,7 +101,7 @@ impl Engine {
             ),
             #[cfg(not(target_os = "macos"))]
             Self::Avo => unreachable!("Avo is available only on macOS"),
-            Self::Whpx => format!("127.0.0.1:{}", console_port + 1),
+            Self::Cuttlefish => format!("127.0.0.1:{}", console_port + 1),
         }
     }
 }

@@ -11,7 +11,7 @@ enum Service {
     Source,
     Input,
     Control,
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
     VmOwner,
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     VmGuest,
@@ -39,7 +39,7 @@ fn start(service: Service, arguments: &[OsString]) -> Result<()> {
         Service::Source => runtime.block_on(crate::source_cli::run(arguments)),
         Service::Input => runtime.block_on(crate::android::input::run(arguments)),
         Service::Control => runtime.block_on(crate::supervision::control(arguments)),
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
         Service::VmOwner => runtime.block_on(crate::qemu_host::worker(arguments)),
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         Service::VmGuest => runtime.block_on(crate::linux_vm::guest(arguments)),
@@ -74,7 +74,7 @@ pub fn run(arguments: &[OsString]) -> Option<Result<()>> {
             Some(contract(arguments, crate::android::input::CONTRACT))
         }
         "--phone-peer-contract" => Some(contract(arguments, crate::device_bridge::PEER_CONTRACT)),
-        #[cfg(windows)]
+        #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
         "--qemu-backend-owner" => Some(start(Service::VmOwner, &arguments[1..])),
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
         "--qemu-guest-control" => Some(start(Service::VmGuest, &arguments[1..])),

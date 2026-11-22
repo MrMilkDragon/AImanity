@@ -1,0 +1,79 @@
+name: Sign Europium Linux packages
+on:
+  workflow_call:
+    inputs:
+      build_run:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: Linux desktop packages workflow run ID
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: read
+jobs:
+  sign:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          run-id: ${{ inputs.build_run }}
+          github-token: ${{ github.token }}
+          name: europium-linux-installers
+          path: dist
+      - name: Sign and check both local installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends debsig-verify rpm gnupg binutils
+          GNUPGHOME=$(mktemp -d "$RUNNER_TEMP/linux-sign.XXXXXX")
+          export GNUPGHOME
+          trap 'gpgconf --kill gpg-agent; rm -rf "$GNUPGHOME"' EXIT
+          gpg --batch --pinentry-mode loopback --passphrase '' --quick-generate-key 'AImanity Europium Linux packages' rsa3072 sign 0
+          fingerprint=$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 == "fpr" {print $10; exit}')
+          mkdir public-key
+          printf '%s\n' "$fingerprint" > public-key/fingerprint.txt
+          gpg --batch --armor --export "$fingerprint" > public-key/AImanity-Europium.asc
+          mkdir -p "$RUNNER_TEMP/deb-policy/$fingerprint" "$RUNNER_TEMP/deb-keys/$fingerprint"
+          gpg --batch --export "$fingerprint" > "$RUNNER_TEMP/deb-keys/$fingerprint/aimanity.pgp"
+          cat > "$RUNNER_TEMP/deb-policy/$fingerprint/aimanity.pol" <<POLICY
+          <?xml version="1.0"?>
+          <Policy xmlns="https://www.debian.org/debsig/1.0/">
+            <Origin Name="AImanity" id="$fingerprint"/>
+            <Selection><Required Type="origin" File="aimanity.pgp" id="$fingerprint"/></Selection>
+            <Verification><Required Type="origin" File="aimanity.pgp" id="$fingerprint"/></Verification>
+          </Policy>
+          POLICY
+          deb=dist/AImanity-0.0.5-linux-amd64.deb
+          rpm=dist/AImanity-0.0.5-linux-x86_64.rpm
+          ar p "$deb" debian-binary control.tar.zst data.tar.zst | gpg --batch --local-user "$fingerprint" --detach-sign --output "$GNUPGHOME/_gpgorigin"
+          ar q "$deb" "$GNUPGHOME/_gpgorigin"
+          debsig-verify --policies-dir "$RUNNER_TEMP/deb-policy" --keyrings-dir "$RUNNER_TEMP/deb-keys" "$deb"
+          rpmsign --define "_gpg_name $fingerprint" --define '_gpg_digest_algo sha256' --define '__gpg /usr/bin/gpg' --addsign "$rpm"
+          db="$RUNNER_TEMP/verify-rpmdb"
+          rpm --dbpath "$db" --initdb
+          rpmkeys --dbpath "$db" --import public-key/AImanity-Europium.asc
+          rpmkeys --dbpath "$db" --checksig --verbose "$rpm" | tee "$RUNNER_TEMP/rpm-signature.txt"
+          grep -Ei 'Signature.*: OK' "$RUNNER_TEMP/rpm-signature.txt"
+          for pkg in "$deb" "$rpm"; do test "$(stat -c %s "$pkg")" -lt 2147483648; done
+          printf 'OpenPGP fingerprint: `%s`\n' "$fingerprint" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: europium-signed-linux
+          path: |
+            dist/*.deb
+            dist/*.rpm
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: linux-package-key
+          path: public-key/
+          if-no-files-found: error
+          retention-days: 90

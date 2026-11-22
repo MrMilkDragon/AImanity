@@ -27,7 +27,7 @@ fn port(value: u32, default: u16) -> Result<u16> {
     Ok(value)
 }
 impl Ports {
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
     pub fn adb_endpoint(self) -> u16 {
         self.console + 1
     }
@@ -54,7 +54,7 @@ impl Ports {
         let count = match engine {
             Engine::Goldfish => 4,
             Engine::Avo => 1,
-            Engine::Whpx => 3,
+            Engine::Cuttlefish => 3,
         };
         ports[..count]
             .iter()
@@ -98,7 +98,10 @@ impl Plan {
             })
             .transpose()?;
         if backend.is_some()
-            && (!cfg!(windows) || (ports.adb, ports.console, ports.grpc) != (15037, 5564, 8558))
+            && (!cfg!(any(
+                windows,
+                all(target_os = "linux", target_arch = "x86_64")
+            )) || (ports.adb, ports.console, ports.grpc) != (15037, 5564, 8558))
         {
             return Err(Error::Invalid("android_backend_configuration"));
         }
@@ -139,7 +142,12 @@ impl Plan {
             Engine::Avo if !cfg!(target_os = "macos") => {
                 return Err(Error::Invalid("android_host_unsupported"));
             }
-            Engine::Whpx if !cfg!(windows) => {
+            Engine::Cuttlefish
+                if !cfg!(any(
+                    windows,
+                    all(target_os = "linux", target_arch = "x86_64")
+                )) =>
+            {
                 return Err(Error::Invalid("android_host_unsupported"));
             }
             _ => {}
@@ -179,14 +187,25 @@ impl Plan {
         self.engine.serial(self.ports.console)
     }
     pub(super) fn command(&self, role: &str, program: &str) -> Result<Command> {
-        let path = self
-            .sdk
-            .join(role)
-            .join(format!("{program}{}", self.suffix));
-        filesystem::regular(&path)?;
+        let sdk_command = || -> Result<Command> {
+            let path = self
+                .sdk
+                .join(role)
+                .join(format!("{program}{}", self.suffix));
+            filesystem::regular(&path)?;
+            Ok(Command::new(path))
+        };
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        let mut command = match self.engine {
+            Engine::Cuttlefish => {
+                crate::qemu_host::tool(&crate::qemu_host::bundled_tools()?, program)?
+            }
+            _ => sdk_command()?,
+        };
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        let mut command = sdk_command()?;
         let sdk = device::text(&self.sdk)?;
         let home = device::text(&self.home)?;
-        let mut command = Command::new(path);
         command
             .current_dir(&self.home)
             .env("ANDROID_HOME", &sdk)
@@ -230,8 +249,8 @@ impl Plan {
         } else {
             command.env("ADB_USB", "0").env("ADB_EMU", "0");
         }
-        #[cfg(windows)]
-        if self.engine == Engine::Whpx {
+        #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+        if self.engine == Engine::Cuttlefish {
             command.env("ADB_VENDOR_KEYS", self.adb_private_key());
         }
         command.args([
@@ -242,15 +261,15 @@ impl Plan {
         ]);
         Ok(command)
     }
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
     fn adb_private_key(&self) -> PathBuf {
         self.home.join("android/adbkey")
     }
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
     pub(super) fn adb_public_key(&self) -> PathBuf {
         self.home.join("android/adbkey.pub")
     }
-    #[cfg(windows)]
+    #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
     pub(super) async fn prepare_adb_keys(&self, log: &File) -> Result<()> {
         let key = self.adb_private_key();
         if !key.try_exists()? {

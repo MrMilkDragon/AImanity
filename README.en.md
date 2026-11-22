@@ -6,7 +6,7 @@ An agent that listens while it works, explores on its own, and learns across And
 
 ## Downloads
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
 
 [Installation guide](docs/public/release-status.md) · [Uninstall](docs/public/release-status.md#uninstall)
 
@@ -26,7 +26,7 @@ See [model and channel setup](docs/public/model-and-channel-setup.md), [notifica
 | Desktop client and workbench | Rust (Iced/wgpu) | `apps/native` |
 | Backend, devices and media | Rust, Axum, Tokio | `crates` |
 | Business API and state | protobuf, PostgreSQL, SQLx | `packages/protocol` |
-| Device runtimes | AOSP on Avo or QEMU WHPX, native Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
+| Device runtimes | AOSP on Avo or QEMU (WHPX/KVM), Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
 | Built-in capabilities | Skills and device profiles | `skills`, `config` |
 
 Agents plan from current device observations and record their actions and results. Cargo builds the project. Device disks, accounts and attachments stay in the local installation.

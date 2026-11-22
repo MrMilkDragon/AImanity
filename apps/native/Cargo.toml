@@ -66,6 +66,12 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["NSG
 windows = { version = "=0.61.3", features = ["Win32_Media_Speech", "Win32_System_Com", "Win32_System_Variant"] }
 windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+enigo = { version = "=0.6.1", default-features = false, features = ["x11rb"] }
+x11rb = "0.13"
+
 [target.'cfg(any(target_os = "macos", windows))'.dependencies]
 enigo = { version = "=0.6.1", default-features = false }
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 xcap = { version = "=0.9.10", default-features = false }

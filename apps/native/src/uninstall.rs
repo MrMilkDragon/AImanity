@@ -2,8 +2,12 @@
 mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::run;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(windows)]
 mod windows;
+#[cfg(target_os = "linux")]
+pub use linux::run;
 
 #[derive(Clone, Debug)]
 pub struct Plan {
@@ -11,6 +15,8 @@ pub struct Plan {
 }
 
 pub async fn prepare(locale: crate::locale::Locale) -> Result<Option<Plan>, String> {
+    #[cfg(target_os = "linux")]
+    use linux::plan;
     #[cfg(target_os = "macos")]
     use macos::plan;
     #[cfg(windows)]

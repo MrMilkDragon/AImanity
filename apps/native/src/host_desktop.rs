@@ -78,7 +78,7 @@ struct View {
     at: Instant,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn focused_window() -> Option<usize> {
     xcap::Window::all()
         .ok()?
@@ -217,14 +217,16 @@ fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
     Ok(())
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
     use enigo::{Axis, Button, Mouse};
-    use windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos;
-    if unsafe { SetCursorPos(x, y) } == 0 {
+    #[cfg(windows)]
+    if unsafe { windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(x, y) } == 0 {
         return Err(std::io::Error::last_os_error().into());
     }
     let mut input = Enigo::new(&Settings::default())?;
+    #[cfg(target_os = "linux")]
+    input.move_mouse(x, y, enigo::Coordinate::Abs)?;
     if action.kind == "scroll" {
         input.scroll(action.amount.clamp(-30, 30), Axis::Vertical)?;
     } else {
@@ -306,7 +308,7 @@ fn execute(
                 dispatch2::DispatchQueue::main().exec_sync(|| result = send());
                 result?;
             }
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "linux"))]
             send()?;
         }
         _ => return Err("不支持的本机操作".into()),
@@ -328,6 +330,17 @@ pub fn permission() -> Result<()> {
         return Err("请在系统设置中允许 AImanity 录制屏幕后重试".into());
     }
     Enigo::new(&Settings::default()).map_err(|_| "请在系统设置中允许 AImanity 使用辅助功能")?;
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn permission() -> Result<()> {
+    if std::env::var_os("WAYLAND_DISPLAY").is_some()
+        || std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland")
+    {
+        return Err("Host desktop control requires an X11 session.".into());
+    }
+    Enigo::new(&Settings::default())?;
     Ok(())
 }
 
