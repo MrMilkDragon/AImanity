@@ -13,7 +13,7 @@ concurrency:
   group: europium-windows-offline-candidate
   cancel-in-progress: false
 env:
-  PRODUCT_SOURCE: 02c14bff726aeab229c06ca62e78621d5528e22b
+  PRODUCT_SOURCE: 56a7568ecb1fd00defe46bc7ef513c5b567f6d80
   CARGO_HTTP_MULTIPLEXING: 'false'
 jobs:
   linux-final:
@@ -47,10 +47,9 @@ jobs:
         rustup target add aarch64-linux-android x86_64-linux-android
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
-        artifact-ids: '14618520860'
+        artifact-ids: "${{ needs.windows-inputs.outputs.baseline }}"
         path: "${{ runner.temp }}/windows-calcium-baseline"
         github-token: "${{ github.token }}"
-        run-id: '44713087613'
     - name: Build the amd64 filesystem and native offline assets
       run: |
         cargo build --quiet --locked -p ai-phone-release-tools --bin release-tools
@@ -59,6 +58,21 @@ jobs:
           "$PWD/target/debug/release-tools" factory-images rootfs amd64 "$RUNNER_TEMP/linux-rootfs.tar.zst"
         sudo env AI_PHONE_DEBIAN_KEYRING="$keyring" \
           "$PWD/target/debug/release-tools" windows-guest-assets "$RUNNER_TEMP/windows-guest-assets"
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        path: ".tools/escrow-checkout"
+        ref: "${{ github.sha }}"
+        sparse-checkout: factory-inputs/windows
+        persist-credentials: false
+    - name: Use the retained Europium Android helper identities
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p .tools/phone-apps
+        cp .tools/escrow-checkout/factory-inputs/windows/{input.apk,home.apk,manifest.json} .tools/phone-apps/
+        browser=$(jq -er '.abis.x86_64.url' config/phone-browser.json)
+        curl -fLsS --retry 3 -o .tools/phone-apps/browser.apk "$browser"
+        target/debug/release-tools phone-apps verify "$PWD"
     - name: Build the Linux release components
       env:
         GH_TOKEN: "${{ github.token }}"
@@ -87,6 +101,7 @@ jobs:
         if-no-files-found: error
         compression-level: 0
         retention-days: 2
+    needs: windows-inputs
   windows-exe:
     runs-on: windows-2025
     timeout-minutes: 90
@@ -117,9 +132,8 @@ jobs:
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         github-token: "${{ github.token }}"
-        artifact-ids: '14618032626'
+        artifact-ids: "${{ needs.windows-inputs.outputs.artifact }}"
         path: dist/windows-qemu
-        run-id: '44713087613'
     - name: Extract the published AOSP guest for offline installation
       env:
         GH_TOKEN: "${{ github.token }}"
@@ -173,7 +187,7 @@ jobs:
     - name: Assemble and inspect the offline Windows EXE
       env:
         GH_TOKEN: "${{ github.token }}"
-        QEMU_SHA256: 6922ed48a5a895e09fbfd5c2d20236b137a8d07ea312bb4b55439ba8733020e8
+        QEMU_SHA256: "${{ needs.windows-inputs.outputs.identity }}"
       run: |
         $env:GUEST_SHA256 = (Get-FileHash 'dist/windows-guest/windows-guest.payload' -Algorithm SHA256).Hash.ToLowerInvariant()
         cargo run --locked -p ai-phone-release-tools -- windows-factory build dist/windows-qemu $env:QEMU_SHA256 dist/windows-guest/windows-guest.payload $env:GUEST_SHA256
@@ -190,6 +204,7 @@ jobs:
       id: publish
     outputs:
       artifact: "${{ steps.publish.outputs.artifact-id }}"
+    needs: windows-inputs
   exact-exe:
     runs-on: windows-2025
     timeout-minutes: 55
@@ -197,7 +212,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         persist-credentials: false
-        ref: 02c14bff726aeab229c06ca62e78621d5528e22b
+        ref: 56a7568ecb1fd00defe46bc7ef513c5b567f6d80
     - name: Prepare acceptance tools
       shell: pwsh
       run: |
@@ -232,7 +247,7 @@ jobs:
         path: "${{ env.AIMANITY_QA_ROOT }}/candidate"
     - name: Install and drive the real first-run desktop client
       env:
-        AIMANITY_QA_SOURCE: 02c14bff726aeab229c06ca62e78621d5528e22b
+        AIMANITY_QA_SOURCE: 56a7568ecb1fd00defe46bc7ef513c5b567f6d80
       shell: pwsh
       run: |-
         $ErrorActionPreference = 'Stop'
@@ -268,3 +283,47 @@ jobs:
         if-no-files-found: warn
         retention-days: 2
     needs: windows-exe
+  windows-inputs:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    outputs:
+      artifact: "${{ steps.handoff.outputs.artifact-id }}"
+      identity: "${{ steps.build.outputs.sha256 }}"
+      baseline: "${{ steps.baseline.outputs.artifact-id }}"
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+        ref: "${{ env.PRODUCT_SOURCE }}"
+    - name: Install the pinned Rust toolchain
+      shell: bash
+      run: rustup toolchain install 1.96.0 --profile minimal
+    - name: Prepare the qualified Windows x64 QEMU component
+      id: build
+      shell: pwsh
+      run: |
+        cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory qemu . dist/windows-qemu
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $identity = (Get-FileHash dist/windows-qemu/windows-qemu.json -Algorithm SHA256).Hash.ToLowerInvariant()
+        "sha256=$identity" >> $env:GITHUB_OUTPUT
+    - name: Transfer the runtime and source receipt
+      id: handoff
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: windows-qemu
+        path: |
+          dist/windows-qemu/runtime/
+          dist/windows-qemu/licenses/
+          dist/windows-qemu/windows-qemu.json
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 7
+    - name: Transfer the unchanged Calcium backing disk and kernel
+      id: baseline
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: windows-calcium-baseline
+        path: dist/windows-qemu/baseline/
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 2

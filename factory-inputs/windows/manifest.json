@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "source_sha256": "fd22c299602775b8011f9d560d52930bd84cc67d7a2bdd52f2c9a801e8e9ee63",
+  "apps": {
+    "home": {
+      "package": "dev.aiphone.home",
+      "signer_sha256": "4a60b10b1c6e8cf091c4cf10e531def1f25f5584c4acc6921523caa18eb3a6d5"
+    },
+    "input": {
+      "package": "dev.aiphone.input",
+      "signer_sha256": "292c3740cadb917ba3dcdd74180cd074f0d66be058993ada51cb2fed76762752"
+    }
+  },
+  "browser": {
+    "abi": "x86_64",
+    "package": "info.plateaukao.einkbro",
+    "signer_sha256": "85ca929ba5b709f910b7513fd5be1045f0cebf1ad091ab7123ede3380905ba65",
+    "version": "16.7.1"
+  },
+  "files": [
+    {
+      "path": "runtime/phone-apps/browser.apk",
+      "size": 4094157,
+      "sha256": "81ccbb0acaa547e40660cb942c52b555b8f54e6de4e361d2acce7915a4352475",
+      "mode": 420
+    },
+    {
+      "path": "runtime/phone-apps/home.apk",
+      "size": 34817,
+      "sha256": "a8e1d67559e0469a5c39ec3d1198bb6d743799d688cbe82199d78bc276970347",
+      "mode": 420
+    },
+    {
+      "path": "runtime/phone-apps/input.apk",
+      "size": 44375,
+      "sha256": "63e232cdee864893d4293d7b8998f3e3baf45a89e69eb2cbd54045c70949d9c2",
+      "mode": 420
+    }
+  ]
+}
