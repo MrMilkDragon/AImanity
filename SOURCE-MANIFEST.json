@@ -63,8 +63,8 @@
     },
     {
       "path": ".github/workflows/linux-install-check.yml",
-      "size": 4782,
-      "sha256": "240d938458e8551df45ec89f021487b1049bd8683a4551cb666c5e090c6be357"
+      "size": 4751,
+      "sha256": "06aebba0540582908688b0f2f497ea21da57d346527e485e079d146e417dfb94"
     },
     {
       "path": ".github/workflows/linux-packages.yml",
@@ -2363,8 +2363,8 @@
     },
     {
       "path": "crates/release-tools/src/client_installer/aimanity.spec",
-      "size": 956,
-      "sha256": "d34a6744a822b52d3c29b8e9f4623d648abbd8673d732b9dd88103ed2a9078d8"
+      "size": 1005,
+      "sha256": "837a47d33d0f4775142bba5f8b58058620a8f99fb630a2a8154f81e93176b0a7"
     },
     {
       "path": "crates/release-tools/src/client_installer/bundle.rs",
@@ -2373,8 +2373,8 @@
     },
     {
       "path": "crates/release-tools/src/client_installer/linux_packages.rs",
-      "size": 6063,
-      "sha256": "d8e4220e9df56bd31b23f80be07a4c01e4cdfa2234abbb08b2813e2a96a06fd9"
+      "size": 6117,
+      "sha256": "b587150008db220c0c684d53dfbca489c8d1278480e2bdd9ef3053f856ffb967"
     },
     {
       "path": "crates/release-tools/src/client_installer/linux_payload.rs",
