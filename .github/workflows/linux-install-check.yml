@@ -87,7 +87,7 @@ jobs:
             exit 0
           fi
           docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc '
-            apt-get install -y --no-install-recommends xvfb xauth openbox wmctrl mesa-vulkan-drivers libgl1-mesa-dri libxcb-xkb1 libxkbcommon-x11-0 jq curl procps
+            apt-get install -y --no-install-recommends xvfb xauth openbox wmctrl mesa-vulkan-drivers libgl1-mesa-dri jq curl procps
             gid=$(stat -c %g /dev/kvm)
             group=$(getent group "$gid" | cut -d: -f1)
             if [ -z "$group" ]; then group=runner-kvm; groupadd -g "$gid" "$group"; fi

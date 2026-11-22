@@ -7,7 +7,7 @@ URL:            https://github.com/MrMilkDragon/AImanity
 BuildArch:      x86_64
 AutoReqProv:    no
 Requires:       glibc >= 2.36, @LINKED@
-Requires:       vulkan-loader, libwayland-client, libX11, libxkbcommon, polkit, espeak-ng, systemd-udev
+Requires:       vulkan-loader, libwayland-client, libX11, libX11-xcb, libXcursor, libXi, libxkbcommon, libxkbcommon-x11, polkit, espeak-ng, systemd-udev
 Requires:       (google-noto-sans-cjk-fonts or google-noto-sans-cjk-vf-fonts)
 
 %global __os_install_post %{nil}
