@@ -68,8 +68,8 @@
     },
     {
       "path": ".github/workflows/linux-packages.yml",
-      "size": 4543,
-      "sha256": "0ec4943b27251dd9742d563df98977550e4fa242dfc41dfef846a63ec63f5ec1"
+      "size": 4531,
+      "sha256": "cc9d7add8878f0078c052098c5a4ee2a92b4295805b91ef177b3efb667e7725b"
     },
     {
       "path": ".github/workflows/linux-publish.yml",
