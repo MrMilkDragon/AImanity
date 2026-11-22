@@ -4,9 +4,11 @@
 
 ## Downloads und Stand
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
 
 Voraussetzungen sind macOS 15.0 oder neuer mit Apple Silicon beziehungsweise Windows 11 x64. Jedes Installationspaket enthält Android, Linux, den Emulator und die lokalen Dienste.
+
+Linux auf x86_64 benötigt KVM und glibc ab 2.36. Wähle DEB für Debian/Ubuntu oder RPM für Fedora/Enterprise Linux 10. Installiere das nächste Paket im selben Format, um Geräte und Chats zu behalten. [Installationsbefehle](release-status.md#linux)
 
 ## Funktionen und Szenarien
 

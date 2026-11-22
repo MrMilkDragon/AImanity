@@ -62,7 +62,7 @@ jobs:
           sudo chroot "$BUILD_ROOT" /bin/bash -euc '
             cd /work
             scripts/stage-linux-tools.sh /factory/tools
-            [ -n "$(LD_LIBRARY_PATH=/factory/tools/lib /factory/tools/bin/qemu-system-x86_64 -netdev help | grep -qw user)" ]
+            LD_LIBRARY_PATH=/factory/tools/lib /factory/tools/bin/qemu-system-x86_64 -netdev help | grep -wx user
             export LD_LIBRARY_PATH=/factory/tools/lib
             /factory/tools/bin/adb keygen /factory/adb-test-key
             unset LD_LIBRARY_PATH

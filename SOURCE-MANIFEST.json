@@ -62,9 +62,24 @@
       "sha256": "e6076b5a5c85c182e78ac9a0e1e7d2c28ac15c1759acdc3b531ea355c79e5b86"
     },
     {
+      "path": ".github/workflows/linux-install-check.yml",
+      "size": 4782,
+      "sha256": "240d938458e8551df45ec89f021487b1049bd8683a4551cb666c5e090c6be357"
+    },
+    {
       "path": ".github/workflows/linux-packages.yml",
-      "size": 4543,
-      "sha256": "0ec4943b27251dd9742d563df98977550e4fa242dfc41dfef846a63ec63f5ec1"
+      "size": 4531,
+      "sha256": "cc9d7add8878f0078c052098c5a4ee2a92b4295805b91ef177b3efb667e7725b"
+    },
+    {
+      "path": ".github/workflows/linux-publish.yml",
+      "size": 1670,
+      "sha256": "4079cf72f18207fdd6839c46dc91ac78fdd55c7c20f1280b23fa1029ad477ba1"
+    },
+    {
+      "path": ".github/workflows/linux-sign.yml",
+      "size": 3693,
+      "sha256": "fe8aac44a46f23b1462be8626f49316a78e6a8277a3dd18805e30d72ba0f3aef"
     },
     {
       "path": ".github/workflows/source.yml",
@@ -138,13 +153,13 @@
     },
     {
       "path": "README.en.md",
-      "size": 2959,
-      "sha256": "21458e0c0d6b8be2a4958401e03b2ffc0adf77e3b795ff1ace22ce7a2706c551"
+      "size": 3189,
+      "sha256": "570eff11db1a8e6afe68ee2663236a736bfba06b7dec6de30d2a831ed2c055f5"
     },
     {
       "path": "README.md",
-      "size": 5434,
-      "sha256": "59e96fbbb34b28b287b988eb9d3b1a487bd3ae8ea90570b74b51d2fccbce4a51"
+      "size": 5923,
+      "sha256": "b07d9c44547ac91a4ff1524fffdc0b982cb7758b6f0f732de92fbea4e6cf3782"
     },
     {
       "path": "SECURITY.md",
@@ -153,8 +168,8 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 16293,
-      "sha256": "16b4e39f89f954ac19309ecd597a2af083d44c0a13a103119d570e3fe0643a3e"
+      "size": 16290,
+      "sha256": "8ac3cfb86e44e9a6906351a2b946b841a482fa881eb041f265f10cedd4ca3e61"
     },
     {
       "path": "ai-phone",
@@ -643,8 +658,8 @@
     },
     {
       "path": "config/native-notice-supplements.json",
-      "size": 69875,
-      "sha256": "f54de9a7c6885d32d7811b5f6f25b21ccdb31a47241704acb5c7f2bbb3d6ff5b"
+      "size": 73032,
+      "sha256": "2f8d36d3c2f33d29feaa9b674560667bd950da0cc4957a96e3a89b41dfcd6f02"
     },
     {
       "path": "config/ocr-models.json",
@@ -2588,18 +2603,18 @@
     },
     {
       "path": "docs/public/distribution-requirements.md",
-      "size": 1262,
-      "sha256": "23a91044c1c686cf64b29f184b1c562e4e387f9d992bb625b6706324a5a78772"
+      "size": 1314,
+      "sha256": "1d758422f89cd6a975d9f04b448bc729bb7a8c689e549c689f6dc3de7f756457"
     },
     {
       "path": "docs/public/distribution.en.md",
-      "size": 3008,
-      "sha256": "80d56500f56c3d5b5b5eefc5f8beddba60e2c06ad09fd14c25615a7f1eb4221d"
+      "size": 2919,
+      "sha256": "df430efb4acf30b548afa7f54011a01257c027a1e5b177e97998a6924f06ee7a"
     },
     {
       "path": "docs/public/distribution.zh-CN.md",
-      "size": 2628,
-      "sha256": "ca547037dd5426e83147314909d5f4874f39637fe4a6e88522f4332b3d16f82a"
+      "size": 2637,
+      "sha256": "c5ab78b5fe9337c6855d54a733e398a5a31b9c3d12413c5d1cc1e5e11789fa01"
     },
     {
       "path": "docs/public/engineering/android-corresponding-source.md",
@@ -2703,13 +2718,13 @@
     },
     {
       "path": "docs/public/getting-started.en.md",
-      "size": 3919,
-      "sha256": "94f4662a633ee6ea32a5af4722c6e466ec2f659e76b006ebc02020c93b290267"
+      "size": 3918,
+      "sha256": "8a2c3a283e67c49a4e5b0c367642f9668a58658f452b2264515f032a25cf27f3"
     },
     {
       "path": "docs/public/getting-started.zh-CN.md",
-      "size": 3662,
-      "sha256": "8f182af1c75516ce88edc6a796e4faa990afa3be866d0c543aaf2b902784c045"
+      "size": 3663,
+      "sha256": "895a8e4fa5981a56c15ca8d19b188716a4835795446e601cd9b062180ad382a9"
     },
     {
       "path": "docs/public/index.md",
@@ -2718,8 +2733,8 @@
     },
     {
       "path": "docs/public/integrated-hosts.md",
-      "size": 2924,
-      "sha256": "f010562fae4ae9c05a1f1777415b74781d970698df8da32f13230955a85af93d"
+      "size": 2885,
+      "sha256": "df9cd133f884db08f8c26acfd8bddbc4bcc08285feb6f697dc4c2f44c860715a"
     },
     {
       "path": "docs/public/languages.md",
@@ -2750,6 +2765,11 @@
       "path": "docs/public/licenses/native/05c60b829931ef7f-dispatch-Cargo.toml.txt",
       "size": 472,
       "sha256": "05c60b829931ef7f1f130735843c11f5cf9cc69546eca5fc941d014781c68e31"
+    },
+    {
+      "path": "docs/public/licenses/native/0660e17d634e5b8c-drm-fourcc-Cargo.toml.txt",
+      "size": 886,
+      "sha256": "0660e17d634e5b8c2a82cd0b0328c42fbc6e8b77a9f37b85f49bfeba1f4931ca"
     },
     {
       "path": "docs/public/licenses/native/074e6e32c86a4c0e-Apache-2.0.txt",
@@ -2812,6 +2832,11 @@
       "sha256": "5226e27d5fbc683db56c52853cdb9d15b69abadb525a60f95c862c2dbd77cdc8"
     },
     {
+      "path": "docs/public/licenses/native/56ab09c42eb25164-gbm-sys-LICENSE.txt",
+      "size": 1074,
+      "sha256": "56ab09c42eb251646c1c00ba32f5db0e51e297cd379eccc5a1cb7808f2de4ce7"
+    },
+    {
       "path": "docs/public/licenses/native/58317934bf818c37-gpu-alloc-APACHE.txt",
       "size": 569,
       "sha256": "58317934bf818c379e4215fad7e8dfb6812edff32c9557b8b039343f69711e08"
@@ -2825,6 +2850,11 @@
       "path": "docs/public/licenses/native/5ca77347e58205d3-cesu8-COPYRIGHT-RUST.txt.txt",
       "size": 17426,
       "sha256": "5ca77347e58205d3b543c04a9c5bdd11d20a9f3108a7b246640edffa999b5f35"
+    },
+    {
+      "path": "docs/public/licenses/native/5e7ded91ff4154ae-libwayshot-xcap-LICENSE.txt",
+      "size": 1319,
+      "sha256": "5e7ded91ff4154ae6787c6abafba9d63d2b12a0167382fb9ca50ce73e1b9e8ab"
     },
     {
       "path": "docs/public/licenses/native/5ef8fcfb6cccec8f-crc-catalog-MIT.txt",
@@ -2970,6 +3000,11 @@
       "path": "docs/public/licenses/native/d027e91dbc9cdbb2-r-efi-AUTHORS",
       "size": 3733,
       "sha256": "d027e91dbc9cdbb2f1190068e498bd6b61cff022b6a032b191021ba658d96111"
+    },
+    {
+      "path": "docs/public/licenses/native/d09216dc1ea5f273-cookie-factory-MIT.txt",
+      "size": 1065,
+      "sha256": "d09216dc1ea5f273997667935a8d6514d80f00b89fb6954ecc3a43e0a6e360de"
     },
     {
       "path": "docs/public/licenses/native/d3cdb764b98283ee-crc-catalog-Apache-2.0.txt",
@@ -3188,13 +3223,13 @@
     },
     {
       "path": "docs/public/native-client.en.md",
-      "size": 3952,
-      "sha256": "04915afabc5573094ea25c1c7a5151313d48afdd1ab10b646fe1e83c7acb3682"
+      "size": 3922,
+      "sha256": "d8e58f1399ebb3fb8644b6a46be5e3a434ce0387caccd1fd485bc71f0332416d"
     },
     {
       "path": "docs/public/native-client.zh-CN.md",
-      "size": 3404,
-      "sha256": "bdb2fa530f4c2d407c5088c2d6c808a77fe356d0963ed518a475124dc788caff"
+      "size": 3385,
+      "sha256": "42aadebedfd6bf0fb60fbe163c39886c5305b0a22c99c5434559051f74df17e6"
     },
     {
       "path": "docs/public/native-services-license-inventory.json",
@@ -3223,43 +3258,43 @@
     },
     {
       "path": "docs/public/readme.ar.md",
-      "size": 3956,
-      "sha256": "e0717bd094176c2bdafda84e5a55193904a525a9ad75256d827f77ecb6e9467d"
+      "size": 4571,
+      "sha256": "ab644d3be42ad484a0de344ba8ccaa2bb5971605ba03d60663272881fdd2d67b"
     },
     {
       "path": "docs/public/readme.de.md",
-      "size": 3043,
-      "sha256": "3d884b808773cceef8062037df36122d3bd9959fa1d0e50ceb297a4e0af6f327"
+      "size": 3528,
+      "sha256": "c5fd346f93ecdbb8f81d2498e97e2053cb0dc30e51f160af0c35ff2377832ccf"
     },
     {
       "path": "docs/public/readme.es.md",
-      "size": 3021,
-      "sha256": "f526a9285394c8030374596647b9dac88838aaff928c3bdced1cb06af3c09fe0"
+      "size": 3525,
+      "sha256": "b67277544efe7fb8797ce5e2d416da7926c9c94e0b7fcc717ce2c0d9abc747c2"
     },
     {
       "path": "docs/public/readme.fr.md",
-      "size": 3262,
-      "sha256": "03b160dfc90c3016fda4601eb74991f37d9784229c6743b74216211c243a8ab4"
+      "size": 3812,
+      "sha256": "63725e5f98c5d6f98f42ade3216095cfbb7f6e595b52d54f76fe5bf2f3a4332d"
     },
     {
       "path": "docs/public/readme.ja.md",
-      "size": 3141,
-      "sha256": "a7b35c3b0b459196325ededa306a4b4a7ec32009a264d9c61a823d49904efbe2"
+      "size": 3708,
+      "sha256": "8340fbac4cd9fd6fbff82df2a07dfda7320f9350842ffc2e637fd023e556b021"
     },
     {
       "path": "docs/public/readme.ko.md",
-      "size": 3098,
-      "sha256": "57480b64291485069df9bf12d474c2cb55c72190c326794e041d4fb1c3dab4c2"
+      "size": 3613,
+      "sha256": "400c6e8da4dd374b09c34d856ae7e08be63b242a31f96b3f1b535cc00e51d25e"
     },
     {
       "path": "docs/public/readme.ru.md",
-      "size": 4754,
-      "sha256": "a7f149dc0eed42faf77d0a8c4915fa83d38f16ae8ddc2eead9abd9b50861384b"
+      "size": 5381,
+      "sha256": "be93a26b20c8c4fee24034c713bbb6532e6e06391f29176df3b7bc5e4198bfed"
     },
     {
       "path": "docs/public/readme.zh-TW.md",
-      "size": 2579,
-      "sha256": "2e2e2bab3440be5b25dbf916cbd6b7433af25813c423b2f300433e58efe45735"
+      "size": 3052,
+      "sha256": "3926e9a893f4085530e8e201645a7e1e68fd475599041b0d471fd4c77cfd0c83"
     },
     {
       "path": "docs/public/release-roadmap.en.md",
@@ -3273,8 +3308,8 @@
     },
     {
       "path": "docs/public/release-status.md",
-      "size": 3797,
-      "sha256": "00798b8ee1983802eec32ce9efe1b1e09ccfe1f9b388262175097db7a10db6e3"
+      "size": 5881,
+      "sha256": "76205c598e5448a6758d723c3a6e2e3a917d160a671623434b6a4ae7202a8812"
     },
     {
       "path": "docs/public/runtime-bundles.md",
@@ -3620,6 +3655,11 @@
       "path": "scripts/channels-start.sh",
       "size": 170,
       "sha256": "8e674099309a8563a5d86db7a8c113814aa1ae5dd87ab35ab4cb34f6436a2fcf"
+    },
+    {
+      "path": "scripts/check-linux-guests.sh",
+      "size": 2631,
+      "sha256": "d8d5904eb27e335d583a73cda6b0ae248819109d7efe9381962f04b309b4e1a8"
     },
     {
       "path": "scripts/check-native-workspace.sh",

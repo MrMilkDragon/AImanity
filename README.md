@@ -6,7 +6,7 @@ An agent that listens while it works, explores on its own, and learns from using
 
 ## Downloads
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
 
 [Installation guide](docs/public/release-status.md) · [Uninstall](docs/public/release-status.md#uninstall)
 
@@ -27,7 +27,7 @@ See [model and channel setup](docs/public/model-and-channel-setup.md), [notifica
 | Desktop client and workbench | Rust (Iced/wgpu) | `apps/native` |
 | Backend, devices and media | Rust, Axum, Tokio | `crates` |
 | Business API and state | protobuf, PostgreSQL, SQLx | `packages/protocol` |
-| Device runtimes | AOSP on Avo or WHPX, native Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
+| Device runtimes | AOSP on Avo or QEMU (WHPX/KVM), Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
 | Built-in capabilities | Skills and device profiles | `skills`, `config` |
 
 Agents plan from current device observations and record their actions and results. Cargo builds the project. Device disks, accounts and attachments stay in the local installation.
@@ -52,7 +52,7 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 ## 下载
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
 
 [安装指南](docs/public/release-status.md) · [卸载](docs/public/release-status.md#卸载)
 
@@ -68,7 +68,7 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 ## 技术架构
 
-客户端与工作台采用 Rust、Iced 和 wgpu。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，数据由 PostgreSQL 和 SQLx 管理。Cargo 负责构建。Android 由 Avo 或 WHPX 运行，Debian/Openbox 桌面和工作区共用一份 Linux 根文件系统。
+客户端与工作台采用 Rust、Iced 和 wgpu。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，数据由 PostgreSQL 和 SQLx 管理。Cargo 负责构建。macOS 通过 Avo 运行 Android，Windows 和 Linux 通过 QEMU 配合 WHPX 或 KVM 运行 Android 和 Debian/Openbox 桌面。
 
 Agent 根据当前设备画面操作，动作账本保留执行过程和结果。设备盘、账号、聊天和附件保存在本地安装目录或数据库中。
 

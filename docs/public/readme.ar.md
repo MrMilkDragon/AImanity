@@ -4,9 +4,11 @@
 
 ## التنزيل والحالة
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
 
 يتطلب macOS 15.0 أو أحدث ومعالج Apple Silicon. يتطلب Windows الإصدار 11 بمعمارية x64. يضم كل مثبّت Android وLinux والمحاكي والخدمات المحلية.
+
+يتطلب Linux بمعمارية x86_64 تفعيل KVM ووجود glibc 2.36 أو أحدث. اختر DEB لتوزيعات Debian وUbuntu، وRPM لتوزيعات Fedora وEnterprise Linux 10. للتحديث، ثبّت الحزمة الجديدة بالتنسيق نفسه للاحتفاظ بالأجهزة والمحادثات. [أوامر التثبيت](release-status.md#linux)
 
 ## الوظائف والسيناريوهات
 

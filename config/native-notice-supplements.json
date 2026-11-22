@@ -135,6 +135,19 @@
       ]
     },
     {
+      "package": "cookie-factory@0.3.3",
+      "repository": "https://github.com/rust-bakery/cookie-factory",
+      "files": [
+        {
+          "file": "docs/public/licenses/native/d09216dc1ea5f273-cookie-factory-MIT.txt",
+          "sha256": "d09216dc1ea5f273997667935a8d6514d80f00b89fb6954ecc3a43e0a6e360de",
+          "url": "https://raw.githubusercontent.com/rust-bakery/cookie-factory/d36b805dbd7dd65f2df947235c5bcc573afe2c76/LICENSES/MIT.txt"
+        }
+      ],
+      "commit": "d36b805dbd7dd65f2df947235c5bcc573afe2c76",
+      "selected_license": "MIT"
+    },
+    {
       "package": "crc-catalog@2.5.0",
       "repository": "https://github.com/akhilles/crc-catalog.git",
       "commit": "ed4ad631f22b05055c21a3a4127eb7cf6d75bb62",
@@ -213,6 +226,51 @@
         }
       ],
       "selected_license": "MIT"
+    },
+    {
+      "package": "drm-fourcc@2.2.0",
+      "repository": "https://github.com/danielzfranklin/drm-fourcc-rs",
+      "files": [
+        {
+          "file": "docs/public/licenses/native/0660e17d634e5b8c-drm-fourcc-Cargo.toml.txt",
+          "sha256": "0660e17d634e5b8c2a82cd0b0328c42fbc6e8b77a9f37b85f49bfeba1f4931ca",
+          "url": "https://raw.githubusercontent.com/danielzfranklin/drm-fourcc-rs/7b9f80060ffd4b35cd236437e65a17fb517d163c/Cargo.toml"
+        },
+        {
+          "file": "docs/public/licenses/native/b05785f9f18e6716-MIT.txt",
+          "sha256": "b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5",
+          "url": "https://raw.githubusercontent.com/spdx/license-list-data/d46e94e2c78ceede1cfc63cfa0396472d2798d4c/text/MIT.txt",
+          "kind": "linked-license-text"
+        }
+      ],
+      "commit": "7b9f80060ffd4b35cd236437e65a17fb517d163c",
+      "selected_license": "MIT"
+    },
+    {
+      "package": "gbm-sys@0.4.0",
+      "repository": "https://github.com/Drakulix/gbm.rs/tree/master/gbm-sys",
+      "files": [
+        {
+          "file": "docs/public/licenses/native/56ab09c42eb25164-gbm-sys-LICENSE.txt",
+          "sha256": "56ab09c42eb251646c1c00ba32f5db0e51e297cd379eccc5a1cb7808f2de4ce7",
+          "url": "https://raw.githubusercontent.com/Drakulix/gbm.rs/2b4047f8e5ab4d050d4ed88f5ee2515069478fac/LICENSE"
+        }
+      ],
+      "commit": "2b4047f8e5ab4d050d4ed88f5ee2515069478fac",
+      "selected_license": "MIT"
+    },
+    {
+      "package": "gl@0.14.0",
+      "repository": "https://github.com/brendanzab/gl-rs/",
+      "files": [
+        {
+          "file": "docs/public/licenses/native/cfc7749b96f63bd3-gl-rs-LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "url": "https://raw.githubusercontent.com/brendanzab/gl-rs/ea503e8d5fb6d73c6030e6191ce738cd3bf3433e/LICENSE"
+        }
+      ],
+      "commit": "ea503e8d5fb6d73c6030e6191ce738cd3bf3433e",
+      "selected_license": "Apache-2.0"
     },
     {
       "package": "gl_generator@0.14.0",
@@ -504,6 +562,19 @@
           "url": "https://raw.githubusercontent.com/brendanzab/gl-rs/f150967b1c44ae888e6676f93f639ebc82771bdc/LICENSE"
         }
       ]
+    },
+    {
+      "package": "libwayshot-xcap@0.3.3",
+      "repository": "https://github.com/nashaofu/wayshot",
+      "files": [
+        {
+          "file": "docs/public/licenses/native/5e7ded91ff4154ae-libwayshot-xcap-LICENSE.txt",
+          "sha256": "5e7ded91ff4154ae6787c6abafba9d63d2b12a0167382fb9ca50ce73e1b9e8ab",
+          "url": "https://raw.githubusercontent.com/nashaofu/wayshot/4351de93758fa02e3c01b712aabbb8fdb8d7ef19/LICENSE"
+        }
+      ],
+      "commit": "4351de93758fa02e3c01b712aabbb8fdb8d7ef19",
+      "selected_license": "BSD-2-Clause"
     },
     {
       "package": "lyon@1.0.19",
