@@ -4,7 +4,9 @@
 
 ## Descargas y estado
 
-[Descargar 0.0.4 Dysprosium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.4)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.4 Dysprosium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe)
+
+La versión 0.0.4 ofrecerá la actualización a Europium desde la aplicación cuando estén disponibles ambos instaladores.
 
 Requiere macOS 15.0 o posterior con Apple Silicon, o Windows 11 x64. Cada instalador incluye Android, Linux, el emulador y los servicios locales.
 
@@ -15,19 +17,19 @@ AImanity reúne un teléfono Android y un escritorio Linux con una sola conversa
 - Usar aplicaciones como WeChat mediante su pantalla y notificaciones reales, y responder según las instrucciones del usuario. Las restricciones de cuenta y aplicación siguen vigentes.
 - Recibir un archivo en el teléfono, transferirlo a Linux, procesar y comprobar una hoja de cálculo y devolver el resultado. Transferencia entre dispositivos y entrega a un contacto se verifican por separado.
 - Añadir instrucciones e interrumpir la generación sin perder mensajes ni acciones. Las notificaciones pueden despertar al Agente; Liberty funciona en ambos dispositivos.
-- Compartir Skills, documentos de conocimiento vinculados y archivos de trabajo. Modelos/API, memoria y conexiones externas pertenecen a los Agentes. Clash se ejecuta dentro de cada invitado; el host usa conexión directa por defecto.
+- Compartir Skills, documentos de conocimiento vinculados y archivos de trabajo. Modelos/API, memoria y conexiones externas pertenecen a los Agentes. Los dispositivos se conectan directamente de forma predeterminada. Puedes configurar un proxy en el espacio de trabajo.
 
 Las acciones se vinculan a observaciones, dispositivo, tarea, época de control e identificador único. Un resultado desconocido se observa antes de repetir.
 
 ## Arquitectura y datos
 
-`apps/native`: Rust (Iced/wgpu). `crates`: Rust/Axum/Tokio. `packages/protocol`: protobuf. PostgreSQL/SQLx conserva el estado y Redis se reserva para caché opcional y no es la cola de tareas. Cargo compila el proyecto; Compose ejecuta servicios. `infra`, `scripts`, `skills` y `config` contienen entorno y capacidades integradas.
+`apps/native`: Rust (Iced/wgpu). `crates`: Rust/Axum/Tokio. `packages/protocol`: protobuf. Los datos se guardan en PostgreSQL mediante SQLx. Cargo compila el proyecto.
 
 Código y datos de usuario están separados. No se publican discos, cuentas, chats, adjuntos ni claves. Las actualizaciones requieren artefactos versionados, copias de seguridad, migraciones y reversión; no un `git pull` directo sobre los datos del usuario.
 
 ## Futuro, responsabilidad y licencia
 
-Prioridades: paquetes completos, recuperación de instalación, actualizaciones firmadas, estabilidad del Agente, audio/entrada, validación de modelos y Skills especializados. Después, voz y telefonía experimental.
+La hoja de ruta incluye más proveedores de voz, habilidades para aplicaciones y tareas de oficina que se inician al recibir una notificación.
 
 Interfaz y configuración inicial admiten diez idiomas. El selector a la izquierda de Skills cambia la interfaz; no traduce automáticamente el sistema invitado ni las salidas originales. El árabe usa escritura de derecha a izquierda.
 

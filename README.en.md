@@ -4,9 +4,11 @@ English · [简体中文](README.md#简体中文) · [繁體中文](docs/public/
 
 An agent that listens while it works, explores on its own, and learns across Android and Linux.
 
-## 0.0.4 Dysprosium
+## Downloads
 
-Apple Silicon macOS and Windows 11 x64. [Download DMG or EXE](docs/public/release-status.md) · [GitHub Releases](https://github.com/MrMilkDragon/AImanity/releases) · [Uninstall](docs/public/release-status.md#uninstall)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.4 Dysprosium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe)
+
+The 0.0.4 client will offer Europium once both desktop installers are available. [Installation guide](docs/public/release-status.md) · [Uninstall](docs/public/release-status.md#uninstall)
 
 ## What it does
 

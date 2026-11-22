@@ -1,13 +1,13 @@
 # Install AImanity / 安装 AImanity
 
-[0.0.4 Dysprosium](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.4) includes Android, the Linux desktop and local services.
+Each installer includes Android, the Linux desktop and the local services.
 
 | Platform | Requirements | Installer | Factory |
 | --- | --- | --- | --- |
-| macOS | Apple Silicon, macOS 15+ | [DMG](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-macos-arm64.dmg) | [macOS](engineering/macos-full-runtime.md) |
-| Windows | Windows 11 x64, hardware virtualization | [EXE](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe) | [Windows](windows-client-factory.md) |
+| macOS | Apple Silicon, macOS 15+ | [0.0.5 Europium · DMG](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) | [macOS](engineering/macos-full-runtime.md) |
+| Windows | Windows 11 x64, hardware virtualization | [0.0.4 Dysprosium · EXE](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe) | [Windows](windows-client-factory.md) |
 
-Open the app, choose your device settings, then add a model in Configuration. Dysprosium uses ad hoc signing on macOS and self-signed Authenticode on Windows.
+Open the app, choose your device settings, then add a model in Configuration. The macOS app uses an ad hoc signature. The Windows installer uses self-signed Authenticode.
 
 - **macOS.** If macOS reports an unidentified developer, open **System Settings → Privacy & Security → Open Anyway** after trying to launch AImanity. [Apple first-launch help](https://support.apple.com/en-us/102445)
 - **Windows.** If SmartScreen shows **Windows protected your PC**, choose **Run anyway** when offered for the EXE downloaded from the Releases link above. [Microsoft SmartScreen help](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation#certificate-options-and-their-smartscreen-implications)
@@ -17,11 +17,17 @@ Open the app, choose your device settings, then add a model in Configuration. Dy
 - **macOS。** 如果系统提示开发者身份无法验证，尝试打开 AImanity 后，进入 **系统设置 → 隐私与安全性 → 仍要打开**。[Apple 首次打开指南](https://support.apple.com/zh-cn/102445)
 - **Windows。** 如果 SmartScreen 提示 **Windows 已保护你的电脑**，从上方发行页下载 EXE 后，可在出现 **仍要运行** 时选择该项。[微软 SmartScreen 指南](https://learn.microsoft.com/zh-cn/windows/apps/package-and-deploy/smartscreen-reputation#certificate-options-and-their-smartscreen-implications)
 
+## Updating from 0.0.4 / 从 0.0.4 更新
+
+To install Europium on a Mac now, quit AImanity and copy the app from the DMG into Applications, replacing the existing copy. Your devices, conversations and model settings live separately. The 0.0.4 client will offer the update once both desktop installers are available.
+
+Mac 用户现在即可退出 AImanity，将 DMG 中的应用拖到「应用程序」并替换旧版。设备、聊天和模型配置位于独立的数据目录。两端安装包都发布后，0.0.4 客户端将提供 Europium 更新。
+
 ## Moving from Calcium
 
-Back up any devices, configuration and conversations you want to keep, uninstall 0.0.3, then install 0.0.4. Subsequent updates appear in the native client.
+Back up any devices, configuration and conversations you want to keep, uninstall 0.0.3, then install the version listed for your platform above.
 
-从 Calcium 迁移时，请先备份要保留的设备、配置和聊天，卸载 0.0.3，再安装 0.0.4。后续版本通过原生客户端更新。
+从 Calcium 迁移时，请先备份要保留的设备、配置和聊天，再卸载 0.0.3，通过上表安装对应平台的版本。
 
 ## Uninstall
 
