@@ -10,7 +10,7 @@ jobs:
     uses: ./.github/workflows/linux-packages.yml
     with:
       guest_run: '44977954864'
-      source_ref: '3ef9c8581f112b03996923952b1f2f7334c6ea79'
+      source_ref: 'ea8132ec08f9a1dfa933206cc6db3563128410c1'
   release:
     needs: package
     permissions:
