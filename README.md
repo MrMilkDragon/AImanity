@@ -6,9 +6,9 @@ An agent that listens while it works, explores on its own, and learns from using
 
 ## Downloads
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.4 Dysprosium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
 
-The 0.0.4 client will offer Europium once both desktop installers are available. [Installation guide](docs/public/release-status.md) · [Uninstall](docs/public/release-status.md#uninstall)
+[Installation guide](docs/public/release-status.md) · [Uninstall](docs/public/release-status.md#uninstall)
 
 ## What it does
 
@@ -52,9 +52,9 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 ## 下载
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.4 Dysprosium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.4/AImanity-0.0.4-windows-x64-setup.exe)
+[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe)
 
-两端安装包都发布后，0.0.4 客户端将提供 Europium 更新。[安装指南](docs/public/release-status.md) · [卸载](docs/public/release-status.md#卸载)
+[安装指南](docs/public/release-status.md) · [卸载](docs/public/release-status.md#卸载)
 
 ## 功能
 
