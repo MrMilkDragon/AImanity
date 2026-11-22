@@ -10,4 +10,12 @@ jobs:
     uses: ./.github/workflows/linux-packages.yml
     with:
       guest_run: '44977954864'
-      source_ref: '077cf6fda1379c001104f204fb83fa0f4b4d06bb'
+      source_ref: '3ef9c8581f112b03996923952b1f2f7334c6ea79'
+  release:
+    needs: package
+    permissions:
+      actions: read
+      contents: write
+    uses: ./.github/workflows/linux-publish.yml
+    with:
+      build_run: ${{ format('{0}', github.run_id) }}
