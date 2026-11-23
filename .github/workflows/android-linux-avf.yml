@@ -78,7 +78,16 @@ jobs:
           rm runtime.zip
           readelf -h published/desktop-bridge | grep -E "Machine:[[:space:]]+AArch64"
           zstd -t published/linux-rootfs.tar.zst
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: cargo-cache
+        with:
+          path: |
+            ~/.cargo/registry
+            target/release
+          key: linux-avf-arm64-rust196-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: linux-avf-arm64-rust196-${{ hashFiles('Cargo.lock') }}-
       - name: Compile the guest bootstrap and seal its offline bundle
+        id: compile
         env:
           GH_TOKEN: ${{ github.token }}
           AI_PHONE_RELEASE_DESKTOP_BRIDGE: ${{ runner.temp }}/published/desktop-bridge
@@ -90,6 +99,13 @@ jobs:
             --manifest-path apps/android-host/Cargo.toml --bin aimanity-avf-guest-relay
           cargo run --quiet --locked -p ai-phone-release-tools -- \
             android-linux-context "$RUNNER_TEMP/compiled" "$RUNNER_TEMP/published/linux-rootfs.tar.zst"
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: ${{ !cancelled() && steps.compile.outcome != 'skipped' && steps.cargo-cache.outputs.cache-hit != 'true' }}
+        with:
+          path: |
+            ~/.cargo/registry
+            target/release
+          key: linux-avf-arm64-rust196-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
       - name: Install Debian trixie, prepare the kernel and make the writable disk seed
         run: |
           set -euo pipefail
