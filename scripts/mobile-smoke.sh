@@ -78,11 +78,16 @@ word_box selected Choose >/dev/null
 # bottom. Tesseract's sparse full-screen pass can miss its reversed text.
 adb shell input tap "$((width/2))" "$((height*545/600))"
 wait_word settings devices
+sleep 1
+capture settings
 
 # Read and edit the first CPU value, next to the Phone label. The two
 # adjacent field labels anchor the crop even if navigation insets move.
 read -r cpu_x cpu_y cpu_w cpu_h < <(word_box settings CPU)
-read -r mem_x mem_y mem_w mem_h < <(word_box settings Memory)
+read -r mem_x mem_y mem_w mem_h < <(awk -F '\t' -v x="$cpu_x" -v y="$cpu_y" -v h="$cpu_h" '
+  $1 == 5 && tolower($12) == "memory" && $7 > x && $8 <= y+h && $8+$10 >= y {
+    print $7,$8,$9,$10; exit
+  }' evidence/settings.tsv)
 (( mem_x > cpu_x && cpu_h > 0 ))
 value_box=$(awk -F '\t' -v left="$((cpu_x+cpu_w))" -v right="$mem_x" -v y="$cpu_y" -v h="$cpu_h" '
   $1 == 5 && $12 == "2" && $7 >= left && $7+$9 < right && $8 < y+h && $8+$10 > y {
@@ -95,9 +100,13 @@ if [[ -z $value_box ]]; then
 fi
 read -r cx cy cw ch <<< "$value_box"
 cpu_value() {
-  local shot=$1
+  local shot=$1 recognized
   convert "evidence/$shot.png" -crop "${cw}x${ch}+${cx}+${cy}" +repage -resize 400% \
     -colorspace Gray -contrast-stretch '2%x10%' -bordercolor white -border 12 "evidence/$shot-cpu.png"
+  recognized=$(awk -F '\t' -v x="$cx" -v y="$cy" -v w="$cw" -v h="$ch" '
+    $1 == 5 && $12 ~ /^[124]$/ && $7+$9/2 >= x && $7+$9/2 <= x+w && $8+$10/2 >= y && $8+$10/2 <= y+h {print $12; exit}
+  ' "evidence/$shot.tsv")
+  if [[ -n $recognized ]]; then printf %s "$recognized"; return; fi
   tesseract "evidence/$shot-cpu.png" stdout -l eng --psm 10 -c tessedit_char_whitelist=0123456789 2>/dev/null | tr -cd '0-9'
 }
 before=$(cpu_value settings)
