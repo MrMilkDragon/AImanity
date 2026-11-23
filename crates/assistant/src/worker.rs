@@ -3672,13 +3672,44 @@ async fn respond(
         tools.as_array_mut().expect("tool catalog").push(tool);
     }
     match scope {
-        ModelTools::Workspace => tools.as_array_mut().unwrap().retain(|tool| {
-            let name = tool["name"].as_str().unwrap();
-            !name.starts_with("phone_")
-                && !name.starts_with("computer_")
-                && (!name.starts_with("device_")
-                    || matches!(name, "device_list" | "device_interact"))
-        }),
+        ModelTools::Workspace => {
+            let request = latest_request(context);
+            let inspecting_peer = paired
+                && !host
+                && (request.trim_end().ends_with(['?', '？'])
+                    || work_intent::affirmed_action(
+                        &request,
+                        &["只读", "只看", "只观察", "read-only", "read only"],
+                    ))
+                && context[evidence_start(context)..].iter().any(|item| {
+                    matches!(
+                        item["name"].as_str(),
+                        Some("device_list" | "device_interact")
+                    )
+                })
+                && work_intent::inspection_request(&request)
+                && !device_change_request(&request)
+                && !work_intent::work_subject(&request)
+                && !work_intent::file_delivery_request(&request);
+            tools.as_array_mut().unwrap().retain_mut(|tool| {
+                let name = tool["name"].as_str().unwrap();
+                if inspecting_peer {
+                    if name == "task_finish" {
+                        tool["description"] = json!("结束读屏，将实际看见的内容回复给用户。");
+                        tool["parameters"]["properties"]
+                            .as_object_mut()
+                            .unwrap()
+                            .retain(|field, _| matches!(field.as_str(), "status" | "summary"));
+                        return true;
+                    }
+                    return matches!(name, "device_list" | "device_interact");
+                }
+                !name.starts_with("phone_")
+                    && !name.starts_with("computer_")
+                    && (!name.starts_with("device_")
+                        || matches!(name, "device_list" | "device_interact"))
+            });
+        }
         ModelTools::DesktopFrame(_) => {
             if let Some(click) = tools
                 .as_array_mut()

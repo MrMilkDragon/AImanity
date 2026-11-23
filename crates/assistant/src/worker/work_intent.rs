@@ -167,6 +167,13 @@ pub(super) fn affirmed_action(request: &str, verbs: &[&str]) -> bool {
         verbs.iter().any(|verb| {
             clause.match_indices(verb).any(|(index, _)| {
                 let prefix = clause[..index].trim_end();
+                if *verb == "打开"
+                    && ["当前", "目前", "前台", "已经", "已", "正在"]
+                        .iter()
+                        .any(|state| prefix.ends_with(state))
+                {
+                    return false;
+                }
                 ![
                     "不", "别", "勿", "不要", "不准", "不能", "不可", "禁止", "避免", "无需",
                     "不必", "未", "not", "never",
@@ -264,6 +271,11 @@ mod tests {
 
     #[test]
     fn read_only_inspection_never_turns_excluded_input_into_an_action() {
+        assert!(!affirmed_action("请查看当前打开系统设置的设备", &["打开"]));
+        assert!(affirmed_action(
+            "查看当前打开的窗口，然后打开设置",
+            &["打开"]
+        ));
         assert!(inspection_request("只观察手机当前画面，不点击也不输入"));
         assert!(!affirmed_action(
             "只观察手机当前画面，不点击也不输入",
