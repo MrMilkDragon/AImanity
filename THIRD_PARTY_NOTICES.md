@@ -14,6 +14,7 @@ See [distribution requirements](docs/public/distribution-requirements.md) for th
 
 | Component | Source / licence evidence | Distribution scope and obligations |
 | --- | --- | --- |
+| redb 5.0.0 | [Upstream](https://github.com/cberner/redb), [MIT licence](docs/public/licenses/native/redb-LICENSE-MIT.txt) | Embedded database in the Fluorine client. |
 | Rhai 1.27.0 | [Upstream](https://github.com/rhaiscript/rhai), [MIT licence](docs/public/licenses/native/rhai-LICENSE-MIT.txt) | Embedded interpreter for application MCP tools. |
 | Iced 0.14.0 | [Upstream](https://github.com/iced-rs/iced/tree/0.14.0), [MIT licence](docs/public/licenses/native-ui/iced-LICENSE) | Native workbench UI; locked dependencies in apps/native/Cargo.lock |
 | Cryoglyph 0.1.0 | [Upstream](https://github.com/iced-rs/cryoglyph), [licences](apps/native/vendor/cryoglyph) | Native GPU text renderer. The bundled source uses lru 0.18 for its glyph cache. |

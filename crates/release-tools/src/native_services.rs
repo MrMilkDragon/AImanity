@@ -18,15 +18,13 @@ use std::{
 };
 
 const ROLES: [(&str, &str); 3] = [
-    ("assistant", "ai-phone-assistant"),
+    ("host", "host-resources"),
     ("runner", "ai-phone-runner"),
     ("vision", "ai-phone-vision"),
 ];
-const CONTRACTS: [(&str, &str); 7] = [
-    ("device_setup", "ai-phone-device-setup-v2"),
+const CONTRACTS: [(&str, &str); 5] = [
     ("service_supervision", "ai-phone-linux-supervision-v2"),
     ("phone_input_setup", "ai-phone-input-setup-v2"),
-    ("database_prepare", "ai-phone-database-prepare-v1"),
     ("host_profile", "ai-phone-host-profile-v1"),
     ("managed_engine", "ai-phone-managed-engine-v1"),
     ("runtime_environment", "ai-phone-runtime-environment-v1"),
@@ -229,8 +227,12 @@ async fn build() -> Result<Value> {
         "--features",
         "ai-phone-vision/native",
     ]);
-    for (_, package) in ROLES {
-        command.args(["-p", package]);
+    for (package, binary) in [
+        ("ai-phone-host-runtime", "host-resources"),
+        ("ai-phone-runner", "ai-phone-runner"),
+        ("ai-phone-vision", "ai-phone-vision"),
+    ] {
+        command.args(["-p", package, "--bin", binary]);
     }
     if !command
         .env("CARGO_BUILD_JOBS", "2")
@@ -266,7 +268,7 @@ async fn build() -> Result<Value> {
         let flag = format!("--{}-contract", name.replace('_', "-"));
         let result = probe
             .run(
-                Path::new("target/release/ai-phone-assistant"),
+                Path::new("target/release/host-resources"),
                 &[&flag],
                 None,
                 false,
@@ -385,7 +387,7 @@ pub(super) fn package(linux_ocr: Option<&Path>, linux_rootfs: Option<Value>) -> 
     };
     let mut manifest = json!({
         "format": 1, "host": host, "source_sha256": receipt["source_sha256"], "compiler": receipt["compiler"],
-        "versions": {"assistant":receipt["checks"]["assistant"]["version"],"runner":receipt["checks"]["runner"]["version"]},
+        "versions": {"host":receipt["checks"]["host"]["version"],"runner":receipt["checks"]["runner"]["version"]},
         "vision": vision, "files": files.iter().map(Entry::inventory).collect::<Vec<_>>(),
     });
     if let Some(rootfs) = linux_rootfs {
@@ -479,7 +481,7 @@ pub(super) fn android_guest(args: &[OsString]) -> Result<Value> {
     let version = source::payload(&root, folder, files, vec!["native-services", "phone-apps"])?;
     fs::write(folder.join("source.sha256"), format!("{version}\n"))?;
     fs::copy(
-        "target/release/ai-phone-assistant",
+        "target/release/host-resources",
         folder.join("bootstrap.program"),
     )?;
     Ok(json!({"identity":version}))

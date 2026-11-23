@@ -1,8 +1,8 @@
 #!/bin/sh
 # Source from project scripts; these variables apply only to this process tree.
 AI_PHONE_PROJECT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-if [ -x "$AI_PHONE_PROJECT_ROOT/runtime/services/bin/assistant" ]; then
-  native_host="$AI_PHONE_PROJECT_ROOT/runtime/services/bin/assistant"
+if [ -x "$AI_PHONE_PROJECT_ROOT/runtime/services/bin/host" ]; then
+  native_host="$AI_PHONE_PROJECT_ROOT/runtime/services/bin/host"
 else
   native_host="$AI_PHONE_PROJECT_ROOT/target/debug/host-resources"
 fi

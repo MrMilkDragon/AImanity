@@ -13,7 +13,6 @@ use iced::{
         text_editor,
     },
 };
-use prost::Message as _;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -37,7 +36,6 @@ pub enum Message {
     HostToggle,
     HostAllow,
     HostGranted(Result<(), String>),
-    HostEnded(String, Result<(), String>),
     RefreshDisplay,
     Mode(modes::Message),
     Edit(text_editor::Action),
@@ -113,7 +111,6 @@ pub struct Chat {
     following: bool,
     control_busy: bool,
     pub host: crate::host_desktop::Permission,
-    outbox: PathBuf,
 }
 impl Chat {
     pub fn new() -> Self {
@@ -136,32 +133,16 @@ impl Chat {
             following: true,
             control_busy: false,
             host: crate::host_desktop::Permission::Disabled,
-            outbox: PathBuf::new(),
         }
     }
-    pub fn restore(&mut self, root: &str) -> Task<Message> {
-        self.outbox = PathBuf::from(root).join("data/native/outbox");
-        let folder = self.outbox.clone();
+    pub fn restore(&mut self, client: &Connection) -> Task<Message> {
+        let workspace = client.workspace.clone();
         Task::perform(
             async move {
-                tokio::fs::create_dir_all(&folder)
+                tokio::task::spawn_blocking(move || workspace.pending())
                     .await
-                    .map_err(|e| e.to_string())?;
-                let mut directory = tokio::fs::read_dir(folder)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let mut pending = Vec::new();
-                while let Some(entry) = directory.next_entry().await.map_err(|e| e.to_string())? {
-                    if entry.path().extension().is_some_and(|v| v == "pb") {
-                        let bytes = tokio::fs::read(entry.path())
-                            .await
-                            .map_err(|e| e.to_string())?;
-                        pending.push(
-                            wire::ChatState::decode(bytes.as_slice()).map_err(|e| e.to_string())?,
-                        );
-                    }
-                }
-                Ok(pending)
+                    .map_err(|e| e.to_string())?
+                    .map_err(|e| e.to_string())
             },
             Message::Restored,
         )
@@ -184,27 +165,18 @@ impl Chat {
             .iter()
             .map(|m| m.request_id.as_str())
             .collect();
-        self.pending.retain(|p| {
-            if receipt_ids.contains(p.request.request_id.as_str()) {
-                let path = self.outbox.join(format!("{}.pb", p.request.request_id));
-                tasks.push(Task::perform(
-                    async move {
-                        tokio::fs::remove_file(path)
-                            .await
-                            .map_err(|e| e.to_string())
-                    },
-                    Message::Downloaded,
-                ));
-                false
-            } else {
-                true
-            }
-        });
+        self.pending
+            .retain(|p| !receipt_ids.contains(p.request.request_id.as_str()));
         if let Some(page) = &next.message_window
             && (self.before.is_empty() || page.kind() == wire::ChatWindowKind::Before)
         {
             self.before = page.next_before_message_id.clone();
             self.has_older = page.has_older;
+        }
+        for m in &next.messages {
+            if m.role == "assistant" && !m.active {
+                self.host.end(&m.run_id);
+            }
         }
         let sorted_len = self.state.messages.len();
         for mut incoming in next.messages.drain(..) {
@@ -299,54 +271,36 @@ impl Chat {
             messages: vec![pending.message.clone()],
             ..Default::default()
         };
-        let path = self.outbox.join(format!("{id}.pb"));
-        let temporary = path.with_extension("tmp");
+        let workspace = client.workspace.clone();
         let mut request = pending.request.clone();
         request.receipt_only = true;
         let client = client.clone();
         let id = id.to_string();
-        let (ready, host_task) =
-            if fresh && matches!(self.host, crate::host_desktop::Permission::Armed) {
-                request.use_host_desktop = true;
-                let (stop, closed) = tokio::sync::watch::channel(());
-                let (started, ready) = tokio::sync::oneshot::channel();
-                let request = id.clone();
-                let task = Task::perform(
-                    crate::host_desktop::serve(
-                        client.assistant.clone(),
-                        request.clone(),
-                        started,
-                        closed,
-                    ),
-                    move |result| Message::HostEnded(request.clone(), result),
-                );
-                self.host = crate::host_desktop::Permission::Active {
-                    request: id.clone(),
-                    _stop: stop,
-                };
-                (Some(ready), task)
-            } else {
-                if fresh {
-                    self.host.close();
-                }
-                (None, Task::none())
+        if fresh && matches!(self.host, crate::host_desktop::Permission::Armed) {
+            let (stop, live) = tokio::sync::watch::channel(());
+            *workspace.host.lock().unwrap() = Some((
+                id.clone(),
+                std::sync::Arc::new(crate::host_desktop::Grant::new(live)),
+            ));
+            self.host = crate::host_desktop::Permission::Active {
+                request: id.clone(),
+                _stop: stop,
             };
-        let send = Task::perform(
+            request.use_host_desktop = true;
+        } else if fresh {
+            self.host.close();
+        }
+        Task::perform(
             async move {
-                tokio::fs::write(&temporary, snapshot.encode_to_vec())
+                let id = request.request_id.clone();
+                tokio::task::spawn_blocking(move || workspace.stash(&snapshot, &id))
                     .await
+                    .map_err(|e| e.to_string())?
                     .map_err(|e| e.to_string())?;
-                tokio::fs::rename(temporary, path)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                if let Some(ready) = ready {
-                    ready.await.map_err(|_| "本机桌面未连接")?;
-                }
                 client.rpc("assistant/send", request).await
             },
             move |r| Message::Sent(id.clone(), r),
-        );
-        Task::batch([host_task, send])
+        )
     }
     fn refresh_traces(&mut self, client: &Connection) -> Task<Message> {
         let mut tasks = Vec::new();
@@ -477,13 +431,6 @@ impl Chat {
                     }
                 }
             }
-            Message::HostEnded(id, result) => {
-                if self.host.end(&id)
-                    && let Err(error) = result
-                {
-                    self.error = error;
-                }
-            }
             Message::Sent(id, result) => match result {
                 Ok(receipt) => return self.accept(receipt, client, false),
                 Err(error) => {
@@ -504,7 +451,6 @@ impl Chat {
             }
             Message::Restored(result) => match result {
                 Ok(records) => {
-                    let mut tasks = Vec::new();
                     for record in records {
                         for message in record.messages {
                             if self
@@ -513,15 +459,6 @@ impl Chat {
                                 .iter()
                                 .any(|m| m.request_id == message.request_id)
                             {
-                                let path = self.outbox.join(format!("{}.pb", message.request_id));
-                                tasks.push(Task::perform(
-                                    async move {
-                                        tokio::fs::remove_file(path)
-                                            .await
-                                            .map_err(|e| e.to_string())
-                                    },
-                                    Message::Downloaded,
-                                ));
                                 continue;
                             }
                             let request = wire::ChatSendRequest {
@@ -546,7 +483,6 @@ impl Chat {
                             });
                         }
                     }
-                    return Task::batch(tasks);
                 }
                 Err(e) => self.error = e,
             },

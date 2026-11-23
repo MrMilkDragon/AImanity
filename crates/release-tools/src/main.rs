@@ -19,7 +19,6 @@ mod macos_factory;
 mod native_services;
 mod phone_apps;
 mod source;
-mod update_feed;
 #[cfg(windows)]
 mod windows_factory;
 #[cfg(unix)]
@@ -53,7 +52,6 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         "client-payload" => client_payload::run(rest).map(Some),
         #[cfg(target_os = "macos")]
         "macos-factory" => macos_factory::run(rest).map(Some),
-        "sign-update" => update_feed::sign(rest).map(|()| None),
         "prepare-ocr-models" => assets::ocr(rest).map(Some),
         "prepare-speech-model" => assets::speech(rest).map(Some),
         #[cfg(unix)]

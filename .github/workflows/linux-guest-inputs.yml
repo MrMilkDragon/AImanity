@@ -1,9 +1,16 @@
 name: Linux offline guest inputs
 on:
-  push:
-    branches: [build/linux-inputs]
   workflow_dispatch:
+    inputs:
+      factory_run:
+        description: Fluorine Windows factory run containing the new guest
+        required: true
+        type: string
   workflow_call:
+    inputs:
+      factory_run:
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
@@ -14,16 +21,20 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Extract the published Europium guest files
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.factory_run }}
+          name: complete-windows-installer
+          path: ${{ runner.temp }}/factory
+      - name: Extract the Fluorine guest, Android runtime and speech model
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           rustup toolchain install 1.96.0 --profile minimal
-          $installer = Join-Path $env:RUNNER_TEMP 'AImanity-0.0.5-windows-x64-setup.exe'
-          $url = 'https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe'
-          curl.exe -fLsS --retry 3 -o $installer $url
-          if ((Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne '6fde29eb0fea8a8d7daab9d79a2163022c57d95eeb4b614b3fb14dbd0038937e') { throw 'Published installer identity mismatch' }
+          $version = (Get-Content -Raw config/release-policy.json | ConvertFrom-Json).version
+          $installer = Join-Path $env:RUNNER_TEMP "factory/AImanity-$version-windows-x64-setup.exe"
           $dest = Join-Path $env:RUNNER_TEMP 'guest-inputs'
           $items = @('{app}\host\android.payload','{app}\host\qemu\guest\*','{app}\host\qemu\manifest.json','{app}\host\speech\*')
           cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory unpack . $installer $dest @items

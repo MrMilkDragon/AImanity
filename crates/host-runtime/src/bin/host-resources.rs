@@ -2,6 +2,10 @@ use std::env;
 
 fn main() {
     let mut arguments: Vec<_> = env::args_os().skip(1).collect();
+    if arguments == ["--version"] {
+        println!("host-resources {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     if arguments.len() == 4 && arguments[0] == "stage" {
         arguments[0] = "--stage-source".into();
     }

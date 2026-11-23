@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       signed_run:
-        description: Run containing europium-signed-linux
+        description: Run containing fluorine-signed-linux
         required: true
         type: string
   workflow_call:
@@ -40,7 +40,7 @@ jobs:
         run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "$ANDROID_HOME"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: europium-signed-linux
+          name: fluorine-signed-linux
           run-id: ${{ inputs.signed_run }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/signed
@@ -59,23 +59,23 @@ jobs:
           if [[ "$PACKAGE" == deb && -c /dev/kvm ]]; then devices+=(--device=/dev/kvm); fi
           docker run --detach --name distro "${devices[@]}" \
             -v "${installer[0]}:/candidate.$PACKAGE:ro" \
-            -v "$RUNNER_TEMP/package-key/AImanity-Europium.asc:/package-key.asc:ro" \
+            -v "$RUNNER_TEMP/package-key/AImanity-Fluorine.asc:/package-key.asc:ro" \
             -v "$PWD/scripts/check-linux-guests.sh:/check-linux-guests.sh:ro" "$DISTRO" sleep infinity
           if [[ "$PACKAGE" == deb ]]; then
-            gpg --batch --dearmor -o "$RUNNER_TEMP/package-key.gpg" "$RUNNER_TEMP/package-key/AImanity-Europium.asc"
+            gpg --batch --dearmor -o "$RUNNER_TEMP/package-key.gpg" "$RUNNER_TEMP/package-key/AImanity-Fluorine.asc"
             ar p "${installer[0]}" _gpgorigin > "$RUNNER_TEMP/deb-origin.sig"
             ar p "${installer[0]}" debian-binary control.tar.zst data.tar.zst |
               gpgv --keyring "$RUNNER_TEMP/package-key.gpg" "$RUNNER_TEMP/deb-origin.sig" -
             docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc '
               apt-get update -qq
               apt-get install -y --no-install-recommends /candidate.deb
-              dpkg-query -W -f="\${Status} \${Version}\n" aimanity
+              dpkg-query -W -f="\${Status} \${Version}\n" aimanity-workspace
             '
           else
-            docker exec distro bash -euc 'rpm --import /package-key.asc && dnf --setopt=localpkg_gpgcheck=1 install -y /candidate.rpm && rpm -q aimanity && rpm -V aimanity'
+            docker exec distro bash -euc 'rpm --import /package-key.asc && dnf --setopt=localpkg_gpgcheck=1 install -y /candidate.rpm && rpm -q aimanity-workspace && rpm -V aimanity-workspace'
           fi
-          docker exec distro aimanity --verify-bundled-host /usr/lib/aimanity/host
-          docker exec distro aimanity --android-session-contract
+          docker exec distro aimanity-workspace --verify-bundled-host /usr/lib/aimanity-workspace/host
+          docker exec distro aimanity-workspace --android-session-contract
           echo "- $DISTRO installed the signed $PACKAGE and verified its offline resources." >> "$GITHUB_STEP_SUMMARY"
       - name: Boot both installed guests on the runner's KVM
         if: matrix.package == 'deb'

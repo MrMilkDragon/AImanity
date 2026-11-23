@@ -85,12 +85,13 @@ impl Devices {
         ]
         .into_iter()
         .filter(|(kind, max)| {
-            registry
-                .devices
-                .iter()
-                .filter(|d| !d.paired && &d.kind == kind)
-                .count()
-                < *max as usize
+            *max == 0
+                || registry
+                    .devices
+                    .iter()
+                    .filter(|d| !d.paired && &d.kind == kind)
+                    .count()
+                    < *max as usize
         })
         .map(|(kind, _)| kind)
         .collect()
@@ -206,6 +207,15 @@ impl Devices {
                 self.selected = id;
                 self.registry = Some(registry.clone());
                 self.draft = None;
+                self.job = None;
+                if registry
+                    .devices
+                    .iter()
+                    .any(|device| device.id == self.selected && device.paired)
+                {
+                    self.resources = None;
+                    return Task::none();
+                }
                 self.resources = self.applied.clone();
                 return self.update(Message::Check, registry, client);
             }

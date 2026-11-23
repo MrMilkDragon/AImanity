@@ -61,23 +61,11 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/lib/android/sdk
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends debootstrap e2fsprogs cpio \
-            kmod file zstd lz4 xz-utils ca-certificates pkg-config libssl-dev \
+            kmod file zstd lz4 xz-utils ca-certificates pkg-config libssl-dev musl-tools \
             libtesseract-dev libleptonica-dev tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
           rustup target add aarch64-unknown-linux-musl
-      - name: Fetch the pinned Europium ARM64 workspace disk and bridge
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          cd "$RUNNER_TEMP"
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/14718706944/zip" > runtime.zip
-          echo '6157c59a251a845f24cebe4e3e0be33ffeeb37a7e849e51335daed951b992b9a  runtime.zip' | sha256sum -c -
-          unzip -q runtime.zip -d published
-          rm runtime.zip
-          readelf -h published/desktop-bridge | grep -E "Machine:[[:space:]]+AArch64"
-          zstd -t published/linux-rootfs.tar.zst
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         id: cargo-cache
         with:
@@ -90,15 +78,20 @@ jobs:
         id: compile
         env:
           GH_TOKEN: ${{ github.token }}
-          AI_PHONE_RELEASE_DESKTOP_BRIDGE: ${{ runner.temp }}/published/desktop-bridge
+          AI_PHONE_RELEASE_DESKTOP_BRIDGE: ${{ github.workspace }}/target/aarch64-unknown-linux-musl/release/desktop-bridge
           AI_PHONE_RELEASE_PHONE_APPS: ${{ runner.temp }}/mobile-phone-apps
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: rust-lld
         run: |
           set -euo pipefail
+          cargo build --quiet --locked -p ai-phone-release-tools --bin release-tools
+          keyring=$(scripts/stage-debian-keyring.sh "$RUNNER_TEMP/trixie-keyring")
+          sudo env AI_PHONE_DEBIAN_KEYRING="$keyring" target/debug/release-tools factory-images rootfs arm64 "$RUNNER_TEMP/linux-rootfs.tar.zst"
+          sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/linux-rootfs.tar.zst"
+          cargo build --quiet --locked --release --target aarch64-unknown-linux-musl -p ai-phone-guest-runtime --bin desktop-bridge
           cargo build --quiet --locked --release --target aarch64-unknown-linux-musl \
             --manifest-path apps/android-host/Cargo.toml --bin aimanity-avf-guest-relay
           cargo run --quiet --locked -p ai-phone-release-tools -- \
-            android-linux-context "$RUNNER_TEMP/compiled" "$RUNNER_TEMP/published/linux-rootfs.tar.zst"
+            android-linux-context "$RUNNER_TEMP/compiled" "$RUNNER_TEMP/linux-rootfs.tar.zst"
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: ${{ !cancelled() && steps.compile.outcome != 'skipped' && steps.cargo-cache.outputs.cache-hit != 'true' }}
         with:

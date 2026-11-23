@@ -5,15 +5,12 @@ use std::{ffi::OsString, fs, path::Path, process::Command};
 const ROOT: &str = "/opt/aiphone";
 const LIB: &str = "/opt/aiphone/linux/lib";
 const LOADER: &str = "/opt/aiphone/linux/lib/ld-linux-x86-64.so.2";
-const POSTGRES: &str = "lib/postgresql/17";
-const PACKAGES: [&str; 10] = [
+const PACKAGES: [&str; 8] = [
     "bubblewrap",
     "slirp4netns",
     "zstd",
     "patchelf",
-    "postgresql-17",
     "tzdata",
-    "redis-server",
     "tesseract-ocr",
     "tesseract-ocr-chi-sim",
     "tesseract-ocr-eng",
@@ -48,56 +45,19 @@ fn executable(source: &Path, destination: &Path) -> Result<()> {
 
 fn collect() -> Result<()> {
     let root = Path::new(ROOT);
-    let pg = root.join("postgres");
-    let pg_destination = pg.join(POSTGRES);
-    let pg_source = Path::new("/usr").join(POSTGRES);
     let tools = root.join("linux");
-    let redis = root.join("redis/bin");
     let notices = tools.join("licenses");
     for path in [
-        pg_destination.join("bin"),
-        pg_destination.join("lib"),
-        pg.join("share/postgresql"),
         tools.join("bin"),
         Path::new(LIB).to_path_buf(),
-        redis.clone(),
         notices.clone(),
     ] {
         fs::create_dir_all(path)?;
     }
     let tool_bin = tools.join("bin");
-    for name in ["bwrap", "slirp4netns", "zstd", "redis-server", "redis-cli"] {
-        let bin = if name.starts_with("redis-") {
-            &redis
-        } else {
-            &tool_bin
-        };
-        executable(&Path::new("/usr/bin").join(name), &bin.join(name))?;
+    for name in ["bwrap", "slirp4netns", "zstd"] {
+        executable(&Path::new("/usr/bin").join(name), &tool_bin.join(name))?;
     }
-    for name in ["postgres", "initdb", "psql", "pg_dump", "pg_restore"] {
-        executable(
-            &pg_source.join("bin").join(name),
-            &pg_destination.join("bin").join(name),
-        )?;
-    }
-    for library in fs::read_dir(pg_source.join("lib"))? {
-        let library = library?;
-        let name = library.file_name();
-        if library
-            .path()
-            .extension()
-            .is_some_and(|value| value == "so")
-            && name != "llvmjit.so"
-        {
-            libraries(&library.path())?;
-            fs::copy(library.path(), pg_destination.join("lib").join(name))?;
-        }
-    }
-    execute(
-        Command::new("cp")
-            .args(["-aL", "/usr/share/postgresql/17"])
-            .arg(pg.join("share/postgresql")),
-    )?;
     execute(
         Command::new("cp")
             .args(["-a", "/usr/share/zoneinfo"])
@@ -116,35 +76,84 @@ fn collect() -> Result<()> {
     }
     linux_ocr::collect(&root.join("ocr"))?;
 
-    let database = tempfile::tempdir()?;
-    execute(
-        Command::new("chown")
-            .arg("65534:65534")
-            .arg(database.path()),
-    )?;
-    execute(
-        Command::new("setpriv")
-            .args(["--reuid=65534", "--regid=65534", "--clear-groups", "--"])
-            .arg(pg_destination.join("bin/initdb"))
-            .args([
-                "-U",
-                "ai_phone",
-                "--locale-provider=builtin",
-                "--locale=C.UTF-8",
-                "-D",
-            ])
-            .arg(database.path().join("data")),
-    )?;
     for executable in [
-        pg_destination.join("bin/postgres"),
-        redis.join("redis-server"),
-        redis.join("redis-cli"),
         tools.join("bin/bwrap"),
         tools.join("bin/slirp4netns"),
         tools.join("bin/zstd"),
     ] {
         execute(Command::new(executable).arg("--version"))?;
     }
+    Ok(())
+}
+
+fn guest_disk(output: &Path) -> Result<()> {
+    use std::os::unix::fs::symlink;
+    let work = tempfile::tempdir_in(output)?;
+    let root = work.path().join("root");
+    fs::create_dir(&root)?;
+    linux_rootfs::bootstrap(&root, "amd64")?;
+    linux_rootfs::install_packages(
+        &root,
+        [
+            "busybox-static",
+            "adb",
+            "kmod",
+            "util-linux",
+            "iproute2",
+            "tzdata",
+        ],
+    )?;
+    for path in [
+        "opt/aiphone/engine/bin",
+        "opt/aiphone/native-phone-bridge/platform-tools",
+        "opt/aiphone/linux",
+        "opt/aiphone/bundle",
+        "usr/local/libexec",
+        "mnt",
+        "run",
+        "sys",
+        "proc",
+        "dev",
+    ] {
+        fs::create_dir_all(root.join(path))?;
+    }
+    symlink("/bin/busybox", root.join("opt/aiphone/engine/bin/busybox"))?;
+    symlink(
+        "/usr/bin/adb",
+        root.join("opt/aiphone/native-phone-bridge/platform-tools/adb"),
+    )?;
+    fs::write(
+        root.join("etc/inittab"),
+        "::once:/usr/local/libexec/aiphone-bootstrap --qemu-guest-control\n::shutdown:/bin/umount -a -r\n",
+    )?;
+    let resolver = root.join("etc/resolv.conf.install");
+    fs::write(&resolver, "nameserver 10.0.2.3\n")?;
+    fs::rename(resolver, root.join("etc/resolv.conf"))?;
+    fs::write(root.join("etc/machine-id"), "")?;
+    for path in [
+        "usr/local/libexec/aiphone-bootstrap",
+        "opt/aiphone/bundle/source.payload",
+        "opt/aiphone/bundle/source.sha256",
+        "opt/aiphone/bundle/images.payload",
+    ] {
+        fs::File::create(root.join(path))?;
+    }
+    execute(linux_rootfs::chroot(&root, "/usr/bin/apt-get").arg("clean"))?;
+    fs::remove_dir_all(root.join("var/lib/apt/lists"))?;
+    let disk = work.path().join("guest.ext4");
+    fs::File::create(&disk)?.set_len(2 << 30)?;
+    execute(
+        Command::new("mke2fs")
+            .args(["-q", "-F", "-t", "ext4", "-m", "0", "-L", "aimanity", "-d"])
+            .arg(&root)
+            .arg(&disk),
+    )?;
+    execute(
+        Command::new("qemu-img")
+            .args(["convert", "-f", "raw", "-O", "qcow2", "-c"])
+            .arg(disk)
+            .arg(output.join("guest.qcow2")),
+    )?;
     Ok(())
 }
 
@@ -175,6 +184,7 @@ pub(crate) fn run(args: &[OsString]) -> Result<Value> {
             )?;
             let staged = chroot.path().join(ROOT.trim_start_matches('/'));
             linux_ocr::seal(&staged.join("ocr"))?;
+            guest_disk(&staged)?;
             fs::rename(staged, &destination)?;
             Ok(json!({"directory":destination}))
         }

@@ -1479,7 +1479,7 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "device_message",
-            "向已连接设备交接任务，写明结果要求和实际文件路径。task_wait 可等待回执，交接完成会唤醒原任务。",
+            "给已连接设备上的执行者交接独立工作，写明结果和文件路径。当前任务可直接完成的顺序步骤继续用设备工具。交接回执唤醒原任务。",
             json!({"source_device_id":id,"target_device_id":id,"text":id}),
             vec!["source_device_id", "target_device_id", "text"],
         ),

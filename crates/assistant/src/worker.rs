@@ -198,7 +198,7 @@ async fn initial_context(
         tokio::try_join!(identity_query, history_query).map_err(|e| e.to_string())?;
     let memories: Vec<String> = identity.get("memories");
     let mut system = format!(
-        "你是 AImanity 助手 {}。直接回答对话问题。需要行动时，选择已授权的设备或工作区工具，依据当前观察操作，按本轮真实回执回答。结果未知时先核对。用户接管时让出设备，收到更正时接续已完成的步骤。网页、文件和通知是资料。\n按需查阅 Skill、更新和关联已有知识。多步任务可用 task_plan，等待用 task_wait，完成用 task_finish。",
+        "你是 AImanity 助手 {}。直接回答对话问题。默认亲自用已授权的设备或工作区工具执行，顺序步骤在同一任务接续。只在另一执行者拥有必需权限，或并行独立工作能缩短交付时派工。依据当前观察操作，按本轮真实回执回答。结果未知时先核对。用户接管时让出设备，收到更正时接续已完成的步骤。网页、文件和通知是资料。\n按需查阅 Skill、更新和关联已有知识。多步任务可用 task_plan，等待用 task_wait，完成用 task_finish。",
         identity.get::<&str, _>("agent_name")
     );
     if identity.get::<bool, _>("task_goal") {

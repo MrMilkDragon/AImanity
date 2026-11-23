@@ -33,8 +33,9 @@ if [[ -n ${ASSETS_RUN:-} ]]; then
   )
 fi
 
-package=dev.aimanity.native
-filename=AImanity-0.0.5-android-universal.apk
+package=dev.aimanity.workspace
+version=$(jq -er '.version' "$repo/config/release-policy.json")
+filename="AImanity-$version-android-universal.apk"
 manifest_args=()
 case "$SIGNING" in
   release)
@@ -45,9 +46,9 @@ case "$SIGNING" in
     printf %s "$APK_KEYSTORE" | base64 --decode > "$work/identity.p12"
     ;;
   preview)
-    package=dev.aimanity.native.preview
+    package=dev.aimanity.workspace.preview
     filename=AImanity-workbench-preview.apk
-    manifest_args=(--rename-manifest-package "$package" --version-name 0.0.5-preview --replace-version)
+    manifest_args=(--rename-manifest-package "$package" --version-name "$version-preview" --replace-version)
     APK_SIGN_PASS=$(openssl rand -hex 24)
     export APK_SIGN_PASS
     keytool -genkeypair -keystore "$work/identity.p12" -storetype PKCS12 \

@@ -34,7 +34,7 @@ fn uninstall() -> Result<(), String> {
                 .trim()
                 .split(':')
                 .next()
-                == Some("aimanity"))
+                == Some("aimanity-workspace"))
     };
     let (manager, remove) = if owns("/usr/bin/dpkg-query", &["--search"])? {
         ("/usr/bin/dpkg", "--purge")
@@ -46,7 +46,7 @@ fn uninstall() -> Result<(), String> {
         );
     };
     let status = Command::new("/usr/bin/pkexec")
-        .args([manager, remove, "aimanity"])
+        .args([manager, remove, "aimanity-workspace"])
         .status()
         .map_err(|e| e.to_string())?;
     if !status.success() {

@@ -1,5 +1,5 @@
 {
-  "bundle_id": "dev.aimanity.native",
+  "bundle_id": "dev.aimanity.workspace",
   "executable": "ai-phone-client",
   "minimum_macos": "15.0"
 }

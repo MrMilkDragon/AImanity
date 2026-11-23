@@ -10,7 +10,7 @@ An agent that listens while it works, explores on its own, and learns from using
 
 [Installation guide](docs/public/release-status.md) · [Uninstall](docs/public/release-status.md#uninstall)
 
-## What it does
+## Europium features
 
 - **Use a phone.** An Agent reads the Android screen, operates installed apps such as WeChat and handles notifications.
 - **Use a computer.** An Agent controls the Linux desktop and works in apps such as LibreOffice. Connect the devices to move files between them.
@@ -20,15 +20,17 @@ An agent that listens while it works, explores on its own, and learns from using
 
 See [model and channel setup](docs/public/model-and-channel-setup.md), [notification workflows](docs/public/notification-workflows.md) and [Liberty](docs/public/autonomous-exploration.md).
 
-## How it works
+## Fluorine development architecture
 
 | Layer | Technology | Directory |
 | --- | --- | --- |
 | Desktop client and workbench | Rust (Iced/wgpu) | `apps/native` |
 | Backend, devices and media | Rust, Axum, Tokio | `crates` |
-| Business API and state | protobuf, PostgreSQL, SQLx | `packages/protocol` |
+| Business API and state | protobuf, embedded redb | `packages/protocol`, `apps/native/src/workspace` |
 | Device runtimes | AOSP on Avo or QEMU (WHPX/KVM), Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
 | Built-in capabilities | Skills and device profiles | `skills`, `config` |
+
+Fluorine starts with a fresh workspace. Chat, model profiles, knowledge and working files are available with zero devices.
 
 Agents plan from current device observations and record their actions and results. Cargo builds the project. Device disks, accounts and attachments stay in the local installation.
 
@@ -56,7 +58,7 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 [安装指南](docs/public/release-status.md) · [卸载](docs/public/release-status.md#卸载)
 
-## 功能
+## Europium 功能
 
 - **操作手机。** Agent 查看真实 Android 画面，操作微信等已安装应用并处理通知。
 - **操作电脑。** Agent 控制 Linux 桌面，可使用 LibreOffice 等应用。连接两台设备即可互传文件。
@@ -66,9 +68,11 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 [模型与渠道](docs/public/model-and-channel-setup.md) · [通知工作流](docs/public/notification-workflows.md) · [Liberty](docs/public/autonomous-exploration.md)
 
-## 技术架构
+## Fluorine 开发架构
 
-客户端与工作台采用 Rust、Iced 和 wgpu。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，数据由 PostgreSQL 和 SQLx 管理。Cargo 负责构建。macOS 通过 Avo 运行 Android，Windows 和 Linux 通过 QEMU 配合 WHPX 或 KVM 运行 Android 和 Debian/Openbox 桌面。
+客户端与工作台采用 Rust、Iced 和 wgpu。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，Rust 客户端直接读写内嵌 redb 数据库。Cargo 负责构建。macOS 通过 Avo 运行 Android，Windows 和 Linux 通过 QEMU 配合 WHPX 或 KVM 运行 Android 和 Debian/Openbox 桌面。
+
+0.0.6 将独立安装，首次打开即创建新工作区。零台设备可使用对话、模型配置、知识和工作文件。
 
 Agent 根据当前设备画面操作，动作账本保留执行过程和结果。设备盘、账号、聊天和附件保存在本地安装目录或数据库中。
 

@@ -1,4 +1,4 @@
-# AImanity
+# AImanity 0.0.5 Europium
 
 [English](../../README.md) · [Toutes les langues](../../README.md) · Apache-2.0
 

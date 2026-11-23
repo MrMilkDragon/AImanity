@@ -253,15 +253,6 @@ pub(crate) async fn avf_guest() -> Result<()> {
         rx,
     )
     .await?;
-    let result = Command::new(root.join("runtime/services/bin/assistant"))
-        .arg("--setup-devices")
-        .current_dir(&root)
-        .env("AI_PHONE_PROJECT_ROOT", &root)
-        .status()
-        .await?;
-    if !result.success() {
-        return Err(Error::Invalid("avf_device_setup"));
-    }
     let listener = tokio::net::TcpListener::bind((
         std::net::Ipv4Addr::LOCALHOST,
         crate::vm_control::GUEST_PORT,

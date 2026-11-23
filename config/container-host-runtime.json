@@ -211,12 +211,6 @@
           "size_bytes": 161906
         },
         {
-          "file": "libpq-18.7-r0.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libpq-18.7-r0.apk",
-          "sha256": "4d02ac1cdb14e783c6b943a73f23b032afb8ef932aa675c83f81be4a9ff1dcef",
-          "size_bytes": 158068
-        },
-        {
           "file": "libsasl-2.1.28-r9.apk",
           "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libsasl-2.1.28-r9.apk",
           "sha256": "0be9020fdb51705c6f393bad6e533bbcd70f68c148ab0b88d35ef39a4ce8959f",
@@ -253,40 +247,10 @@
           "size_bytes": 22150
         },
         {
-          "file": "postgresql-common-1.3-r0.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/postgresql-common-1.3-r0.apk",
-          "sha256": "ecddbd6272f5034f30d78ff59634c07f862a13a2ad3d29078c0e7985b827fc73",
-          "size_bytes": 4617
-        },
-        {
-          "file": "postgresql17-17.12-r0.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/postgresql17-17.12-r0.apk",
-          "sha256": "d6f849a54b4bfed2565c37ba1bb11798eba79a732c758b17ce89fe2d62b671aa",
-          "size_bytes": 6106267
-        },
-        {
-          "file": "postgresql17-client-17.12-r0.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/postgresql17-client-17.12-r0.apk",
-          "sha256": "6d034aad61b5d708dcc8ebf073696137c800a4a5bb4d62d522514c59db5ef201",
-          "size_bytes": 1307399
-        },
-        {
-          "file": "postgresql17-contrib-17.12-r0.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/postgresql17-contrib-17.12-r0.apk",
-          "sha256": "f7f0a731b3ac314b2d181d678a6791abae456b62b1580d1c22a146b65b56ed44",
-          "size_bytes": 690972
-        },
-        {
           "file": "readline-8.3.3-r1.apk",
           "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/readline-8.3.3-r1.apk",
           "sha256": "9f0ae0923c02b0d6aba62e9173542b65396ba3f0efefcbf087ea32f1120e7b34",
           "size_bytes": 129706
-        },
-        {
-          "file": "redis-8.8.0-r0.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/aarch64/redis-8.8.0-r0.apk",
-          "sha256": "6f96e9c30eaac24f35c0f628251e9e3beff6704665d88806c17835a8da3a9c10",
-          "size_bytes": 1887999
         },
         {
           "file": "tzdata-2026f-r0.apk",

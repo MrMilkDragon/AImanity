@@ -1,0 +1,378 @@
+use ai_phone_api::wire;
+use prost::Message;
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition, WriteTransaction};
+use std::{error::Error, fs, path::Path, sync::Arc};
+use tokio::sync::{Notify, watch};
+use tokio_util::sync::CancellationToken;
+
+mod conversation;
+mod documents;
+mod files;
+mod records;
+mod worker;
+
+type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
+const RECORDS: TableDefinition<&str, &[u8]> = TableDefinition::new("workspace");
+const MESSAGES: TableDefinition<u64, &[u8]> = TableDefinition::new("messages");
+const IDS: TableDefinition<&str, u64> = TableDefinition::new("message_ids");
+const JOBS: TableDefinition<u64, &[u8]> = TableDefinition::new("jobs");
+const PENDING: TableDefinition<&str, &[u8]> = TableDefinition::new("pending");
+const BLOBS: TableDefinition<&str, &[u8]> = TableDefinition::new("attachments");
+
+pub(crate) struct Workspace {
+    pub(crate) host: std::sync::Mutex<Option<(String, Arc<crate::host_desktop::Grant>)>>,
+    db: Database,
+    files: std::path::PathBuf,
+    changes: watch::Sender<u64>,
+    ready: Arc<Notify>,
+    shutdown: CancellationToken,
+    run: std::sync::Mutex<Option<(String, CancellationToken)>>,
+    verified: std::sync::Mutex<std::collections::HashMap<String, (String, u64, wire::ModelDraft)>>,
+    worker: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+    clients: std::sync::Mutex<std::collections::HashMap<String, reqwest::Client>>,
+}
+
+impl std::fmt::Debug for Workspace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Workspace").finish_non_exhaustive()
+    }
+}
+impl Drop for Workspace {
+    fn drop(&mut self) {
+        self.shutdown.cancel();
+    }
+}
+
+impl Workspace {
+    pub(crate) fn open(root: &Path) -> Result<Arc<Self>> {
+        let mut dir = fs::DirBuilder::new();
+        let mut file = fs::OpenOptions::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+            dir.mode(0o700);
+            file.mode(0o600);
+        }
+        dir.recursive(true).create(root)?;
+        let handle = file
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(root.join("workspace.redb"))?;
+        let files = root.join("files");
+        dir.create(&files)?;
+        Self::from_db(
+            Database::builder()
+                .set_cache_size(4 * 1024 * 1024)
+                .create_with_backend(redb::backends::FileBackend::new(handle))?,
+            files,
+        )
+    }
+
+    pub(crate) fn from_db(db: Database, files: std::path::PathBuf) -> Result<Arc<Self>> {
+        let tx = db.begin_write()?;
+        tx.open_table(MESSAGES)?;
+        tx.open_table(IDS)?;
+        tx.open_table(JOBS)?;
+        tx.open_table(PENDING)?;
+        tx.open_table(BLOBS)?;
+        tx.open_table(documents::DOCUMENTS)?;
+        {
+            let mut data = tx.open_table(RECORDS)?;
+            if data.get("chat")?.is_none() {
+                data.insert(
+                    "chat",
+                    wire::ChatState {
+                        conversation_id: uuid::Uuid::now_v7().to_string(),
+                        ..Default::default()
+                    }
+                    .encode_to_vec()
+                    .as_slice(),
+                )?;
+            }
+        }
+        tx.commit()?;
+        let this = Arc::new(Self {
+            db,
+            files,
+            host: Default::default(),
+            changes: watch::channel(0).0,
+            ready: Default::default(),
+            shutdown: CancellationToken::new(),
+            run: Default::default(),
+            clients: Default::default(),
+            verified: Default::default(),
+            worker: Default::default(),
+        });
+        Ok(this)
+    }
+
+    pub(crate) fn run(self: &Arc<Self>) {
+        let weak = Arc::downgrade(self);
+        let stop = self.shutdown.clone();
+        let ready = self.ready.clone();
+        ready.notify_one();
+        let worker = tokio::spawn(async move {
+            loop {
+                tokio::select! {biased; _=stop.cancelled()=>break,_=ready.notified()=>{}}
+                while let Some(workspace) = weak.upgrade() {
+                    if stop.is_cancelled() {
+                        return;
+                    }
+                    match workspace.next_job() {
+                        Ok(Some(job)) => {
+                            let result = workspace.execute(job).await;
+                            if let Err(error) = result {
+                                eprintln!("Workspace task: {error}");
+                                break;
+                            }
+                        }
+                        Ok(None) => break,
+                        Err(error) => {
+                            eprintln!("Workspace queue: {error}");
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        *self.worker.lock().unwrap() = Some(worker);
+    }
+
+    pub(crate) async fn stop(&self) {
+        self.shutdown.cancel();
+        let worker = self.worker.lock().unwrap().take();
+        if let Some(worker) = worker {
+            let _ = worker.await;
+        }
+    }
+    pub(crate) fn subscribe(&self) -> watch::Receiver<u64> {
+        self.changes.subscribe()
+    }
+    fn changed(&self) {
+        self.changes.send_modify(|rev| *rev = rev.wrapping_add(1));
+    }
+    fn client(&self, proxy: &str) -> Result<reqwest::Client> {
+        let mut pool = self.clients.lock().unwrap();
+        if let Some(client) = pool.get(proxy) {
+            return Ok(client.clone());
+        }
+        let client = aimanity_model::client_for_proxy(proxy)?;
+        pool.insert(proxy.into(), client.clone());
+        Ok(client)
+    }
+
+    fn get<T: Message + Default>(&self, key: &str) -> Result<T> {
+        read(&self.db.begin_read()?.open_table(RECORDS)?, key)
+    }
+
+    pub(crate) async fn rpc(
+        self: &Arc<Self>,
+        route: &str,
+        bytes: Vec<u8>,
+    ) -> std::result::Result<Vec<u8>, String> {
+        let name = route.strip_prefix("assistant/").unwrap_or(route);
+        if name == "registry/model-test" {
+            return self
+                .probe(
+                    wire::ConnectionTestRequest::decode(bytes.as_slice())
+                        .map_err(|e| e.to_string())?,
+                )
+                .await
+                .map(|m| m.encode_to_vec())
+                .map_err(|e| e.to_string());
+        }
+        let store = self.clone();
+        let name = name.to_owned();
+        tokio::task::spawn_blocking(move || store.dispatch(&name, &bytes))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())
+    }
+
+    pub(crate) fn stash(&self, state: &wire::ChatState, id: &str) -> Result<()> {
+        let tx = self.db.begin_write()?;
+        tx.open_table(PENDING)?
+            .insert(id, state.encode_to_vec().as_slice())?;
+        tx.commit()?;
+        Ok(())
+    }
+    pub(crate) fn pending(&self) -> Result<Vec<wire::ChatState>> {
+        self.db
+            .begin_read()?
+            .open_table(PENDING)?
+            .iter()?
+            .map(|row| Ok(wire::ChatState::decode(row?.1.value())?))
+            .collect()
+    }
+    pub(crate) fn attachment(&self, id: &str) -> Result<Vec<u8>> {
+        Ok(self
+            .db
+            .begin_read()?
+            .open_table(BLOBS)?
+            .get(id)?
+            .ok_or("附件不存在")?
+            .value()
+            .to_vec())
+    }
+    fn store_attachment(&self, name: String, bytes: &[u8]) -> Result<wire::ChatAttachment> {
+        let media = match image::guess_format(bytes) {
+            Ok(image::ImageFormat::Png) => "image/png",
+            Ok(image::ImageFormat::Jpeg) => "image/jpeg",
+            Ok(image::ImageFormat::WebP) => "image/webp",
+            Ok(image::ImageFormat::Gif) => "image/gif",
+            _ if std::str::from_utf8(bytes).is_ok() => "text/plain",
+            _ => "application/octet-stream",
+        };
+        let item = wire::ChatAttachment {
+            id: uuid::Uuid::now_v7().to_string(),
+            name,
+            media_type: media.into(),
+            size_bytes: bytes.len() as u64,
+        };
+        let tx = self.db.begin_write()?;
+        tx.open_table(BLOBS)?.insert(item.id.as_str(), bytes)?;
+        put(&tx, &format!("attachment/{}", item.id), &item)?;
+        tx.commit()?;
+        Ok(item)
+    }
+}
+fn read<T: Message + Default>(
+    table: &impl ReadableTable<&'static str, &'static [u8]>,
+    key: &str,
+) -> Result<T> {
+    match table.get(key)? {
+        Some(v) => Ok(T::decode(v.value())?),
+        None => Ok(T::default()),
+    }
+}
+fn put(tx: &WriteTransaction, key: &str, value: &impl Message) -> Result<()> {
+    tx.open_table(RECORDS)?
+        .insert(key, value.encode_to_vec().as_slice())?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use redb::ReadableTableMetadata;
+
+    #[test]
+    fn devices_of_the_same_kind_keep_their_own_identity_after_reopen() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let workspace = Workspace::open(dir.path())?;
+        for (id, kind) in [
+            ("a", "phone"),
+            ("b", "phone"),
+            ("c", "desktop"),
+            ("d", "desktop"),
+        ] {
+            let draft = wire::DeviceSaveRequest {
+                id: id.into(),
+                name: format!("{kind} {id}"),
+                kind: kind.into(),
+                ..Default::default()
+            };
+            workspace.dispatch("registry/device-save", &draft.encode_to_vec())?;
+        }
+        let remove = wire::DesktopRequest {
+            device_id: "b".into(),
+        };
+        workspace.dispatch("registry/device-forget", &remove.encode_to_vec())?;
+        drop(workspace);
+        let workspace = Workspace::open(dir.path())?;
+        let state = workspace.dispatch("registry/state", &[])?;
+        let ids: Vec<_> = wire::RegistryState::decode(state.as_slice())?
+            .devices.into_iter().map(|device| device.id).collect();
+        assert_eq!(ids, ["a", "c", "d"]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn reopening_keeps_queued_work_once_and_attachments_immutable() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let root = dir.path();
+        let endpoint = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
+        let workspace = Workspace::open(root)?;
+        let tx = workspace.db.begin_write()?;
+        put(
+            &tx,
+            "registry",
+            &wire::RegistryState {
+                active_agent_id: "local".into(),
+                agents: vec![wire::RegisteredAgent {
+                    id: "local".into(),
+                    model_connection_id: "model".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        )?;
+        put(
+            &tx,
+            "model/model",
+            &wire::ModelDraft {
+                provider: "compatible".into(),
+                protocol: "chat-completions".into(),
+                base_url: format!("http://{}/v1", endpoint.local_addr()?),
+                model: "local".into(),
+                ..Default::default()
+            },
+        )?;
+        tx.commit()?;
+        let attachment = workspace.upload("sheet.txt".into(), b"original".to_vec())?;
+        fs::write(workspace.files.join("sheet.txt"), b"edited")?;
+        let q = wire::ChatSendRequest {
+            text: "Read the attachment".into(),
+            request_id: "request".into(),
+            attachment_ids: vec![attachment.id.clone()],
+            ..Default::default()
+        };
+        workspace.stash(&wire::ChatState::default(), &q.request_id)?;
+        let conversation = workspace.submit(q.clone())?.conversation_id;
+        assert!(workspace.pending()?.is_empty());
+        drop(workspace);
+        let workspace = Workspace::open(root)?;
+        assert_eq!(workspace.submit(q.clone())?.conversation_id, conversation);
+        let page = workspace.history(wire::ChatHistoryRequest {
+            limit: 80,
+            ..Default::default()
+        })?;
+        assert_eq!(page.messages.len(), 2);
+        assert_eq!(page.messages[0].attachments[0].id, attachment.id);
+        assert_eq!(workspace.attachment(&attachment.id)?, b"original");
+        assert_eq!(fs::read(workspace.files.join("sheet.txt"))?, b"edited");
+        let q = wire::ChatSendRequest {
+            agent_id: "local".into(),
+            ..q
+        };
+        assert_eq!(workspace.next_job()?.unwrap().1.request, Some(q.clone()));
+        workspace.control(
+            wire::ChatRunRequest {
+                run_id: q.request_id.clone(),
+                pause: true,
+            },
+            false,
+        )?;
+        drop(workspace);
+        let workspace = Workspace::open(root)?;
+        assert!(workspace.next_job()?.is_none());
+        workspace.control(
+            wire::ChatRunRequest {
+                run_id: q.request_id.clone(),
+                ..Default::default()
+            },
+            true,
+        )?;
+        workspace.run();
+        let timeout = std::time::Duration::from_secs(5);
+        let (_socket, _) = tokio::time::timeout(timeout, endpoint.accept()).await??;
+        tokio::time::timeout(timeout, workspace.stop()).await?;
+        drop(workspace);
+        let workspace = Workspace::open(root)?;
+        assert_eq!(workspace.next_job()?.unwrap().1.request, Some(q));
+        assert_eq!(workspace.db.begin_read()?.open_table(JOBS)?.len()?, 1);
+        Ok(())
+    }
+}

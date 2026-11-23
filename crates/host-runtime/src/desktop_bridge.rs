@@ -67,11 +67,16 @@ struct Desktop {
 }
 
 pub fn configure(root: &Path, cpus: u32, memory_mb: u32) -> Result<()> {
+    let folder = root.join("data/deployment");
+    let mut profile: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(folder.join("profile.json"))?)
+            .map_err(|_| Error::Invalid("desktop_resources"))?;
+    profile["desktop"]["cpus"] = cpus.into();
+    profile["desktop"]["memory_mb"] = memory_mb.into();
     crate::filesystem::publish_private(
-        &root.join("data/deployment"),
-        "native-desktop.json",
-        &serde_json::to_vec(&Desktop { cpus, memory_mb })
-            .map_err(|_| Error::Invalid("desktop_resources"))?,
+        &folder,
+        "profile.json",
+        &serde_json::to_vec(&profile).map_err(|_| Error::Invalid("desktop_resources"))?,
         false,
     )
 }
@@ -81,13 +86,17 @@ pub fn desktop_arguments(
     lima: Option<&str>,
     proxy: &str,
 ) -> Result<Option<Vec<String>>> {
-    let file = root.join("data/deployment/native-desktop.json");
+    let file = root.join("data/deployment/profile.json");
     let data = match std::fs::read(file) {
         Ok(data) => data,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
     };
-    let desktop: Desktop =
+    #[derive(serde::Deserialize)]
+    struct Profile {
+        desktop: Desktop,
+    }
+    let Profile { desktop } =
         serde_json::from_slice(&data).map_err(|_| Error::Invalid("desktop_resources"))?;
     let mut args = native_arguments(root, "desktop", lima)?;
     args.extend([

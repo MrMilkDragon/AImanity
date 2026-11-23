@@ -157,35 +157,6 @@ fn validate(value: &Value, template: &str) -> Result<()> {
     Ok(())
 }
 
-fn credentials(root: &Path) -> Result<()> {
-    let path = root.join(".env");
-    if path.exists() {
-        return Ok(());
-    }
-    // Source staging deliberately links .env to the installation's persistent user directory.
-    let path = match fs::read_link(&path) {
-        Ok(target) => root.join(target),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => path,
-        Err(error) => return Err(error.into()),
-    };
-    let mut random = [0; 24];
-    getrandom::fill(&mut random).map_err(|_| Error::Invalid("host_profile_random"))?;
-    let password = random
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let bytes =
-        format!("POSTGRES_DB=ai_phone\nPOSTGRES_USER=ai_phone\nPOSTGRES_PASSWORD={password}\n");
-    filesystem::publish_private(
-        path.parent().ok_or(Error::Invalid("host_profile"))?,
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .ok_or(Error::Invalid("host_profile"))?,
-        bytes.as_bytes(),
-        true,
-    )
-}
-
 pub(crate) fn prepare(
     root: &Path,
     sdk: &Path,
@@ -265,7 +236,6 @@ pub(crate) fn prepare_request(
 }
 
 fn persist(root: &Path, value: &Value) -> Result<()> {
-    credentials(root)?;
     let destination = root.join("data/deployment/profile.json");
     let folder = destination.parent().ok_or(Error::Invalid("host_profile"))?;
     filesystem::directory(folder, true)?;
@@ -352,7 +322,7 @@ mod resume_resources_tests {
         parse_request(&serde_json::to_vec(&json!({"locale":"en","phone":{"cpus":cpus,"memory_mb":memory,"storage_gb":16},"desktop":{"cpus":2,"memory_mb":2048}})).unwrap()).unwrap()
     }
     #[test]
-    fn first_run_defaults_cannot_resize_an_existing_phone_or_change_its_credentials() {
+    fn first_run_defaults_keep_existing_phone_resources() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
         prepare_request(
@@ -364,7 +334,6 @@ mod resume_resources_tests {
         )
         .unwrap();
         let before = fs::read(root.join("data/deployment/profile.json")).unwrap();
-        let credentials = fs::read(root.join(".env")).unwrap();
         let selected = phone_resources(root, "android35-arm64", &request(2, 2048)).unwrap();
         assert_eq!(
             (selected.cpus, selected.memory_mb, selected.storage_gb),
@@ -374,7 +343,6 @@ mod resume_resources_tests {
             fs::read(root.join("data/deployment/profile.json")).unwrap(),
             before
         );
-        assert_eq!(fs::read(root.join(".env")).unwrap(), credentials);
     }
     #[test]
     fn invalid_saved_resources_are_rejected_instead_of_being_replaced_by_defaults() {
@@ -406,7 +374,6 @@ mod resume_resources_tests {
         let mut initial = request(2, 2048);
         initial.desktop.storage_gb = Some(16);
         install(initial).unwrap();
-        let credentials = fs::read(root.join(".env")).unwrap();
         let profile = || {
             serde_json::from_slice::<Value>(
                 &fs::read(root.join("data/deployment/profile.json")).unwrap(),
@@ -424,7 +391,6 @@ mod resume_resources_tests {
         assert_eq!(updated["desktop"]["memory_mb"], 2560);
         assert_eq!(updated["desktop"]["storage_gb"], 32);
         assert_eq!(updated["sdk_root"], before["sdk_root"]);
-        assert_eq!(fs::read(root.join(".env")).unwrap(), credentials);
         let mut shrink = request(1, 1536);
         shrink.reconfigure = true;
         shrink.desktop.storage_gb = Some(16);

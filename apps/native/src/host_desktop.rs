@@ -5,9 +5,7 @@ use image::{DynamicImage, codecs::jpeg::JpegEncoder};
 use prost::Message;
 use std::{error::Error, fs, io, path::Path, time::Instant};
 use tokio::sync::{oneshot, watch};
-use tokio_tungstenite::tungstenite::{
-    Message as Frame, client::IntoClientRequest, http::HeaderValue,
-};
+use tokio_tungstenite::tungstenite::Message as Frame;
 use xcap::Monitor;
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
@@ -421,24 +419,30 @@ pub fn permission() -> Result<()> {
     Ok(())
 }
 
-pub async fn serve(
-    token: HeaderValue,
-    request_id: String,
-    ready: oneshot::Sender<()>,
-    stop: watch::Receiver<()>,
-) -> std::result::Result<(), String> {
-    let result: Result<()> = async {
-        let mut request =
-            format!("ws://127.0.0.1:17863/v1/host/desktop/{request_id}").into_client_request()?;
-        request.headers_mut().insert("authorization", token);
-        let (socket, _) = tokio_tungstenite::connect_async(request).await?;
-        serve_socket(socket, None, ready, stop).await?;
-        Ok(())
-    }
-    .await;
-    result.map_err(|e| e.to_string())
+pub(crate) struct Grant {
+    view: std::sync::Mutex<Option<View>>,
+    live: watch::Receiver<()>,
 }
-
+impl Grant {
+    pub(crate) fn new(live: watch::Receiver<()>) -> Self {
+        Self {
+            view: Default::default(),
+            live,
+        }
+    }
+    pub(crate) fn active(&self) -> bool {
+        self.live.has_changed().is_ok()
+    }
+    pub(crate) fn perform(
+        &self,
+        request: &DesktopActionRequest,
+    ) -> std::result::Result<HostDesktopReply, String> {
+        let mut reply = execute(&mut self.view.lock().unwrap(), request, &self.live)
+            .map_err(|e| e.to_string())?;
+        reply.action_id = request.action_id.clone();
+        Ok(reply)
+    }
+}
 pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
     mut socket: tokio_tungstenite::WebSocketStream<S>,
     mut phone: Option<crate::paired_phone::Phone>,

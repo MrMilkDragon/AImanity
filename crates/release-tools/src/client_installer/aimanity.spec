@@ -1,4 +1,4 @@
-Name:           aimanity
+Name:           aimanity-workspace
 Version:        @VERSION@
 Release:        1
 Summary:        AImanity native Android and Linux workbench
@@ -23,9 +23,9 @@ cp -al "$AIMANITY_STAGE/usr" "%{buildroot}/"
 
 %files
 %defattr(-,root,root,-)
-/usr/bin/aimanity
-/usr/lib/aimanity
-/usr/lib/udev/rules.d/70-aimanity-kvm.rules
-/usr/share/applications/dev.aimanity.native.desktop
-/usr/share/icons/hicolor/scalable/apps/dev.aimanity.native.svg
-/usr/share/doc/aimanity
+/usr/bin/aimanity-workspace
+/usr/lib/aimanity-workspace
+/usr/lib/udev/rules.d/70-aimanity-workspace-kvm.rules
+/usr/share/applications/dev.aimanity.workspace.desktop
+/usr/share/icons/hicolor/scalable/apps/dev.aimanity.workspace.svg
+/usr/share/doc/aimanity-workspace

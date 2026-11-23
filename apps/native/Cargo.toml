@@ -1,6 +1,6 @@
 [package]
 name = "aimanity-native"
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 publish = false
 license = "Apache-2.0"
@@ -25,6 +25,9 @@ ai-phone-local-speech = { path = "../../crates/local-speech" }
 cpal = "=0.16.0"
 rodio = { version = "=0.21.1", default-features = false, features = ["playback"] }
 prost = "=0.14.4"
+aimanity-model = { path = "../../crates/model" }
+tokio-util = "0.7"
+redb = "=5.0.0"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "multipart"] }
 bytes = "1"
 serde = { version = "1", features = ["derive"] }
@@ -37,7 +40,6 @@ sha2 = "0.11"
 hex = "0.4"
 base64 = "0.22"
 ring = "=0.17.14"
-semver = "1"
 tempfile = "3"
 tokio-tungstenite = "0.28"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }

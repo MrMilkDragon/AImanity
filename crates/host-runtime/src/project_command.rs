@@ -87,12 +87,12 @@ fn deployment_profile(
     Ok(value)
 }
 
-fn assistant(root: &Path) -> PathBuf {
+fn host_runtime(root: &Path) -> PathBuf {
     if root.join("runtime/services").is_dir() {
-        root.join("runtime/services/bin/assistant")
+        root.join("runtime/services/bin/host")
     } else {
         root.join(env::var_os("CARGO_TARGET_DIR").unwrap_or_else(|| "target".into()))
-            .join("release/ai-phone-assistant")
+            .join("release/host-resources")
     }
 }
 
@@ -142,7 +142,7 @@ fn doctor(root: &Path, args: &[OsString]) -> Result<()> {
                 all(target_os = "linux", target_arch = "x86_64")
             )),
         ),
-        ("native-services", assistant(root).is_file()),
+        ("native-services", host_runtime(root).is_file()),
         ("cargo", executable("cargo")),
         (
             "memory",
@@ -187,7 +187,7 @@ fn install(root: &Path, user: &Path, args: &[OsString]) -> Result<()> {
                     .map(PathBuf::from)
                     .unwrap_or_else(|| user.join(".local/share"))
             })
-            .join("dev.aimanity.native/host")
+            .join("dev.aimanity.workspace/host")
         });
     let request = tempfile::NamedTempFile::new()?;
     let phone = &value["phone"];
@@ -247,20 +247,6 @@ pub(crate) fn run(args: &[OsString]) -> Result<()> {
             status(Command::new("open").args(["-a", "AImanity"]).status()?)
         }
         "env" => runtime_environment::run(&[root.into(), user.into(), "shell".into()]),
-        "backup" | "restore" | "recover-desktop" => status(
-            Command::new(assistant(&root))
-                .current_dir(&root)
-                .arg("--state-backup")
-                .arg(if operation == "backup" {
-                    OsStr::new("create")
-                } else {
-                    operation
-                })
-                .arg("--root")
-                .arg(&root)
-                .args(rest)
-                .status()?,
-        ),
         _ => Err(INVALID),
     }
 }

@@ -6,12 +6,12 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
-use tokio_tungstenite::tungstenite::{client::IntoClientRequest, http::HeaderValue};
+use tokio_tungstenite::tungstenite::http::HeaderValue;
 
 #[derive(Clone, Debug)]
 pub struct Connection {
     http: reqwest::Client,
-    pub(crate) assistant: HeaderValue,
+    pub(crate) workspace: Arc<crate::workspace::Workspace>,
     phone: Option<HeaderValue>,
 }
 #[derive(Clone, Debug)]
@@ -80,23 +80,25 @@ pub enum DeviceInput {
 }
 impl Connection {
     pub async fn connect(root: String) -> Result<Session, String> {
-        let root = std::path::Path::new(&root);
-        let (assistant, phone) = crate::host::credentials(root).await?;
-        let bearer = |token: &str| -> Result<HeaderValue, String> {
-            let mut header = HeaderValue::from_str(&format!("Bearer {}", token.trim()))
-                .map_err(|e| e.to_string())?;
-            header.set_sensitive(true);
-            Ok(header)
-        };
-        let http = reqwest::Client::builder()
-            .no_proxy()
-            .build()
-            .map_err(|e| e.to_string())?;
+        let workspace = tokio::task::spawn_blocking(move || {
+            crate::workspace::Workspace::open(std::path::Path::new(&root))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+        workspace.run();
         let client = Self {
-            http,
-            assistant: bearer(&assistant)?,
-            phone: phone.as_deref().map(bearer).transpose()?,
+            http: reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .map_err(|e| e.to_string())?,
+            workspace,
+            phone: None,
         };
+        client.session().await
+    }
+    pub async fn session(self) -> Result<Session, String> {
+        let client = self;
         let (registry, links) = tokio::try_join!(
             client.rpc("registry/state", wire::RegistryRequest {}),
             client.rpc("desktop/state", wire::RegistryRequest {}),
@@ -113,52 +115,13 @@ impl Connection {
         input: I,
     ) -> Result<O, String> {
         let started = Instant::now();
-        let (port, path, token) = if let Some(path) = route.strip_prefix("phone/") {
-            (17862, path, self.phone.as_ref().ok_or("手机未接入")?)
-        } else if let Some(path) = route.strip_prefix("channels/") {
-            (17864, path, &self.assistant)
-        } else {
-            (
-                17863,
-                route.strip_prefix("assistant/").unwrap_or(route),
-                &self.assistant,
-            )
-        };
-        let response = self
-            .http
-            .post(format!("http://127.0.0.1:{port}/v1/{path}"))
-            .header("authorization", token)
-            .header("content-type", "application/x-protobuf")
-            .body(input.encode_to_vec())
-            .send()
-            .await
-            .map_err(|error| {
-                if error.is_connect() {
-                    match port {
-                        17862 => "手机连接中断",
-                        17864 => "连接应用服务已断开",
-                        _ => "本机 Agent 服务已断开",
-                    }
-                    .to_owned()
-                } else {
-                    error.without_url().to_string()
-                }
-            })?;
-        let status = response.status();
-        let bytes = response.bytes().await.map_err(|e| e.to_string())?;
-        if !route.ends_with("/cursor") {
-            eprintln!(
-                "native_metric rpc route={route} ms={:.3} status={} bytes={}",
-                started.elapsed().as_secs_f64() * 1000.,
-                status.as_u16(),
-                bytes.len()
-            );
-        }
-        if !status.is_success() {
-            let error = wire::ApiError::decode(bytes).map_err(|_| format!("HTTP {status}"))?;
-            return Err(error.message);
-        }
-        O::decode(bytes).map_err(|e| e.to_string())
+        let bytes = self.workspace.rpc(route, input.encode_to_vec()).await?;
+        eprintln!(
+            "native_metric rpc route={route} ms={:.3} bytes={}",
+            started.elapsed().as_secs_f64() * 1000.,
+            bytes.len()
+        );
+        O::decode(bytes.as_slice()).map_err(|e| e.to_string())
     }
     pub async fn history(&self) -> Result<wire::ChatState, String> {
         self.rpc(
@@ -206,176 +169,56 @@ impl Connection {
         if bytes.is_empty() || bytes.len() > 8 * 1024 * 1024 {
             return Err("单个附件须为 1 字节到 8 MiB".into());
         }
-        let form = reqwest::multipart::Form::new().part(
-            "file",
-            reqwest::multipart::Part::bytes(bytes).file_name(name),
-        );
-        let response = self
-            .http
-            .post("http://127.0.0.1:17863/v1/upload")
-            .header("authorization", &self.assistant)
-            .multipart(form)
-            .send()
+        let workspace = self.workspace.clone();
+        tokio::task::spawn_blocking(move || workspace.upload(name, bytes))
             .await
-            .map_err(|e| e.to_string())?;
-        let status = response.status();
-        let bytes = response.bytes().await.map_err(|e| e.to_string())?;
-        if !status.is_success() {
-            return Err(wire::ApiError::decode(bytes)
-                .map_err(|_| format!("HTTP {status}"))?
-                .message);
-        }
-        wire::ChatAttachment::decode(bytes).map_err(|e| e.to_string())
-    }
-    pub async fn get_bytes(&self, route: &str) -> Result<bytes::Bytes, String> {
-        self.get(route, &[])
-            .await?
-            .bytes()
-            .await
+            .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())
     }
-    pub async fn attachment(&self, id: &str) -> Result<bytes::Bytes, String> {
-        self.get_bytes(&format!("attachment/{id}")).await
+    pub async fn get_bytes(&self, route: &str) -> Result<bytes::Bytes, String> {
+        let id = route
+            .strip_prefix("workbench/knowledge-image/")
+            .ok_or("文件地址无效")?;
+        self.attachment(id).await
     }
-    async fn get(&self, route: &str, query: &[(&str, &str)]) -> Result<reqwest::Response, String> {
-        let response = self
-            .http
-            .get(format!("http://127.0.0.1:17863/v1/{route}"))
-            .query(query)
-            .header("authorization", &self.assistant)
-            .send()
+    pub async fn attachment(&self, id: &str) -> Result<bytes::Bytes, String> {
+        let workspace = self.workspace.clone();
+        let id = id.to_owned();
+        tokio::task::spawn_blocking(move || workspace.attachment(&id))
             .await
-            .map_err(|e| e.to_string())?;
-        let status = response.status();
-        if !status.is_success() {
-            let bytes = response.bytes().await.map_err(|e| e.to_string())?;
-            return Err(wire::ApiError::decode(bytes)
-                .map_err(|_| format!("HTTP {status}"))?
-                .message);
-        }
-        Ok(response)
+            .map_err(|e| e.to_string())?
+            .map(Into::into)
+            .map_err(|e| e.to_string())
     }
     pub async fn download_file(
         &self,
         source: &str,
         target: &std::path::Path,
     ) -> Result<(), String> {
-        use tokio::io::AsyncWriteExt;
-        let mut response = self
-            .get(
-                "workbench/file",
-                &[("path", source.trim_start_matches('/'))],
-            )
-            .await?;
-        let temporary = target.with_extension(format!("{}.part", uuid::Uuid::now_v7()));
-        let result = async {
-            let mut file = tokio::fs::File::create(&temporary)
-                .await
-                .map_err(|e| e.to_string())?;
-            while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-                file.write_all(&chunk).await.map_err(|e| e.to_string())?;
-            }
-            file.flush().await.map_err(|e| e.to_string())?;
-            drop(file);
-            tokio::fs::rename(&temporary, target)
-                .await
-                .map_err(|e| e.to_string())
-        }
-        .await;
-        if result.is_err() {
-            let _ = tokio::fs::remove_file(&temporary).await;
-        }
-        result
+        self.workspace
+            .export_file(source, target)
+            .await
+            .map_err(|e| e.to_string())
     }
     pub async fn upload_file(
         &self,
         source: &std::path::Path,
         directory: String,
     ) -> Result<wire::FileLocation, String> {
-        let location = wire::FileLocation {
-            path: directory,
-            ..Default::default()
-        }
-        .encode_to_vec();
-        let file = reqwest::multipart::Part::file(source)
+        self.workspace
+            .import_file(source, &directory)
             .await
-            .map_err(|e| e.to_string())?;
-        let form = reqwest::multipart::Form::new()
-            .part(
-                "location",
-                reqwest::multipart::Part::bytes(location)
-                    .mime_str("application/x-protobuf")
-                    .map_err(|e| e.to_string())?,
-            )
-            .part("file", file);
-        let response = self
-            .http
-            .post("http://127.0.0.1:17863/v1/files/upload")
-            .header("authorization", &self.assistant)
-            .multipart(form)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        let status = response.status();
-        let bytes = response.bytes().await.map_err(|e| e.to_string())?;
-        if !status.is_success() {
-            return Err(wire::ApiError::decode(bytes)
-                .map_err(|_| format!("HTTP {status}"))?
-                .message);
-        }
-        wire::FileLocation::decode(bytes).map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())
     }
     pub fn chat_events(self) -> impl futures_util::Stream<Item = Result<wire::ChatState, String>> {
-        iced::stream::channel::<Result<wire::ChatState, String>>(1, async move |mut output| {
-            let mut reconnecting = false;
+        iced::stream::channel(1, async move |mut output| {
+            let mut changes = self.workspace.subscribe();
             loop {
-                let result: Result<(), String> = async {
-                    let mut request = "ws://127.0.0.1:17863/v1/chat/events"
-                        .into_client_request()
-                        .map_err(|e| e.to_string())?;
-                    request
-                        .headers_mut()
-                        .insert("authorization", self.assistant.clone());
-                    let (socket, _) = tokio_tungstenite::connect_async(request)
-                        .await
-                        .map_err(|_| "本机 Agent 服务已断开")?;
-                    // The subscription must be live before reading its initial snapshot.
-                    output
-                        .send(Ok(self.history().await?))
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    reconnecting = false;
-                    use tokio_tungstenite::tungstenite::Message as Ws;
-                    let mut batches = socket
-                        .take_while(|event| std::future::ready(!matches!(event, Ok(Ws::Close(_)))))
-                        .ready_chunks(32);
-                    while let Some(events) = batches.next().await {
-                        let mut changed = false;
-                        for event in events {
-                            if let Ws::Binary(bytes) = event.map_err(|_| "本机 Agent 服务已断开")?
-                            {
-                                wire::ChatChanged::decode(bytes).map_err(|e| e.to_string())?;
-                                changed = true;
-                            }
-                        }
-                        if changed {
-                            output
-                                .send(self.history().await)
-                                .await
-                                .map_err(|e| e.to_string())?;
-                        }
-                    }
-                    Err("本机 Agent 服务已断开".into())
-                }
-                .await;
-                if !reconnecting
-                    && let Err(error) = result
-                    && output.send(Err(error)).await.is_err()
+                if output.send(self.history().await).await.is_err()
+                    || changes.changed().await.is_err()
                 {
-                    return;
+                    break;
                 }
-                reconnecting = true;
-                tokio::time::sleep(RECONNECT_DELAY).await;
             }
         })
     }
@@ -769,7 +612,13 @@ impl Connection {
     pub fn for_state_test() -> Self {
         Self {
             http: reqwest::Client::new(),
-            assistant: HeaderValue::from_static(""),
+            workspace: crate::workspace::Workspace::from_db(
+                redb::Database::builder()
+                    .create_with_backend(redb::backends::InMemoryBackend::new())
+                    .unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
             phone: None,
         }
     }

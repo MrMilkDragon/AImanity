@@ -17,7 +17,6 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 mod agent_loop;
-mod anthropic_messages;
 mod app_learning;
 mod app_mcp;
 mod application_identity;
@@ -25,7 +24,6 @@ mod auth;
 mod backup;
 mod builtin_guides;
 mod channels;
-mod chat_completions;
 mod completion_audit;
 mod database;
 mod desktop;
@@ -45,8 +43,9 @@ mod location_devices;
 mod location_motion;
 mod model_adapter;
 mod model_context;
-mod model_sse;
-mod model_timing;
+use aimanity_model::model_timing;
+#[cfg(test)]
+use aimanity_model::{anthropic_messages, chat_completions};
 mod notification_policy;
 mod peers;
 mod phone_system;

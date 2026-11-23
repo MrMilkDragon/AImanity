@@ -1,12 +1,13 @@
 [package]
 name = "ai-phone-assistant"
 version = "0.1.0"
-edition.workspace = true
-rust-version.workspace = true
-publish.workspace = true
-license.workspace = true
+edition = "2024"
+rust-version = "1.95"
+publish = false
+license = "Apache-2.0"
 
 [dependencies]
+aimanity-model = { path = "../model" }
 ai-phone-vision = { path = "../vision" }
 ai-phone-api = { path = "../api" }
 ai-phone-adb = { path = "../adb-client" }
@@ -47,5 +48,6 @@ qrcode = { version = "=0.14.1", default-features = false, features = ["image"] }
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg"] }
 serde_yaml_ng = "=0.10.0"
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"

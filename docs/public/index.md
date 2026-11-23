@@ -24,7 +24,7 @@
 - [Application, runtimes and user data · English](distribution.en.md) / [简体中文](distribution.zh-CN.md)
 - [Runtime components](engineering/index.md)
 - [Runtime bundle format](runtime-bundles.md)
-- [Database roles](database-roles.md)
+- [Fluorine workspace storage](distribution.en.md#the-local-workspace)
 - [Durable actions](action-records.md) and [task recovery](task-recovery.md)
 - [Business protocol](protocol-boundaries.md)
 - [UI system](ui-system.md)

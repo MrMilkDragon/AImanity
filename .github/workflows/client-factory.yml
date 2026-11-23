@@ -47,7 +47,7 @@ jobs:
     needs: [admit, windows-qemu]
     uses: ./.github/workflows/windows-guest.yml
     with:
-      baseline_artifact: ${{ needs.windows-qemu.outputs.baseline }}
+      kernel_artifact: ${{ needs.windows-qemu.outputs.kernel }}
 
   windows-exe:
     needs: [windows-qemu, windows-guest]

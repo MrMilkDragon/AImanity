@@ -1,5 +1,5 @@
 use super::Plan;
-use crate::{APP_ID, client_update::macos, deployment};
+use crate::{APP_ID, deployment};
 use std::{
     ffi::OsString,
     fs, io,
@@ -25,6 +25,34 @@ impl Plan {
     }
 }
 
+fn application() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let bundle = exe.ancestors().nth(3).ok_or("Install AImanity first.")?;
+    if bundle.extension().is_none_or(|ext| ext != "app")
+        || !exe.starts_with(bundle.join("Contents/MacOS"))
+    {
+        return Err("Install AImanity first.".into());
+    }
+    let info = Command::new("/usr/bin/plutil")
+        .args(["-extract", "CFBundleIdentifier", "raw", "-o", "-"])
+        .arg(bundle.join("Contents/Info.plist"))
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !info.status.success() || String::from_utf8_lossy(&info.stdout).trim() != APP_ID {
+        return Err("The installed app has a different bundle identifier.".into());
+    }
+    Ok(bundle.to_owned())
+}
+fn wait_for_parent(pid: u32) -> Result<(), String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    while unsafe { libc::getppid() } as u32 == pid {
+        if std::time::Instant::now() >= deadline {
+            return Err("AImanity did not quit.".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    Ok(())
+}
 fn user_home() -> Result<PathBuf, String> {
     let user = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -42,7 +70,7 @@ fn profile(user: &Path) -> PathBuf {
 
 pub(super) fn plan() -> Result<Plan, String> {
     user_home()?;
-    let bundle = macos::application(APP_ID)?;
+    let bundle = application()?;
     let parent = bundle.parent().ok_or("AImanity is not installed.")?;
     tempfile::tempdir_in(parent).map_err(|_| "AImanity cannot be removed from this folder.")?;
     Ok(Plan {
@@ -120,15 +148,18 @@ pub fn run(args: &[OsString]) -> Option<i32> {
             .to_str()
             .and_then(|pid| pid.parse().ok())
             .ok_or("Invalid AImanity process.")?;
-        let bundle = macos::application(APP_ID)?;
-        macos::wait_for_parent(pid)?;
+        let bundle = application()?;
+        wait_for_parent(pid)?;
         uninstall(&user_home()?, &bundle)
     })();
     Some(match result {
         Ok(()) => 0,
         Err(error) => {
             eprintln!("uninstall: {error}");
-            macos::alert(ERROR_TITLE, &error);
+            let _ = rfd::MessageDialog::new()
+                .set_title(ERROR_TITLE)
+                .set_description(&error)
+                .show();
             1
         }
     })

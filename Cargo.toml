@@ -1,5 +1,6 @@
 [workspace]
-members = ["crates/api", "crates/vision", "crates/phone-runner", "crates/assistant", "crates/guest-runtime", "crates/host-runtime", "crates/adb-client", "crates/release-tools", "crates/local-speech"]
+members = ["crates/api", "crates/model", "crates/vision", "crates/phone-runner", "crates/guest-runtime", "crates/host-runtime", "crates/adb-client", "crates/release-tools", "crates/local-speech"]
+exclude = ["crates/assistant"]
 resolver = "3"
 
 [workspace.package]

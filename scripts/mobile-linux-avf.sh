@@ -26,14 +26,13 @@ cleanup() {
 }
 trap cleanup EXIT
 # Filter the generated initramfs to the virtio platform actually used by both crosvm and QEMU.
-mkdir -p "$root/etc/initramfs-tools/conf.d" "$root/etc/postgresql-common"
+mkdir -p "$root/etc/initramfs-tools/conf.d"
 printf 'MODULES=list\nCOMPRESS=gzip\n' > "$root/etc/initramfs-tools/conf.d/avf"
-printf 'create_main_cluster = false\n' > "$root/etc/postgresql-common/createcluster.conf"
 chroot "$root" apt-get update -qq
 chroot "$root" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   systemd-sysv systemd-resolved udev linux-image-arm64 initramfs-tools kmod e2fsprogs \
   busybox-static ca-certificates adb iproute2 bubblewrap slirp4netns zstd xz-utils util-linux \
-  postgresql-17 postgresql-client-17 redis-server redis-tools tesseract-ocr tesseract-ocr-eng \
+  tesseract-ocr tesseract-ocr-eng \
   tesseract-ocr-chi-sim libtesseract-dev libleptonica-dev tzdata
 version=$(chroot "$root" sh -c 'ls -1 /lib/modules | sort -V | tail -n 1')
 test -s "$root/boot/config-$version"
@@ -57,21 +56,15 @@ test "$(od -An -tx1 -j56 -N4 "$out/Image" | tr -d ' \n')" = 41524d64
 install -m 0644 "$root/boot/initrd.img-$version" "$out/initrd.img"
 
 prefix="$root/opt/aiphone"
-mkdir -p "$prefix"/{bundle,engine/bin,linux/bin,native-phone-bridge/platform-tools,postgres/lib,postgres/share,redis/bin} \
+mkdir -p "$prefix"/{bundle,engine/bin,linux/bin,native-phone-bridge/platform-tools} \
   "$root"/{var/lib/aiphone,usr/local/libexec,etc/systemd/network}
 install -m 0755 "$compiled/bootstrap.program" "$root/usr/local/libexec/aiphone-bootstrap"
 install -m 0755 "$relay" "$root/usr/local/libexec/aimanity-avf-guest-relay"
 install -m 0644 "$compiled"/{source.payload,source.sha256,images.payload} "$prefix/bundle/"
 (cd "$prefix/bundle" && echo "$(cat source.sha256)  source.payload" | sha256sum -c -)
-ln -s /usr/lib/postgresql "$prefix/postgres/lib/postgresql"
-ln -s /usr/share/postgresql "$prefix/postgres/share/postgresql"
 ln -s /usr/share/zoneinfo "$prefix/linux/zoneinfo"
 ln -s /usr/bin/busybox "$prefix/engine/bin/busybox"
 ln -s /usr/bin/adb "$prefix/native-phone-bridge/platform-tools/adb"
-# The unprivileged Redis service may create its own files. Keep the root-owned bin directory protected.
-chown root:65534 "$prefix/redis"
-chmod 1770 "$prefix/redis"
-for app in redis-server redis-cli; do ln -s "/usr/bin/$app" "$prefix/redis/bin/$app"; done
 for app in bwrap slirp4netns zstd; do ln -s "/usr/bin/$app" "$prefix/linux/bin/$app"; done
 printf '/dev/vda / ext4 defaults 0 1\n' > "$root/etc/fstab"
 printf 'aimanity\n' > "$root/etc/hostname"
@@ -114,10 +107,8 @@ TimeoutStopSec=30
 [Install]
 WantedBy=multi-user.target
 UNIT
-chroot "$root" systemctl disable redis-server.service postgresql.service
 chroot "$root" systemctl enable aimanity-avf-relay aimanity-avf-backend systemd-networkd systemd-resolved
-for command in /opt/aiphone/redis/bin/redis-cli /opt/aiphone/postgres/lib/postgresql/17/bin/postgres \
-  /opt/aiphone/linux/bin/bwrap /opt/aiphone/linux/bin/zstd /usr/local/libexec/aiphone-bootstrap; do
+for command in /opt/aiphone/linux/bin/bwrap /opt/aiphone/linux/bin/zstd /usr/local/libexec/aiphone-bootstrap; do
   chroot "$root" "$command" --version
 done
 chroot "$root" /opt/aiphone/native-phone-bridge/platform-tools/adb version

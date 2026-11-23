@@ -1,6 +1,5 @@
-use reqwest::header::HeaderValue;
 use std::{io, path::Path};
-use tokio::sync::{oneshot, watch};
+use tokio::sync::watch;
 
 // The phone's own Android desktop is outside the VM control channel.
 const MOBILE: &str = "Host desktop control requires a desktop host";
@@ -36,11 +35,18 @@ impl Permission {
 pub fn permission() -> Result<(), String> {
     Err(MOBILE.into())
 }
-pub async fn serve(
-    _: HeaderValue,
-    _: String,
-    _: oneshot::Sender<()>,
-    _: watch::Receiver<()>,
-) -> Result<(), String> {
-    Err(MOBILE.into())
+pub(crate) struct Grant;
+impl Grant {
+    pub(crate) fn new(_: watch::Receiver<()>) -> Self {
+        Self
+    }
+    pub(crate) fn active(&self) -> bool {
+        false
+    }
+    pub(crate) fn perform(
+        &self,
+        _: &ai_phone_api::wire::DesktopActionRequest,
+    ) -> Result<ai_phone_api::wire::HostDesktopReply, String> {
+        Err(MOBILE.into())
+    }
 }

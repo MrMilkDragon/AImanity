@@ -1,7 +1,7 @@
-use crate::{controls::Icon, host::Host, locale::Locale, spring_slider::SpringSlider, style};
+use crate::{locale::Locale, spring_slider::SpringSlider, style};
 use iced::{
     Element, Length,
-    widget::{button, column, container, float, image, row, rule, space, stack, text},
+    widget::{button, column, container, image, row, space, stack, text},
 };
 use serde::{Deserialize, Serialize};
 #[cfg(not(target_os = "android"))]
@@ -12,11 +12,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     sync::LazyLock,
-    time::{Duration, Instant},
 };
-
-#[path = "host_memory.rs"]
-mod host_memory;
 
 #[cfg(target_os = "android")]
 #[path = "android_assets.rs"]
@@ -27,22 +23,12 @@ pub(crate) fn initialize_android(app: android_activity::AndroidApp) -> Result<()
     android_assets::initialize(app)
 }
 
-const GIB: u64 = 1024_u64.pow(3);
 const SETUP_CONTROL: f32 = 44.;
 const SETUP_LINE: iced::Color = iced::Color::from_rgb8(222, 222, 222);
 const SETUP_TITLE: iced::Font = iced::Font {
     weight: iced::font::Weight::Semibold,
     ..iced::Font::DEFAULT
 };
-
-fn line() -> rule::Rule<'static> {
-    rule::horizontal(1).style(|_| rule::Style {
-        color: SETUP_LINE,
-        radius: 0.into(),
-        fill_mode: rule::FillMode::Full,
-        snap: true,
-    })
-}
 
 pub fn glass_background<'a, M: 'a>(content: Element<'a, M>) -> Element<'a, M> {
     static BACKDROP: LazyLock<image::Handle> = LazyLock::new(|| {
@@ -71,42 +57,6 @@ pub fn glass_background<'a, M: 'a>(content: Element<'a, M>) -> Element<'a, M> {
         content
     ]
     .into()
-}
-
-#[derive(Deserialize)]
-struct CapacityPolicy {
-    #[cfg(not(target_os = "android"))]
-    minimum_ram_gb: u64,
-    minimum_free_gb: u64,
-    minimum_resume_free_gb: u64,
-}
-
-static CAPACITY_POLICY: LazyLock<CapacityPolicy> = LazyLock::new(|| {
-    serde_json::from_str(include_str!("../../../config/host-bootstrap.json"))
-        .expect("bundled host policy")
-});
-
-#[derive(Clone, Copy)]
-struct Capacity {
-    memory: u64,
-    memory_required: u64,
-    disk: u64,
-    disk_required: u64,
-}
-
-impl Capacity {
-    fn rows(self) -> [(&'static str, u64, u64); 2] {
-        [
-            ("主机内存", self.memory, self.memory_required),
-            ("可用磁盘", self.disk, self.disk_required),
-        ]
-    }
-
-    fn eligible(self) -> bool {
-        self.rows()
-            .into_iter()
-            .all(|(_, available, required)| available >= required)
-    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -168,20 +118,8 @@ impl Request {
             Field::Storage => guest.storage_gb = Some(value as u8),
         }
     }
-
-    pub(crate) fn store(&self, home: &Path) -> Result<(), String> {
-        write_atomic(
-            &home.join("request.json"),
-            &serde_json::to_vec(self).map_err(|e| e.to_string())?,
-        )
-    }
 }
 
-pub struct Bundle {
-    pub home: PathBuf,
-    pub resource: PathBuf,
-    inventory: BTreeMap<String, String>,
-}
 #[cfg(target_os = "android")]
 pub fn data_home() -> Result<PathBuf, String> {
     android_assets::home()
@@ -194,7 +132,7 @@ pub fn data_home() -> Result<PathBuf, String> {
         if !path.is_absolute() {
             return Err("AIMANITY_DATA_DIR must be absolute".into());
         }
-        return Ok(path.join("host"));
+        return Ok(path.join(crate::APP_ID).join("host"));
     }
     #[cfg(target_os = "macos")]
     let base = std::env::var_os("HOME")
@@ -262,7 +200,13 @@ pub fn verify_bundle(resource: &Path) -> Result<(), String> {
     }
     Ok(())
 }
-impl Bundle {
+pub struct Setup {
+    pub home: PathBuf,
+    pub resource: PathBuf,
+    pub language: Locale,
+    pub saved: bool,
+}
+impl Setup {
     #[cfg(target_os = "android")]
     pub fn resource_dir() -> Result<PathBuf, String> {
         let id = android_assets::manifest()
@@ -283,123 +227,27 @@ impl Bundle {
         Ok(folder.join("host"))
     }
     pub fn load() -> Result<Self, String> {
+        let home = data_home()?;
         let resource = Self::resource_dir()?;
-        Ok(Self {
-            home: data_home()?,
-            #[cfg(not(target_os = "android"))]
-            inventory: bundle_inventory(&resource)?,
-            #[cfg(target_os = "android")]
-            inventory: android_assets::manifest()
-                .map_err(|e| e.to_string())?
-                .map(|(_, files)| files)
-                .unwrap_or_default(),
-            resource,
-        })
-    }
-    pub fn request(&self) -> Result<Option<Request>, String> {
-        match fs::read(self.home.join("request.json")) {
-            Ok(data) => serde_json::from_slice(&data)
-                .map(Some)
-                .map_err(|e| e.to_string()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error.to_string()),
-        }
-    }
-    pub fn installed(&self) -> Result<bool, String> {
-        let value = match fs::read(self.home.join("deployment.json")) {
-            Ok(bytes) => {
-                serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|e| e.to_string())?
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        let language = match fs::read_to_string(home.join("user/native-locale")) {
+            Ok(value) => Some(Locale::parse(value.trim())),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(error.to_string()),
         };
-        Ok(value["format"].as_u64() == Some(1)
-            && (value["progress"]["state"].as_str() == Some("ready")
-                || value["installed_payload"]
-                    .as_str()
-                    .is_some_and(|id| !id.is_empty())))
-    }
-    fn capacity(&self, admitted: bool, request: &Request) -> Result<Capacity, String> {
-        let volume = self
-            .home
-            .ancestors()
-            .find(|p| p.is_dir())
-            .ok_or("找不到安装磁盘")?;
-        #[cfg(target_os = "android")]
-        let memory_required =
-            (u64::from(request.phone.memory_mb) + u64::from(request.desktop.memory_mb) + 1536)
-                .div_ceil(1024);
-        #[cfg(not(target_os = "android"))]
-        let memory_required = {
-            let _ = request;
-            CAPACITY_POLICY.minimum_ram_gb
-        };
-        Ok(Capacity {
-            memory_required,
-            memory: host_memory::total_memory_bytes() / GIB,
-            disk: fs2::available_space(volume).map_err(|error| error.to_string())? / GIB,
-            disk_required: if admitted {
-                CAPACITY_POLICY.minimum_resume_free_gb
-            } else {
-                CAPACITY_POLICY.minimum_free_gb
-            },
+        Ok(Self {
+            home,
+            resource,
+            saved: language.is_some(),
+            language: language.unwrap_or_default(),
         })
     }
-    pub fn host(&self, request: &Request) -> Result<Host, String> {
-        #[cfg(target_os = "android")]
-        if self.inventory.is_empty() {
-            return Err("Offline Android and Linux guest assets are missing from this APK".into());
+    pub fn save(&self) -> Result<(), String> {
+        if self.saved {
+            return Ok(());
         }
-        let path = self.home.join("request.json");
-        let admitted = self.installed()? || path.is_file();
-        if let Some((label, available, required)) = self
-            .capacity(admitted, request)?
-            .rows()
-            .into_iter()
-            .find(|(_, available, required)| available < required)
-        {
-            return Err(format!(
-                "{} · {available} / {required} GiB",
-                Locale::parse(&request.locale).tr(label)
-            ));
-        }
-        fs::create_dir_all(&self.home).map_err(|e| e.to_string())?;
-        if !admitted {
-            request.store(&self.home)?;
-        }
-        #[cfg(not(target_os = "android"))]
-        let images = if cfg!(any(windows, target_os = "linux")) {
-            self.inventory.get("qemu/manifest.json")
-        } else {
-            self.inventory.get("images.payload")
-        };
-        Ok(Host {
-            home: self.home.clone(),
-            resource: self.resource.clone(),
-            request: path,
-            #[cfg(target_os = "macos")]
-            source: self.inventory["source.payload"].clone(),
-            #[cfg(not(target_os = "android"))]
-            android: self.inventory["android.payload"].clone(),
-            #[cfg(not(target_os = "android"))]
-            images: images.ok_or("找不到设备镜像")?.clone(),
-            #[cfg(not(target_os = "android"))]
-            resume: admitted,
-        })
-    }
-    pub fn mark_installed(&self) -> Result<(), String> {
-        #[cfg(target_os = "android")]
-        let payload = self
-            .resource
-            .file_name()
-            .and_then(|p| p.to_str())
-            .ok_or("Android manifest missing")?;
-        #[cfg(not(target_os = "android"))]
-        let payload = &self.inventory["source.payload"];
-        let bytes = serde_json::to_vec(&serde_json::json!({"format":1,"payload":payload,
-            "installed_payload":payload,"progress":{"phase":"devices","state":"ready","error":""}}))
-        .map_err(|e| e.to_string())?;
-        write_atomic(&self.home.join("deployment.json"), &bytes)
+        let user = self.home.join("user");
+        fs::create_dir_all(&user).map_err(|e| e.to_string())?;
+        write_atomic(&user.join("native-locale"), self.language.code().as_bytes())
     }
 }
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -419,485 +267,121 @@ pub enum Field {
 }
 #[derive(Clone, Debug)]
 pub enum Message {
-    #[cfg(target_os = "android")]
-    EditCpu(bool, String),
-    #[cfg(target_os = "android")]
-    SubmitCpu(bool),
     Choose(Locale),
     Continue,
-    Set(bool, Field, u16),
-    RefreshCapacity,
-    Start,
-    Stop,
-}
-pub struct Setup {
-    #[cfg(target_os = "android")]
-    cpu_drafts: [Option<String>; 2],
-    pub bundle: Bundle,
-    pub request: Request,
-    pub locale: Option<Locale>,
-    language: Locale,
-    language_entry: iced::Animation<bool>,
-    pub attempted: bool,
-    pub installed: bool,
-    capacity: Result<Capacity, String>,
-    #[cfg(target_os = "macos")]
-    pub activities: Vec<crate::host::Activity>,
 }
 impl Setup {
-    pub fn new(bundle: Bundle, request: Option<Request>, installed: bool) -> Self {
-        let locale = request.as_ref().map(|r| Locale::parse(&r.locale));
-        let attempted = request.is_some();
-        let request = request.unwrap_or_default();
-        let capacity = bundle.capacity(installed || attempted, &request);
-        Self {
-            bundle,
-            attempted,
-            request,
-            #[cfg(target_os = "android")]
-            cpu_drafts: [None, None],
-            locale,
-            language: locale.unwrap_or_default(),
-            language_entry: iced::Animation::new(false)
-                .duration(Duration::from_millis(480))
-                .easing(iced::animation::Easing::EaseOutQuart),
-            installed,
-            capacity,
-            #[cfg(target_os = "macos")]
-            activities: Vec::new(),
-        }
-    }
-    pub fn update(&mut self, message: Message) {
-        match message {
-            #[cfg(target_os = "android")]
-            Message::EditCpu(desktop, value) => {
-                if value.len() <= 2 && value.bytes().all(|b| b.is_ascii_digit()) {
-                    let valid = value.parse().ok().filter(|n| CPU_CHOICES.contains(n));
-                    self.cpu_drafts[usize::from(desktop)] = valid.is_none().then_some(value);
-                    if let Some(count) = valid {
-                        self.request.set(desktop, Field::Cpu, count);
-                    }
-                }
-            }
-            #[cfg(target_os = "android")]
-            Message::SubmitCpu(desktop) => self.cpu_drafts[usize::from(desktop)] = None,
-            Message::Choose(locale) => self.language = locale,
-            Message::Continue => {
-                self.locale = Some(self.language);
-                self.request.locale = self.language.code().into();
-                self.capacity = self
-                    .bundle
-                    .capacity(self.installed || self.attempted, &self.request);
-                self.language_entry.go_mut(true, Instant::now());
-            }
-            Message::RefreshCapacity => {
-                self.capacity = self
-                    .bundle
-                    .capacity(self.installed || self.attempted, &self.request)
-            }
-            Message::Set(desktop, field, value) => {
-                #[cfg(target_os = "android")]
-                if matches!(field, Field::Cpu) {
-                    self.cpu_drafts[usize::from(desktop)] = None;
-                }
-                self.request.set(desktop, field, value);
-                #[cfg(target_os = "android")]
-                {
-                    self.capacity = self
-                        .bundle
-                        .capacity(self.installed || self.attempted, &self.request);
-                }
-            }
-            Message::Start | Message::Stop => {}
-        }
-    }
-
-    pub fn animating_language(&self) -> bool {
-        self.language_entry.is_animating(Instant::now())
-    }
-    #[cfg(target_os = "macos")]
-    pub fn activity(&mut self, activity: crate::host::Activity) {
-        use crate::host::ActivityState::Running;
-        if activity.state != Running
-            && let Some(running) = self
-                .activities
-                .iter_mut()
-                .rev()
-                .find(|entry| entry.command == activity.command && entry.state == Running)
-        {
-            *running = activity;
-            return;
-        }
-        if self.activities.len() == 3 {
-            self.activities.remove(0);
-        }
-        self.activities.push(activity);
-    }
-
-    pub fn progress<'a>(
-        &'a self,
-        locale: Locale,
-        phase: &'a str,
-        error: &'a str,
-        can_stop: bool,
-        reduced_motion: bool,
-    ) -> Element<'a, Message> {
-        let title = locale.tr(if phase.is_empty() {
-            if error.is_empty() {
-                "已停止"
-            } else {
-                "安装失败"
-            }
-        } else {
-            phase
-        });
-        let mut content = column![].spacing(20).align_x(iced::Center);
-        if !phase.is_empty() {
-            content = content.push(crate::loading::orb(180., reduced_motion));
-        }
-        content = content.push(text(title).size(22).font(SETUP_TITLE));
-        if !error.is_empty() {
-            content = content.push(text(error).size(13).style(style::error_text));
-        }
-        let centered = container(content).center(Length::Fill);
-        let mut page = column![].spacing(28);
-        if !self.installed {
-            page = page.push(text(locale.tr("安装")).size(34).font(SETUP_TITLE));
-        }
-        let details = column![centered].spacing(12);
-        #[cfg(target_os = "macos")]
-        let details = if self.activities.is_empty() {
-            details
-        } else {
-            use crate::host::ActivityState::{Completed, Failed, Running};
-            let activity = column(self.activities.iter().map(|entry| {
-                let label = match entry.state {
-                    Running => "运行中",
-                    Completed => "已完成",
-                    Failed => "失败",
-                };
-                row![
-                    text(&entry.command).size(12),
-                    text(locale.tr(label)).size(12).style(style::muted_text)
-                ]
-                .spacing(12)
-                .into()
-            }))
-            .spacing(6);
-            details.push(activity)
+    pub fn view<'a>(&'a self, error: &'a str) -> Element<'a, Message> {
+        let options: Vec<_> = Locale::all().collect();
+        let locale = self.language;
+        let rtl = locale.code() == "ar";
+        let bold = iced::Font {
+            weight: iced::font::Weight::Bold,
+            ..locale.font()
         };
-        page = page.push(details.height(Length::Fill));
-        if phase.is_empty() || can_stop {
-            let (label, message) = if can_stop {
-                ("停止", Message::Stop)
-            } else if error.is_empty() {
-                ("继续安装", Message::Start)
-            } else {
-                ("重试", Message::Start)
-            };
-            page = page.push(
+        column![
+            container(
                 column![
-                    line(),
-                    row![
-                        space::horizontal(),
-                        button(container(text(locale.tr(label)).size(14)).center_y(Length::Fill))
-                            .padding([0, 13])
-                            .height(SETUP_CONTROL)
-                            .style(if can_stop {
-                                style::quiet
-                            } else {
-                                style::primary
-                            })
-                            .on_press(message)
-                    ]
-                ]
-                .spacing(14),
-            );
-        }
-        page.padding(iced::Padding {
-            top: 46.,
-            right: 44.,
-            bottom: 26.,
-            left: 44.,
-        })
-        .into()
-    }
-
-    pub fn view<'a>(&'a self, error: &'a str, reduced_motion: bool) -> Element<'a, Message> {
-        if let Some(locale) = self.locale {
-            let tr = |key: &'static str| locale.tr(key);
-            let mut content = column![text(tr("配置设备")).size(34).font(SETUP_TITLE)].spacing(28);
-            let capacity_error = match (&self.capacity, error) {
-                (_, error) if !error.is_empty() => error,
-                (Ok(capacity), _) if !capacity.eligible() => {
-                    tr("本机资源不足，请检查内存和可用空间。")
-                }
-                _ => "",
-            };
-            if !capacity_error.is_empty() {
-                content = content.push(text(capacity_error).size(14).style(style::error_text));
-            }
-            content = content.push(column![
-                line(),
-                self.guest(false, self.request.phone, locale, reduced_motion),
-                line(),
-                self.guest(true, self.request.desktop, locale, reduced_motion),
-                line(),
-            ]);
-            let (checks, eligible): (Element<'_, Message>, _) = match &self.capacity {
-                Ok(capacity) => (
-                    row(capacity.rows().map(|(label, available, required)| {
-                        let status = if available < required {
-                            format!("{} {available} GB / {required} GB", tr(label))
-                        } else {
-                            format!("{} {available} GB", tr(label))
-                        };
-                        text(status)
-                            .size(12)
-                            .style(move |theme| {
-                                if available < required {
-                                    style::error_text(theme)
+                    text(locale.tr("选择语言")).size(33).font(bold),
+                    container(
+                        column(options.chunks(2).map(|pair| {
+                            row(pair.iter().enumerate().map(|(index, &option)| {
+                                let option = if rtl {
+                                    pair[pair.len() - 1 - index]
                                 } else {
-                                    style::muted_text(theme)
-                                }
-                            })
-                            .into()
-                    }))
-                    .spacing(11)
-                    .into(),
-                    capacity.eligible(),
-                ),
-                Err(error) => (text(error).size(13).style(style::error_text).into(), false),
-            };
-            #[cfg(target_os = "android")]
-            let eligible = eligible && self.cpu_drafts.iter().all(Option::is_none);
-            let panel = column![
-                container(content)
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .align_y(iced::Center),
-                space::vertical().height(16),
-                line(),
-                row![
-                    column![
-                        text(if cfg!(target_os = "macos") {
-                            "macOS · Apple Silicon"
-                        } else if cfg!(windows) {
-                            "Windows 11"
-                        } else if cfg!(target_os = "android") {
-                            if cfg!(target_arch = "aarch64") {
-                                "Android · ARM64"
-                            } else {
-                                "Android · x86_64"
-                            }
-                        } else {
-                            "Linux · x86_64"
-                        })
-                        .size(12)
-                        .font(SETUP_TITLE),
-                        checks
-                    ]
-                    .spacing(2)
-                    .width(Length::Fill),
-                    button(container(text(tr("开始安装")).size(14)).center_y(Length::Fill))
-                        .height(SETUP_CONTROL)
-                        .padding([0, 17])
-                        .style(style::primary)
-                        .on_press_maybe(eligible.then_some(Message::Start))
-                ]
-                .spacing(10)
-                .padding(iced::Padding::ZERO.top(14))
-                .align_y(iced::Center)
-            ]
-            .padding(iced::Padding {
-                top: 46.,
-                right: 44.,
-                bottom: 26.,
-                left: 44.,
-            });
-            let now = Instant::now();
-            if !reduced_motion && self.language_entry.is_animating(now) {
-                let entry = self.language_entry.interpolate(0., 1., now);
-                float(panel)
-                    .scale(0.96 + 0.04 * entry)
-                    .translate(move |_, _| iced::Vector::new(0., 12. * (1. - entry)))
-                    .into()
-            } else {
-                panel.into()
-            }
-        } else {
-            let options: Vec<_> = Locale::all().collect();
-            let locale = self.language;
-            let rtl = locale.code() == "ar";
-            let bold = iced::Font {
-                weight: iced::font::Weight::Bold,
-                ..locale.font()
-            };
-            column![
-                container(
-                    column![
-                        text(locale.tr("选择语言")).size(33).font(bold),
-                        container(
-                            column(options.chunks(2).map(|pair| {
-                                row(pair.iter().enumerate().map(|(index, &option)| {
-                                    let option = if rtl {
-                                        pair[pair.len() - 1 - index]
-                                    } else {
-                                        option
-                                    };
-                                    let selected = option == locale;
-                                    let radio = container(space()).center(12).style(move |_| {
-                                        container::Style::default()
-                                            .background(if selected {
-                                                iced::Color::WHITE
-                                            } else {
-                                                iced::Color::TRANSPARENT
-                                            })
-                                            .border(iced::Border {
-                                                color: if selected {
-                                                    style::FOREGROUND
-                                                } else {
-                                                    iced::Color::from_rgb8(150, 150, 150)
-                                                },
-                                                width: if selected { 4. } else { 1.5 },
-                                                radius: 6.into(),
-                                            })
-                                    });
-                                    let label = text(option.name()).size(14).font(iced::Font {
-                                        weight: if selected {
-                                            iced::font::Weight::Bold
+                                    option
+                                };
+                                let selected = option == locale;
+                                let radio = container(space()).center(12).style(move |_| {
+                                    container::Style::default()
+                                        .background(if selected {
+                                            iced::Color::WHITE
                                         } else {
-                                            iced::font::Weight::Normal
-                                        },
-                                        ..option.font()
-                                    });
-                                    button(
-                                        if rtl {
-                                            row![space::horizontal(), label, radio]
-                                        } else {
-                                            row![radio, label]
-                                        }
-                                        .height(Length::Fill)
-                                        .spacing(10)
-                                        .align_y(iced::Center),
-                                    )
-                                    .width(Length::Fill)
-                                    .height(SETUP_CONTROL)
-                                    .padding([0, 13])
-                                    .style(move |_, status| button::Style {
-                                        background: Some(style::CONTROL_FILL.into()),
-                                        text_color: if selected
-                                            || matches!(
-                                                status,
-                                                button::Status::Hovered | button::Status::Pressed
-                                            ) {
-                                            style::FOREGROUND
-                                        } else {
-                                            style::MUTED
-                                        },
-                                        border: iced::Border {
+                                            iced::Color::TRANSPARENT
+                                        })
+                                        .border(iced::Border {
                                             color: if selected {
                                                 style::FOREGROUND
                                             } else {
-                                                SETUP_LINE
+                                                iced::Color::from_rgb8(150, 150, 150)
                                             },
-                                            width: 1.,
-                                            radius: style::CONTROL_RADIUS.into(),
+                                            width: if selected { 4. } else { 1.5 },
+                                            radius: 6.into(),
+                                        })
+                                });
+                                let label = text(option.name()).size(14).font(iced::Font {
+                                    weight: if selected {
+                                        iced::font::Weight::Bold
+                                    } else {
+                                        iced::font::Weight::Normal
+                                    },
+                                    ..option.font()
+                                });
+                                button(
+                                    if rtl {
+                                        row![space::horizontal(), label, radio]
+                                    } else {
+                                        row![radio, label]
+                                    }
+                                    .height(Length::Fill)
+                                    .spacing(10)
+                                    .align_y(iced::Center),
+                                )
+                                .width(Length::Fill)
+                                .height(SETUP_CONTROL)
+                                .padding([0, 13])
+                                .style(move |_, status| button::Style {
+                                    background: Some(style::CONTROL_FILL.into()),
+                                    text_color: if selected
+                                        || matches!(
+                                            status,
+                                            button::Status::Hovered | button::Status::Pressed
+                                        ) {
+                                        style::FOREGROUND
+                                    } else {
+                                        style::MUTED
+                                    },
+                                    border: iced::Border {
+                                        color: if selected {
+                                            style::FOREGROUND
+                                        } else {
+                                            SETUP_LINE
                                         },
-                                        ..Default::default()
-                                    })
-                                    .on_press(Message::Choose(option))
-                                    .into()
-                                }))
-                                .spacing(8)
+                                        width: 1.,
+                                        radius: style::CONTROL_RADIUS.into(),
+                                    },
+                                    ..Default::default()
+                                })
+                                .on_press(Message::Choose(option))
                                 .into()
                             }))
                             .spacing(8)
-                        )
-                        .width(434),
-                    ]
-                    .spacing(28)
-                    .align_x(iced::Center)
-                )
-                .center(Length::Fill),
-                button(
-                    container(text(locale.tr("继续")).size(14).font(SETUP_TITLE))
-                        .center(Length::Fill)
-                )
-                .width(142)
-                .height(SETUP_CONTROL)
-                .style(style::primary)
-                .on_press(Message::Continue)
-            ]
-            .align_x(iced::Center)
-            .padding(iced::Padding {
-                top: 20.,
-                right: 44.,
-                bottom: 33.,
-                left: 44.,
-            })
-            .into()
-        }
-    }
-    fn guest(
-        &self,
-        desktop: bool,
-        guest: Guest,
-        locale: Locale,
-        reduced_motion: bool,
-    ) -> Element<'static, Message> {
-        let tr = |key: &'static str| locale.tr(key);
-        #[cfg(target_os = "android")]
-        let cpu_input = {
-            let value = self.cpu_drafts[usize::from(desktop)]
-                .clone()
-                .unwrap_or_else(|| guest.cpus.to_string());
-            let invalid = self.cpu_drafts[usize::from(desktop)].is_some();
-            iced::widget::text_input("1/2/4", &value)
-                .width(50)
-                .padding([1, 4])
-                .size(14)
-                .align_x(iced::alignment::Horizontal::Right)
-                .style(move |theme, status| {
-                    let mut style = style::input(theme, status);
-                    if invalid {
-                        style.border.color = style::ERROR;
-                    }
-                    style
-                })
-                .on_input(move |value| Message::EditCpu(desktop, value))
-                .on_submit(Message::SubmitCpu(desktop))
-                .into()
-        };
-        let fields = resource_controls(
-            desktop,
-            guest,
-            None,
-            locale,
-            reduced_motion,
-            #[cfg(target_os = "android")]
-            Some(cpu_input),
-            move |f, v| Message::Set(desktop, f, v),
-        );
-        row![
-            row![
-                if desktop {
-                    Icon::Screen.view()
-                } else {
-                    Icon::PhonePortrait.view()
-                },
-                text(tr(if desktop { "电脑" } else { "手机" }))
-                    .size(16)
-                    .font(SETUP_TITLE),
-            ]
-            .spacing(8)
-            .width(120)
-            .align_y(iced::Center),
-            fields
+                            .into()
+                        }))
+                        .spacing(8)
+                    )
+                    .width(434),
+                ]
+                .spacing(28)
+                .align_x(iced::Center)
+            )
+            .center(Length::Fill),
+            text(error).size(13).style(style::error_text),
+            button(
+                container(text(locale.tr("继续")).size(14).font(SETUP_TITLE)).center(Length::Fill)
+            )
+            .width(142)
+            .height(SETUP_CONTROL)
+            .style(style::primary)
+            .on_press(Message::Continue)
         ]
-        .spacing(16)
-        .padding([21, 0])
-        .align_y(iced::Center)
+        .align_x(iced::Center)
+        .padding(iced::Padding {
+            top: 20.,
+            right: 44.,
+            bottom: 33.,
+            left: 44.,
+        })
         .into()
     }
 }

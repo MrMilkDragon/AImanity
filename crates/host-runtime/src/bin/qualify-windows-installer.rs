@@ -952,7 +952,7 @@ async fn main() -> Result<()> {
     let root = PathBuf::from(root);
     let install = root.join("installed");
     let profile = root.join("profile");
-    let home = profile.join("dev.aimanity.native/host");
+    let home = profile.join("dev.aimanity.workspace/host");
     check(
         !home.exists() && !install.exists(),
         "fresh isolated Windows runtime",

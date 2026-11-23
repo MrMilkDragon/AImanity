@@ -547,6 +547,37 @@ fn append_parts(destination: &mut Vec<Value>, value: Option<&Value>) {
 }
 #[cfg(test)]
 mod tests {
+    use aimanity_model::chat_completions::{ChatStream, request_body};
+    #[test]
+    fn native_reasoning_and_tool_signatures_survive_a_completed_tool_turn() {
+        let event = json!({"choices":[{"index":0,"delta":{"content":"Checking.","reasoning_content":"private-model-replay","tool_calls":[{"index":0,"id":"a","function":{"name":"observe","arguments":"{}"},"extra_content":{"google":{"thought_signature":"opaque-signature"}}},{"index":1,"id":"b","function":{"name":"inspect","arguments":"{}"}}]},"finish_reason":"tool_calls"}]});
+        let mut parser = ChatStream::default();
+        let output = parser
+            .feed(format!("data: {event}\n\ndata: [DONE]\n\n").as_bytes())
+            .unwrap()
+            .unwrap();
+        let mut input = vec![json!({"role":"user","content":"inspect"})];
+        input.extend(output);
+        for id in ["a", "b"] {
+            input
+                .push(json!({"type":"function_call_output","call_id":id,"output":"actual-result"}));
+        }
+        let input = crate::model_context::for_chat_api(&input);
+        let mapped = request_body(&json!({"input":input}), true).unwrap();
+        let messages = mapped["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[1]["tool_calls"].as_array().unwrap().len(), 2);
+        assert_eq!(messages[1]["reasoning_content"], "private-model-replay");
+        assert_eq!(
+            messages[1]["tool_calls"][0]["extra_content"]["google"]["thought_signature"],
+            "opaque-signature"
+        );
+        let generic = request_body(&json!({"input":input}), false).unwrap();
+        assert!(generic["messages"][1].get("reasoning_content").is_none());
+        assert_eq!(generic["messages"][2]["tool_call_id"], "a");
+        assert_eq!(generic["messages"][3]["tool_call_id"], "b");
+    }
+
     use super::*;
     #[test]
     fn archived_phone_frames_replay_text_without_expired_targets() {

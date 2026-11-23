@@ -10,7 +10,7 @@ An agent that listens while it works, explores on its own, and learns across And
 
 [Installation guide](docs/public/release-status.md) · [Uninstall](docs/public/release-status.md#uninstall)
 
-## What it does
+## Europium features
 
 - **Use a phone.** An Agent reads the Android screen, operates installed apps such as WeChat and handles notifications.
 - **Use a computer.** An Agent controls the Linux desktop and works in apps such as LibreOffice. Connect the devices to move files between them.
@@ -19,15 +19,17 @@ An agent that listens while it works, explores on its own, and learns across And
 
 See [model and channel setup](docs/public/model-and-channel-setup.md), [notification workflows](docs/public/notification-workflows.md) and [Liberty](docs/public/autonomous-exploration.md).
 
-## How it works
+## Fluorine development architecture
 
 | Layer | Technology | Directory |
 | --- | --- | --- |
 | Desktop client and workbench | Rust (Iced/wgpu) | `apps/native` |
 | Backend, devices and media | Rust, Axum, Tokio | `crates` |
-| Business API and state | protobuf, PostgreSQL, SQLx | `packages/protocol` |
+| Business API and state | protobuf, embedded redb | `packages/protocol`, `apps/native/src/workspace` |
 | Device runtimes | AOSP on Avo or QEMU (WHPX/KVM), Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
 | Built-in capabilities | Skills and device profiles | `skills`, `config` |
+
+Fluorine starts with a fresh workspace. Chat, model profiles, knowledge and working files are available with zero devices.
 
 Agents plan from current device observations and record their actions and results. Cargo builds the project. Device disks, accounts and attachments stay in the local installation.
 

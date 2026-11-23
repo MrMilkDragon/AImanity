@@ -1,44 +1,17 @@
-# 客户端、运行环境、用户数据与升级
+# 安装 Fluorine
 
 [English](distribution.en.md)
 
-安装包内置设备与服务。用户在客户端配置设备资源和模型。详见[下载与宿主要求](release-status.md)。
+0.0.6 Fluorine 正在开发，采用全新安装方式，应用标识为 `dev.aimanity.workspace`。正式发布后，安装对应平台的客户端，选好语言即可进入工作台，在设置里配置模型。零台设备也能开始使用。
 
-## 已实现的目录边界
+## 本地工作区
 
-原生首配使用应用数据目录下的独立 `host`：
+Rust 客户端在自己的应用数据目录打开 `host/workspace.redb`。共享对话、待发送消息、模型配置、设备登记、记忆、知识和聊天附件由嵌入式数据库提交。可编辑的工作文件保存在 `host/files/`。
 
-```text
-host/
-  deployment.json             首配检查点
-  tools/                      当前开发安装链的受管工具
-  releases/<payload-sha256>/  校验后的版本代码和运行组件
-    data -> host/user/data
-    .env -> host/user/.env
-  user/
-    .env                      私有数据库环境
-    data/                     客体、账号、模型、渠道与工作文件
-```
+| 桌面平台 | 应用数据目录 |
+| --- | --- |
+| macOS | `~/Library/Application Support/dev.aimanity.workspace` |
+| Windows | `%APPDATA%\dev.aimanity.workspace` |
+| Linux | `$XDG_DATA_HOME/dev.aimanity.workspace` 或 `~/.local/share/dev.aimanity.workspace` |
 
-`crates/host-runtime/src/source_cli.rs` 按资源摘要暂存[运行组件](runtime-bundles.md)，并核对指向持久用户数据的链接。
-
-源码暂存命令复用原生的内容寻址暂存器。
-
-PostgreSQL 使用 Linux 客体内的私有存储。备份包含数据库、Android 状态、Linux 的可写变更与主目录，以及私有文件。恢复到空目标并保留隔离，供验证后启用。用户 Skill、使用经验、记忆、知识、附件与停用偏好跨升级保留。
-
-## 客户端更新
-
-macOS 和 Windows 从工作台下载安装包，核验 Ed25519 签名和摘要。macOS 替换应用包，Windows 运行 Inno 安装器，随后重新打开客户端。Linux 通过包管理器安装同格式的新版 DEB 或 RPM。设备和聊天保存在 `$XDG_DATA_HOME/dev.aimanity.native/host`，默认路径为 `~/.local/share/dev.aimanity.native/host`。[Linux 安装方式](release-status.md#linux)
-
-两端安装包验收后，在发行维护者本机签署更新清单。
-
-```sh
-cargo run --quiet --locked -p ai-phone-release-tools -- sign-update /path/to/offline-key \
-  AImanity-0.0.5-macos-arm64.dmg AImanity-0.0.5-windows-x64-setup.exe native-stable.json
-```
-
-顺序打包时，本地保留两份安装包回执和一个安装包。另一端的安装包通过管道传给 `sign-update --stdin macos` 或 `sign-update --stdin windows`，后接原有四个参数。工具按传入的文件名读取同目录回执。两端安装包都可下载后再发布共享更新清单。
-
-在 GitHub 发行页上传 DMG、EXE、DEB 和 RPM，将 macOS 与 Windows 的签名更新清单 `native-stable.json` 提交到 `update-feed` 分支。
-
-完整包必须包含干净Android/Linux基础、模拟器、预编译服务与匹配运行环境，并附来源、声明和适用对应源码。详见[发行要求](distribution-requirements.md)、[当前状态](release-status.md)和[备份恢复](backup-restore.zh-CN.md)。
+已安装的 Europium 继续使用自己的目录。Fluorine 使用平台安装包创建独立工作区。

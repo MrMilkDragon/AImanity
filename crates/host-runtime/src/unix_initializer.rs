@@ -90,13 +90,7 @@ fn command_label(command: &Command) -> Option<&'static str> {
     match (name, args.next()?) {
         ("limactl", "list") => Some("limactl list"),
         ("limactl", "start") => Some("limactl start --tty=false"),
-        (_, "--prepare-database") => Some("assistant --prepare-database"),
-        (_, "--migrate") => Some("assistant --migrate"),
-        (_, "--setup-devices") => Some("assistant --setup-devices"),
         (_, "--service-control") => match (args.nth(1)?, args.next()?) {
-            ("postgres", "start") => Some("ai-phone-client --service-control … postgres start"),
-            ("redis", "start") => Some("ai-phone-client --service-control … redis start"),
-            ("assistant", "start") => Some("ai-phone-client --service-control … assistant start"),
             ("runner", "start") => Some("ai-phone-client --service-control … runner start"),
             _ => None,
         },
@@ -363,16 +357,6 @@ async fn initialize(
         first.and(second)?;
     }
     readiness::wait(&root, stop).await?;
-    progress("devices", "running", "")?;
-    backend
-        .checked(
-            backend.command(
-                root.join("runtime/services/bin/assistant"),
-                ["--setup-devices"],
-            ),
-            vec![],
-        )
-        .await?;
     progress("ready", "ready", "")
 }
 

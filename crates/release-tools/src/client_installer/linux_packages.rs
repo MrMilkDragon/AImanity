@@ -8,7 +8,7 @@ use std::{
 };
 
 const TITLE: &str = "AImanity native Android and Linux workbench";
-const DESKTOP: &str = "[Desktop Entry]\nType=Application\nName=AImanity\nExec=/usr/bin/aimanity\nIcon=dev.aimanity.native\nTerminal=false\nCategories=Utility;\n";
+const DESKTOP: &str = "[Desktop Entry]\nType=Application\nName=AImanity\nExec=/usr/bin/aimanity-workspace\nIcon=dev.aimanity.workspace\nTerminal=false\nCategories=Utility;\n";
 const RPM_SPEC: &str = include_str!("aimanity.spec");
 const KVM_RULE: &str = "SUBSYSTEM==\"misc\", KERNEL==\"kvm\", TAG+=\"uaccess\"\n";
 const ACTIVATE_RULE: &str = "if [ -S /run/udev/control ]; then\n  udevadm control --reload\n  if [ -e /sys/class/misc/kvm ]; then udevadm trigger --action=change --settle /sys/class/misc/kvm; fi\nfi\n";
@@ -28,8 +28,8 @@ pub(crate) fn build(args: &[OsString]) -> Result<Value> {
     let dist = fs::canonicalize(dist)?;
     let scratch = tempfile::tempdir_in(&dist)?;
     let image = scratch.path().join("package");
-    let app = image.join("usr/lib/aimanity");
-    let legal = image.join("usr/share/doc/aimanity");
+    let app = image.join("usr/lib/aimanity-workspace");
+    let legal = image.join("usr/share/doc/aimanity-workspace");
     fs::create_dir_all(&legal)?;
     execute(
         Command::new(&binary)
@@ -40,20 +40,20 @@ pub(crate) fn build(args: &[OsString]) -> Result<Value> {
     fs::copy(&binary, app.join("aimanity-native"))?;
     fs::create_dir_all(image.join("usr/bin"))?;
     symlink(
-        "../lib/aimanity/aimanity-native",
-        image.join("usr/bin/aimanity"),
+        "../lib/aimanity-workspace/aimanity-native",
+        image.join("usr/bin/aimanity-workspace"),
     )?;
     let applications = image.join("usr/share/applications");
     fs::create_dir_all(&applications)?;
-    fs::write(applications.join("dev.aimanity.native.desktop"), DESKTOP)?;
+    fs::write(applications.join("dev.aimanity.workspace.desktop"), DESKTOP)?;
     let rules = image.join("usr/lib/udev/rules.d");
     fs::create_dir_all(&rules)?;
-    fs::write(rules.join("70-aimanity-kvm.rules"), KVM_RULE)?;
+    fs::write(rules.join("70-aimanity-workspace-kvm.rules"), KVM_RULE)?;
     let icons = image.join("usr/share/icons/hicolor/scalable/apps");
     fs::create_dir_all(&icons)?;
     fs::copy(
         root.join("apps/native/icons/source.svg"),
-        icons.join("dev.aimanity.native.svg"),
+        icons.join("dev.aimanity.workspace.svg"),
     )?;
     notices::write(
         &root,
@@ -78,7 +78,7 @@ pub(crate) fn build(args: &[OsString]) -> Result<Value> {
     fs::create_dir(scratch.path().join("debian"))?;
     fs::write(
         scratch.path().join("debian/control"),
-        "Source: aimanity\nSection: utils\nPriority: optional\nMaintainer: AImanity maintainers <maintainers@users.noreply.github.com>\n\nPackage: aimanity\nArchitecture: amd64\nDescription: AImanity desktop workbench\n",
+        "Source: aimanity-workspace\nSection: utils\nPriority: optional\nMaintainer: AImanity maintainers <maintainers@users.noreply.github.com>\n\nPackage: aimanity-workspace\nArchitecture: amd64\nDescription: AImanity desktop workbench\n",
     )?;
     let shlibs = output(
         Command::new("dpkg-shlibdeps")
@@ -92,7 +92,7 @@ pub(crate) fn build(args: &[OsString]) -> Result<Value> {
     fs::write(
         image.join("DEBIAN/control"),
         format!(
-            "Package: aimanity\nVersion: {version}\nArchitecture: amd64\nMaintainer: AImanity maintainers <maintainers@users.noreply.github.com>\nSection: utils\nPriority: optional\nDepends: {linked}, libvulkan1, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon0, libxkbcommon-x11-0, pkexec, espeak-ng, fonts-noto-cjk, udev\nDescription: {TITLE}\n Offline workspace with one Android phone, one Linux desktop and a shared agent.\n"
+            "Package: aimanity-workspace\nVersion: {version}\nArchitecture: amd64\nMaintainer: AImanity maintainers <maintainers@users.noreply.github.com>\nSection: utils\nPriority: optional\nDepends: {linked}, libvulkan1, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon0, libxkbcommon-x11-0, pkexec, espeak-ng, fonts-noto-cjk, udev\nDescription: {TITLE}\n Offline workspace with one Android phone, one Linux desktop and a shared agent.\n"
         ),
     )?;
     execute(
@@ -134,7 +134,7 @@ pub(crate) fn build(args: &[OsString]) -> Result<Value> {
     fs::rename(
         rpmdir
             .join("x86_64")
-            .join(format!("aimanity-{version}-1.x86_64.rpm")),
+            .join(format!("aimanity-workspace-{version}-1.x86_64.rpm")),
         &rpm,
     )?;
     for package in [&deb, &rpm] {

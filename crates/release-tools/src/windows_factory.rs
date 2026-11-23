@@ -20,12 +20,7 @@ const BINARIES: [&str; 4] = [
     "runtime/share/bios-256k.bin",
     "runtime/share/linuxboot_dma.bin",
 ];
-const GUEST: [&str; 4] = [
-    "guest.qcow2",
-    "bzImage",
-    "kernel.config",
-    "KERNEL-LICENSE.txt",
-];
+const GUEST: [&str; 3] = ["bzImage", "kernel.config", "KERNEL-LICENSE.txt"];
 
 #[derive(Deserialize, Serialize)]
 struct Record {
@@ -167,7 +162,7 @@ fn qemu(root: &Path, target: &Path, installer: Option<&OsString>) -> Result<Valu
     );
     let stage = work.path().join("output");
     stage_runtime(&bundled, &component, &stage)?;
-    let baseline = stage.join("baseline/host/qemu");
+    let baseline = stage.join("kernel/host/qemu");
     fs::create_dir_all(baseline.join("guest"))?;
     fs::write(baseline.join("manifest.json"), installed)?;
     for name in GUEST {
@@ -243,12 +238,6 @@ pub(super) fn assemble(
         .as_str()
         .ok_or("Missing release version")?;
     let numeric = version.split('-').next().unwrap_or(version);
-    let manifest = read_json(&stage.join("host/qemu/manifest.json"))?;
-    let rows: Vec<Record> = serde_json::from_value(manifest["files"].clone())?;
-    let base = rows
-        .iter()
-        .find(|row| row.path == "guest/guest.qcow2")
-        .ok_or("Missing Windows base disk")?;
     let output = target
         .parent()
         .ok_or("Missing installer output directory")?;
@@ -260,7 +249,6 @@ pub(super) fn assemble(
             .arg(format!("/DNumericVersion={numeric}.0"))
             .arg(argument("/DAppSource=", stage))
             .arg(argument("/DProjectRoot=", root))
-            .arg(format!("/DBaseDiskSHA256={}", base.sha256))
             .arg(argument("/O", output))
             .arg(argument("/F", filename))
             .arg(root.join("apps/native/windows/installer.iss")),
