@@ -2,12 +2,22 @@
 set -euo pipefail
 
 sdk="$ANDROID_HOME/build-tools/35.0.0"
+repo="$PWD"
 app="$PWD/apps/android-client"
 work=$(mktemp -d "$RUNNER_TEMP/mobile-package.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 cd build/apk
+mkdir -p assets/notices/vendor/{iced_winit,cryoglyph,winit}
+cp "$repo/LICENSE" "$repo/NOTICE" "$repo/THIRD_PARTY_NOTICES.md" "$repo/docs/public/dependency-licenses.json" assets/notices/
+cp "$repo/apps/native/vendor/iced_winit/LICENSE" assets/notices/vendor/iced_winit/
+cp "$repo/apps/native/vendor/winit/LICENSE" assets/notices/vendor/winit/
+cp "$repo/apps/native/vendor/cryoglyph"/LICENSE-* assets/notices/vendor/cryoglyph/
+cp -R "$repo/docs/public/licenses/native-ui" "$repo/docs/public/licenses/native" "$repo/docs/public/licenses/rust-runtime" assets/notices/
 
 if [[ -n ${ASSETS_RUN:-} ]]; then
+  cp -R "$repo/docs/public/licenses/guest-apps" "$repo/docs/public/licenses/whisper" "$repo/docs/public/licenses/tesseract-models" "$repo/docs/public/licenses/musl" assets/notices/
+  cp "$repo/docs/public/native-services-licenses.txt" "$repo/docs/public/native-services-license-inventory.json" assets/notices/
+  cp "$repo/docs/public/engineering/android-corresponding-source.md" "$repo/docs/public/vendor/clash-meta-license.txt" assets/notices/
   (
     cd assets/mobile-assets
     test -z "$(find . -type l -print -quit)"
@@ -24,7 +34,7 @@ if [[ -n ${ASSETS_RUN:-} ]]; then
 fi
 
 package=dev.aimanity.native
-filename=AImanity-workbench.apk
+filename=AImanity-0.0.5-android-universal.apk
 manifest_args=()
 case "$SIGNING" in
   release)
@@ -56,7 +66,7 @@ done
 "$sdk/aapt2" link -I "$ANDROID_HOME/platforms/android-35/android.jar" --manifest "$app/AndroidManifest.xml" \
   "${manifest_args[@]}" -o "$work/base.apk" "$work/resources.zip"
 zip -q -0 -r "$work/base.apk" classes.dex lib/
-if [[ -n ${ASSETS_RUN:-} ]]; then zip -q -0 -r "$work/base.apk" assets/; fi
+zip -q -0 -r "$work/base.apk" assets/
 "$sdk/zipalign" -P 16 -f 4 "$work/base.apk" "$work/aligned.apk"
 "$sdk/apksigner" sign --ks "$work/identity.p12" --ks-key-alias aimanity --ks-pass env:APK_SIGN_PASS \
   --key-pass env:APK_SIGN_PASS --v4-signing-enabled false --out "$filename" "$work/aligned.apk"

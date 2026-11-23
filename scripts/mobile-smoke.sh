@@ -67,8 +67,16 @@ wait_word settings devices
 read -r cpu_x cpu_y cpu_w cpu_h < <(word_box settings CPU)
 read -r mem_x mem_y mem_w mem_h < <(word_box settings Memory)
 (( mem_x > cpu_x && cpu_h > 0 ))
-read -r cx cy cw ch < <(awk -v x="$mem_x" -v y="$cpu_y" -v h="$cpu_h" -v height="$height" \
-  'BEGIN {s=height/600; print int(x-41*s),int(y-3*s),int(20*s),int(h+8*s)}')
+value_box=$(awk -F '\t' -v left="$((cpu_x+cpu_w))" -v right="$mem_x" -v y="$cpu_y" -v h="$cpu_h" '
+  $1 == 5 && $12 == "2" && $7 >= left && $7+$9 < right && $8 < y+h && $8+$10 > y {
+    pad=int($10/3)+1; print $7-pad, $8-pad, $9+2*pad, $10+2*pad; exit
+  }' evidence/settings.tsv)
+if [[ -z $value_box ]]; then
+  # The CPU and Memory label origins are 158 logical units apart in setup.
+  value_box=$(awk -v x="$mem_x" -v l="$cpu_x" -v y="$cpu_y" -v h="$cpu_h" \
+    'BEGIN {s=(x-l)/158; print int(x-41*s),int(y-3*s),int(20*s),int(h+8*s)}')
+fi
+read -r cx cy cw ch <<< "$value_box"
 cpu_value() {
   local shot=$1
   convert "evidence/$shot.png" -crop "${cw}x${ch}+${cx}+${cy}" +repage -resize 400% \

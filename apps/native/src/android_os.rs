@@ -10,12 +10,28 @@ pub(crate) type Result<T> = std::result::Result<T, String>;
 pub(crate) fn with<T>(
     f: impl FnOnce(&mut JNIEnv, &JObject) -> jni::errors::Result<T>,
 ) -> Result<T> {
-    let ctx = ndk_context::android_context();
-    // NativeActivity owns both handles while this client is running.
-    let vm = unsafe { JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| e.to_string())?;
+    let app = crate::deployment::android_assets::activity().map_err(|e| e.to_string())?;
+    with_activity(&app, f)
+}
+
+fn with_activity<T>(
+    app: &android_activity::AndroidApp,
+    f: impl FnOnce(&mut JNIEnv, &JObject) -> jni::errors::Result<T>,
+) -> Result<T> {
+    let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr().cast()) }.map_err(|e| e.to_string())?;
     let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
-    let activity = unsafe { JObject::from_raw(ctx.context().cast()) };
-    let res = f(&mut env, &activity);
+    let res = env.with_local_frame(64, |env| {
+        // AndroidApp owns the global Activity reference. Only wrap our local copy.
+        let raw = unsafe {
+            let jni = env.get_native_interface();
+            ((**jni).NewLocalRef.unwrap())(jni, app.activity_as_ptr().cast())
+        };
+        if raw.is_null() {
+            return Err(jni::errors::Error::NullPtr("NativeActivity"));
+        }
+        let activity = unsafe { JObject::from_raw(raw) };
+        f(env, &activity)
+    });
     if res.is_err() && env.exception_check().unwrap_or(false) {
         let _ = env.exception_clear();
     }
@@ -418,7 +434,8 @@ fn app_object<'a>(e: &mut JNIEnv<'a>, a: &JObject, name: &str) -> jni::errors::R
         .l()?;
     e.new_object(jni::objects::JClass::from(class), "()V", &[])
 }
-static ENGINE: tokio::sync::OnceCell<GlobalRef> = tokio::sync::OnceCell::const_new();
+type SpeechEngine = std::sync::Arc<tokio::sync::OnceCell<GlobalRef>>;
+static ENGINE: Mutex<Option<SpeechEngine>> = Mutex::new(None);
 static INIT: Mutex<Option<oneshot::Sender<jint>>> = Mutex::new(None);
 type Utterance = (String, oneshot::Sender<bool>);
 static PHRASE: Mutex<Option<Utterance>> = Mutex::new(None);
@@ -475,7 +492,12 @@ pub(crate) async fn speak(
     language: String,
     mut cancel: oneshot::Receiver<()>,
 ) -> Result<()> {
-    let engine = ENGINE
+    let session = ENGINE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(Default::default)
+        .clone();
+    let engine = session
         .get_or_try_init(|| async {
             let (tx, rx) = oneshot::channel();
             *INIT.lock().unwrap() = Some(tx);
@@ -550,5 +572,23 @@ pub(crate) async fn speak(
     tokio::select! {
         result=rx=>if result.unwrap_or(false){Ok(())}else{Err("Android speech failed".into())},
         _=&mut cancel=>{ if PHRASE.lock().unwrap().take_if(|(current,_)| *current==id).is_some(){with(|e,_|{e.call_method(engine,"stop","()I",&[])?;Ok(())})?;} Ok(())}
+    }
+}
+
+pub(crate) fn detach(app: &android_activity::AndroidApp) {
+    if !crate::deployment::android_assets::detach(app) {
+        return;
+    }
+    PICK.lock().unwrap().take();
+    MIC.lock().unwrap().take();
+    INIT.lock().unwrap().take();
+    PHRASE.lock().unwrap().take();
+    if let Some(session) = ENGINE.lock().unwrap().take()
+        && let Some(engine) = session.get()
+    {
+        let _ = with_activity(app, |e, _| {
+            e.call_method(engine, "shutdown", "()V", &[])?;
+            Ok(())
+        });
     }
 }

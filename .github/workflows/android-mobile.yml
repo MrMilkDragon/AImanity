@@ -45,7 +45,33 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Reuse qualified native code from this exact commit
+        id: previous
+        if: startsWith(github.ref, 'refs/heads/build/android-mobile-release/') || inputs.signing == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ABI: ${{ matrix.abi }}
+        run: |
+          set -euo pipefail
+          run=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs" -f branch=build/android-mobile \
+            -f head_sha="$GITHUB_SHA" -f status=success -f event=push -f per_page=30 | \
+            jq -r --arg sha "$GITHUB_SHA" --arg repo "$GITHUB_REPOSITORY" \
+            'first(.workflow_runs[] | select(.path == ".github/workflows/android-mobile.yml" and .head_sha == $sha and .head_repository.full_name == $repo) | .id) // empty')
+          if [[ -n $run ]]; then
+            items=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts")
+            if jq -e --arg wanted "android-mobile-$ABI" '.artifacts | any(.[]; .name == $wanted and .expired == false)' <<< "$items" >/dev/null; then
+              echo "run=$run" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+      - if: steps.previous.outputs.run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-mobile-${{ matrix.abi }}
+          run-id: ${{ steps.previous.outputs.run }}
+          github-token: ${{ github.token }}
+          path: out/${{ matrix.abi }}
       - name: Set up the Android toolchain
+        if: steps.previous.outputs.run == ''
         run: |
           rustup toolchain install 1.96.0 --profile minimal --target "${{ matrix.target }}"
           rustup default 1.96.0
@@ -54,6 +80,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: steps.previous.outputs.run == ''
         with:
           path: |
             ~/.cargo/registry
@@ -63,12 +90,15 @@ jobs:
             android-ndk28-cargo4.1.2-${{ matrix.abi }}-
       - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         id: compiled
+        if: steps.previous.outputs.run == ''
         with:
           path: apps/native/target
           key: android-native-ndk28-rust196-${{ matrix.abi }}-${{ hashFiles('apps/native/Cargo.lock') }}-${{ github.sha }}
           restore-keys: |
             android-native-ndk28-rust196-${{ matrix.abi }}-${{ hashFiles('apps/native/Cargo.lock') }}-
+            android-native-ndk28-rust196-${{ matrix.abi }}-
       - name: Compile the Rust NativeActivity and AVF helper
+        if: steps.previous.outputs.run == ''
         env:
           TARGET: ${{ matrix.target }}
           ABI: ${{ matrix.abi }}
@@ -154,9 +184,10 @@ jobs:
           ANDROID_RUN: ${{ steps.mode.outputs.android_run }}
           LINUX_RUN: ${{ steps.mode.outputs.linux_run }}
         run: |
-          for id in "$ANDROID_RUN" "$LINUX_RUN"; do
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id" | jq -e --arg repo "$GITHUB_REPOSITORY" \
-              '.conclusion == "success" and .head_repository.full_name == $repo and (.event == "push" or .event == "workflow_dispatch")'
+          for pair in "$ANDROID_RUN:android-guest-inputs.yml" "$LINUX_RUN:android-linux-avf.yml"; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/${pair%%:*}" | \
+              jq -e --arg repo "$GITHUB_REPOSITORY" --arg workflow ".github/workflows/${pair#*:}" \
+              '.path == $workflow and .conclusion == "success" and .head_repository.full_name == $repo and (.event == "push" or .event == "workflow_dispatch")'
           done
       - if: steps.mode.outputs.assets_run != ''
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -172,6 +203,20 @@ jobs:
           run-id: ${{ steps.mode.outputs.linux_run }}
           github-token: ${{ github.token }}
           path: build/linux-assets
+      - if: steps.mode.outputs.assets_run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-guest-preparation-receipt
+          run-id: ${{ steps.mode.outputs.android_run }}
+          github-token: ${{ github.token }}
+          path: build/receipts
+      - if: steps.mode.outputs.assets_run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: linux-guest-preparation-receipt
+          run-id: ${{ steps.mode.outputs.linux_run }}
+          github-token: ${{ github.token }}
+          path: build/receipts
       - name: Inventory the two guest payloads
         if: steps.mode.outputs.assets_run != ''
         run: |
@@ -180,7 +225,8 @@ jobs:
           mkdir -p "$dest"
           mv build/android-assets/android build/android-assets/speech build/linux-assets/linux "$dest/"
           cd "$dest"
-          find android linux speech -type f -print0 | sort -z | xargs -0 sha256sum | \
+          sha256sum --check --strict ../../../receipts/{android,linux}-prepared.sha256
+          cat ../../../receipts/{android,linux}-prepared.sha256 | \
             jq -Rn '{format:1, files: [inputs | capture("^(?<value>[a-f0-9]{64})  (?<key>.+)$")] | from_entries}' > manifest.json
       - name: Prepare Android SDK and compile the activity
         run: |
@@ -238,8 +284,16 @@ jobs:
           sudo setfacl -m "u:$(id -un):rw" /dev/kvm
           image='system-images;android-35;google_apis;x86_64'
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator platform-tools "$image"
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n europium -k "$image" -d "$AVD_DEVICE"
-          avd_config="$HOME/.android/avd/europium.avd/config.ini"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/android-user"
+          export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
+          export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avd_path="$ANDROID_AVD_HOME/europium.avd"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n europium -k "$image" -d "$AVD_DEVICE" -p "$avd_path"
+          avd_config="$avd_path/config.ini"
+          test -s "$avd_config"
+          printf 'avd.ini.encoding=UTF-8\npath=%s\ntarget=android-35\n' "$avd_path" > "$ANDROID_AVD_HOME/europium.ini"
+          emulator -list-avds | grep -Fx europium
           sed -i '/^disk.dataPartition.size[[:space:]]*=/d' "$avd_config"
           echo 'disk.dataPartition.size=8G' >> "$avd_config"
           emulator -avd europium -no-window -no-audio -no-snapshot -wipe-data -no-boot-anim -accel on \

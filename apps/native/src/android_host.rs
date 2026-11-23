@@ -26,6 +26,13 @@ mod profile;
 type Output = iced::futures::channel::mpsc::Sender<Event>;
 static SHUTDOWN: LazyLock<watch::Sender<u64>> = LazyLock::new(|| watch::channel(0).0);
 
+struct InstallationCancel(Arc<AtomicBool>);
+impl Drop for InstallationCancel {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
 fn state(home: &Path) -> PathBuf {
     home.join("user/avf")
 }
@@ -43,6 +50,14 @@ fn prepare(host: &Host, cancelled: &AtomicBool) -> io::Result<[PathBuf; 2]> {
     if !Path::new("/apex/com.android.virt/bin/vm").is_file() {
         return Err(io::Error::other(
             "Android Virtualization Framework CLI unavailable on this device",
+        ));
+    }
+    let has_su = std::env::var_os("PATH").is_some_and(|path| {
+        std::env::split_paths(&path).any(|directory| directory.join("su").is_file())
+    });
+    if !has_su {
+        return Err(io::Error::other(
+            "The Android AVF workbench requires an installed root manager with su",
         ));
     }
     android_assets::stage(&host.resource, cancelled)?;
@@ -244,20 +259,25 @@ impl Host {
             let mut child = None;
             let mut lock = None;
             let result = async {
-                lock = Some(lease(&self.home).map_err(|e| format!("AVF installation is busy or unavailable: {e}"))?);
+                let installation = lease(&self.home).map_err(|e| format!("AVF installation is busy or unavailable: {e}"))?;
                 output.send(Event::Phase("source".into())).await.map_err(|e| e.to_string())?;
-                let cancel = Arc::new(AtomicBool::new(false));
+                let cancel = InstallationCancel(Arc::new(AtomicBool::new(false)));
                 let preparing = self.clone();
-                let worker_cancel = Arc::clone(&cancel);
-                let mut worker = tokio::task::spawn_blocking(move || prepare(&preparing, &worker_cancel));
-                let configs = tokio::select! { biased;
+                let worker_cancel = Arc::clone(&cancel.0);
+                // Activity teardown can drop this future while a disk is still being written.
+                // The blocking writer retains the lease until it observes cancellation.
+                let mut worker = tokio::task::spawn_blocking(move || {
+                    prepare(&preparing, &worker_cancel).map(|configs| (installation,configs))
+                });
+                let (installation,configs) = tokio::select! { biased;
                     _ = &mut stopping => {
-                        cancel.store(true, Ordering::Relaxed);
+                        cancel.0.store(true, Ordering::Relaxed);
                         let _ = worker.await;
                         return Ok(());
                     }
                     result = &mut worker => result.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?,
                 };
+                lock = Some(installation);
                 output.send(Event::Phase("android".into())).await.map_err(|e| e.to_string())?;
                 child = Some(start(&configs).map_err(|e| e.to_string())?);
                 tokio::select! { biased;

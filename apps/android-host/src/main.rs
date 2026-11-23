@@ -203,6 +203,45 @@ mod tests {
         assert!(started_cid("vm is ready").is_none());
     }
 
+    #[cfg(all(unix, not(target_os = "android")))]
+    #[test]
+    fn stopping_supervisor_reaps_both_owned_cli_processes() -> io::Result<()> {
+        use std::{
+            fs,
+            os::unix::{fs::PermissionsExt, net::UnixStream},
+        };
+        let directory = tempfile::tempdir()?;
+        let cli = directory.path().join("vm-test");
+        let script = r#"#!/bin/sh
+for argument; do cfg=$argument; done
+echo $$ > "$cfg.pid"
+case "$cfg" in *android.json) cid=41;; *) cid=47;; esac
+echo "Created VM from "$cfg" with CID $cid, state is STARTING."
+exec sleep 40
+"#;
+        fs::write(&cli, script)?;
+        fs::set_permissions(&cli, fs::Permissions::from_mode(0o700))?;
+        let configs = GUESTS.map(|name| directory.path().join(format!("{name}.json")));
+        for config in &configs {
+            fs::write(config, b"{}")?;
+        }
+        let (owner, input) = UnixStream::pair()?;
+        run(&cli, configs.clone(), input, move |cids| {
+            assert_eq!(cids, [41, 47]);
+            drop(owner);
+            Ok(())
+        })?;
+        for config in configs {
+            let pid = fs::read_to_string(config.with_extension("json.pid"))?;
+            let status = Command::new("/bin/kill")
+                .args(["-0", pid.trim()])
+                .stderr(Stdio::null())
+                .status()?;
+            assert!(!status.success());
+        }
+        Ok(())
+    }
+
     #[test]
     fn prepare_preserves_guest_data_and_limits_control_disk_to_linux() -> io::Result<()> {
         use serde_json::{Value, json};

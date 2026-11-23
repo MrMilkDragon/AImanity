@@ -106,7 +106,6 @@ where
         }
     }));
     let result = run_with_loop(program, event_loop, Some(rx));
-    ANDROID_DESTROYED.store(false, std::sync::atomic::Ordering::Release);
     drop(ANDROID_INPUT.lock().unwrap().take());
     result
 }
@@ -115,17 +114,6 @@ where
 static ANDROID_INPUT: std::sync::Mutex<
     Option<Box<dyn Fn(core::Event) + Send + Sync>>,
 > = std::sync::Mutex::new(None);
-
-#[cfg(target_os = "android")]
-static ANDROID_DESTROYED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-/// NativeActivity waits in onDestroy for android_main to return. Winit 0.30
-/// does not forward MainEvent::Destroy to the application handler.
-#[cfg(target_os = "android")]
-pub fn android_destroy() {
-    ANDROID_DESTROYED.store(true, std::sync::atomic::Ordering::Release);
-}
 
 /// Forwards an Android input connection event to the active native window.
 #[cfg(target_os = "android")]
@@ -301,11 +289,6 @@ where
             event_loop: &winit::event_loop::ActiveEventLoop,
             cause: winit::event::StartCause,
         ) {
-            #[cfg(target_os = "android")]
-            if ANDROID_DESTROYED.load(std::sync::atomic::Ordering::Acquire) {
-                event_loop.exit();
-                return;
-            }
             #[cfg(target_os = "android")]
             while let Some(event) =
                 self.input.as_ref().and_then(|rx| rx.try_recv().ok())

@@ -26,7 +26,14 @@ pub(super) fn initialize(app: AndroidApp) -> Result<(), String> {
     Ok(())
 }
 
-fn activity() -> io::Result<AndroidApp> {
+pub(crate) fn detach(app: &AndroidApp) -> bool {
+    ACTIVITY
+        .lock()
+        .unwrap()
+        .take_if(|current| current == app)
+        .is_some()
+}
+pub(crate) fn activity() -> io::Result<AndroidApp> {
     ACTIVITY
         .lock()
         .unwrap()
