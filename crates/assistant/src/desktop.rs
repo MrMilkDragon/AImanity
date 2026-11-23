@@ -1546,7 +1546,7 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "computer_run",
-            "在这台Linux桌面容器执行命令，工作目录/home/ai/Files；提供curl、git和LibreOffice。日常办公优先通过computer-use操作桌面应用。可sudo -n取得客体root配置系统；命令执行必须如实记录，不能假称鼠标操作。不能访问macOS。",
+            "在已授权的 Linux 客体执行命令，工作目录 /home/ai/Files。日常应用操作用 computer-use。系统维护可用 sudo -n，回执记录实际执行的命令。",
             json!({"device_id":id,"script":id}),
             vec!["device_id", "script"],
         ),
@@ -1564,7 +1564,7 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "device_transfer",
-            "沿已连接的数据线传文件，最高64MiB，双端内容校验。返回request_id和实际目标路径；completed仅表示文件到达目标设备，绝不代表微信发送或对方收到。",
+            "沿已连接的数据线传文件，最高 64 MiB。完成时返回 request_id 和经核对的目标文件路径。需要发送给他人时，在目标应用核对送达结果。",
             json!({"source_device_id":id,"target_device_id":id,"source_path":id,"target_name":id}),
             vec!["source_device_id", "target_device_id", "source_path"],
         ),

@@ -327,7 +327,6 @@ impl PhoneFrames {
                 "parameters":{"type":"object","additionalProperties":false,"properties":{
                     "evidence_ids":{"type":"array","minItems":1,"maxItems":available.len(),"items":{"type":"string","enum":available}}
                 },"required":["evidence_ids"]}}));
-            body["tool_choice"] = json!("required");
         }
         body
     }
@@ -495,7 +494,21 @@ pub async fn verify(
     } else {
         None
     };
-    let compact = compact_visuals.is_some();
+    let peer_frame = evidence
+        .last()
+        .filter(|receipt| {
+            compact_allowed
+                && user_run
+                && readback
+                && attachments.is_empty()
+                && visual_inputs.len() == 2
+                && receipt["tool"] == "device_interact"
+                && receipt["status"] == "completed"
+        })
+        .and_then(|receipt| crate::worker::tool_value(&receipt["result"]))
+        .filter(|frame| frame["kind"] == "observe" && frame["success"] == true);
+    let peer_screen = peer_frame.is_some();
+    let compact = compact_visuals.is_some() || peer_screen;
     if readback && compact_allowed {
         evidence.retain(|receipt| receipt["tool"] != "skill_read");
     }
@@ -506,10 +519,26 @@ pub async fn verify(
         .iter()
         .map(|f| json!({"name":f.name,"bytes":f.size_bytes}))
         .collect::<Vec<_>>();
-    let mut audit_input = vec![
-        json!({"type":"input_text","text":json!({"request":request_text,"proposed_completion":summary,"reply_attachments":chat_attachments,"needs_input":needs_input,"tool_evidence":evidence,"handoff_receipts":handoff_receipts}).to_string()}),
-    ];
-    if readback && !compact_phone {
+    let facts = if let Some(frame) = peer_frame {
+        let selected = evidence
+            .iter()
+            .rev()
+            .find(|r| r["tool"] == "device_list")
+            .and_then(|r| crate::worker::tool_value(&r["result"]))
+            .and_then(|list| {
+                list["devices"]
+                    .as_array()?
+                    .iter()
+                    .find(|d| d["device_id"] == frame["device_id"])
+                    .cloned()
+            });
+        let device = selected.unwrap_or(Value::Null);
+        json!({"observed_device":{"kind":frame["device_kind"],"name":device["name"],"foreground":device["foreground"]}})
+    } else {
+        json!({"request":request_text,"proposed_completion":summary,"reply_attachments":chat_attachments,"needs_input":needs_input,"tool_evidence":evidence,"handoff_receipts":handoff_receipts})
+    };
+    let mut audit_input = vec![json!({"type":"input_text","text":facts.to_string()})];
+    if readback && !compact_phone && !peer_screen {
         audit_input.push(json!({"type":"input_text","text":"这是本轮的最终读回。按用户原始要求核对操作和动作后截图。通过时用 feedback 直接回答用户，带上用户要求的页面、文字或具体数值；还有步骤或结果看不清时指出缺什么。"}));
     }
     if !notifications.is_empty() {
@@ -522,13 +551,32 @@ pub async fn verify(
     if !learning.is_empty() {
         audit_input.push(json!({"type":"input_text","text":format!("核对以下当前经验候选的步骤、结果和适用范围：{}",json!(learning))}));
     }
-    if frames.is_none() {
+    if peer_screen {
+        audit_input.extend(
+            visual_inputs
+                .drain(..)
+                .filter(|part| part["type"] == "input_image"),
+        );
+        audit_input.push(json!({"type":"input_text","text":request_text}));
+    } else if frames.is_none() {
         let range = compact_visuals.unwrap_or(0..visual_inputs.len());
         append_visuals(&mut audit_input, visual_inputs.drain(range).collect());
     }
+    let text_field = if peer_screen { "answer" } else { "feedback" };
     let mut tool = json!({"type":"function","name":"audit_result","description":"核验任务结果",
-        "parameters":{"type":"object","properties":{"approved":{"type":"boolean"},"feedback":{"type":"string"}},
-        "required":["approved","feedback"],"additionalProperties":false}});
+        "parameters":{"type":"object","properties":{"approved":{"type":"boolean"},(text_field):{"type":"string"}},
+        "required":[text_field,"approved"],"additionalProperties":false}});
+    if peer_screen {
+        tool["description"] = json!("Answer from this screen.");
+        tool["parameters"]["properties"]["visible_evidence"] = json!({"type":"string","description":"Quote the visible label with its value, or describe the visual evidence for the answer."});
+        tool["parameters"]["required"] = json!(["visible_evidence", "answer", "approved"]);
+        tool["parameters"]["properties"]["approved"]["description"] = json!(
+            "True when the screen supports the answer, including a clearly absent field. False when evidence is missing."
+        );
+        tool["parameters"]["properties"]["answer"]["description"] = json!(
+            "Answer the whole question in the user's language. A value belongs only to its actual label. If the requested label is missing, say it is not shown."
+        );
+    }
     if !compact && let Some(schema) = learning_schema(&learning_evidence) {
         tool["parameters"]["properties"]["experience"] = schema;
         audit_input.push(json!({"type":"input_text","text":"有新方法或纠错才填 experience。引用同一应用的 evidence_id，verified 需至少两次观察且含动作后复查。只记方法和适用范围，沿用已有标题，排除私人内容。"}));
@@ -537,7 +585,9 @@ pub async fn verify(
         tool["parameters"]["properties"]["knowledge"] = schema;
         audit_input.push(json!({"type":"input_text","text":"有可复用的跨应用结论才填 knowledge。引用至少两个应用的 evidence_id，含动作后复查。沿用已有标题；可附所引证据中的截图，排除聊天、通知、凭据和私人文件。"}));
     }
-    let instructions = if frames.is_some() {
+    let instructions = if peer_screen {
+        "Read the screenshot. Preserve the relationship between each visible label and value. Distinguish an absent field from a value under another label. Answer every part of the question, including source identity when asked."
+    } else if frames.is_some() {
         "按用户要求，用有据可查的原生控件、动作回执及终页原图核验。proposed_completion 和动作意图是待核对的声明。涉及早期图形、布局或前后视觉比较，或原生记录不足时，用 audit_images 选择所需原图；已有证据充分就用 audit_result 直接回答。"
     } else if compact_phone {
         "核对用户要求、目标、手势回执和动作后的实屏。通过时用 feedback 直接给出所求结果，含所问数值或页面名。不符或看不清时指出缺失。"
@@ -549,7 +599,7 @@ pub async fn verify(
     let mut body = json!({"input":[
         {"role":"system","content":[{"type":"input_text","text":instructions}]},
         {"role":"user"}
-    ],"tools":[tool],"tool_choice":{"type":"function","name":"audit_result"},"parallel_tool_calls":false,
+    ],"tools":[tool],"tool_choice":"required","parallel_tool_calls":false,
         "reasoning":{"effort":"none"},"max_output_tokens":if compact {192} else {1200},"stream":false,"store":false});
     body["input"][1]["content"] = Value::Array(audit_input);
 
@@ -605,7 +655,7 @@ pub async fn verify(
                     call["arguments"].as_str().ok_or("截图回看参数无效")?,
                 )?))
             } else {
-                parse_result(&output).map(Turn::Result)
+                parse_result(text_field, &output).map(Turn::Result)
             }
         };
         let turn = tokio::select! {biased; _ = cancel.cancelled() => Err("canceled".into()), turn = audit => turn};
@@ -735,7 +785,7 @@ fn audit_call(value: &Value) -> Result<&Value, String> {
     Ok(call)
 }
 
-fn parse_result(value: &Value) -> Result<AuditResult, String> {
+fn parse_result(text_field: &str, value: &Value) -> Result<AuditResult, String> {
     let call = audit_call(value)?;
     let args = (call["name"] == "audit_result")
         .then(|| call["arguments"].as_str())
@@ -743,7 +793,15 @@ fn parse_result(value: &Value) -> Result<AuditResult, String> {
         .ok_or("结果核验没有返回有效结论")?;
     let report: Value = serde_json::from_str(args).map_err(|_| "结果核验没有返回有效结论")?;
     let approved = report["approved"].as_bool().ok_or("结果核验缺少证据判定")?;
-    let feedback = report["feedback"]
+    if text_field == "answer"
+        && approved
+        && report["visible_evidence"]
+            .as_str()
+            .is_none_or(|text| text.trim().is_empty())
+    {
+        return Err("读屏核验缺少画面依据".into());
+    }
+    let feedback = report[text_field]
         .as_str()
         .filter(|s| !s.trim().is_empty())
         .ok_or("结果核验缺少说明")?;
@@ -1154,13 +1212,15 @@ mod tests {
     }
     #[test]
     fn audit_cannot_default_to_approved_on_missing_or_malformed_result() {
-        assert!(parse_result(&json!({"output":[]})).is_err());
-        assert!(parse_result(&json!({"output":[{"type":"function_call","name":"audit_result","arguments":"{\"feedback\":\"done\"}"}]})).is_err());
+        let unsupported = json!({"output":[{"type":"function_call","name":"audit_result","arguments":json!({"approved":true,"answer":"A"}).to_string()}]});
+        assert!(parse_result("answer", &unsupported).is_err());
+        assert!(parse_result("feedback", &json!({"output":[]})).is_err());
+        assert!(parse_result("feedback",&json!({"output":[{"type":"function_call","name":"audit_result","arguments":"{\"feedback\":\"done\"}"}]})).is_err());
     }
     #[test]
     fn successful_audit_retains_optional_experience_without_requiring_another_model_turn() {
         let candidate = json!({"app_id":"com.example.reader","title":"搜索","procedure":"点击当前可见搜索入口，输入后核对实际列表。","outcome":"verified","limitations":"仅限已观察版本","observation_ids":["before","after"]});
-        let result=parse_result(&json!({"output":[{"type":"function_call","name":"audit_result","arguments":json!({"approved":true,"feedback":"界面与记录吻合","experience":candidate}).to_string()}]})).unwrap();
+        let result=parse_result("feedback",&json!({"output":[{"type":"function_call","name":"audit_result","arguments":json!({"approved":true,"feedback":"界面与记录吻合","experience":candidate}).to_string()}]})).unwrap();
         assert!(result.approved);
         assert_eq!(result.experience, Some(candidate));
     }
@@ -1171,7 +1231,7 @@ mod tests {
             (true, Value::Null),
             (true, json!("invalid")),
         ] {
-            let result=parse_result(&json!({"output":[{"type":"function_call","name":"audit_result","arguments":json!({"approved":approved,"feedback":"核验结论","experience":experience}).to_string()}]})).unwrap();
+            let result=parse_result("feedback",&json!({"output":[{"type":"function_call","name":"audit_result","arguments":json!({"approved":approved,"feedback":"核验结论","experience":experience}).to_string()}]})).unwrap();
             assert_eq!(result.approved, approved);
             assert!(result.experience.is_none());
         }

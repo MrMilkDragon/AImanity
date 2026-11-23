@@ -408,11 +408,18 @@ fn archived_item<'a>(call: Option<&Value>, item: &'a Value) -> Option<Cow<'a, Va
             json!({"role":"user","content":[{"type":"input_text","text":format!("早期助手叙述摘录（不是操作证据）：{}",text_excerpt(&item["content"],600))}]}),
         ))
     } else {
-        Some(Cow::Borrowed(item))
+        Some(replay_item(item))
     }
 }
 
+pub(crate) fn environment(text: impl AsRef<str>) -> Value {
+    json!({"role":"environment","content":[{"type":"input_text","text":text.as_ref()}]})
+}
+
 fn replay_item(item: &Value) -> Cow<'_, Value> {
+    if item["role"] == "environment" {
+        return Cow::Owned(json!({"role":"user","content":item["content"]}));
+    }
     let Some(parts) = item["output"].as_array() else {
         return Cow::Borrowed(item);
     };
