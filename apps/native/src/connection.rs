@@ -19,7 +19,6 @@ pub struct Connection {
 pub struct Session {
     pub client: Connection,
     pub registry: wire::RegistryState,
-    pub links: wire::DeviceLinkState,
 }
 #[derive(Clone, Debug)]
 pub struct Frame {
@@ -79,6 +78,13 @@ pub enum DeviceInput {
     Key(String),
     Rotate(u32),
 }
+pub(crate) fn reachable(device: &wire::RegisteredDevice) -> bool {
+    if device.paired {
+        device.connected
+    } else {
+        device.runtime_state == "managed"
+    }
+}
 impl Connection {
     pub async fn connect(root: String) -> Result<Session, String> {
         let workspace = tokio::task::spawn_blocking(move || {
@@ -101,11 +107,10 @@ impl Connection {
     }
     pub async fn session(mut self) -> Result<Session, String> {
         self.devices_changed.borrow_and_update();
-        let (registry, links) = self.workspace.device_state().map_err(|e| e.to_string())?;
+        let registry = self.workspace.registry().map_err(|e| e.to_string())?;
         Ok(Session {
             client: self,
             registry,
-            links,
         })
     }
     pub async fn rpc<I: Message, O: Message + Default>(
@@ -226,11 +231,10 @@ impl Connection {
     }
     pub fn device_events(
         mut self,
-    ) -> impl futures_util::Stream<Item = Result<(wire::RegistryState, wire::DeviceLinkState), String>>
-    {
+    ) -> impl futures_util::Stream<Item = Result<wire::RegistryState, String>> {
         iced::stream::channel(1, async move |mut output| {
             while self.devices_changed.changed().await.is_ok() {
-                let state = self.workspace.device_state().map_err(|e| e.to_string());
+                let state = self.workspace.registry().map_err(|e| e.to_string());
                 if output.send(state).await.is_err() {
                     break;
                 }
@@ -240,6 +244,7 @@ impl Connection {
     pub fn frames(
         self,
         device: wire::RegisteredDevice,
+        mut visible: tokio::sync::watch::Receiver<bool>,
     ) -> impl futures_util::Stream<Item = LatestFrame> {
         iced::stream::channel::<LatestFrame>(1, async move |mut output| {
             let pending = LatestFrame::default();
@@ -250,6 +255,9 @@ impl Connection {
                 let mut previous: Option<(Vec<u8>, Arc<Vec<u8>>)> = None;
                 let mut sequence = 0;
                 loop {
+                    if visible.wait_for(|on| *on).await.is_err() {
+                        return;
+                    }
                     let received = Instant::now();
                     let mut delay = RECONNECT_DELAY;
                     let result = async {
@@ -304,6 +312,7 @@ impl Connection {
                         return;
                     }
                     tokio::select! {
+                        changed=visible.changed()=>if changed.is_err(){return;},
                         result = input.changed() => if result.is_err() { return; },
                         _ = tokio::time::sleep_until((received + delay).into()) => {}
                     }
@@ -361,6 +370,7 @@ impl Connection {
                             latest = Some((packet.slice(end + 4..), captured_ms));
                         }
                         if let Some((jpeg, captured_ms)) = latest
+                            && *visible.borrow()
                             && last_jpeg.as_ref() != Some(&jpeg)
                         {
                             let received = Instant::now();
@@ -404,11 +414,7 @@ impl Connection {
             }
         })
     }
-    pub async fn cursor(
-        &self,
-        device: Option<wire::RegisteredDevice>,
-    ) -> Option<wire::DeviceCursor> {
-        let device = device?;
+    pub async fn cursor(&self, device: wire::RegisteredDevice) -> Option<wire::DeviceCursor> {
         if device.paired {
             return None;
         }

@@ -3,12 +3,87 @@ use aimanity_model::ModelConfig;
 use serde_json::json;
 use std::time::Instant;
 
+fn linked_devices(registry: &wire::RegistryState) -> wire::DeviceLinkState {
+    let online: Vec<_> = registry
+        .devices
+        .iter()
+        .filter(|d| crate::connection::reachable(d))
+        .collect();
+    let mut links = Vec::new();
+    for (i, device) in online.iter().enumerate() {
+        for peer in &online[i + 1..] {
+            let (a, b) = if device.id < peer.id {
+                (&device.id, &peer.id)
+            } else {
+                (&peer.id, &device.id)
+            };
+            links.push(wire::DeviceLink {
+                id: format!("{}:{a}{b}", a.len()),
+                source_device_id: a.clone(),
+                target_device_id: b.clone(),
+                connected: true,
+                revision: 1,
+            });
+        }
+    }
+    wire::DeviceLinkState {
+        links,
+        ..Default::default()
+    }
+}
+
 pub(super) fn revision(actual: u64, expected: u64) -> Result<()> {
     if actual == expected {
         Ok(())
     } else {
         Err("内容已更改，请重新打开".into())
     }
+}
+
+#[cfg(test)]
+#[test]
+fn connections_follow_devices_without_storing_pairs() {
+    let device = |id: &str, paired, connected, managed| wire::RegisteredDevice {
+        id: id.into(),
+        paired,
+        connected,
+        runtime_state: if managed { "managed" } else { "registered" }.into(),
+        ..Default::default()
+    };
+    let mut registry = wire::RegistryState {
+        devices: vec![
+            device("b", false, true, true),
+            device("a", false, true, true),
+            device("c", true, true, false),
+            device("d", true, false, false),
+        ],
+        ..Default::default()
+    };
+    let ids = |s: wire::DeviceLinkState| {
+        s.links
+            .into_iter()
+            .map(|l| (l.source_device_id, l.target_device_id, l.id))
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let first = ids(linked_devices(&registry));
+    assert_eq!(first.len(), 3);
+    registry.devices.reverse();
+    assert_eq!(ids(linked_devices(&registry)), first);
+    registry
+        .devices
+        .iter_mut()
+        .find(|d| d.id == "c")
+        .unwrap()
+        .connected = false;
+    let links = linked_devices(&registry).links;
+    assert_eq!(links.len(), 1);
+    assert_eq!(
+        (
+            links[0].source_device_id.as_str(),
+            links[0].target_device_id.as_str()
+        ),
+        ("a", "b")
+    );
 }
 
 impl Workspace {
@@ -21,7 +96,7 @@ impl Workspace {
         let result = match name {
             "files/list" => self.listing(req!(FileLocation))?.encode_to_vec(),
             "registry/state" => self.registry()?.encode_to_vec(),
-            "desktop/state" => self.get::<wire::DeviceLinkState>("links")?.encode_to_vec(),
+            "desktop/state" => linked_devices(&self.registry()?).encode_to_vec(),
             "registry/device-save" => self
                 .edit_registry(|state, _| {
                     let q = req!(DeviceSaveRequest);
@@ -60,62 +135,17 @@ impl Workspace {
                     if name == "registry/device-disconnect" {
                         return self.get::<wire::RegistryState>("registry");
                     }
-                    self.write_registry(|s, tx| {
+                    self.write_registry(|s, _| {
                         let i = s
                             .devices
                             .iter()
                             .position(|d| d.id == id)
                             .ok_or("设备不存在")?;
                         s.devices.remove(i);
-                        let mut links: wire::DeviceLinkState =
-                            read(&tx.open_table(RECORDS)?, "links")?;
-                        links.links.retain(|link| {
-                            link.source_device_id != id && link.target_device_id != id
-                        });
-                        put(tx, "links", &links)
+                        Ok(())
                     })
                 })?;
                 self.peers.available(state).encode_to_vec()
-            }
-            "desktop/link" => {
-                let q = req!(DeviceLinkRequest);
-                if q.source_device_id == q.target_device_id {
-                    return Err("请选择两台不同设备".into());
-                }
-                let tx = self.db.begin_write()?;
-                let devices: wire::RegistryState = read(&tx.open_table(RECORDS)?, "registry")?;
-                if ![&q.source_device_id, &q.target_device_id]
-                    .iter()
-                    .all(|id| devices.devices.iter().any(|d| &d.id == *id))
-                {
-                    return Err("设备不存在".into());
-                }
-                let mut links: wire::DeviceLinkState = read(&tx.open_table(RECORDS)?, "links")?;
-                let index = links.links.iter().position(|l| {
-                    (l.source_device_id == q.source_device_id
-                        && l.target_device_id == q.target_device_id)
-                        || (l.source_device_id == q.target_device_id
-                            && l.target_device_id == q.source_device_id)
-                });
-                if let Some(index) = index {
-                    let l = &mut links.links[index];
-                    if l.connected != q.connected {
-                        l.connected = q.connected;
-                        l.revision += 1;
-                    }
-                } else if q.connected {
-                    links.links.push(wire::DeviceLink {
-                        id: uuid::Uuid::now_v7().to_string(),
-                        source_device_id: q.source_device_id,
-                        target_device_id: q.target_device_id,
-                        connected: true,
-                        revision: 1,
-                    });
-                }
-                put(&tx, "links", &links)?;
-                tx.commit()?;
-                self.peers.signal();
-                links.encode_to_vec()
             }
             "registry/agent-config-save" => self
                 .save_agent(req!(AgentConfigurationSaveRequest))?
@@ -201,16 +231,8 @@ impl Workspace {
         Ok(result)
     }
 
-    pub(super) fn registry(&self) -> Result<wire::RegistryState> {
+    pub(crate) fn registry(&self) -> Result<wire::RegistryState> {
         Ok(self.peers.available(self.get("registry")?))
-    }
-    pub(crate) fn device_state(&self) -> Result<(wire::RegistryState, wire::DeviceLinkState)> {
-        let tx = self.db.begin_read()?;
-        let records = tx.open_table(RECORDS)?;
-        Ok((
-            self.peers.available(read(&records, "registry")?),
-            read(&records, "links")?,
-        ))
     }
     fn edit_registry(
         &self,

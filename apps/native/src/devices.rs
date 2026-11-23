@@ -193,7 +193,6 @@ impl Devices {
             }
             Message::Choose(id) => {
                 self.selected = id;
-                self.registry = Some(registry.clone());
                 self.draft = None;
                 self.job = None;
                 if registry
@@ -351,6 +350,7 @@ impl Devices {
             .or_else(|| device.map(|d| d.name.as_str()));
         let mut list = column![].spacing(4);
         for d in &registry.devices {
+            let selected = device.is_some_and(|current| current.id == d.id);
             list = list.push(
                 button(
                     row![
@@ -364,29 +364,36 @@ impl Devices {
                             .size(13)
                             .line_height(style::FIELD_LINE)
                             .width(Length::Fill)
-                            .wrapping(text::Wrapping::WordOrGlyph)
+                            .wrapping(text::Wrapping::None)
                     ]
                     .spacing(8)
                     .align_y(iced::Center),
                 )
                 .padding([10, 8])
                 .width(Length::Fill)
-                .style(style::quiet)
+                .style(move |theme, status| {
+                    let mut row = style::quiet(theme, status);
+                    if selected {
+                        row.background = Some(iced::Color::BLACK.scale_alpha(0.065).into());
+                    }
+                    row
+                })
                 .on_press_maybe((!self.busy).then(|| Message::Choose(d.id.clone()))),
             );
         }
         {
             let kind = available.first().copied().unwrap_or("paired-phone");
+            let enabled = !self.busy && draft.is_none_or(|d| d.expected_revision != 0);
             list = list.push(
-                row![
-                    text(tr("添加设备")).size(12),
-                    icon_button(
-                        Icon::Plus,
-                        (!self.busy && draft.is_none_or(|d| d.expected_revision != 0))
-                            .then(|| Message::New(kind.into()))
-                    )
-                ]
-                .align_y(iced::Center),
+                button(
+                    row![Icon::Plus.view(), text(tr("添加设备")).size(13)]
+                        .spacing(8)
+                        .align_y(iced::Center),
+                )
+                .width(Length::Fill)
+                .padding([10, 8])
+                .style(style::quiet)
+                .on_press_maybe(enabled.then(|| Message::New(kind.into()))),
             );
         }
         #[cfg(not(target_os = "android"))]
@@ -425,11 +432,13 @@ impl Devices {
                 );
         } else if let Some(device) = device {
             let desktop = device.kind == "desktop";
-            form = form.push(
-                text(device.system.replace(" · 待安装", ""))
-                    .size(12)
-                    .color(style::MUTED),
-            );
+            if !device.system.is_empty() {
+                form = form.push(
+                    text(device.system.replace(" · 待安装", ""))
+                        .size(12)
+                        .color(style::MUTED),
+                );
+            }
             if device.paired {
                 if let Some((invite, _)) = self
                     .invitation
@@ -459,9 +468,6 @@ impl Devices {
                         })),
                     ));
                 }
-                form = form.push(text_button(tr("移除设备")).on_press_maybe(
-                    (!self.busy).then(|| Message::Disconnect(device.id.clone(), true)),
-                ));
             } else if device.runtime_state == "managed"
                 && let (Some(applied), Some(edited)) = (&self.applied, &self.resources)
             {
@@ -515,6 +521,9 @@ impl Devices {
                         .width(Length::Fill),
                     );
             }
+            form = form.push(text_button(tr("移除设备")).on_press_maybe(
+                (!self.busy).then(|| Message::Disconnect(device.id.clone(), true)),
+            ));
         }
         if !self.error.is_empty() {
             form = form.push(text(&self.error).size(12).color(style::ERROR));

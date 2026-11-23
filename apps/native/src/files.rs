@@ -142,14 +142,16 @@ impl Default for Files {
     }
 }
 impl Files {
-    pub fn set_devices(&mut self, devices: &[Option<wire::RegisteredDevice>; 2]) {
-        for (index, device) in devices.iter().enumerate() {
-            let pane = &mut self.panes[index + 1];
-            if let Some(device) = device.as_ref().filter(|d| !d.paired) {
+    pub fn set_devices(&mut self, devices: &[wire::RegisteredDevice]) {
+        let mut guests = devices
+            .iter()
+            .filter(|d| !d.paired && crate::connection::reachable(d));
+        for (index, pane) in self.panes[1..].iter_mut().enumerate() {
+            if let Some(device) = guests.next() {
                 if pane.device.as_deref() != Some(device.id.as_str()) {
                     *pane = Pane::new(&device.name, Some(device.id.clone()));
                 }
-            } else {
+            } else if pane.device.is_some() {
                 *pane = Pane::new(if index == 0 { "手机" } else { "电脑" }, None);
             }
         }

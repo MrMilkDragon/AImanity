@@ -338,4 +338,111 @@ mod tests {
         assert!(w.peers.frames("a").is_none());
         Ok(())
     }
+
+    #[tokio::test]
+    async fn three_authorized_peers_share_routes_without_a_link_command() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let work = Workspace::open(root.path())?;
+        let address = work.peers.listen(0).await?;
+        let ids = ["phone-a", "phone-b", "desktop"];
+        let mut clients = Vec::new();
+        for id in ids {
+            let kind = if id == "desktop" { "desktop" } else { "phone" };
+            let invitation = work.peers.invite(
+                &work,
+                wire::DevicePairRequest {
+                    id: id.into(),
+                    name: id.into(),
+                    kind: kind.into(),
+                },
+            )?;
+            let mut req = format!("ws://{address}/v1/peer/share").into_client_request()?;
+            req.headers_mut().insert(
+                "authorization",
+                format!("Bearer {}", invitation.code).parse()?,
+            );
+            req.headers_mut().insert("x-aimanity-device", kind.parse()?);
+            let (mut stream, _) = tokio_tungstenite::connect_async(req).await?;
+            assert!(stream.next().await.unwrap()?.is_binary());
+            clients.push(tokio::spawn(async move {
+                use futures_util::SinkExt;
+                let mut text = id.to_owned();
+                while let Some(Ok(tokio_tungstenite::tungstenite::Message::Binary(bytes))) =
+                    stream.next().await
+                {
+                    let action = wire::DesktopActionRequest::decode(bytes).unwrap();
+                    if action.kind == "type" {
+                        text = action.text;
+                    }
+                    let reply = wire::HostDesktopReply {
+                        action_id: action.action_id,
+                        foreground: text.clone(),
+                        ..Default::default()
+                    };
+                    if stream
+                        .send(tokio_tungstenite::tungstenite::Message::Binary(
+                            reply.encode_to_vec().into(),
+                        ))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }));
+        }
+        let state = || {
+            wire::DeviceLinkState::decode(work.dispatch("desktop/state", &[])?.as_slice())
+                .map_err(Into::into)
+        };
+        let mesh: Result<wire::DeviceLinkState> = state();
+        assert_eq!(mesh?.links.len(), 3);
+        let action = |id: &str, kind: &str, value: String| wire::DesktopActionRequest {
+            device_id: id.into(),
+            kind: kind.into(),
+            text: value,
+            action_id: Uuid::now_v7().to_string(),
+            ..Default::default()
+        };
+        for source in ids {
+            for target in ids.into_iter().filter(|t| *t != source) {
+                let token = format!("{source} to {target}");
+                work.peers
+                    .perform(action(source, "type", token.clone()))
+                    .await?;
+                let got = work
+                    .peers
+                    .perform(action(source, "foreground", String::new()))
+                    .await?
+                    .foreground;
+                work.peers.perform(action(target, "type", got)).await?;
+                assert_eq!(
+                    work.peers
+                        .perform(action(target, "foreground", String::new()))
+                        .await?
+                        .foreground,
+                    token
+                );
+            }
+        }
+        work.dispatch(
+            "registry/device-disconnect",
+            &wire::DesktopRequest {
+                device_id: "phone-b".into(),
+            }
+            .encode_to_vec(),
+        )?;
+        assert_eq!(state()?.links.len(), 1);
+        assert!(
+            work.peers
+                .perform(action("phone-b", "type", String::new()))
+                .await
+                .is_err()
+        );
+        work.stop().await;
+        for client in clients {
+            client.await?;
+        }
+        Ok(())
+    }
 }

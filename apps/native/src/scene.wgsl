@@ -1,7 +1,5 @@
-struct Scene { size:vec4<f32>, phone:vec4<f32>, desktop:vec4<f32>, chat:vec4<f32>, popup:vec4<f32>, child_popup:vec4<f32>, state:vec4<f32>, radii_and_clip:vec4<f32>, material:vec4<f32>, background:vec4<f32>, mode_effects:vec4<f32>, mode_motion:vec4<f32>, agent_pointers:array<array<vec4<f32>,5>,2> }
+struct Scene { size:vec4<f32>, chat:vec4<f32>, popup:vec4<f32>, child_popup:vec4<f32>, radii_and_clip:vec4<f32>, material:vec4<f32>, background:vec4<f32>, mode_effects:vec4<f32>, mode_motion:vec4<f32> }
 @group(0) @binding(0) var<uniform> scene:Scene;
-@group(0) @binding(1) var phone:texture_2d<f32>;
-@group(0) @binding(2) var desktop:texture_2d<f32>;
 @group(0) @binding(3) var linear_sampler:sampler;
 @group(1) @binding(0) var glass_source:texture_2d<f32>;
 struct Vertex { @builtin(position) position:vec4<f32>, @location(0) uv:vec2<f32> }
@@ -12,43 +10,35 @@ struct Vertex { @builtin(position) position:vec4<f32>, @location(0) uv:vec2<f32>
 fn sdf(p:vec2<f32>,r:vec4<f32>,radius:f32)->f32 {
  let q=abs(p-r.xy-r.zw*.5)-r.zw*.5+vec2(radius);return length(max(q,vec2(0.)))+min(max(q.x,q.y),0.)-radius;
 }
-fn device(p:vec2<f32>,rect:vec4<f32>,angle:f32,index:u32,under:vec3<f32>)->vec3<f32> {
- if rect.z<=0. {return under;}
- let d=p-rect.xy-rect.zw*.5;
- let x=d.x/(cos(angle)-d.x*sin(angle)/1800.);
- let y=d.y*(1.+x*sin(angle)/1800.);
- let local=vec2(x,y)+rect.zw*.5;
- let box=vec4(0.,0.,rect.zw);
- let radius=scene.radii_and_clip[index];
- let bezel=radius/3.;
- let dist=sdf(local,box,radius);
- var color=under;
- let shadow=exp(-max(dist,0.)*.09)*.05;
- color*=1.-shadow;
- if dist<1. {
-  let image_size=rect.zw-2.*bezel;
-  let uv=(local-bezel)/image_size;
-  var screen:vec3<f32>;
-  if index==0u {screen=textureSampleLevel(phone,linear_sampler,uv,0.).rgb;}
-  else {screen=textureSampleLevel(desktop,linear_sampler,uv,0.).rgb;}
-  if scene.state.w>0. {
-   for (var i=0u;i<5u;i+=1u) {
-    let mark=scene.agent_pointers[index][i];
-    if mark.z>0. {
-     let d=length(local-bezel-mark.xy*image_size);
-     let edge=(1.-smoothstep(7.,8.,d))*mark.z;
-     let fill=(1.-smoothstep(5.,6.,d))*mark.z;
-     screen=mix(screen,vec3(.98),edge);
-     screen=mix(screen,vec3(.03,.09,.12),fill);
-    }
-   }
-  }
-  let border=smoothstep(-bezel-.5,-bezel+.5,dist);
-  color=mix(screen,select(vec3(.0296,.0343,.0423),vec3(.00857),index==0u),border);
-  color=mix(color,under,smoothstep(-.2,1.,dist));
- }
- return color;
+
+
+struct Device { bounds:vec4<f32>, shape:vec4<f32>, markers:array<vec4<f32>,5> }
+@group(1) @binding(1) var<uniform> device:Device;
+@vertex fn device_vertex(@builtin(vertex_index) i:u32)->Vertex {
+ let corners=array<vec2<f32>,6>(vec2(0.,0.),vec2(1.,0.),vec2(0.,1.),vec2(0.,1.),vec2(1.,0.),vec2(1.,1.));
+ let p=device.bounds.xy-vec2(30.)+corners[i]*(device.bounds.zw+vec2(60.));
+ let uv=p/scene.size.xy;
+ var out:Vertex;out.position=vec4(uv*vec2(2.,-2.)+vec2(-1.,1.),0.,1.);out.uv=uv;return out;
 }
+@fragment fn device_pixel(v:Vertex)->@location(0) vec4<f32> {
+ let p=v.uv*scene.size.xy;
+ if p.y<scene.radii_and_clip.z {discard;}
+ let r=device.bounds;let radius=device.shape.x;let bezel=radius/3.;
+ let edge=sdf(p,r,radius);
+ let coverage=1.-smoothstep(-.55,.55,edge);
+ let sd=max(0.,sdf(p-vec2(0.,6.),r,radius));
+ let shadow=.15*exp(-sd*sd/245.);
+ let inner=r.zw-2.*bezel;let uv=(p-r.xy-bezel)/inner;
+ let image=textureSampleLevel(glass_source,linear_sampler,uv,0.).rgb;
+ var screen=mix(vec3(.84,.87,.89),image,device.shape.y);
+ for(var i=0u;i<5u;i+=1u) {
+  let mark=device.markers[i];
+  if mark.z>0. {let d=length((uv-mark.xy)*inner);screen=mix(screen,vec3(1.),mark.z*(1.-smoothstep(6.,7.,d)));screen=mix(screen,vec3(.017,.025,.04),mark.z*(1.-smoothstep(4.,5.,d)));}
+ }
+ let frame=mix(vec3(.026,.032,.039),screen,1.-smoothstep(-bezel-.5,-bezel+.5,edge));
+ return vec4(frame*coverage,coverage+shadow*(1.-coverage));
+}
+
 fn line_alpha(distance:f32,width:f32,pixel:f32)->f32 {
  return 1.-smoothstep(max(0.,(width-pixel)*.5),(width+pixel)*.5,distance);
 }
@@ -118,39 +108,14 @@ fn goal_background(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
   select(mix(steel,copper,(position-.42)/.38),mix(copper,gold,(position-.8)/.2),position>=.8),position>=.42);
  return mix(c,metal,max(max(guides,rings),engraving(q,1./scale)));
 }
-fn cable(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
- let a=vec2(scene.phone.x+scene.phone.z*.5,scene.phone.y+scene.phone.w);
- let b=vec2(scene.desktop.x+scene.desktop.z*.5,scene.desktop.y+scene.desktop.w);
- let bend=max(a.y,b.y)+22.;
- if p.x<min(a.x,b.x)-5. || p.x>max(a.x,b.x)+5. || p.y<min(a.y,b.y)-3. || p.y>bend+3. {return under;}
- let span=b.x-a.x;
- let ratio=clamp((p.x-min(a.x,b.x))/max(abs(span),1.),0.,1.);
- let t=.5-sign(span)*sin(asin(1.-2.*ratio)/3.);
- let u=1.-t;
- let y=(a.y+4.)*u*u*u+3.*bend*u*t+(b.y+4.)*t*t*t;
- let dx=abs(6.*u*t*span);
- let dy=3.*((bend-a.y-4.)*u*u+(b.y+4.-bend)*t*t);
- let distance=abs(p.y-y)*dx/max(length(vec2(dx,dy)),.01);
- let reveal=1.-smoothstep(scene.radii_and_clip.w-.005,scene.radii_and_clip.w,t);
- let segment=step(min(a.x,b.x)+.5,p.x)*step(p.x,max(a.x,b.x)-.5)*step(min(a.y,b.y)+4.,p.y)*reveal;
- let shadow=(1.-smoothstep(2.,3.,distance))*segment*.9;
- let wire=(1.-smoothstep(.5,1.5,distance))*segment;
- let plug=min(sdf(p,vec4(a-vec2(4.,2.),8.,9.),2.),sdf(p,vec4(b-vec2(4.,2.),8.,9.),2.));
- let steel=vec3(.184,.250,.328);
- let cable=mix(mix(under,vec3(1.),shadow),steel,wire);
- let tip=mix(vec3(.776,.815,.863),steel,smoothstep(-1.1,-.4,plug));
- return mix(under,mix(cable,tip,1.-smoothstep(-.4,.6,plug)),scene.size.z);
-}
 fn base(p:vec2<f32>)->vec3<f32>{
- var c=scene.background.rgb;
+ let uv=p/scene.size.xy;
+ let cool=exp(-dot((uv-vec2(.66,.35))*vec2(2.2,1.8),(uv-vec2(.66,.35))*vec2(2.2,1.8)));
+ let warm=exp(-dot((uv-vec2(.08,.95))*vec2(2.8,2.),(uv-vec2(.08,.95))*vec2(2.8,2.)));
+ var c=mix(mix(scene.background.rgb,vec3(.81,.865,.90),cool*.70),vec3(.94,.897,.84),warm*.64);
+ let grid=length((fract((p-scene.radii_and_clip.xy)/scene.radii_and_clip.w+.5)-.5)*scene.radii_and_clip.w);
+ c=mix(c,vec3(.44,.52,.58),(.095*(1.-smoothstep(.45,1.35,grid)))*smoothstep(42.,86.,p.y));
  if scene.mode_effects.z>0. {c=goal_background(p,c);}
- if p.y<scene.radii_and_clip.z {return c;}
- if scene.state.z<.5 {
-  c=device(p,scene.desktop,scene.state.y,1u,c);c=device(p,scene.phone,scene.state.x,0u,c);
- }else{
-  c=device(p,scene.phone,scene.state.x,0u,c);c=device(p,scene.desktop,scene.state.y,1u,c);
- }
- if scene.size.z>0. {c=cable(p,c);}
  return c;
 }
 fn blur(uv:vec2<f32>,axis:vec2<f32>)->vec3<f32> {
@@ -172,31 +137,19 @@ fn blur(uv:vec2<f32>,axis:vec2<f32>)->vec3<f32> {
 @fragment fn vertical(v:Vertex)->@location(0) vec4<f32> {
  return vec4(blur(v.uv,vec2(0.,1.)),1.);
 }
-fn glass(p:vec2<f32>,r:vec4<f32>,under:vec3<f32>)->vec3<f32>{
- let dist=sdf(p,r,scene.material.x);
- if dist>1. {return under*(1.-exp(-max(dist,0.)*.1)*.018);}
- let backdrop=textureSampleLevel(glass_source,linear_sampler,p/scene.size.xy,0.).rgb;
- var c=mix(backdrop,vec3(1.),scene.material.y);
- let edge=smoothstep(-scene.material.w-.5,-.5,dist)*(1.-smoothstep(-.5,.5,dist));
- c=mix(c,vec3(.1384,.1812,.2462),edge*.42);
- return mix(c,under,smoothstep(0.,1.,dist));
-}
-fn tool_glass(p:vec2<f32>,r:vec4<f32>,under:vec3<f32>)->vec3<f32>{
- if any(p<r.xy-vec2(110.)) || any(p>r.xy+r.zw+vec2(110.,134.)) {return under;}
+fn over(top:vec4<f32>,bottom:vec4<f32>)->vec4<f32>{return top+bottom*(1.-top.a);}
+fn pane(p:vec2<f32>,r:vec4<f32>,opacity:f32)->vec4<f32>{
  let radius=min(scene.material.x,min(r.z,r.w)*.5);
- let dist=sdf(p,r,radius);
- if dist>1. {
-  let d1=max(sdf(p-vec2(0.,24.),r,radius),0.)/45.;
-  let d2=max(sdf(p-vec2(0.,2.),r,radius),0.)/4.;
-  return under*(1.-exp(-d1*d1)*.14-exp(-d2*d2)*.039);
- }
- let backdrop=textureSampleLevel(glass_source,linear_sampler,p/scene.size.xy,0.).rgb;
- let luminance=dot(backdrop,vec3(.2126,.7152,.0722));
- let saturated=mix(vec3(luminance),backdrop,1.05);
- var glass=mix(saturated,vec3(1.),scene.material.y);
- let edge=1.-smoothstep(0.,scene.material.w+.5,abs(dist+scene.material.w*.5));
- glass=mix(glass,vec3(.7305),edge);
- return mix(glass,under,smoothstep(0.,1.,dist));
+ let d=sdf(p,r,radius);
+ if d>40. {return vec4(0.);}
+ let ds=max(sdf(p-vec2(0.,8.),r,radius),0.);
+ let shadow=.08*exp(-ds*ds/356.)+.025*exp(-max(d,0.)*.6);
+ let a=1.-smoothstep(-.5,.5,d);
+ let sample=textureSampleLevel(glass_source,linear_sampler,p/scene.size.xy,0.).rgb;
+ var color=mix(sample,vec3(1.),scene.material.y);
+ let edge=smoothstep(-scene.material.w-0.8,-.2,d);
+ color=mix(color,vec3(.39,.45,.52),edge*.43);
+ return vec4(color*a,a+shadow*(1.-a))*opacity;
 }
 fn liberty_falloff(point:f32)->f32 {
  if point<=16. {return mix(1.,.466667,point/16.);}
@@ -213,10 +166,10 @@ fn liberty_color(turn:f32)->vec3<f32> {
  }
  return mix(palette[5u],palette[6u],(turn-.84)/.16);
 }
-fn liberty_glow(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
+fn liberty_glow(p:vec2<f32>)->vec4<f32> {
  let axes=min(p,scene.size.xy-p);
  let edge=min(axes.x,axes.y);
- if edge>=76. {return under;}
+ if edge>=76. {return vec4(0.);}
  let distance=length(p-scene.size.xy)/length(scene.size.xy);
  let reveal=scene.mode_motion.y;
  let opacity=scene.mode_effects.y*(1.-smoothstep(max(0.,reveal-.1),reveal,distance));
@@ -228,14 +181,13 @@ fn liberty_glow(p:vec2<f32>,under:vec3<f32>)->vec3<f32> {
  let halo=(1.-(1.-vertical)*(1.-horizontal))*.6*opacity;
  let rim=(1.-smoothstep(1.,2.,edge))*.85*opacity;
  let reflection=max(0.,max(1.-turn/.16,(turn-.82)/.18))*.65;
- return mix(mix(under,palette,halo),mix(palette,vec3(1.),reflection),rim);
+ return vec4(palette*halo*(1.-rim)+mix(palette,vec3(1.),reflection)*rim,halo+rim*(1.-halo));
 }
 @fragment fn fragment(v:Vertex)->@location(0) vec4<f32>{
  let p=v.uv*scene.size.xy;
- var c=base(p);
- if p.y>=scene.radii_and_clip.z {c=glass(p,scene.chat,c);}
- if scene.popup.z>0. && scene.size.w>0. {c=mix(c,tool_glass(p,scene.popup,c),scene.size.w);}
- if scene.child_popup.z>0. && scene.background.w>0. {c=mix(c,tool_glass(p,scene.child_popup,c),scene.background.w);}
- if scene.mode_effects.y>0. {c=liberty_glow(p,c);}
- return vec4(c,1.);
+ var c=pane(p,scene.chat,1.);
+ if scene.popup.z>0. && scene.size.w>0. {c=over(pane(p,scene.popup,scene.size.w),c);}
+ if scene.child_popup.z>0. && scene.background.w>0. {c=over(pane(p,scene.child_popup,scene.background.w),c);}
+ if scene.mode_effects.y>0. {c=over(liberty_glow(p),c);}
+ return c;
 }
