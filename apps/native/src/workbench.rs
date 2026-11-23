@@ -567,7 +567,8 @@ impl App {
                         #[cfg(target_os = "android")]
                         deployment::Message::SubmitCpu(_) => {
                             setup.update(message);
-                            return iced::widget::operation::focus_next();
+                            let unfocus = iced::advanced::widget::operation::focusable::unfocus();
+                            return iced::advanced::widget::operate(unfocus);
                         }
                         _ => setup.update(message),
                     }
@@ -1293,9 +1294,6 @@ impl App {
                 } else {
                     WORKBENCH
                 };
-                // Iced exposes its logical viewport in units of the previous application scale.
-                #[cfg(target_os = "android")]
-                let size = Size::new(size.width * self.ui_scale, size.height * self.ui_scale);
                 (self.ui_scale, self.canvas_origin) = layout::fit_canvas(size, canvas);
             }
             Message::Event(Event::Window(window::Event::Focused)) => {
