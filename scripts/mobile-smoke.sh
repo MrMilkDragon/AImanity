@@ -68,12 +68,12 @@ read -r cpu_x cpu_y cpu_w cpu_h < <(word_box settings CPU)
 read -r mem_x mem_y mem_w mem_h < <(word_box settings Memory)
 (( mem_x > cpu_x && cpu_h > 0 ))
 read -r cx cy cw ch < <(awk -v x="$mem_x" -v y="$cpu_y" -v h="$cpu_h" -v height="$height" \
-  'BEGIN {s=height/600; print int(x-60*s),int(y-4*s),int(45*s),int(h+10*s)}')
+  'BEGIN {s=height/600; print int(x-41*s),int(y-3*s),int(20*s),int(h+8*s)}')
 cpu_value() {
   local shot=$1
   convert "evidence/$shot.png" -crop "${cw}x${ch}+${cx}+${cy}" +repage -resize 400% \
     -colorspace Gray -contrast-stretch '2%x10%' -bordercolor white -border 12 "evidence/$shot-cpu.png"
-  tesseract "evidence/$shot-cpu.png" stdout -l eng --psm 8 -c tessedit_char_whitelist=0123456789 2>/dev/null | tr -cd '0-9'
+  tesseract "evidence/$shot-cpu.png" stdout -l eng --psm 10 -c tessedit_char_whitelist=0123456789 2>/dev/null | tr -cd '0-9'
 }
 before=$(cpu_value settings)
 [[ $before == 2 ]] || { echo "Expected initial phone CPU value 2, read '$before'" >&2; exit 1; }
@@ -95,5 +95,5 @@ jq -n --arg device "$AVD_DEVICE" --arg profile "$PROFILE" --arg sha256 "$install
   --argjson width "$width" --argjson height "$height" --argjson smallestWidthDp "$smallest" \
   --argjson before "$before" --argjson after "$after" \
   '{device:$device,profile:$profile,installedApkSha256:$sha256,$width,$height,$smallestWidthDp,
-     input:{screen:"English setup",field:"Phone CPU",before:$before,typed:"4",observed:$after}}' > evidence/receipt.json
+     input:{method:"adb-injected-key-events",screen:"English setup",field:"Phone CPU",before:$before,typed:"4",observed:$after}}' > evidence/receipt.json
 cat evidence/receipt.json >> "$GITHUB_STEP_SUMMARY"

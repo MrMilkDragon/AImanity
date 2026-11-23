@@ -19,7 +19,7 @@ on:
         default: preview
         required: true
       assets_run:
-        description: Run containing the qualified android-offline-assets artifact
+        description: Successful Android and Linux AVF asset run IDs, separated by a hyphen
         required: false
         type: string
 permissions:
@@ -52,6 +52,7 @@ jobs:
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           "$sdkmanager" "ndk;28.2.13676358"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
@@ -72,6 +73,7 @@ jobs:
           TARGET: ${{ matrix.target }}
           ABI: ${{ matrix.abi }}
           RUSTFLAGS: '-C link-arg=-Wl,-z,max-page-size=16384'
+          CARGO_NDK_PLATFORM: '35'
         run: |
           if ! command -v cargo-ndk >/dev/null; then cargo install cargo-ndk --version 4.1.2 --locked; fi
           ndk=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
@@ -83,8 +85,8 @@ jobs:
           CMAKE
           export ANDROID_PLATFORM=android-35 ANDROID_ABI="$ABI"
           export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$ndk/sysroot --target=${TARGET}35"
-          cargo ndk -t "$ABI" -p 35 build --locked --release --manifest-path apps/native/Cargo.toml --lib
-          cargo ndk -t "$ABI" -p 35 build --locked --release --manifest-path apps/android-host/Cargo.toml --bin aimanity-android-host
+          cargo ndk -t "$ABI" build --locked --release --manifest-path apps/native/Cargo.toml --lib
+          cargo ndk -t "$ABI" build --locked --release --manifest-path apps/android-host/Cargo.toml --bin aimanity-android-host
           mkdir -p "out/$ABI"
           install -m 755 "apps/native/target/$TARGET/release/libaimanity_native.so" "out/$ABI"
           install -m 755 "apps/android-host/target/$TARGET/release/aimanity-android-host" "out/$ABI/libaimanity_host.so"
@@ -131,9 +133,12 @@ jobs:
             signing=release
             assets=${GITHUB_REF_NAME##*/}
           fi
-          [[ -z $assets || $assets =~ ^[0-9]+$ ]]
+          [[ -z $assets || $assets =~ ^[0-9]+-[0-9]+$ ]]
           [[ $signing == preview || ($signing == release && -n $assets) ]]
           printf 'signing=%s\nassets_run=%s\n' "$signing" "$assets" >> "$GITHUB_OUTPUT"
+          if [[ -n $assets ]]; then
+            printf 'android_run=%s\nlinux_run=%s\n' "${assets%-*}" "${assets#*-}" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: android-mobile-arm64-v8a
@@ -142,13 +147,41 @@ jobs:
         with:
           name: android-mobile-x86_64
           path: build/apk/lib/x86_64
+      - name: Verify the asset factories completed
+        if: steps.mode.outputs.assets_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANDROID_RUN: ${{ steps.mode.outputs.android_run }}
+          LINUX_RUN: ${{ steps.mode.outputs.linux_run }}
+        run: |
+          for id in "$ANDROID_RUN" "$LINUX_RUN"; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id" | jq -e --arg repo "$GITHUB_REPOSITORY" \
+              '.conclusion == "success" and .head_repository.full_name == $repo and (.event == "push" or .event == "workflow_dispatch")'
+          done
       - if: steps.mode.outputs.assets_run != ''
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: android-offline-assets
-          run-id: ${{ steps.mode.outputs.assets_run }}
+          name: europium-mobile-android-avf-assets
+          run-id: ${{ steps.mode.outputs.android_run }}
           github-token: ${{ github.token }}
-          path: build/apk/assets/mobile-assets
+          path: build/android-assets
+      - if: steps.mode.outputs.assets_run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: europium-mobile-linux-avf-assets
+          run-id: ${{ steps.mode.outputs.linux_run }}
+          github-token: ${{ github.token }}
+          path: build/linux-assets
+      - name: Inventory the two guest payloads
+        if: steps.mode.outputs.assets_run != ''
+        run: |
+          set -euo pipefail
+          dest=build/apk/assets/mobile-assets
+          mkdir -p "$dest"
+          mv build/android-assets/android build/android-assets/speech build/linux-assets/linux "$dest/"
+          cd "$dest"
+          find android linux speech -type f -print0 | sort -z | xargs -0 sha256sum | \
+            jq -Rn '{format:1, files: [inputs | capture("^(?<value>[a-f0-9]{64})  (?<key>.+)$")] | from_entries}' > manifest.json
       - name: Prepare Android SDK and compile the activity
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0" "platforms;android-35"

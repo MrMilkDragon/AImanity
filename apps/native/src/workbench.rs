@@ -316,7 +316,11 @@ impl App {
         if app.instance_guard.is_none() {
             return (app, iced::exit());
         }
-        let task = if let Some(path) = std::env::args().nth(1) {
+        #[cfg(not(target_os = "android"))]
+        let host_path = std::env::args().nth(1);
+        #[cfg(target_os = "android")]
+        let host_path: Option<String> = None;
+        let task = if let Some(path) = host_path {
             app.start(host::Host::load(&path))
         } else {
             match deployment::Bundle::load().and_then(|bundle| {
@@ -563,7 +567,7 @@ impl App {
                         #[cfg(target_os = "android")]
                         deployment::Message::SubmitCpu(_) => {
                             setup.update(message);
-                            return iced::widget::operation::focus("setup-cpu-finished");
+                            return iced::widget::operation::focus_next();
                         }
                         _ => setup.update(message),
                     }
@@ -1400,7 +1404,17 @@ impl App {
                 self.pinned = false;
                 self.set_popup(false);
             }
-            Message::Event(Event::Mouse(iced::mouse::Event::ButtonPressed(_))) => {
+            Message::Event(
+                Event::Mouse(iced::mouse::Event::ButtonPressed(_))
+                | Event::Touch(iced::touch::Event::FingerPressed { .. }),
+            ) => {
+                if let Message::Event(Event::Touch(iced::touch::Event::FingerPressed {
+                    position,
+                    ..
+                })) = message
+                {
+                    self.cursor = position - self.canvas_origin;
+                }
                 if self.popup
                     && !self.popup_rect().contains(self.cursor)
                     && !self.child_rect().contains(self.cursor)
@@ -1530,8 +1544,9 @@ impl App {
             return Subscription::none();
         }
         let mut subscriptions = vec![iced::event::listen_with(|event, status, id| match &event {
-            #[cfg(target_os = "android")]
-            Event::Window(window::Event::Opened { .. }) => Some(Message::FitViewport(id)),
+            Event::Window(window::Event::Opened { .. }) if cfg!(target_os = "android") => {
+                Some(Message::FitViewport(id))
+            }
             Event::Window(window::Event::Resized(_)) => Some(Message::FitViewport(id)),
             Event::Window(
                 window::Event::Opened { .. }
@@ -1539,6 +1554,7 @@ impl App {
                 | window::Event::CloseRequested,
             )
             | Event::Window(window::Event::FileDropped(_))
+            | Event::Touch(iced::touch::Event::FingerPressed { .. })
             | Event::Mouse(iced::mouse::Event::CursorMoved { .. })
             | Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => Some(Message::Event(event)),
             Event::Keyboard(keyboard::Event::KeyPressed {

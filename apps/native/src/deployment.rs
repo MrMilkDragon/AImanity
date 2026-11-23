@@ -86,6 +86,7 @@ static CAPACITY_POLICY: LazyLock<CapacityPolicy> = LazyLock::new(|| {
 #[derive(Clone, Copy)]
 struct Capacity {
     memory: u64,
+    memory_required: u64,
     disk: u64,
     disk_required: u64,
 }
@@ -93,7 +94,7 @@ struct Capacity {
 impl Capacity {
     fn rows(self) -> [(&'static str, u64, u64); 2] {
         [
-            ("主机内存", self.memory, CAPACITY_POLICY.minimum_ram_gb),
+            ("主机内存", self.memory, self.memory_required),
             ("可用磁盘", self.disk, self.disk_required),
         ]
     }
@@ -313,13 +314,23 @@ impl Bundle {
                     .as_str()
                     .is_some_and(|id| !id.is_empty())))
     }
-    fn capacity(&self, admitted: bool) -> Result<Capacity, String> {
+    fn capacity(&self, admitted: bool, request: &Request) -> Result<Capacity, String> {
         let volume = self
             .home
             .ancestors()
             .find(|p| p.is_dir())
             .ok_or("找不到安装磁盘")?;
+        #[cfg(target_os = "android")]
+        let memory_required =
+            (u64::from(request.phone.memory_mb) + u64::from(request.desktop.memory_mb) + 1536)
+                .div_ceil(1024);
+        #[cfg(not(target_os = "android"))]
+        let memory_required = {
+            let _ = request;
+            CAPACITY_POLICY.minimum_ram_gb
+        };
         Ok(Capacity {
+            memory_required,
             memory: host_memory::total_memory_bytes() / GIB,
             disk: fs2::available_space(volume).map_err(|error| error.to_string())? / GIB,
             disk_required: if admitted {
@@ -337,7 +348,7 @@ impl Bundle {
         let path = self.home.join("request.json");
         let admitted = self.installed()? || path.is_file();
         if let Some((label, available, required)) = self
-            .capacity(admitted)?
+            .capacity(admitted, request)?
             .rows()
             .into_iter()
             .find(|(_, available, required)| available < required)
@@ -431,11 +442,12 @@ impl Setup {
     pub fn new(bundle: Bundle, request: Option<Request>, installed: bool) -> Self {
         let locale = request.as_ref().map(|r| Locale::parse(&r.locale));
         let attempted = request.is_some();
-        let capacity = bundle.capacity(installed || attempted);
+        let request = request.unwrap_or_default();
+        let capacity = bundle.capacity(installed || attempted, &request);
         Self {
             bundle,
             attempted,
-            request: request.unwrap_or_default(),
+            request,
             #[cfg(target_os = "android")]
             cpu_drafts: [None, None],
             locale,
@@ -467,16 +479,28 @@ impl Setup {
             Message::Continue => {
                 self.locale = Some(self.language);
                 self.request.locale = self.language.code().into();
-                self.capacity = self.bundle.capacity(false);
+                self.capacity = self
+                    .bundle
+                    .capacity(self.installed || self.attempted, &self.request);
                 self.language_entry.go_mut(true, Instant::now());
             }
-            Message::RefreshCapacity => self.capacity = self.bundle.capacity(false),
+            Message::RefreshCapacity => {
+                self.capacity = self
+                    .bundle
+                    .capacity(self.installed || self.attempted, &self.request)
+            }
             Message::Set(desktop, field, value) => {
                 #[cfg(target_os = "android")]
                 if matches!(field, Field::Cpu) {
                     self.cpu_drafts[usize::from(desktop)] = None;
                 }
                 self.request.set(desktop, field, value);
+                #[cfg(target_os = "android")]
+                {
+                    self.capacity = self
+                        .bundle
+                        .capacity(self.installed || self.attempted, &self.request);
+                }
             }
             Message::Start | Message::Stop => {}
         }
@@ -654,6 +678,12 @@ impl Setup {
                             "macOS · Apple Silicon"
                         } else if cfg!(windows) {
                             "Windows 11"
+                        } else if cfg!(target_os = "android") {
+                            if cfg!(target_arch = "aarch64") {
+                                "Android · ARM64"
+                            } else {
+                                "Android · x86_64"
+                            }
                         } else {
                             "Linux · x86_64"
                         })

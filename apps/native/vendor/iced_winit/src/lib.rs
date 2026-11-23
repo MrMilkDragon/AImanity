@@ -70,8 +70,14 @@ where
     P: Program + 'static,
     P::Theme: theme::Base,
 {
-    run_with_loop(program, winit::event_loop::EventLoop::with_user_event().build().expect("Create event loop"),
-        #[cfg(target_os = "android")] None)
+    run_with_loop(
+        program,
+        winit::event_loop::EventLoop::with_user_event()
+            .build()
+            .expect("Create event loop"),
+        #[cfg(target_os = "android")]
+        None,
+    )
 }
 
 /// Runs the shared program on the NativeActivity event loop.
@@ -87,21 +93,39 @@ where
 {
     use winit::platform::android::EventLoopBuilderExtAndroid;
     ANDROID_KEYBOARD.set(show_keyboard);
-    let event_loop = winit::event_loop::EventLoop::with_user_event().with_android_app(app).build().expect("Create Android event loop");
+    let event_loop = winit::event_loop::EventLoop::with_user_event()
+        .with_android_app(app)
+        .build()
+        .expect("Create Android event loop");
     let proxy = event_loop.create_proxy();
     let (tx, rx) = std::sync::mpsc::channel();
     *ANDROID_INPUT.lock().unwrap() = Some(Box::new(move |event| {
         if tx.send(event).is_ok() {
-            let _ = proxy.send_event(Action::Window(runtime::window::Action::RedrawAll));
+            let _ = proxy
+                .send_event(Action::Window(runtime::window::Action::RedrawAll));
         }
     }));
     let result = run_with_loop(program, event_loop, Some(rx));
+    ANDROID_DESTROYED.store(false, std::sync::atomic::Ordering::Release);
     drop(ANDROID_INPUT.lock().unwrap().take());
     result
 }
 
 #[cfg(target_os = "android")]
-static ANDROID_INPUT: std::sync::Mutex<Option<Box<dyn Fn(core::Event) + Send + Sync>>> = std::sync::Mutex::new(None);
+static ANDROID_INPUT: std::sync::Mutex<
+    Option<Box<dyn Fn(core::Event) + Send + Sync>>,
+> = std::sync::Mutex::new(None);
+
+#[cfg(target_os = "android")]
+static ANDROID_DESTROYED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// NativeActivity waits in onDestroy for android_main to return. Winit 0.30
+/// does not forward MainEvent::Destroy to the application handler.
+#[cfg(target_os = "android")]
+pub fn android_destroy() {
+    ANDROID_DESTROYED.store(true, std::sync::atomic::Ordering::Release);
+}
 
 /// Forwards an Android input connection event to the active native window.
 #[cfg(target_os = "android")]
@@ -116,7 +140,13 @@ std::thread_local! {
     static ANDROID_KEYBOARD: std::cell::Cell<fn(Option<core::input_method::Purpose>)> = const { std::cell::Cell::new(|_| {}) };
 }
 
-fn run_with_loop<P>(program: P, event_loop: winit::event_loop::EventLoop<Action<P::Message>>, #[cfg(target_os = "android")] input: Option<std::sync::mpsc::Receiver<core::Event>>) -> Result<(), Error>
+fn run_with_loop<P>(
+    program: P,
+    event_loop: winit::event_loop::EventLoop<Action<P::Message>>,
+    #[cfg(target_os = "android")] input: Option<
+        std::sync::mpsc::Receiver<core::Event>,
+    >,
+) -> Result<(), Error>
 where
     P: Program + 'static,
     P::Theme: theme::Base,
@@ -236,7 +266,10 @@ where
             #[cfg(target_os = "android")]
             {
                 self.surface_available = true;
-                self.process_event(event_loop, Event::EventLoopAwakened(winit::event::Event::Resumed));
+                self.process_event(
+                    event_loop,
+                    Event::EventLoopAwakened(winit::event::Event::Resumed),
+                );
                 for action in std::mem::take(&mut self.deferred_actions) {
                     self.user_event(event_loop, action);
                 }
@@ -252,9 +285,15 @@ where
         }
 
         #[cfg(target_os = "android")]
-        fn suspended(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        fn suspended(
+            &mut self,
+            event_loop: &winit::event_loop::ActiveEventLoop,
+        ) {
             self.surface_available = false;
-            self.process_event(event_loop, Event::EventLoopAwakened(winit::event::Event::Suspended));
+            self.process_event(
+                event_loop,
+                Event::EventLoopAwakened(winit::event::Event::Suspended),
+            );
         }
 
         fn new_events(
@@ -263,7 +302,14 @@ where
             cause: winit::event::StartCause,
         ) {
             #[cfg(target_os = "android")]
-            while let Some(event) = self.input.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            if ANDROID_DESTROYED.load(std::sync::atomic::Ordering::Acquire) {
+                event_loop.exit();
+                return;
+            }
+            #[cfg(target_os = "android")]
+            while let Some(event) =
+                self.input.as_ref().and_then(|rx| rx.try_recv().ok())
+            {
                 self.process_event(event_loop, Event::AndroidInput(event));
             }
             self.process_event(
@@ -316,7 +362,12 @@ where
             action: Action<Message>,
         ) {
             #[cfg(target_os = "android")]
-            if !self.surface_available && matches!(action, Action::Window(runtime::window::Action::Open(..))) {
+            if !self.surface_available
+                && matches!(
+                    action,
+                    Action::Window(runtime::window::Action::Open(..))
+                )
+            {
                 self.deferred_actions.push(action);
                 return;
             }
@@ -817,7 +868,12 @@ async fn run_instance<P>(
                             for (_, window) in window_manager.iter_mut() {
                                 if window.surface.is_none() {
                                     let size = window.raw.inner_size();
-                                    window.surface = Some(compositor.create_surface(window.raw.clone(), size.width, size.height));
+                                    window.surface =
+                                        Some(compositor.create_surface(
+                                            window.raw.clone(),
+                                            size.width,
+                                            size.height,
+                                        ));
                                     window.raw.request_redraw();
                                 }
                             }
@@ -890,7 +946,9 @@ async fn run_instance<P>(
                         let physical_size = window.state.physical_size();
                         let mut logical_size = window.state.logical_size();
 
-                        if window.surface.is_none() || physical_size.width == 0 || physical_size.height == 0
+                        if window.surface.is_none()
+                            || physical_size.width == 0
+                            || physical_size.height == 0
                         {
                             continue;
                         }
@@ -911,7 +969,10 @@ async fn run_instance<P>(
                             layout_span.finish();
 
                             current_compositor.configure_surface(
-                                window.surface.as_mut().expect("active window surface"),
+                                window
+                                    .surface
+                                    .as_mut()
+                                    .expect("active window surface"),
                                 physical_size.width,
                                 physical_size.height,
                             );
@@ -1089,7 +1150,10 @@ async fn run_instance<P>(
                         let present_span = debug::present(id);
                         match current_compositor.present(
                             &mut window.renderer,
-                            window.surface.as_mut().expect("active window surface"),
+                            window
+                                .surface
+                                .as_mut()
+                                .expect("active window surface"),
                             window.state.viewport(),
                             window.state.background_color(),
                             || window.raw.pre_present_notify(),
@@ -1111,15 +1175,18 @@ async fn run_instance<P>(
                                         window.state.physical_size();
 
                                     if error == compositor::SurfaceError::Lost {
-                                        window.surface = Some(current_compositor
-                                            .create_surface(
+                                        window.surface = Some(
+                                            current_compositor.create_surface(
                                                 window.raw.clone(),
                                                 physical_size.width,
                                                 physical_size.height,
-                                            ));
+                                            ),
+                                        );
                                     } else {
                                         current_compositor.configure_surface(
-                                            window.surface.as_mut().expect("active window surface"),
+                                            window.surface.as_mut().expect(
+                                                "active window surface",
+                                            ),
                                             physical_size.width,
                                             physical_size.height,
                                         );

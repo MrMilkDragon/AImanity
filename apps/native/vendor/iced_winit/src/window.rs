@@ -280,7 +280,10 @@ where
         purpose: input_method::Purpose,
     ) {
         #[cfg(target_os = "android")]
-        if self.ime_state.is_none_or(|(_, previous)| previous != purpose) {
+        if self
+            .ime_state
+            .is_none_or(|(_, previous)| previous != purpose)
+        {
             crate::ANDROID_KEYBOARD.get()(Some(purpose));
         }
         #[cfg(not(target_os = "android"))]

@@ -233,7 +233,10 @@ pub fn window_event(
         WindowEvent::KeyboardInput { is_synthetic, .. } if is_synthetic => None,
         WindowEvent::KeyboardInput { event, .. } => Some(Event::Keyboard({
             let key = {
-                #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+                #[cfg(not(any(
+                    target_arch = "wasm32",
+                    target_os = "android"
+                )))]
                 {
                     use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
                     event.key_without_modifiers()

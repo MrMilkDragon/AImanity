@@ -56,10 +56,11 @@ done
 "$sdk/aapt2" link -I "$ANDROID_HOME/platforms/android-35/android.jar" --manifest "$app/AndroidManifest.xml" \
   "${manifest_args[@]}" -o "$work/base.apk" "$work/resources.zip"
 zip -q -0 -r "$work/base.apk" classes.dex lib/
-if [[ -n ${ASSETS_RUN:-} ]]; then zip -q -6 -r "$work/base.apk" assets/; fi
+if [[ -n ${ASSETS_RUN:-} ]]; then zip -q -0 -r "$work/base.apk" assets/; fi
 "$sdk/zipalign" -P 16 -f 4 "$work/base.apk" "$work/aligned.apk"
 "$sdk/apksigner" sign --ks "$work/identity.p12" --ks-key-alias aimanity --ks-pass env:APK_SIGN_PASS \
   --key-pass env:APK_SIGN_PASS --v4-signing-enabled false --out "$filename" "$work/aligned.apk"
+(( $(wc -c < "$filename") < 2147483648 )) || { echo "The signed APK exceeds the 2 GiB distribution limit" >&2; exit 1; }
 "$sdk/apksigner" verify --verbose --print-certs "$filename" | tee "$work/signature"
 "$sdk/zipalign" -c -P 16 4 "$filename"
 "$sdk/aapt" dump badging "$filename" > "$work/badging"

@@ -46,6 +46,7 @@ pub fn mobile_dex(args: &[OsString]) -> Result<()> {
             name: "Ldev/aimanity/mobile/WorkbenchActivity;",
             parent: "Landroid/app/NativeActivity;", interfaces: &[], constructor_args: &[], fields: &[],
             natives: &[
+                ("onDestroy", ("V", &[]), 4),
                 ("onActivityResult", ("V", &["I", "I", "Landroid/content/Intent;"]), 4),
                 ("onRequestPermissionsResult", ("V", &["I", "[Ljava/lang/String;", "[I"]), 1),
             ],
