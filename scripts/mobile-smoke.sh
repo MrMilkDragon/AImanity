@@ -46,6 +46,22 @@ tap_word() {
   read -r x y w h < <(word_box "$1" "$2")
   adb shell input tap "$((x+w/2))" "$((y+h/2))"
 }
+hide_keyboard() {
+  local info="evidence/$1-input-method.txt"
+  sleep 0.5
+  adb shell dumpsys input_method > "$info"
+  if grep -qE 'mInputShown=true|inputShown=true' "$info"; then
+    # A landscape phone keyboard can cover the edited control after Enter.
+    adb shell input keyevent KEYCODE_BACK
+    for attempt in {1..10}; do
+      sleep 0.4
+      adb shell dumpsys input_method > "$info"
+      if ! grep -qE 'mInputShown=true|inputShown=true' "$info"; then return; fi
+    done
+    echo "System keyboard still covers the app after Back" >&2
+    return 1
+  fi
+}
 
 wait_word languages English
 read -r width height < <(identify -format '%w %h\n' evidence/languages.png)
@@ -135,6 +151,7 @@ adb shell input tap "$((cx+cw*3/4))" "$((cy+ch/2))"
 adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL
 adb shell input text 4
 adb shell input keyevent KEYCODE_ENTER
+hide_keyboard hardware
 for attempt in {1..10}; do
   capture edited
   after=$(cpu_value edited)
@@ -148,41 +165,75 @@ done
 tap_word settings Memory
 adb shell settings put secure show_ime_with_hard_keyboard 1
 adb shell input tap "$((cx+cw*3/4))" "$((cy+ch/2))"
-sleep 1
-adb shell dumpsys input_method > evidence/input-method.txt
+adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL
 ime_status=keyboard-not-detected
-if grep -qE 'mInputShown=true|inputShown=true' evidence/input-method.txt; then
-  capture keyboard
-  key_location() {
-    awk -F '\t' -v key="$2" -v h="$height" '
-      $1 == 5 && $8 > h * 0.55 && $12 ~ key {print int($7+$9/2),int($8+$10/2); exit}
-    ' "evidence/$1.tsv"
-  }
-  # Start with the symbols layout where a tap on the numeral commits it.
-  # A numeral printed as a secondary hint on a letter needs a long press.
-  symbols=$(key_location keyboard '123')
+key_location() {
+  awk -F '\t' -v key="$2" -v top="$keyboard_top" '
+    $1 == 5 && $8 > top && $12 ~ key {print int($7+$9/2),int($8+$10/2); exit}
+  ' "evidence/$1.tsv"
+}
+symbols=''
+for attempt in {1..12}; do
+  sleep 0.8
+  adb shell dumpsys input_method > evidence/input-method.txt
+  if ! grep -qE 'mInputShown=true|inputShown=true' evidence/input-method.txt; then continue; fi
   ime_status=key-layout-unavailable
-  if [[ -n $symbols ]]; then
-    read -r sx sy <<< "$symbols"
-    adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL
-    adb shell input tap "$sx" "$sy"
-    sleep 0.5
-    capture symbols
-    digit=$(key_location symbols '^2$')
-    if [[ -n $digit ]]; then
-      read -r dx dy <<< "$digit"
-      adb shell input tap "$dx" "$dy"
-      adb shell input keyevent KEYCODE_ENTER
-      for attempt in {1..8}; do
-        capture ime-edited
-        observed=$(cpu_value ime-edited)
-        if [[ $observed == 2 ]]; then break; fi
-        sleep 1
-      done
-      [[ $observed == 2 ]] || { echo "System keyboard digit did not reach the CPU field" >&2; exit 1; }
-      ime_status=system-keyboard-tap-2-read-back
-    fi
+  # During Gboard's entrance Android reports the IME shown before the
+  # keyboard covers its final area or provides any actual key targets.
+  keyboard_top=$(sed -nE 's/.*visibleTopInsets=([0-9]+) touchableInsets=.*/\1/p' evidence/input-method.txt | head -1)
+  if [[ ! $keyboard_top =~ ^[0-9]+$ ]] || (( keyboard_top == 0 || keyboard_top >= height )); then
+    keyboard_top=$((height/2))
   fi
+  capture keyboard
+  symbols=$(key_location keyboard '123')
+  if [[ -n $symbols ]]; then break; fi
+done
+# Start with the symbols layout where a tap on the numeral commits it.
+# A numeral printed as a secondary hint on a letter needs a long press.
+if [[ -n $symbols ]]; then
+  for attempt in {1..8}; do
+    if [[ -n $symbols ]]; then
+      read -r sx sy <<< "$symbols"
+      adb shell input tap "$sx" "$sy"
+    fi
+    sleep 0.8
+    capture symbols
+    symbols=$(key_location symbols '123')
+    if [[ -n $symbols ]]; then continue; fi
+    digit=$(key_location symbols '^2$')
+    if [[ -z $digit && $AVD_DEVICE == pixel_5 && -n $(key_location symbols '^ABC$') ]]; then
+      # The Pixel 5 symbols row has ten evenly spaced number keys. Sparse
+      # OCR can skip the 2 even when its two neighbors are clearly visible.
+      three=$(key_location symbols '^3$')
+      four=$(key_location symbols '^4$')
+      if [[ -n $three && -n $four ]]; then
+        read -r x3 y3 <<< "$three"
+        read -r x4 y4 <<< "$four"
+        if (( x4 > x3 && x4-x3 > width/16 && x4-x3 < width/8 && y3-y4 < 8 && y4-y3 < 8 )); then
+          digit="$((2*x3-x4)) $y3"
+        fi
+      fi
+    fi
+    if [[ -n $digit ]]; then break; fi
+  done
+  if [[ -n ${digit:-} ]]; then
+    read -r dx dy <<< "$digit"
+    adb shell input tap "$dx" "$dy"
+    adb shell input keyevent KEYCODE_ENTER
+    hide_keyboard soft
+    for attempt in {1..8}; do
+      capture ime-edited
+      observed=$(cpu_value ime-edited)
+      if [[ $observed == 2 ]]; then break; fi
+      sleep 1
+    done
+    [[ $observed == 2 ]] || { echo "System keyboard digit did not reach the CPU field" >&2; exit 1; }
+    ime_status=system-keyboard-tap-2-read-back
+  fi
+fi
+if [[ ${REQUIRE_SYSTEM_KEYBOARD:-0} == 1 && $ime_status != system-keyboard-tap-2-read-back ]]; then
+  echo "Expected to locate a system keyboard, tap its digit, and read the CPU value back; observed $ime_status" >&2
+  exit 1
 fi
 adb shell input keyevent KEYCODE_ENTER
 adb shell dumpsys window > evidence/window.txt
