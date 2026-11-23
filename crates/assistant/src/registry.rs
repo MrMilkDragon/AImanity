@@ -330,8 +330,27 @@ async fn select_first_if_missing(tx: &mut Transaction<'_, Postgres>) -> sqlx::Re
 }
 
 async fn state(app: &App) -> Result<wire::RegistryState> {
-    let mut tx = app.db.begin().await.map_err(storage)?;
-    bootstrap(&mut tx, &app.settings).await.map_err(storage)?;
+    let mut tx = app
+        .db
+        .begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        .await
+        .map_err(storage)?;
+    let metadata: Option<(i64, Option<Uuid>)> = sqlx::query_as(
+        "SELECT legacy_revision,active_agent_id FROM registry_meta WHERE owner_id=$1",
+    )
+    .bind(OWNER)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(storage)?;
+    let active_agent_id = match metadata {
+        Some((revision, active)) if revision == app.settings.current() as i64 => active,
+        _ => {
+            tx.rollback().await.map_err(storage)?;
+            tx = app.db.begin().await.map_err(storage)?;
+            bootstrap(&mut tx, &app.settings).await.map_err(storage)?;
+            active_agent(&mut tx).await.map_err(storage)?
+        }
+    };
     let devices = sqlx::query("SELECT id,revision,name,kind,system,runtime_state,paired FROM devices WHERE owner_id=$1 AND runtime_state<>'archived' ORDER BY created_at,id").bind(OWNER).fetch_all(&mut *tx).await.map_err(storage)?;
     let agents = sqlx::query("SELECT a.id,a.revision,a.name,a.model_connection_id,a.instructions FROM agents a
         JOIN model_connections m ON m.id=a.model_connection_id
@@ -359,7 +378,6 @@ async fn state(app: &App) -> Result<wire::RegistryState> {
             ),
         });
     }
-    let active_agent_id = active_agent(&mut tx).await.map_err(storage)?;
     tx.commit().await.map_err(storage)?;
     Ok(wire::RegistryState {
         active_device_id: devices
@@ -1035,7 +1053,11 @@ mod tests {
             sqlx::query("INSERT INTO messages(id,conversation_id,role,text) VALUES($1,$2,'assistant','existing conversation stays')").bind(legacy_message).bind(conversation).execute(&db).await.unwrap();
             sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status,model_revision,context) VALUES($1,$2,$3,$1,'legacy','succeeded',1,'[{\"legacy\":true}]')").bind(legacy_run).bind(conversation).bind(legacy_message).execute(&db).await.unwrap();
             initialize(&app).await.unwrap();initialize(&app).await.unwrap();
-            let initial=state(&app).await.unwrap();assert_eq!(initial.devices.len(),1);assert_eq!(initial.agents.len(),1);assert_eq!(initial.models.len(),1);assert_eq!(initial.models[0].revision,1);
+            let mut writer = db.begin().await.unwrap();
+            sqlx::query("SELECT pg_advisory_xact_lock($1)").bind(LOCK).execute(&mut *writer).await.unwrap();
+            let initial = tokio::time::timeout(Duration::from_secs(2), state(&app)).await.unwrap().unwrap();
+            writer.rollback().await.unwrap();
+            assert_eq!(initial.devices.len(),1);assert_eq!(initial.agents.len(),1);assert_eq!(initial.models.len(),1);assert_eq!(initial.models[0].revision,1);
             assert_eq!(initial.devices[0].id,PHONE);
             assert_eq!(sqlx::query_scalar::<_,String>("SELECT text FROM messages WHERE id=$1").bind(legacy_message).fetch_one(&db).await.unwrap(),"existing conversation stays");
             assert_eq!(sqlx::query_scalar::<_,Value>("SELECT context FROM runs WHERE id=$1").bind(legacy_run).fetch_one(&db).await.unwrap(),json!([{"legacy":true}]));
