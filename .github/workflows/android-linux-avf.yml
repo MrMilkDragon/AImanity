@@ -76,7 +76,7 @@ jobs:
           echo '6157c59a251a845f24cebe4e3e0be33ffeeb37a7e849e51335daed951b992b9a  runtime.zip' | sha256sum -c -
           unzip -q runtime.zip -d published
           rm runtime.zip
-          file published/desktop-bridge | grep AArch64
+          readelf -h published/desktop-bridge | grep -E "Machine:[[:space:]]+AArch64"
           zstd -t published/linux-rootfs.tar.zst
       - name: Compile the guest bootstrap and seal its offline bundle
         env:
