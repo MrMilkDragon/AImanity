@@ -41,10 +41,10 @@ pub(crate) struct Request {
     locale: String,
     pub(crate) phone: Phone,
     pub(crate) desktop: Desktop,
-    #[cfg(any(all(test, unix), all(target_os = "linux", target_arch = "x86_64")))]
+    #[cfg(any(all(test, unix), target_os = "linux"))]
     #[serde(default)]
     pub(crate) android_qemu: bool,
-    #[cfg(not(any(all(test, unix), all(target_os = "linux", target_arch = "x86_64"))))]
+    #[cfg(not(any(all(test, unix), target_os = "linux")))]
     #[serde(default, rename = "android_qemu")]
     _android_qemu: bool,
 }

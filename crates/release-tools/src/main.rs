@@ -38,6 +38,8 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(unix)]
         "windows-release" => windows_release::seal(rest).map(Some),
         #[cfg(unix)]
+        "android-linux-context" => native_services::android_guest(rest).map(Some),
+        #[cfg(unix)]
         "windows-release-context" => windows_release::prepare(rest).map(Some),
         #[cfg(unix)]
         "windows-guest-assets" => windows_release::assets::run(rest).map(Some),

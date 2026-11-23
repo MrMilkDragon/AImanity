@@ -109,7 +109,7 @@ fn prepare_guest() -> Result<()> {
     Ok(())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub(crate) fn grow_root() -> Result<()> {
     let root = fs::File::open("/")?;
     let block_size = rustix::fs::fstatvfs(&root)
@@ -184,4 +184,80 @@ pub(crate) async fn guest(arguments: &[OsString]) -> Result<()> {
     .await?;
     drop(stream);
     crate::vm_control::guest::run(initialization?, key).await
+}
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+pub(crate) async fn avf_guest() -> Result<()> {
+    use std::io::Read;
+    use tokio::process::Command;
+
+    let mut disk = fs::File::open("/dev/vdb")?;
+    let mut header = [0; 44];
+    disk.read_exact(&mut header)?;
+    let size = u32::from_le_bytes(header[40..].try_into().unwrap()) as usize;
+    if &header[..8] != b"AIMAVF01" || !(1..=4096 - 44).contains(&size) {
+        return Err(Error::Invalid("avf_control_disk"));
+    }
+    let key = hmac::Key::new(hmac::HMAC_SHA256, &header[8..40]);
+    let mut profile = vec![0; size];
+    disk.read_exact(&mut profile)?;
+    crate::wsl::backend::initialize_request(&profile).await?;
+
+    let id = fs::read_to_string("/opt/aiphone/bundle/source.sha256")?;
+    let root = Path::new("/var/lib/aiphone/installation/releases").join(id.trim());
+    let adb = "/opt/aiphone/native-phone-bridge/platform-tools/adb";
+    let serial = "127.0.0.1:5555";
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(150);
+    tokio::time::timeout_at(deadline, async {
+        loop {
+            Command::new(adb)
+                .args(["-P", "15037", "connect", serial])
+                .output()
+                .await?;
+            if Command::new(adb)
+                .args(["-P", "15037", "-s", serial, "get-state"])
+                .output()
+                .await?
+                .stdout
+                == b"device\n"
+            {
+                return Ok::<_, std::io::Error>(());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        }
+    })
+    .await
+    .map_err(|_| Error::Invalid("avf_phone_adb_timeout"))??;
+    let (_stop, rx) = tokio::sync::watch::channel(false);
+    crate::android::input::setup(
+        ai_phone_api::wire::NativeAndroidInputSetup {
+            version: 1,
+            project_root: root.to_string_lossy().into_owned(),
+            adb_program: adb.into(),
+            serial: serial.into(),
+            apk_path: root
+                .join("runtime/phone-apps/input.apk")
+                .to_string_lossy()
+                .into_owned(),
+            offline_apps: true,
+            observe_only: false,
+        },
+        rx,
+    )
+    .await?;
+    let result = Command::new(root.join("runtime/services/bin/assistant"))
+        .arg("--setup-devices")
+        .current_dir(&root)
+        .env("AI_PHONE_PROJECT_ROOT", &root)
+        .status()
+        .await?;
+    if !result.success() {
+        return Err(Error::Invalid("avf_device_setup"));
+    }
+    let listener = tokio::net::TcpListener::bind((
+        std::net::Ipv4Addr::LOCALHOST,
+        crate::vm_control::GUEST_PORT,
+    ))
+    .await?;
+    crate::vm_control::guest::run(listener, key).await
 }
