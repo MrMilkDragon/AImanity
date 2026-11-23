@@ -176,7 +176,11 @@ async fn recovery_releases_attempt_ownership_without_replaying_or_losing_checkpo
 #[ignore = "real disposable PostgreSQL; interruption while an automatic skill read is in flight"]
 async fn recovery_reuses_the_automatic_read_checkpoint() {
     database_case(|app| async move {
+        registry::initialize(&app).await.unwrap();
         let (run, message) = queued(&app, registry::PHONE, "user").await;
+        let mut tx = app.db.begin().await.unwrap();
+        registry::pin_run(&mut tx, &app.settings, run).await.unwrap();
+        tx.commit().await.unwrap();
         let context = json!([{"role":"user","content":[{"type":"input_text","text":"在手机上打开浏览器"}]}]);
         sqlx::query("UPDATE runs SET context=$2 WHERE id=$1")
             .bind(run).bind(context).execute(&app.db).await.unwrap();
@@ -497,9 +501,7 @@ async fn model_trace_database_failure_is_an_execution_failure() {
 #[ignore = "real disposable PostgreSQL; phone dispatch preserves skill requests"]
 async fn phone_dispatch_preserves_skill_request_without_guest_side_effects() {
     database_case(|app| async move {
-        crate::registry::initialize(&app.db, &app.settings)
-            .await
-            .unwrap();
+        crate::registry::initialize(&app).await.unwrap();
         let (run, message) = queued(&app, crate::registry::PHONE, "user").await;
         sqlx::query("UPDATE runs SET agent_id=$2 WHERE id=$1")
             .bind(run)
@@ -553,7 +555,7 @@ async fn phone_dispatch_preserves_skill_request_without_guest_side_effects() {
 #[ignore = "real disposable PostgreSQL; phone target selection and current bindings"]
 async fn phone_target_keeps_primary_order_and_current_binding_decisions() {
     database_case(|app| async move {
-        crate::registry::initialize(&app.db, &app.settings).await.unwrap();
+        crate::registry::initialize(&app).await.unwrap();
         let agent = Uuid::from_u128(2);
         let (run, _) = queued(&app, crate::registry::PHONE, "user").await;
         sqlx::query("UPDATE runs SET agent_id=$2 WHERE id=$1")
@@ -601,7 +603,7 @@ async fn phone_target_keeps_primary_order_and_current_binding_decisions() {
 async fn phone_dispatch_uses_one_grounded_observation_after_control() {
     use axum::{Router, body::Bytes, routing::post};
     database_case(|mut app| async move {
-        crate::registry::initialize(&app.db, &app.settings).await.unwrap();
+        crate::registry::initialize(&app).await.unwrap();
         let (run, message) = queued(&app, crate::registry::PHONE, "user").await;
         let context = json!([
             {"type":"function_call","name":"skill_read","call_id":"skill","arguments":"{\"name\":\"phone-use\"}"},
@@ -694,7 +696,7 @@ async fn phone_dispatch_uses_one_grounded_observation_after_control() {
 #[ignore = "real disposable PostgreSQL; connected files do not grant GUI control"]
 async fn file_authorization_tracks_bindings_and_both_link_directions() {
     database_case(|app| async move {
-        crate::registry::initialize(&app.db, &app.settings).await.unwrap();
+        crate::registry::initialize(&app).await.unwrap();
         let (run, _) = queued(&app, crate::registry::PHONE, "user").await;
         let agent = Uuid::from_u128(2);
         sqlx::query("UPDATE runs SET agent_id=$2 WHERE id=$1")
@@ -749,7 +751,7 @@ async fn file_authorization_tracks_bindings_and_both_link_directions() {
 #[ignore = "real disposable PostgreSQL; desktop dispatch rejects input without guest calls"]
 async fn desktop_dispatch_checks_authority_once_at_the_execution_boundary() {
     database_case(|app| async move {
-        crate::registry::initialize(&app.db, &app.settings).await.unwrap();
+        crate::registry::initialize(&app).await.unwrap();
         let (run, _) = queued(&app, crate::registry::PHONE, "user").await;
         let agent = Uuid::from_u128(2);
         sqlx::query("UPDATE runs SET agent_id=$2,status='running' WHERE id=$1")

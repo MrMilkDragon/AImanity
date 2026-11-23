@@ -464,6 +464,7 @@ impl SettingsStore {
     }
     pub async fn test_connection(
         &self,
+        db: &PgPool,
         scope: &str,
         expected: u64,
         config: &ModelConfig,
@@ -483,7 +484,9 @@ impl SettingsStore {
         }
         let _guard = Guard(self);
         let client = self.http_client(&config.proxy_url)?;
-        let checks = crate::model_adapter::probe(config, &client).await;
+        let vision = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM devices WHERE owner_id='local-user' AND runtime_state='managed')")
+            .fetch_one(db).await.map_err(|e| e.to_string())?;
+        let checks = crate::model_adapter::probe(config, &client, vision).await;
         let ready = checks.iter().all(|c| c.passed);
         let verification_id = if ready {
             self.verified_for(config, expected, scope)
@@ -562,11 +565,14 @@ pub async fn route(
                     .into(),
                     duration_ms: 0,
                 }];
+                let Some(token) = &app.phone_token else {
+                    return Ok(pb(StatusCode::OK, wire::RuntimeStatus { checks }));
+                };
                 let media = async {
                     let response = app
                         .local
                         .get("http://127.0.0.1:17865/status")
-                        .bearer_auth(&app.phone_token)
+                        .bearer_auth(token)
                         .timeout(Duration::from_secs(4))
                         .send()
                         .await
@@ -619,7 +625,10 @@ pub async fn route(
                 };
                 let config = app.settings.resolve(request.draft.ok_or("缺少模型配置")?)?;
                 let revision = app.settings.current();
-                let result = app.settings.test_connection("", revision, &config).await?;
+                let result = app
+                    .settings
+                    .test_connection(&app.db, "", revision, &config)
+                    .await?;
                 Ok(pb(StatusCode::OK, result))
             }
             "save" => {
@@ -630,7 +639,7 @@ pub async fn route(
                 let config = app.settings.resolve(request.draft.ok_or("缺少模型配置")?)?;
                 app.settings
                     .save(request.expected_revision, &request.verification_id, config)?;
-                crate::registry::initialize(&app.db, &app.settings)
+                crate::registry::initialize(&app)
                     .await
                     .map_err(|_| "模型已保存，注册表需要重新载入")?;
                 Ok(pb(StatusCode::OK, app.settings.public()))
@@ -642,7 +651,7 @@ pub async fn route(
                 };
                 let config = app.settings.get(request.revision)?;
                 app.settings.commit(request.expected_revision, config)?;
-                crate::registry::initialize(&app.db, &app.settings)
+                crate::registry::initialize(&app)
                     .await
                     .map_err(|_| "模型已保存，注册表需要重新载入")?;
                 Ok(pb(StatusCode::OK, app.settings.public()))
@@ -910,7 +919,7 @@ mod tests {
             db: db.clone(),
             root: root.clone(),
             token: "test-service-token".into(),
-            phone_token: "unused".into(),
+            phone_token: Some("unused".into()),
             settings: store,
             local: reqwest::Client::new(),
             remote: reqwest::Client::new(),

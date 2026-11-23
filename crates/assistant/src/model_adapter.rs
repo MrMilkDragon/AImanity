@@ -508,16 +508,28 @@ async fn check(
         duration_ms: start.elapsed().as_millis() as u64,
     }
 }
-pub async fn probe(config: &ModelConfig, client: &reqwest::Client) -> Vec<wire::CapabilityCheck> {
-    let nonce = Uuid::new_v4().simple().to_string();
-    let text_body = json!({"input":[{"role":"user","content":[{"type":"input_text","text":format!("Reply exactly with this code: {nonce}")}]}],"max_output_tokens":256,"reasoning":{"effort":"none"}});
-    let image_body = json!({"input":[{"role":"user","content":[{"type":"input_text","text":"Read the four digits in this image. Reply only with the digits."},{"type":"input_image","image_url":format!("data:image/png;base64,{}",STANDARD.encode(include_bytes!("../fixtures/vision-probe.png")))}]}],"max_output_tokens":256,"reasoning":{"effort":"none"}});
+pub async fn probe(
+    config: &ModelConfig,
+    client: &reqwest::Client,
+    vision: bool,
+) -> Vec<wire::CapabilityCheck> {
+    let nonce = format!("{:06}", Uuid::new_v4().as_fields().0 % 1_000_000);
+    let text_body = json!({"input":[{"role":"user","content":[{"type":"input_text","text":format!("Your ticket number is {nonce}. What is your ticket number? Reply with the number only.")}]}],"max_output_tokens":256,"reasoning":{"effort":"none"}});
     let (text_check, image_check, tool_check) = tokio::join!(
         check(config, client, "文字与流式输出", text_body, &nonce),
-        check(config, client, "图片识别", image_body, "7319"),
+        async {
+            if !vision {
+                return None;
+            }
+            let image_body = json!({"input":[{"role":"user","content":[{"type":"input_text","text":"Read the four digits in this image. Reply only with the digits."},{"type":"input_image","image_url":format!("data:image/png;base64,{}",STANDARD.encode(include_bytes!("../fixtures/vision-probe.png")))}]}],"max_output_tokens":256,"reasoning":{"effort":"none"}});
+            Some(check(config, client, "图片识别", image_body, "7319").await)
+        },
         tool_probe(config, client)
     );
-    vec![text_check, image_check, tool_check]
+    [Some(text_check), image_check, Some(tool_check)]
+        .into_iter()
+        .flatten()
+        .collect()
 }
 async fn tool_probe(config: &ModelConfig, client: &reqwest::Client) -> wire::CapabilityCheck {
     let start = Instant::now();
@@ -1285,7 +1297,7 @@ mod tests {
         let root = std::env::var("AI_PHONE_LIVE_TEST_ROOT").expect("explicit live test root");
         let store = crate::settings::SettingsStore::open(std::path::Path::new(&root)).unwrap();
         let config = store.get(store.current()).unwrap();
-        let checks = probe(&config, &config.client().unwrap()).await;
+        let checks = probe(&config, &config.client().unwrap(), true).await;
         for check in &checks {
             println!(
                 "{}: {} ({}ms) {}",

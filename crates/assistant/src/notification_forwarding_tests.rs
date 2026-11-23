@@ -110,7 +110,7 @@ async fn stalled_forwarding_cannot_delay_notification_wake_or_manual_takeover() 
         // Every fixed local service URL goes only to this loopback fixture.
         app.local = reqwest::Client::builder().proxy(reqwest::Proxy::all(format!("http://{address}")).unwrap()).build().unwrap();
         let app = Arc::new(app);
-        registry::initialize(&app.db, &app.settings).await.unwrap();
+        registry::initialize(&app).await.unwrap();
         schedule(&app, &["phone", "desktop"]).await.unwrap();
         sqlx::query("UPDATE messages SET text='Synthetic completed notification report' WHERE id IN (SELECT assistant_message_id FROM runs)").execute(&app.db).await.unwrap();
         sqlx::query("UPDATE runs SET origin='notification'").execute(&app.db).await.unwrap();
@@ -167,7 +167,7 @@ async fn stalled_forwarding_cannot_delay_notification_wake_or_manual_takeover() 
 #[ignore = "requires disposable PostgreSQL"]
 async fn notification_batches_keep_watch_policy_and_replay_only_new_events() {
     database_case(|app| async move {
-        registry::initialize(&app.db, &app.settings).await.unwrap();
+        registry::initialize(&app).await.unwrap();
         schedule(&app, &["phone"]).await.unwrap();
         sqlx::query("UPDATE proactive_state SET notifications_since='epoch',wechat_watch=false")
             .execute(&app.db)
@@ -247,7 +247,7 @@ async fn stalled_device_collection_cannot_delay_other_device_admission() {
             let mut app = Arc::try_unwrap(app).unwrap_or_else(|_| panic!("unshared fixture required"));
             app.local = reqwest::Client::builder().proxy(reqwest::Proxy::all(format!("http://{address}")).unwrap()).build().unwrap();
             let app = Arc::new(app);
-            registry::initialize(&app.db, &app.settings).await.unwrap();
+            registry::initialize(&app).await.unwrap();
             sqlx::query("UPDATE proactive_state SET exploring=false,wechat_watch=true,notifications_since='epoch'").execute(&app.db).await.unwrap();
             let agent: Uuid = sqlx::query_scalar("SELECT default_agent_id FROM devices WHERE id='phone-local-01'").fetch_one(&app.db).await.unwrap();
             let desktop = "collector-desktop-fixture";

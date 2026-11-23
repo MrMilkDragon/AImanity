@@ -77,10 +77,10 @@ async fn author(app: &App, job: &Job) -> Result<Option<Program>, String> {
     let config = match job.run {
         Some(run) => crate::settings::for_run(app, run).await?,
         None => {
-            let revision: i64 = sqlx::query_scalar("SELECT m.model_revision FROM devices d
-                JOIN agents a ON a.id=d.default_agent_id JOIN model_connections m ON m.id=a.model_connection_id
-                WHERE d.id=$1 AND a.retired_at IS NULL AND m.retired_at IS NULL")
-                .bind(crate::registry::PHONE).fetch_one(&app.db).await.map_err(|e|e.to_string())?;
+            let revision: i64 = sqlx::query_scalar("SELECT m.model_revision FROM registry_meta w
+                JOIN agents a ON a.id=w.active_agent_id JOIN model_connections m ON m.id=a.model_connection_id
+                WHERE w.owner_id='local-user' AND a.retired_at IS NULL AND m.retired_at IS NULL")
+                .fetch_one(&app.db).await.map_err(|e|e.to_string())?;
             app.settings.get(revision as u64)?
         }
     };
@@ -205,7 +205,7 @@ mod tests {
             app.settings.test_revision(crate::settings::ModelConfig{api_key:String::new(),
                 base_url:format!("http://{address}"),model:"app-author-test".into(),provider:"compatible".into(),
                 protocol:"responses".into(),proxy_url:String::new(),verified_at_ms:1});
-            crate::registry::initialize(&app.db,&app.settings).await.unwrap();
+            crate::registry::initialize(&app).await.unwrap();
             let installed=vec!["org.example.reader".to_owned()];
             super::super::inventory::record(&app.db,crate::registry::PHONE,&[]).await.unwrap();
             super::super::inventory::record(&app.db,crate::registry::PHONE,&installed).await.unwrap();

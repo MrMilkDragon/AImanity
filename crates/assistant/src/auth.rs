@@ -267,7 +267,7 @@ mod tests {
             db: db.clone(),
             root: root.clone(),
             token: "entry-test".into(),
-            phone_token: "unused".into(),
+            phone_token: Some("unused".into()),
             settings: settings::SettingsStore::test_configured(&root),
             local: reqwest::Client::new(),
             remote: reqwest::Client::new(),

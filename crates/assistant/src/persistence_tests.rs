@@ -54,7 +54,7 @@ pub(crate) async fn database_case(test: impl for<'a> FnOnce(&'a App) -> BoxFutur
         db: db.clone(),
         root: root.clone(),
         token: "fixture".into(),
-        phone_token: "unused".into(),
+        phone_token: Some("unused".into()),
         settings: settings::SettingsStore::test_configured(&root),
         local: reqwest::Client::new(),
         remote: reqwest::Client::new(),

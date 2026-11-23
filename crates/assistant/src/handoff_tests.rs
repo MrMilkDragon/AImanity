@@ -35,7 +35,7 @@ struct Fixture {
 
 impl Fixture {
     async fn new(app: Shared) -> Self {
-        registry::initialize(&app.db, &app.settings).await.unwrap();
+        registry::initialize(&app).await.unwrap();
         let recipient = Uuid::new_v4();
         let mut tx = app.db.begin().await.unwrap();
         sqlx::query(
@@ -69,8 +69,8 @@ impl Fixture {
             .execute(&mut *tx)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status) VALUES($1,$2,$3,$1,'fixture','running')")
-            .bind(source_run).bind(phone_conversation).bind(message).execute(&mut *tx).await.unwrap();
+        sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status,device_id) VALUES($1,$2,$3,$1,'fixture','running',$4)")
+            .bind(source_run).bind(phone_conversation).bind(message).bind(registry::PHONE).execute(&mut *tx).await.unwrap();
         registry::pin_run(&mut tx, &app.settings, source_run)
             .await
             .unwrap();

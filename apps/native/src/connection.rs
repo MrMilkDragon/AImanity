@@ -12,7 +12,7 @@ use tokio_tungstenite::tungstenite::{client::IntoClientRequest, http::HeaderValu
 pub struct Connection {
     http: reqwest::Client,
     pub(crate) assistant: HeaderValue,
-    phone: HeaderValue,
+    phone: Option<HeaderValue>,
 }
 #[derive(Clone, Debug)]
 pub struct Session {
@@ -94,7 +94,7 @@ impl Connection {
         let client = Self {
             http,
             assistant: bearer(&assistant)?,
-            phone: bearer(&phone)?,
+            phone: phone.as_deref().map(bearer).transpose()?,
         };
         let (registry, links) = tokio::try_join!(
             client.rpc("registry/state", wire::RegistryRequest {}),
@@ -113,7 +113,7 @@ impl Connection {
     ) -> Result<O, String> {
         let started = Instant::now();
         let (port, path, token) = if let Some(path) = route.strip_prefix("phone/") {
-            (17862, path, &self.phone)
+            (17862, path, self.phone.as_ref().ok_or("手机未接入")?)
         } else if let Some(path) = route.strip_prefix("channels/") {
             (17864, path, &self.assistant)
         } else {
@@ -173,7 +173,10 @@ impl Connection {
         let route = if index == 0 { "audio" } else { "desktop/audio" };
         self.http
             .get(format!("http://127.0.0.1:17865/{route}"))
-            .header("authorization", &self.phone)
+            .header(
+                "authorization",
+                self.phone.as_ref().ok_or("媒体服务未接入")?,
+            )
             .send()
             .await
             .map_err(|error| error.to_string())
@@ -393,7 +396,10 @@ impl Connection {
                     let response = self
                         .http
                         .get(format!("http://127.0.0.1:17865/{route}"))
-                        .header("authorization", &self.phone)
+                        .header(
+                            "authorization",
+                            self.phone.as_ref().ok_or("媒体服务未接入")?,
+                        )
                         .send()
                         .await
                         .map_err(|e| e.to_string())?
@@ -651,7 +657,7 @@ impl Connection {
         Self {
             http: reqwest::Client::new(),
             assistant: HeaderValue::from_static(""),
-            phone: HeaderValue::from_static(""),
+            phone: None,
         }
     }
 }

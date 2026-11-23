@@ -72,7 +72,7 @@ struct App {
     db: PgPool,
     root: PathBuf,
     token: String,
-    phone_token: String,
+    phone_token: Option<String>,
     settings: settings::SettingsStore,
     local: reqwest::Client,
     remote: reqwest::Client,
@@ -300,7 +300,11 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
         .bind(settings.current() as i64)
         .execute(&db)
         .await?;
-    registry::initialize(&db, &settings).await?;
+    let phone_token = match std::fs::read_to_string(root.join("data/phone-runner/token")) {
+        Ok(token) => Some(token.trim().to_owned()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
     setup::initialize(&db, &root).await?;
     let host_proxy = std::env::var("AI_PHONE_HOST_PROXY").ok();
     let app = Arc::new(App {
@@ -308,9 +312,7 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
         token: std::fs::read_to_string(root.join("data/assistant/token"))?
             .trim()
             .into(),
-        phone_token: std::fs::read_to_string(root.join("data/phone-runner/token"))?
-            .trim()
-            .into(),
+        phone_token,
         root,
         settings,
         local: reqwest::Client::builder()
@@ -325,6 +327,7 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
         location_mutation: Mutex::new(()),
         network_mutation: Mutex::new(()),
     });
+    registry::initialize(&app).await?;
     workbench::initialize(&app.db, &app.root).await?;
     app_learning::backfill(&app).await?;
     desktop::recover(app.clone()).await;
@@ -336,7 +339,9 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
     }
     let tasks = app.clone();
     tokio::spawn(async move {
-        if let Err(error) = device_setup::wait_for_runtime(&tasks.root).await {
+        if tasks.phone_token.is_some()
+            && let Err(error) = device_setup::wait_for_runtime(&tasks.root).await
+        {
             eprintln!("Device readiness unavailable: {error}");
             return;
         }

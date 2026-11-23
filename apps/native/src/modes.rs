@@ -179,7 +179,7 @@ impl Modes {
             Message::ToggleCopilot => {
                 if self.speech.active() {
                     self.speech.stop();
-                } else if !chat.conversation_id.is_empty() && !device_id.is_empty() {
+                } else if !chat.conversation_id.is_empty() {
                     return self
                         .speech
                         .start(self.model.clone(), self.locale.code(), chat);

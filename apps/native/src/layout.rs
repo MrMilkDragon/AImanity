@@ -32,7 +32,7 @@ pub struct Layout {
 fn input_uses_the_visible_screen_in_each_orientation() {
     for phone in [0.5, 2.] {
         let aspects = [phone, 1.6];
-        let layout = Layout::target(Size::new(1440., 900.), 0, true, aspects);
+        let layout = Layout::target(Size::new(1440., 900.), 0, true, aspects, [true; 2]);
         for (i, aspect) in aspects.into_iter().enumerate() {
             let rect = layout.devices[i];
             let inset = layout.device_radius[i] / 3.;
@@ -48,8 +48,29 @@ fn input_uses_the_visible_screen_in_each_orientation() {
     }
 }
 
+#[cfg(test)]
+#[test]
+fn an_empty_workspace_gives_the_chat_both_margins_and_no_device_input() {
+    let layout = Layout::target(WORKBENCH, 0, false, [0.5, 1.6], [false; 2]);
+    assert_eq!(layout.chat.x, SIDE_INSET);
+    assert_eq!(layout.chat.width, WORKBENCH.width - 2. * SIDE_INSET);
+    assert_eq!(layout.devices, [Rectangle::default(); 2]);
+    assert!(layout.local(0, Point::ORIGIN).is_none());
+    assert!(layout.device_at(0, true, layout.chat.center()).is_none());
+    let desktop = Layout::target(WORKBENCH, 1, false, [0.5, 1.6], [false, true]);
+    assert_eq!(desktop.devices[0], Rectangle::default());
+    assert!(desktop.devices[1].height > 0.);
+    assert!(desktop.devices[1].y + desktop.devices[1].height < desktop.chat.y);
+}
+
 impl Layout {
-    pub fn target(size: Size, focus: usize, linked: bool, aspects: [f32; 2]) -> Self {
+    pub fn target(
+        size: Size,
+        focus: usize,
+        linked: bool,
+        aspects: [f32; 2],
+        present: [bool; 2],
+    ) -> Self {
         let wide = linked || focus == 1 || aspects[0] > 1.;
         let (top, gap) = if wide { (60., 18.) } else { (66., 24.) };
         let inset = SIDE_INSET;
@@ -80,6 +101,9 @@ impl Layout {
         let mut angles = [0.; 2];
         let mut device_radius = [0.; 2];
         for index in 0..2 {
+            if !present[index] {
+                continue;
+            }
             let rear = !linked && index != focus;
             let rear_phone = wide && rear && index == 0;
             let pane_width = if linked {
@@ -159,7 +183,14 @@ impl Layout {
                 device_radius[index] *= scale;
             }
         }
-        let chat = if wide {
+        let chat = if !present.contains(&true) {
+            Rectangle {
+                x: inset,
+                y: top,
+                width: grid_width,
+                height: grid_height,
+            }
+        } else if wide {
             Rectangle {
                 x: inset,
                 y: top + stage_height + gap,
@@ -224,6 +255,9 @@ impl Layout {
 
     pub fn local(&self, index: usize, p: Point) -> Option<Point> {
         let r = self.devices[index];
+        if r.width == 0. {
+            return None;
+        }
         let sx = p.x - r.center_x();
         let sy = p.y - r.center_y();
         let a = self.angles[index];

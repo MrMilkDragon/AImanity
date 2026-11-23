@@ -234,28 +234,33 @@ impl Host {
     }
 }
 
-pub async fn credentials(root: &Path) -> Result<(String, String), String> {
+pub async fn credentials(root: &Path) -> Result<(String, Option<String>), String> {
     #[cfg(target_os = "android")]
     {
         ai_phone_host_runtime::vm_control::native_credentials(&android_host::key(root))
             .await
-            .map(|credentials| (credentials.assistant_token, credentials.phone_token))
+            .map(|credentials| (credentials.assistant_token, Some(credentials.phone_token)))
             .map_err(|e| e.to_string())
     }
     #[cfg(target_os = "macos")]
     {
-        tokio::try_join!(
+        let (assistant, phone) = tokio::join!(
             tokio::fs::read_to_string(root.join("data/assistant/token")),
             tokio::fs::read_to_string(root.join("data/phone-runner/token")),
-        )
-        .map_err(|e| e.to_string())
+        );
+        let phone = match phone {
+            Ok(token) => Some(token),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e.to_string()),
+        };
+        Ok((assistant.map_err(|e| e.to_string())?, phone))
     }
     #[cfg(any(windows, target_os = "linux"))]
     {
         let key = ai_phone_host_runtime::qemu_host::key_path(&root.join("user/qemu"));
         ai_phone_host_runtime::vm_control::native_credentials(&key)
             .await
-            .map(|value| (value.assistant_token, value.phone_token))
+            .map(|value| (value.assistant_token, Some(value.phone_token)))
             .map_err(|e| e.to_string())
     }
 }

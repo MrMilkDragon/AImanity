@@ -13,7 +13,7 @@ pub async fn target(app: &App, id: &str) -> Result<Target, String> {
     if id == registry::PHONE {
         return Ok(Target {
             runner: 17862,
-            token: app.phone_token.clone(),
+            token: app.phone_token.clone().ok_or("手机未接入")?,
             serial: std::env::var("AI_PHONE_SERIAL").unwrap_or_else(|_| "emulator-5564".into()),
         });
     }

@@ -99,7 +99,7 @@ mod tests {
     #[ignore = "requires disposable PostgreSQL"]
     async fn accepted_message_wakes_worker_and_notifies_authenticated_chat() {
         crate::worker::steering_regressions::database_case(|app| async move {
-            registry::initialize(&app.db, &app.settings).await.unwrap();
+            registry::initialize(&app).await.unwrap();
             let session = "a".repeat(64);
             sqlx::query("INSERT INTO admin_sessions(token_hash) VALUES($1)")
                 .bind(format!("{:x}", Sha256::digest(session.as_bytes())))

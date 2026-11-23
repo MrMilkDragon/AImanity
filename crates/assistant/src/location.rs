@@ -488,7 +488,7 @@ mod persistence_tests {
             db: db.clone(),
             root: root.clone(),
             token: "location-fixture".into(),
-            phone_token: "must-not-call".into(),
+            phone_token: Some("must-not-call".into()),
             settings: settings::SettingsStore::test_configured(&root),
             local: reqwest::Client::builder().no_proxy().build().unwrap(),
             remote: reqwest::Client::new(),

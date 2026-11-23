@@ -13,6 +13,7 @@ fn sdf(p:vec2<f32>,r:vec4<f32>,radius:f32)->f32 {
  let q=abs(p-r.xy-r.zw*.5)-r.zw*.5+vec2(radius);return length(max(q,vec2(0.)))+min(max(q.x,q.y),0.)-radius;
 }
 fn device(p:vec2<f32>,rect:vec4<f32>,angle:f32,index:u32,under:vec3<f32>)->vec3<f32> {
+ if rect.z<=0. {return under;}
  let d=p-rect.xy-rect.zw*.5;
  let x=d.x/(cos(angle)-d.x*sin(angle)/1800.);
  let y=d.y*(1.+x*sin(angle)/1800.);

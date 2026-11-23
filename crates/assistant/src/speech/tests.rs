@@ -67,7 +67,7 @@ async fn transport_rejections_preserve_authentication_status() {
             .unwrap(),
         root: root.clone(),
         token: "fixture-token".into(),
-        phone_token: String::new(),
+        phone_token: None,
         settings: settings::SettingsStore::test_configured(&root),
         local: reqwest::Client::new(),
         remote: reqwest::Client::new(),
@@ -92,7 +92,7 @@ async fn transport_rejections_preserve_authentication_status() {
 #[ignore = "real disposable PostgreSQL; no production model or device calls"]
 async fn agent_voice_save_conflicts_clear_and_device_scope_survive_reopen() {
     crate::worker::steering_regressions::database_case(|app| async move {
-        registry::initialize(&app.db, &app.settings).await.unwrap();
+        registry::initialize(&app).await.unwrap();
         let id = Uuid::from_u128(2).to_string();
         let chat_revision = app.settings.current();
         let first = save(

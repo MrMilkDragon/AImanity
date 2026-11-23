@@ -244,7 +244,7 @@ struct App {
 }
 impl App {
     fn boot() -> (Self, Task<Message>) {
-        let layout = Layout::target(WORKBENCH, 0, false, [0.5, 1.6]);
+        let layout = Layout::target(WORKBENCH, 0, false, [0.5, 1.6], [false; 2]);
         let mut app = Self {
             setup: None,
             stop: None,
@@ -321,7 +321,11 @@ impl App {
         #[cfg(target_os = "android")]
         let host_path: Option<String> = None;
         let task = if let Some(path) = host_path {
-            app.start(host::Host::load(&path))
+            if cfg!(target_os = "macos") && std::path::Path::new(&path).is_dir() {
+                app.update(Message::Host(host::Event::Ready(path)))
+            } else {
+                app.start(host::Host::load(&path))
+            }
         } else {
             match deployment::Bundle::load().and_then(|bundle| {
                 let request = bundle.request()?;
@@ -390,7 +394,13 @@ impl App {
     }
     fn rearrange(&mut self) {
         self.from = self.layout;
-        self.target = Layout::target(WORKBENCH, self.focus, self.linked, self.aspects());
+        self.target = Layout::target(
+            WORKBENCH,
+            self.focus,
+            self.linked,
+            self.aspects(),
+            self.devices.each_ref().map(Option::is_some),
+        );
         self.transition = if self.reduced_motion {
             self.layout = self.target;
             None
@@ -673,6 +683,13 @@ impl App {
                             })
                             .cloned()
                     });
+                    if self.devices[self.focus].is_none() && self.devices[1 - self.focus].is_some()
+                    {
+                        self.focus = 1 - self.focus;
+                    }
+                    if self.devices.iter().any(Option::is_none) {
+                        self.linked = false;
+                    }
                     self.accept_link(links);
                     self.agents.registry = registry;
                     self.files.set_devices(&self.devices);
@@ -2426,14 +2443,17 @@ impl App {
                     style::MUTED
                 }),
             });
-        let mut shared = row![
-            button(container(cable).center(Length::Fill))
-                .width(style::NAV_ICON_WIDTH)
-                .height(nav_height)
-                .padding(0)
-                .on_press_maybe(self.connection.as_ref().map(|_| Message::Link))
-                .style(if linked { style::primary } else { style::quiet })
-        ];
+        let mut shared = row![];
+        if self.devices.iter().all(Option::is_some) {
+            shared = shared.push(
+                button(container(cable).center(Length::Fill))
+                    .width(style::NAV_ICON_WIDTH)
+                    .height(nav_height)
+                    .padding(0)
+                    .on_press_maybe(self.connection.as_ref().map(|_| Message::Link))
+                    .style(if linked { style::primary } else { style::quiet }),
+            );
+        }
         for panel in Self::NAV_PANELS {
             let (icon, active) = match panel {
                 Panel::Language | Panel::Agent => (Icon::Settings, false),
@@ -2529,7 +2549,7 @@ impl App {
                 .into(),
         ];
         for index in 0..2 {
-            if self.focus != index && !self.linked {
+            if self.devices[index].is_none() || (self.focus != index && !self.linked) {
                 continue;
             }
             let rect = self.layout.toolbars[index];

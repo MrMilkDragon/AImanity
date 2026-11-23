@@ -447,7 +447,7 @@ async fn committed_skill_survives_lost_commit_acknowledgement() {
                 db: db.clone(),
                 root: app.root.clone(),
                 token: "fixture".into(),
-                phone_token: "unused".into(),
+                phone_token: Some("unused".into()),
                 settings: settings::SettingsStore::open(&app.root).unwrap(),
                 local: reqwest::Client::new(),
                 remote: reqwest::Client::new(),

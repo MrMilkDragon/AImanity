@@ -1219,9 +1219,7 @@ mod tests {
                 proxy_url: String::new(),
                 verified_at_ms: 1,
             });
-            crate::registry::initialize(&app.db, &app.settings)
-                .await
-                .unwrap();
+            crate::registry::initialize(&app).await.unwrap();
             let conversation: Uuid =
                 sqlx::query_scalar("SELECT id FROM conversations WHERE owner_id='local-user'")
                     .fetch_one(&app.db)

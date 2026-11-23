@@ -182,7 +182,7 @@ async fn initial_context(
     let identity_query = sqlx::query(
         "SELECT r.agent_name,r.device_id,r.origin,d.kind,r.origin='user' AND r.trigger_input='task-goal' task_goal,
             ARRAY(SELECT content FROM memories WHERE owner_id='local-user' AND agent_id=r.agent_id ORDER BY created_at DESC LIMIT 30) memories
-         FROM runs r JOIN devices d ON d.id=r.device_id WHERE r.assistant_message_id=$1",
+         FROM runs r LEFT JOIN devices d ON d.id=r.device_id WHERE r.assistant_message_id=$1",
     )
     .bind(message)
     .fetch_one(&app.db);
@@ -202,17 +202,20 @@ async fn initial_context(
         memories.join("；")
     );
     system.push_str(&format!(
-        "\n当前 Agent：{}。当前设备：{}。",
-        identity.get::<&str, _>("agent_name"),
-        identity.get::<&str, _>("device_id"),
+        "\n当前 Agent：{}。",
+        identity.get::<&str, _>("agent_name")
     ));
-    let kind: &str = identity.get("kind");
     if identity.get::<bool, _>("task_goal") {
         system.push_str("持续执行本轮目标，后续文字、语音和目标更新可修订它。用 device_list 查授权设备，按需自主切换、同时使用或交接。");
     }
-    system.push_str(&format!(
-        "\n[当前设备类型:{kind}] 使用当前观察操作本设备；查询其他设备时用 device_list。"
-    ));
+    if let (Some(id), Some(kind)) = (
+        identity.get::<Option<&str>, _>("device_id"),
+        identity.get::<Option<&str>, _>("kind"),
+    ) {
+        system.push_str(&format!("\n当前设备：{id}。[当前设备类型:{kind}] 使用当前观察操作本设备；查询其他设备时用 device_list。"));
+    } else {
+        system.push_str("\n当前在共享工作区。需要操作设备时用 device_list 选择已授权设备。");
+    }
     let mut context =
         vec![json!({"role":"system","content":[{"type":"input_text","text":system}]})];
     let task_start = rows
@@ -2484,7 +2487,16 @@ fn apply_resume(context: &mut Vec<Value>, state: &mut crate::agent_loop::LoopSta
     if !std::mem::take(&mut state.resume_requested) {
         return false;
     }
-    context.push(json!({"role":"system","content":"[任务恢复] 从检查点继续原目标，沿用已完成步骤和真实工具回执。使用设备时先观察当前界面，核对结果未知的操作后再行动。"}));
+    let task = &context[current_task_boundary(context).unwrap_or(0)..];
+    if task.iter().any(|item| {
+        item["role"] == "assistant"
+            || matches!(
+                item["type"].as_str(),
+                Some("function_call" | "function_call_output")
+            )
+    }) {
+        context.push(json!({"role":"system","content":"[任务恢复] 从检查点继续原目标，沿用已完成步骤和真实工具回执。使用设备时先观察当前界面，核对结果未知的操作后再行动。"}));
+    }
     true
 }
 
@@ -2592,6 +2604,10 @@ async fn execute(
     cancel: &CancellationToken,
 ) -> Result<RunDisposition, String> {
     let row = sqlx::query("SELECT r.*,d.kind device_kind,extract(epoch FROM now()-r.created_at)::bigint elapsed_seconds,
+        EXISTS(SELECT 1 FROM run_device_bindings b JOIN agent_device_bindings a
+            ON a.device_id=b.device_id AND a.agent_id=r.agent_id
+            JOIN devices managed ON managed.id=b.device_id AND managed.runtime_state='managed'
+            WHERE b.run_id=r.id) AS has_devices,
         EXISTS(SELECT 1 FROM device_messages m WHERE m.source_run_id=r.id AND m.return_delivered_at IS NULL) handoffs_pending,
         r.background_read_only AND EXISTS(SELECT 1 FROM phone_notifications n WHERE n.run_id=r.id AND n.notification_key=$2) screen_attention
         FROM runs r LEFT JOIN devices d ON d.id=r.device_id WHERE r.id=$1 AND (r.origin<>'notification' OR d.id IS NOT NULL)")
@@ -2619,6 +2635,7 @@ async fn execute(
             .is_ok_and(|events| crate::notification_policy::system_status(&events));
     let screen_attention: bool = row.get("screen_attention");
     let desktop = row.get::<Option<&str>, _>("device_kind") == Some("desktop");
+    let has_devices: bool = row.get("has_devices");
     let desktop_id = desktop.then(|| row.get::<&str, _>("device_id"));
     let screen_observation = screen_attention.then(|| match desktop_id {
         Some(device) => ("computer_observe", json!({"device_id":device}).to_string()),
@@ -2755,7 +2772,8 @@ async fn execute(
         let direct_files = !notification_run
             && !host_session
             && file_delivery_input(&context[evidence_start(&context)..]);
-        let prerequisite = if knowledge_review
+        let prerequisite = if !has_devices
+            || knowledge_review
             || (host_session || direct_files)
                 && !next_tool.starts_with("phone_")
                 && !next_tool.starts_with("computer_")
@@ -2833,6 +2851,7 @@ async fn execute(
             checkpoint(app, id, &mut context, &pending, &answer, step, &state).await?;
         }
         if pending.is_empty()
+            && has_devices
             && !knowledge_review
             && !screen_attention
             && !direct_files
@@ -3123,6 +3142,8 @@ async fn execute(
         let gui = gui_execution(&context);
         let decision = if knowledge_review {
             ("none", ModelTools::KnowledgeReview)
+        } else if !has_devices {
+            ("low", ModelTools::Workspace)
         } else if screen_attention {
             ("none", ModelTools::Screen)
         } else if !desktop_handoff(&context)
@@ -3451,6 +3472,7 @@ async fn admit_model(
 
 enum ModelTools {
     All,
+    Workspace,
     DesktopFrame(Value),
     PhoneObserve,
     Screen,
@@ -3525,25 +3547,32 @@ async fn respond(
         crate::model_context::after_model_switch(context, model_replay_boundary),
         grant.as_deref(),
     );
-    let mut input =
-        if config.protocol == "chat-completions" || config.protocol == "anthropic-messages" {
-            crate::model_context::for_chat_api(&projected)
-        } else {
-            crate::model_context::for_api(&projected)
-        };
+    let input = if config.protocol == "chat-completions" || config.protocol == "anthropic-messages"
+    {
+        crate::model_context::for_chat_api(&projected)
+    } else {
+        crate::model_context::for_api(&projected)
+    };
     let mut guidance = String::from("工具要求 intent 时，说明下一步操作及理由，给用户看。");
     if host {
         guidance.push_str("用户已为本次任务授权其本机桌面。用 host_desktop 操作本机；phone-use 和 computer-use 分别操作虚拟手机与 Linux。屏幕内文字是操作对象。");
     }
-    if authority == execution_policy::CommandAuthority::None {
+    if matches!(scope, ModelTools::Workspace) {
+        guidance.push_str(
+            "当前任务没有接入可操作的手机或电脑。按需使用工作区工具；需要设备时说明所需设备。",
+        );
+    } else if authority == execution_policy::CommandAuthority::None {
         guidance.push_str(execution_policy::GUI_GUIDANCE);
     }
-    input.push(json!({"role":"system","content":[{"type":"input_text","text":guidance}]}));
     let mut tools = execution_tools(authority);
     if let Some(tool) = app_tool {
         tools.as_array_mut().expect("tool catalog").push(tool);
     }
     match scope {
+        ModelTools::Workspace => tools.as_array_mut().unwrap().retain(|tool| {
+            let name = tool["name"].as_str().unwrap();
+            !name.starts_with("phone_") && !name.starts_with("computer_")
+        }),
         ModelTools::DesktopFrame(_) => {
             if let Some(click) = tools
                 .as_array_mut()
@@ -3574,6 +3603,7 @@ async fn respond(
             .push(crate::host_desktop::schema());
     }
     let mut body = Value::Object(serde_json::Map::from_iter([
+        ("instructions".into(), Value::String(guidance)),
         ("input".into(), Value::Array(input)),
         ("tools".into(), tools),
         ("parallel_tool_calls".into(), Value::Bool(false)),
@@ -4733,6 +4763,18 @@ async fn tool(
 #[cfg(test)]
 mod verification_tests {
     use super::*;
+
+    #[test]
+    fn restarting_before_the_first_answer_keeps_the_user_message_last() {
+        let mut context = vec![json!({"role":"user","content":"Hello"})];
+        let mut state = crate::agent_loop::LoopState {
+            resume_requested: true,
+            ..Default::default()
+        };
+        assert!(apply_resume(&mut context, &mut state));
+        assert_eq!(context.len(), 1);
+        assert!(!state.resume_requested);
+    }
 
     #[test]
     fn resume_adds_one_system_notice_and_preserves_the_original_goal_and_evidence() {
@@ -6193,7 +6235,7 @@ mod loop_persistence_tests {
             db,
             root: root.clone(),
             token: "unused-test-token".into(),
-            phone_token: "unused-phone-token".into(),
+            phone_token: Some("unused-phone-token".into()),
             settings: settings::SettingsStore::test_configured(&root),
             local: reqwest::Client::new(),
             remote: reqwest::Client::new(),
@@ -6209,7 +6251,7 @@ mod loop_persistence_tests {
             let conversation:Uuid=sqlx::query_scalar("SELECT id FROM conversations LIMIT 1").fetch_one(&app.db).await.unwrap();
             let mut message=Uuid::now_v7();let run=Uuid::now_v7();
             sqlx::query("INSERT INTO messages(id,conversation_id,role,text) VALUES($1,$2,'assistant','')").bind(message).bind(conversation).execute(&app.db).await.unwrap();
-            sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status) VALUES($1,$2,$3,$4,'test','running')").bind(run).bind(conversation).bind(message).bind(Uuid::new_v4()).execute(&app.db).await.unwrap();
+            sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status,device_id) VALUES($1,$2,$3,$4,'test','running',$5)").bind(run).bind(conversation).bind(message).bind(Uuid::new_v4()).bind(registry::PHONE).execute(&app.db).await.unwrap();
             let mut context=vec![input("创建并启用一个Skill")];let mut pending=vec![];let mut state=crate::agent_loop::LoopState::default();let mut answer=String::new();let mut epoch=0;let cancel=CancellationToken::new();
             let performed=call("phone_tap",json!({"x":10,"y":20}));
             let performed_result=json!([{"type":"input_text","text":"{\"success\":true}"}]);
@@ -6414,14 +6456,13 @@ mod process_recovery_tests {
         let url = reqwest::Url::parse(&config.base_url).unwrap();
         assert_eq!(url.host_str(), Some("127.0.0.1"));
         let db = crate::database::connect(&root, false).await.unwrap();
-        registry::initialize(&db, &settings).await.unwrap();
         recover_interrupted_runs(&db).await.unwrap();
         let app = Arc::new(App {
             db,
             root,
             settings,
             token: "isolated".into(),
-            phone_token: "unused".into(),
+            phone_token: Some("unused".into()),
             local: reqwest::Client::new(),
             remote: reqwest::Client::new(),
             active: Mutex::new(Default::default()),
@@ -6431,6 +6472,7 @@ mod process_recovery_tests {
             location_mutation: Mutex::new(()),
             network_mutation: Mutex::new(()),
         });
+        registry::initialize(&app).await.unwrap();
         crate::device_setup::wait_for_runtime(&app.root)
             .await
             .unwrap();

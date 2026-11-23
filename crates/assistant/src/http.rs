@@ -173,11 +173,7 @@ pub(crate) fn chat_state(
     window: Option<wire::ChatMessageWindow>,
     run: Option<&sqlx::postgres::PgRow>,
 ) -> wire::ChatState {
-    let device_id = run
-        .map_or(crate::registry::PHONE, |row| {
-            row.get::<&str, _>("device_id")
-        })
-        .to_owned();
+    let device_id = run.and_then(|row| row.get("device_id")).unwrap_or_default();
     wire::ChatState {
         revision,
         message_window: window,
@@ -317,16 +313,9 @@ async fn send_input(
         Ok(v) => v,
         Err(e) => return e,
     };
-    let device = if request.device_id.is_empty() {
-        crate::registry::PHONE
-    } else {
-        &request.device_id
-    };
-    if !request.device_id.is_empty()
-        && request.device_id != crate::registry::PHONE
-        && crate::desktop::device_kind(&app, &request.device_id)
-            .await
-            .is_err()
+    let device = (!request.device_id.is_empty()).then_some(request.device_id.as_str());
+    if let Some(id) = device
+        && crate::desktop::device_kind(&app, id).await.is_err()
     {
         return error(
             StatusCode::CONFLICT,
@@ -349,7 +338,7 @@ async fn send_input(
     let use_host_desktop = std::mem::take(&mut request.use_host_desktop);
     let request_bytes = request.encode_to_vec();
     let fingerprint = crate::request_digest::encode(&request_bytes);
-    let result: Result<Uuid, sqlx::Error> = async {
+    let result: Result<(Uuid, Option<String>), sqlx::Error> = async {
         let mut tx = app.db.begin().await?;
         // A receipt is unique across both initial runs and subsequent inputs, including devices.
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
@@ -374,23 +363,23 @@ async fn send_input(
         } else {
             None
         };
-        if let Some(old) = sqlx::query("SELECT id,conversation_id,request_fingerprint FROM runs WHERE request_id=$1")
+        if let Some(old) = sqlx::query("SELECT id,conversation_id,request_fingerprint,device_id FROM runs WHERE request_id=$1")
             .bind(request_id).fetch_optional(&mut *tx).await? {
             if old.get::<Uuid,_>("conversation_id") != id || !crate::request_digest::matches(old.get("request_fingerprint"), &fingerprint, &request_bytes) {
                 return Err(sqlx::Error::Protocol("request_conflict".into()));
             }
             let run = old.get::<Uuid,_>("id");
             tx.commit().await?;
-            return Ok(run);
+            return Ok((run, old.get("device_id")));
         }
-        if let Some(old) = sqlx::query("SELECT i.run_id,i.fingerprint,r.conversation_id FROM run_inputs i JOIN runs r ON r.id=i.run_id WHERE i.request_id=$1")
+        if let Some(old) = sqlx::query("SELECT i.run_id,i.fingerprint,r.conversation_id,r.device_id FROM run_inputs i JOIN runs r ON r.id=i.run_id WHERE i.request_id=$1")
             .bind(request_id).fetch_optional(&mut *tx).await? {
             if old.get::<Uuid,_>("conversation_id") != id || !crate::request_digest::matches(old.get("fingerprint"), &fingerprint, &request_bytes) {
                 return Err(sqlx::Error::Protocol("request_conflict".into()));
             }
             let run = old.get::<Uuid,_>("run_id");
             tx.commit().await?;
-            return Ok(run);
+            return Ok((run, old.get("device_id")));
         }
         let files: Vec<Uuid> = request.attachment_ids.iter().map(|s|Uuid::parse_str(s))
             .collect::<Result<_,_>>().map_err(|_|sqlx::Error::Protocol("invalid_attachments".into()))?;
@@ -404,7 +393,7 @@ async fn send_input(
         if attachments.len() != files.len() || total > 12*1024*1024 || attachments.iter().any(|r|r.get::<i64,_>("size_bytes") < 0) {
             return Err(sqlx::Error::Protocol("invalid_attachments".into()));
         }
-        let active = sqlx::query("SELECT id,status,agent_id,origin FROM runs WHERE conversation_id=$1 AND
+        let active = sqlx::query("SELECT id,status,agent_id,origin,device_id FROM runs WHERE conversation_id=$1 AND
             ((origin='user' AND status IN ('queued','running','paused'))
              OR ($2 AND origin='notification' AND status='running' AND NOT background_read_only))
             ORDER BY (origin='user') DESC,created_at,id LIMIT 1 FOR UPDATE")
@@ -425,7 +414,7 @@ async fn send_input(
         if let Some(voice) = &voice {voice.persist(&mut tx, id, user, request_id).await?;}
 
         let local_run = active.as_ref().is_none_or(|r| r.get::<&str,_>("origin") == "user");
-        let run = if let Some(active) = active {
+        let (run, target) = if let Some(active) = active {
             let run = active.get::<Uuid,_>("id");
             if active.get::<String,_>("status") == "paused" {
                 crate::registry::refresh_paused_model(&mut tx, &app.settings, run, (id, active.get("agent_id"))).await?;
@@ -436,7 +425,7 @@ async fn send_input(
             if updated.rows_affected()!=1 { return Err(sqlx::Error::Protocol("steering_full".into())); }
             sqlx::query("INSERT INTO run_inputs(request_id,run_id,message_id,fingerprint) VALUES($1,$2,$3,$4)")
                 .bind(request_id).bind(run).bind(user).bind(&fingerprint).execute(&mut *tx).await?;
-            run
+            (run, active.get("device_id"))
         } else {
             let revision=app.settings.current();
             let assistant = Uuid::now_v7();
@@ -448,7 +437,7 @@ async fn send_input(
                 .bind(if goal_revision.is_some() { "task-goal" } else { "" }).bind(device).execute(&mut *tx).await?;
             sqlx::query("UPDATE messages SET run_id=$2 WHERE id=$1").bind(assistant).bind(run).execute(&mut *tx).await?;
             crate::registry::pin_run_for(&mut tx, &app.settings, run, &request.agent_id).await?;
-            run
+            (run, device.map(str::to_owned))
         };
         if voice.is_some() {
             sqlx::query("UPDATE runs SET copilot=true,todo_lane=NULL,todo_position=0 WHERE id=$1")
@@ -467,10 +456,10 @@ async fn send_input(
             voice.release_activity(&app.run_signals.speech, id);
         }
         app.run_signals.chat_changed(id);
-        Ok(run)
+        Ok((run, target))
     }.await;
-    let run_id = match result {
-        Ok(id) => id,
+    let (run_id, target) = match result {
+        Ok(run) => run,
         Err(e) => {
             return match e.to_string().as_str() {
                 s if s.contains("stale_goal") => error(
@@ -492,6 +481,11 @@ async fn send_input(
                     StatusCode::CONFLICT,
                     "agent_busy",
                     "此设备正由其他 Agent 执行任务，请稍后重试",
+                ),
+                s if s.contains("device_unavailable") => error(
+                    StatusCode::CONFLICT,
+                    "device_unavailable",
+                    "设备未接入或未授权给当前 Agent",
                 ),
                 s if s.contains("model_missing") => error(
                     StatusCode::CONFLICT,
@@ -535,7 +529,7 @@ async fn send_input(
         };
     }
     if receipt_only {
-        return match send_receipt(&app, id, run_id, request_id, request.device_id).await {
+        return match send_receipt(&app, id, run_id, request_id, target.unwrap_or_default()).await {
             Ok(value) => pb(StatusCode::ACCEPTED, value),
             Err(error) => db_error(error),
         };
@@ -548,6 +542,7 @@ async fn send_input(
                     Ok(row) => row, Err(e) => return db_error(e),
                 };
             value.run_id = run_id.to_string();
+            value.device_id = target.unwrap_or_default();
             value.run_status = run.get("status");
             value.error = run.get("error");
             value.notice_kind = crate::run_notice::kind(
@@ -578,11 +573,7 @@ async fn send_receipt(
     Ok(wire::ChatState {
         conversation_id: conversation.to_string(),
         run_id: run.to_string(),
-        device_id: if device_id.is_empty() {
-            crate::registry::PHONE.into()
-        } else {
-            device_id
-        },
+        device_id,
         messages,
         ..Default::default()
     })
@@ -965,7 +956,9 @@ pub async fn run_state(
             notice_kind: notice_kind as i32,
             conversation_id: row.get::<Uuid, _>("conversation_id").to_string(),
             run_id: id.to_string(),
-            device_id: row.get("device_id"),
+            device_id: row
+                .get::<Option<String>, _>("device_id")
+                .unwrap_or_default(),
             agent_id: row
                 .get::<Option<Uuid>, _>("agent_id")
                 .map(|v| v.to_string())
@@ -1040,7 +1033,7 @@ mod steering_tests {
             db,
             root: root.clone(),
             token: "test-private-token".into(),
-            phone_token: "test-phone-token".into(),
+            phone_token: Some("test-phone-token".into()),
             settings: settings::SettingsStore::test_configured(&root),
             local: reqwest::Client::new(),
             remote: reqwest::Client::new(),

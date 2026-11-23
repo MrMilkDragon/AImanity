@@ -1940,7 +1940,7 @@ mod tests {
         use crate::worker::steering_regressions::database_case;
 
         database_case(|app| async move {
-            crate::registry::initialize(&app.db, &app.settings).await.unwrap();
+            crate::registry::initialize(&app).await.unwrap();
             let device = "desktop-control-rollover";
             let agent = Uuid::from_u128(2);
             sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state) VALUES($1,'Fixture','desktop','fixture','managed')")
