@@ -33,6 +33,7 @@ mod scene;
 mod sharing;
 mod skills;
 mod spring_slider;
+mod stage;
 mod style;
 mod surface;
 mod todos;
@@ -92,8 +93,10 @@ enum Message {
     AttachCapture,
     CaptureSaved(Result<(), String>),
     Focus(usize),
+    ShowDevice(String),
+    Compare,
+    DeviceState(Result<(wire::RegistryState, wire::DeviceLinkState), String>),
     Input(usize, DeviceInput),
-    DesktopClickElapsed(Instant),
     InputDone(usize, String, Result<(), String>, Instant),
     Retry,
     Quit,
@@ -111,9 +114,7 @@ enum Message {
     ClosedPaneInput,
     Link,
     Linked(Result<wire::DeviceLinkState, String>),
-    RefreshLink,
-    LinkSnapshot(Result<wire::DeviceLinkState, String>),
-    Rotate,
+    Rotate(usize),
     Uninstall,
     UninstallPrepared(Result<Option<uninstall::Plan>, String>),
 }
@@ -207,12 +208,14 @@ struct App {
     root: String,
     focus: usize,
     linked: bool,
+    together: bool,
+    pick: Option<(usize, String)>,
     link_revision: u64,
     keyboard_target: Option<usize>,
     busy: [bool; 2],
     input_queue: [std::collections::VecDeque<DeviceInput>; 2],
     awaiting_peer_frame: [bool; 2],
-    desktop_click: Option<(Instant, DeviceInput)>,
+    desktop_click: [Option<(Instant, u32, u32)>; 2],
     streams: Option<iced::task::Handle>,
     frame_streams: std::collections::HashMap<String, iced::task::Handle>,
     ui_scale: f32,
@@ -240,7 +243,15 @@ struct App {
 }
 impl App {
     fn boot() -> (Self, Task<Message>) {
-        let layout = Layout::target(WORKBENCH, 0, false, [0.5, 1.6], [false; 2]);
+        let layout = Layout::target(
+            WORKBENCH,
+            0,
+            false,
+            [0.5, 1.6],
+            [false; 2],
+            [true, false],
+            false,
+        );
         let mut app = Self {
             setup: None,
             host_home: std::path::PathBuf::new(),
@@ -277,12 +288,14 @@ impl App {
             root: String::new(),
             focus: 0,
             linked: false,
+            together: false,
+            pick: None,
             link_revision: 0,
             keyboard_target: None,
             busy: [false, false],
             input_queue: Default::default(),
             awaiting_peer_frame: [false; 2],
-            desktop_click: None,
+            desktop_click: [None, None],
             streams: None,
             frame_streams: Default::default(),
             ui_scale: 1.,
@@ -330,12 +343,17 @@ impl App {
         };
         (app, task)
     }
+    fn phones(&self) -> [bool; 2] {
+        self.devices
+            .each_ref()
+            .map(|d| d.as_ref().is_some_and(|d| d.kind == "phone"))
+    }
     fn aspects(&self) -> [f32; 2] {
         std::array::from_fn(|i| {
             self.frames[i]
                 .as_ref()
                 .map(|f| f.width as f32 / f.height as f32)
-                .unwrap_or(if i == 0 { 0.5 } else { 1.6 })
+                .unwrap_or(if self.phones()[i] { 0.5 } else { 1.6 })
         })
     }
     fn rearrange(&mut self) {
@@ -343,9 +361,11 @@ impl App {
         self.target = Layout::target(
             WORKBENCH,
             self.focus,
-            self.linked,
+            self.together,
             self.aspects(),
             self.devices.each_ref().map(Option::is_some),
+            self.phones(),
+            self.linked,
         );
         self.transition = if self.reduced_motion {
             self.layout = self.target;
@@ -353,30 +373,6 @@ impl App {
         } else {
             Some(Instant::now())
         };
-    }
-    fn stage_devices(&self, registry: &wire::RegistryState) -> [Option<wire::RegisteredDevice>; 2] {
-        std::array::from_fn(|index| {
-            let kind = if index == 0 { "phone" } else { "desktop" };
-            registry
-                .devices
-                .iter()
-                .filter(|d| {
-                    d.kind == kind && (d.runtime_state == "managed" || (d.paired && d.connected))
-                })
-                .min_by_key(|d| {
-                    if d.id == self.device_admin.selected {
-                        0
-                    } else if self.devices[index]
-                        .as_ref()
-                        .is_some_and(|old| old.id == d.id)
-                    {
-                        1
-                    } else {
-                        2
-                    }
-                })
-                .cloned()
-        })
     }
     fn accept_link(&mut self, state: wire::DeviceLinkState) {
         if let [Some(phone), Some(pc)] = &self.devices
@@ -389,6 +385,7 @@ impl App {
             self.link_revision = link.revision;
             if self.linked != link.connected {
                 self.linked = link.connected;
+                self.together |= self.linked;
                 self.rearrange();
             }
         }
@@ -404,7 +401,12 @@ impl App {
         registry: wire::RegistryState,
         client: &Connection,
     ) -> Task<Message> {
-        let next = self.stage_devices(&registry);
+        let pick = self.pick.take();
+        let next = stage::slots(
+            &registry.devices,
+            &self.devices,
+            pick.as_ref().map(|(slot, id)| (*slot, id.as_str())),
+        );
         let mut tasks = Vec::new();
         let mut changed = false;
         for (index, device) in next.iter().enumerate() {
@@ -414,8 +416,9 @@ impl App {
                     self.frame_streams.remove(id);
                     self.audio[index].stop();
                 }
-                if index == 1 {
-                    self.desktop_click = None;
+                self.desktop_click[index] = None;
+                if self.keyboard_target == Some(index) {
+                    self.keyboard_target = None;
                 }
                 self.frames[index] = None;
                 self.frame_errors[index].clear();
@@ -456,6 +459,7 @@ impl App {
                 self.focus = 1 - self.focus;
             }
             self.linked = false;
+            self.together &= self.devices.iter().all(Option::is_some);
             self.link_revision = 0;
             self.rearrange();
         }
@@ -499,47 +503,29 @@ impl App {
         }
         iced::exit()
     }
-    fn desktop_input(&mut self, input: DeviceInput) -> Task<Message> {
-        let pending = self.desktop_click.take();
-        let now = Instant::now();
-        let primary = matches!(
-            input,
-            DeviceInput::Tap {
-                press: Press::Left,
-                ..
-            }
-        );
-        if let (
-            Some((previous, DeviceInput::Tap { x: x0, y: y0, .. })),
-            DeviceInput::Tap {
-                x,
-                y,
-                press: Press::Left,
-            },
-        ) = (&pending, &input)
-            && now.duration_since(*previous) < DESKTOP_DOUBLE_CLICK
-            && f64::from(x0.abs_diff(*x)).hypot(f64::from(y0.abs_diff(*y))) < 12.
+    fn desktop_input(&mut self, index: usize, mut input: DeviceInput) -> Task<Message> {
+        let previous = self.desktop_click[index].take();
+        if let DeviceInput::Tap {
+            x,
+            y,
+            press: Press::Left,
+        } = input
         {
-            return self.input(
-                1,
-                DeviceInput::Tap {
-                    x: *x,
-                    y: *y,
-                    press: Press::Double,
-                },
-            );
+            let now = Instant::now();
+            if previous.is_some_and(|(at, px, py)| {
+                now.duration_since(at) < DESKTOP_DOUBLE_CLICK
+                    && x.abs_diff(px).pow(2) + y.abs_diff(py).pow(2) < 144
+            }) {
+                input = DeviceInput::Tap {
+                    x,
+                    y,
+                    press: Press::Second,
+                };
+            } else {
+                self.desktop_click[index] = Some((now, x, y));
+            }
         }
-        let previous = pending.map_or_else(Task::none, |(_, input)| self.input(1, input));
-        let next = if primary {
-            self.desktop_click = Some((now, input));
-            Task::perform(
-                async move { tokio::time::sleep_until((now + DESKTOP_DOUBLE_CLICK).into()).await },
-                move |()| Message::DesktopClickElapsed(now),
-            )
-        } else {
-            self.input(1, input)
-        };
-        Task::batch([previous, next])
+        self.input(index, input)
     }
     fn input(&mut self, index: usize, mut input: DeviceInput) -> Task<Message> {
         if self.busy[index] || self.awaiting_peer_frame[index] {
@@ -568,9 +554,9 @@ impl App {
         let Some(device) = self.devices[index].clone() else {
             return Task::none();
         };
-        if index == 0
+        if self.phones()[index]
             && let DeviceInput::Scroll { y, amount, .. } = &mut input
-            && let Some(frame) = &self.frames[0]
+            && let Some(frame) = &self.frames[index]
         {
             *amount = (*amount).clamp(-((frame.height - 1 - *y) as i32), *y as i32);
         }
@@ -645,6 +631,7 @@ impl App {
                     let mut tasks = vec![
                         restore,
                         Task::run(client.clone().chat_events(), Message::Chat),
+                        Task::run(client.clone().device_events(), Message::DeviceState),
                     ];
                     #[cfg(target_os = "android")]
                     if first_connection {
@@ -739,9 +726,6 @@ impl App {
                 }
                 Some(Err(error)) => {
                     self.frame_errors[index] = error;
-                    if self.devices[index].as_ref().is_some_and(|d| d.paired) {
-                        return self.update(Message::Devices(devices::Message::RefreshPeers));
-                    }
                 }
                 None => {}
             },
@@ -804,12 +788,7 @@ impl App {
                     } else {
                         Task::none()
                     };
-                    let link = if was_active && !active {
-                        self.update(Message::RefreshLink)
-                    } else {
-                        Task::none()
-                    };
-                    return Task::batch([task, speech, sample, link, todos]);
+                    return Task::batch([task, speech, sample, todos]);
                 }
             }
             Message::Conversation(chat::Message::Todos(click)) => {
@@ -851,13 +830,9 @@ impl App {
                             | chat::Message::Preview(..)
                             | chat::Message::ClosePreview
                     );
-                    let device_id = self.devices[self.focus]
-                        .as_ref()
-                        .map(|d| d.id.as_str())
-                        .unwrap_or("");
                     let task = self
                         .chat
-                        .update(message, client, device_id)
+                        .update(message, client, "")
                         .map(Message::Conversation);
                     if preview_changed {
                         self.reflow_child();
@@ -871,9 +846,7 @@ impl App {
                     self.pinned = true;
                 }
                 if let Some(client) = &self.connection {
-                    let device = self.devices[self.focus]
-                        .as_ref()
-                        .map_or("", |d| d.id.as_str());
+                    let device = "";
                     let task = self
                         .modes
                         .update(message, client, device, &self.chat.state)
@@ -894,8 +867,9 @@ impl App {
                 if matches!(message, audio::Message::Toggle | audio::Message::Volume(_)) {
                     self.keyboard_target = None;
                 }
+                let kind = usize::from(!self.phones()[i]);
                 return self.audio[i]
-                    .update(message, self.connection.as_ref(), i)
+                    .update(message, self.connection.as_ref(), kind)
                     .map(move |m| Message::Audio(i, m));
             }
             Message::Files(message) => {
@@ -1086,24 +1060,53 @@ impl App {
                     return task;
                 }
             }
+            Message::DeviceState(Ok((registry, links))) => {
+                if let Some(client) = self.connection.clone() {
+                    if let Some((invitation, _)) = &self.device_admin.invitation
+                        && registry
+                            .devices
+                            .iter()
+                            .any(|d| d.id == invitation.device_id && d.connected)
+                    {
+                        self.device_admin.invitation = None;
+                    }
+                    let task = self.display_devices(registry, &client);
+                    self.accept_link(links);
+                    return task;
+                }
+            }
+            Message::DeviceState(Err(error)) => self.error = error,
+            Message::ShowDevice(id) => {
+                if let Some(index) = self
+                    .devices
+                    .iter()
+                    .position(|d| d.as_ref().is_some_and(|d| d.id == id))
+                {
+                    return self.update(Message::Focus(index));
+                }
+                if let Some(client) = self.connection.clone() {
+                    self.pick = Some((self.focus, id));
+                    return self.display_devices(self.agents.registry.clone(), &client);
+                }
+            }
+            Message::Compare if self.devices.iter().all(Option::is_some) => {
+                self.together = !self.together;
+                self.rearrange();
+            }
+            Message::Compare => {}
             Message::Focus(index) => {
                 self.keyboard_target = Some(index);
                 if self.focus != index {
                     self.focus = index;
-                    if !self.linked {
+                    if !self.together {
                         self.rearrange();
                     }
                 }
             }
-            Message::Input(1, input) => return self.desktop_input(input),
-            Message::Input(index, input) => return self.input(index, input),
-            Message::DesktopClickElapsed(at) => {
-                if matches!(&self.desktop_click, Some((current, _)) if *current == at)
-                    && let Some((_, input)) = self.desktop_click.take()
-                {
-                    return self.input(1, input);
-                }
+            Message::Input(index, input) if !self.phones()[index] => {
+                return self.desktop_input(index, input);
             }
+            Message::Input(index, input) => return self.input(index, input),
             Message::InputDone(index, id, result, started) => {
                 if self.devices[index].as_ref().is_none_or(|d| d.id != id) {
                     return Task::none();
@@ -1399,19 +1402,10 @@ impl App {
                 Ok(state) => self.accept_link(state),
                 Err(error) => self.error = error,
             },
-            Message::RefreshLink => {
-                if let Some(client) = self.connection.clone() {
-                    return Task::perform(
-                        async move { client.rpc("desktop/state", wire::RegistryRequest {}).await },
-                        Message::LinkSnapshot,
-                    );
-                }
-            }
-            Message::LinkSnapshot(Ok(state)) => self.accept_link(state),
-            Message::Rotate => {
-                if let Some(frame) = &self.frames[0] {
+            Message::Rotate(index) => {
+                if let Some(frame) = &self.frames[index] {
                     let rotation = u32::from(frame.width < frame.height);
-                    return self.input(0, DeviceInput::Rotate(rotation));
+                    return self.input(index, DeviceInput::Rotate(rotation));
                 }
             }
             Message::Event(Event::Window(window::Event::FileDropped(path))) => {
@@ -1498,9 +1492,6 @@ impl App {
             subscriptions.push(
                 iced::time::every(std::time::Duration::from_millis(100))
                     .map(|_| Message::PollAgentPointers),
-            );
-            subscriptions.push(
-                iced::time::every(std::time::Duration::from_secs(4)).map(|_| Message::RefreshLink),
             );
         }
         subscriptions.push(
@@ -1680,6 +1671,11 @@ impl App {
                 let Some(frame) = self.frames[index].clone() else {
                     return Task::none();
                 };
+                let kind = if self.phones()[index] {
+                    "Android"
+                } else {
+                    "Linux"
+                };
                 return Task::perform(
                     async move {
                         tokio::task::spawn_blocking(move || {
@@ -1700,7 +1696,7 @@ impl App {
                             );
                             let name = format!(
                                 "{}-{}.png",
-                                if index == 0 { "Android" } else { "Linux" },
+                                kind,
                                 chrono::Local::now().format("%Y%m%d-%H%M%S")
                             );
                             Ok(Capture {
@@ -2245,7 +2241,8 @@ impl App {
             size: WORKBENCH,
             frames: self.frames.clone(),
             focus: self.focus,
-            linked: self.linked,
+            linked: self.together,
+            phones: self.phones(),
             popup,
             popup_opacity: self.popup_amount.clamp(0., 1.),
             child_popup,
@@ -2364,8 +2361,66 @@ impl App {
                 trigger
             });
         }
+        let mut device_tabs = row![].spacing(4).align_y(iced::Center);
+        let mut device_count = 0;
+        for device in self
+            .agents
+            .registry
+            .devices
+            .iter()
+            .filter(|d| stage::visible(d))
+        {
+            device_count += 1;
+            let selected = self.devices[self.focus]
+                .as_ref()
+                .is_some_and(|d| d.id == device.id);
+            let icon = if device.kind == "phone" {
+                Icon::PhonePortrait
+            } else {
+                Icon::Screen
+            };
+            let label = text(&device.name).size(13).wrapping(text::Wrapping::None);
+            let tab = button(
+                row![icon.view(), container(label).max_width(150).clip(true)]
+                    .spacing(6)
+                    .align_y(iced::Center),
+            )
+            .height(nav_height)
+            .padding([4, 9])
+            .style(if selected {
+                style::primary
+            } else {
+                style::quiet
+            })
+            .on_press(Message::ShowDevice(device.id.clone()));
+            device_tabs = device_tabs.push(tab);
+        }
+        let leading: Element<'_, Message> = if device_count > 1 {
+            let compare = button(container(Icon::Compare.view()).center(Length::Fill))
+                .height(nav_height)
+                .width(style::NAV_ICON_WIDTH)
+                .padding(0)
+                .style(if self.together {
+                    style::primary
+                } else {
+                    style::quiet
+                })
+                .on_press(Message::Compare);
+            let rail = scrollable(device_tabs)
+                .direction(scrollable::Direction::Horizontal(
+                    scrollable::Scrollbar::new().width(2),
+                ))
+                .width(Length::Fill);
+            row![rail, compare, container(error).max_width(270).clip(true)]
+                .spacing(nav_gap)
+                .align_y(iced::Center)
+                .width(Length::Fill)
+                .into()
+        } else {
+            container(error).width(Length::Fill).clip(true).into()
+        };
         let nav = row![
-            container(error).width(Length::Fill).clip(true),
+            leading,
             row![
                 shared.spacing(style::NAV_TOOL_GAP).align_y(iced::Center),
                 space::horizontal().width(12.),
@@ -2403,7 +2458,7 @@ impl App {
                 .into(),
         ];
         for index in 0..2 {
-            if self.devices[index].is_none() || (self.focus != index && !self.linked) {
+            if self.devices[index].is_none() || (self.focus != index && !self.together) {
                 continue;
             }
             let rect = self.layout.toolbars[index];
@@ -2416,15 +2471,15 @@ impl App {
                         .map(move |m| Message::Audio(index, m)),
                 );
             }
-            if index == 0 && !paired {
-                let landscape = self.aspects()[0] > 1.;
+            if self.phones()[index] && !paired {
+                let landscape = self.aspects()[index] > 1.;
                 tools = tools.push(surface::tool_action(
                     if landscape {
                         Icon::PhoneLandscape
                     } else {
                         Icon::PhonePortrait
                     },
-                    self.frames[0].as_ref().map(|_| Message::Rotate),
+                    self.frames[index].as_ref().map(|_| Message::Rotate(index)),
                 ));
             }
             tools = tools.push(surface::tool_action(

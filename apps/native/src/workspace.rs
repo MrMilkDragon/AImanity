@@ -6,8 +6,10 @@ use tokio::sync::{Notify, watch};
 use tokio_util::sync::CancellationToken;
 
 mod conversation;
+mod device_run;
 mod documents;
 mod files;
+mod peers;
 mod records;
 mod worker;
 
@@ -22,8 +24,10 @@ const BLOBS: TableDefinition<&str, &[u8]> = TableDefinition::new("attachments");
 pub(crate) struct Workspace {
     pub(crate) host: std::sync::Mutex<Option<(String, Arc<crate::host_desktop::Grant>)>>,
     db: Database,
+    peers: Arc<peers::Peers>,
     files: std::path::PathBuf,
     changes: watch::Sender<u64>,
+    live: std::sync::Mutex<Option<conversation::LiveReply>>,
     ready: Arc<Notify>,
     shutdown: CancellationToken,
     run: std::sync::Mutex<Option<(String, CancellationToken)>>,
@@ -93,13 +97,16 @@ impl Workspace {
             }
         }
         tx.commit()?;
+        let shutdown = CancellationToken::new();
         let this = Arc::new(Self {
             db,
+            peers: peers::Peers::new(shutdown.clone()),
             files,
             host: Default::default(),
             changes: watch::channel(0).0,
+            live: Default::default(),
             ready: Default::default(),
-            shutdown: CancellationToken::new(),
+            shutdown,
             run: Default::default(),
             clients: Default::default(),
             verified: Default::default(),
@@ -142,10 +149,25 @@ impl Workspace {
 
     pub(crate) async fn stop(&self) {
         self.shutdown.cancel();
+        self.peers.close().await;
         let worker = self.worker.lock().unwrap().take();
         if let Some(worker) = worker {
             let _ = worker.await;
         }
+    }
+    pub(crate) fn frame_updates(&self, id: &str) -> Option<watch::Receiver<()>> {
+        self.peers.frames(id)
+    }
+    pub(crate) async fn manual_input(
+        &self,
+        mut q: wire::DesktopActionRequest,
+    ) -> std::result::Result<wire::HostDesktopReply, String> {
+        q.epoch = 2;
+        q.control_session.clear();
+        self.peers.perform(q).await.map_err(|e| e.to_string())
+    }
+    pub(crate) fn registry_changes(&self) -> watch::Receiver<u64> {
+        self.peers.changes.subscribe()
     }
     pub(crate) fn subscribe(&self) -> watch::Receiver<u64> {
         self.changes.subscribe()
@@ -173,6 +195,18 @@ impl Workspace {
         bytes: Vec<u8>,
     ) -> std::result::Result<Vec<u8>, String> {
         let name = route.strip_prefix("assistant/").unwrap_or(route);
+        if name == "registry/device-invite" {
+            let q = wire::DevicePairRequest::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
+            self.peers
+                .listen(peers::PORT)
+                .await
+                .map_err(|e| e.to_string())?;
+            return self
+                .peers
+                .invite(self, q)
+                .map(|i| i.encode_to_vec())
+                .map_err(|e| e.to_string());
+        }
         if name == "registry/model-test" {
             return self
                 .probe(
@@ -284,7 +318,10 @@ mod tests {
         let workspace = Workspace::open(dir.path())?;
         let state = workspace.dispatch("registry/state", &[])?;
         let ids: Vec<_> = wire::RegistryState::decode(state.as_slice())?
-            .devices.into_iter().map(|device| device.id).collect();
+            .devices
+            .into_iter()
+            .map(|device| device.id)
+            .collect();
         assert_eq!(ids, ["a", "c", "d"]);
         Ok(())
     }

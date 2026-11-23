@@ -151,6 +151,13 @@ impl MessagesStream {
     }
 
     pub fn feed(&mut self, chunk: &[u8]) -> Result<Option<Vec<Value>>, String> {
+        self.feed_text(chunk, &mut |_| {})
+    }
+    pub(crate) fn feed_text(
+        &mut self,
+        chunk: &[u8],
+        on_text: &mut impl FnMut(&str),
+    ) -> Result<Option<Vec<Value>>, String> {
         for data in self.sse.feed(chunk)? {
             if data.is_empty() {
                 continue;
@@ -187,11 +194,10 @@ impl MessagesStream {
                         return Err("模型返回不支持的内容类型".into());
                     }
                     if block["type"] == "text"
-                        && block["text"]
-                            .as_str()
-                            .is_some_and(|text| !text.trim().is_empty())
+                        && let Some(text) = block["text"].as_str()
                     {
-                        self.has_text = true;
+                        self.has_text |= !text.trim().is_empty();
+                        on_text(text);
                     }
                     self.blocks.insert(
                         id,
@@ -228,8 +234,9 @@ impl MessagesStream {
                         _ => return Err("模型流内容类型不匹配".into()),
                     };
                     let part = part.ok_or("模型流内容格式无效")?;
-                    if field == "text" && !part.trim().is_empty() {
-                        self.has_text = true;
+                    if field == "text" {
+                        self.has_text |= !part.trim().is_empty();
+                        on_text(part);
                     }
                     match &mut block.value[field] {
                         Value::String(text) => text.push_str(part),

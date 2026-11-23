@@ -18,6 +18,7 @@ pub struct Scene {
     pub frames: [Option<Arc<Frame>>; 2],
     pub focus: usize,
     pub linked: bool,
+    pub phones: [bool; 2],
     pub popup: Rectangle,
     pub popup_opacity: f32,
     pub child_popup: Rectangle,
@@ -189,7 +190,7 @@ impl Scene {
         } else {
             let gesture = match source {
                 PointerSource::Mouse(mouse::Button::Right) => Press::Right,
-                _ if press.device == 0
+                _ if self.phones[press.device]
                     && now.duration_since(press.started) >= Duration::from_millis(500) =>
                 {
                     Press::Hold
@@ -321,7 +322,7 @@ impl shader::Program<Message> for Scene {
                 use keyboard::key::Named;
                 let target = self.keyboard_target?;
                 let control = modifiers.command() || modifiers.control();
-                if target == 0 {
+                if self.phones[target] {
                     let phone_key = match key.as_ref() {
                         keyboard::Key::Character(value)
                             if control && value.eq_ignore_ascii_case("a") =>
@@ -353,7 +354,7 @@ impl shader::Program<Message> for Scene {
                         shader::Action::publish(Message::Input(target, input)).and_capture(),
                     );
                 }
-                if target == 1 {
+                if !self.phones[target] {
                     let named = match key.as_ref() {
                         keyboard::Key::Named(name) => match name {
                             Named::Enter => Some("Return"),
@@ -498,11 +499,11 @@ struct BackdropKey {
     blur: f32,
     goal: f32,
     pointers: [[[f32; 3]; 5]; 2],
-    sequences: [u64; 2],
+    sources: [usize; 2],
 }
 
 impl BackdropKey {
-    fn new(scene: &Uniforms, sequences: [u64; 2]) -> Self {
+    fn new(scene: &Uniforms, sources: [usize; 2]) -> Self {
         let [width, height, cable, _] = scene.size;
         let [red, green, blue, _] = scene.background;
         Self {
@@ -522,7 +523,7 @@ impl BackdropKey {
                     }
                 })
             }),
-            sequences,
+            sources,
         }
     }
 }
@@ -546,7 +547,7 @@ pub struct Pipeline {
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,
     textures: [wgpu::Texture; 2],
-    sequences: [u64; 2],
+    sources: [std::sync::Weak<Vec<u8>>; 2],
     sampler: wgpu::Sampler,
 }
 fn texture(device: &wgpu::Device, w: u32, h: u32, render: bool) -> wgpu::Texture {
@@ -766,7 +767,7 @@ impl shader::Pipeline for Pipeline {
             group,
             uniform,
             textures,
-            sequences: [0, 0],
+            sources: Default::default(),
             sampler,
         }
     }
@@ -785,7 +786,7 @@ impl shader::Primitive for Primitive {
         let mut resized = false;
         for (index, frame) in self.frames.iter().enumerate() {
             if let Some(frame) = frame
-                && pipeline.sequences[index] != frame.sequence
+                && pipeline.sources[index].as_ptr() != Arc::as_ptr(&frame.pixels)
             {
                 if pipeline.textures[index].width() != frame.width
                     || pipeline.textures[index].height() != frame.height
@@ -804,7 +805,7 @@ impl shader::Primitive for Primitive {
                     },
                     t.size(),
                 );
-                pipeline.sequences[index] = frame.sequence;
+                pipeline.sources[index] = Arc::downgrade(&frame.pixels);
                 if frame.sequence == 1 || frame.sequence % 120 == 0 {
                     eprintln!(
                         "native_metric frame device={index} sequence={} receive_to_upload_ms={:0.3} frame_age_ms={:0.3}",
@@ -828,7 +829,10 @@ impl shader::Primitive for Primitive {
                 &pipeline.sampler,
             );
         }
-        let backdrop = BackdropKey::new(&self.uniforms, pipeline.sequences);
+        let backdrop = BackdropKey::new(
+            &self.uniforms,
+            pipeline.sources.each_ref().map(|s| s.as_ptr().addr()),
+        );
         if pipeline.glass_key.as_ref() == Some(&backdrop) {
             return;
         }

@@ -17,8 +17,7 @@ pub enum Message {
     Choose(String),
     Invite(wire::DevicePairRequest),
     Invitation(Result<wire::DeviceInvitation, String>),
-    RefreshPeers,
-    PeerState(Result<wire::RegistryState, String>),
+    ExpireInvitation(std::time::Instant),
     Disconnect(String, bool),
     CopyCode,
     #[cfg(not(target_os = "android"))]
@@ -49,7 +48,7 @@ impl std::fmt::Display for Memory {
 
 pub struct Devices {
     pub selected: String,
-    invitation: Option<(wire::DeviceInvitation, std::time::Instant)>,
+    pub(super) invitation: Option<(wire::DeviceInvitation, std::time::Instant)>,
     draft: Option<wire::DeviceSaveRequest>,
     busy: bool,
     error: String,
@@ -102,9 +101,7 @@ impl Devices {
             .is_some_and(|j| matches!(j.status.as_str(), "queued" | "running"))
     }
     pub fn subscription(&self) -> Subscription<Message> {
-        if self.invitation.is_some() {
-            iced::time::every(Duration::from_secs(1)).map(|_| Message::RefreshPeers)
-        } else if self.running() {
+        if self.running() {
             iced::time::every(Duration::from_millis(1800)).map(|_| Message::Check)
         } else {
             Subscription::none()
@@ -133,40 +130,31 @@ impl Devices {
                     Ok(invite) => {
                         self.selected = invite.device_id.clone();
                         self.draft = None;
-                        self.invitation = Some((invite, std::time::Instant::now()));
-                        return self.update(Message::RefreshPeers, registry, client);
+                        let issued = std::time::Instant::now();
+                        if !registry
+                            .devices
+                            .iter()
+                            .any(|d| d.id == invite.device_id && d.connected)
+                        {
+                            self.invitation = Some((invite, issued));
+                            return Task::perform(
+                                async { tokio::time::sleep(Duration::from_secs(300)).await },
+                                move |()| Message::ExpireInvitation(issued),
+                            );
+                        }
                     }
                     Err(e) => self.error = e,
                 }
             }
-            Message::RefreshPeers => {
+            Message::ExpireInvitation(issued) => {
                 if self
                     .invitation
                     .as_ref()
-                    .is_some_and(|(_, at)| at.elapsed() >= Duration::from_secs(300))
+                    .is_some_and(|(_, at)| *at == issued)
                 {
                     self.invitation = None;
                 }
-                let client = client.clone();
-                return Task::perform(
-                    async move { client.rpc("registry/state", wire::RegistryRequest {}).await },
-                    Message::PeerState,
-                );
             }
-            Message::PeerState(r) => match r {
-                Ok(state) => {
-                    if self.invitation.as_ref().is_some_and(|(v, _)| {
-                        state
-                            .devices
-                            .iter()
-                            .any(|d| d.id == v.device_id && d.connected)
-                    }) {
-                        self.invitation = None;
-                    }
-                    self.registry = Some(state);
-                }
-                Err(e) => self.error = e,
-            },
             Message::Disconnect(id, forget) => {
                 self.busy = true;
                 self.invitation = None;

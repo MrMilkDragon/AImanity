@@ -246,6 +246,11 @@ fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
     } else {
         let clicks = if action.kind == "double_click" { 2 } else { 1 };
         for n in 1..=clicks {
+            let n = if action.kind == "click" && action.clicks == 2 {
+                2
+            } else {
+                n
+            };
             post(CGEventType::LeftMouseDown, n)?;
             post(CGEventType::LeftMouseUp, n)?;
         }

@@ -1,5 +1,6 @@
 use ai_phone_adb::{Client, Limits};
 use ai_phone_api::wire::{DesktopActionRequest, HostDesktopReply};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use image::codecs::jpeg::JpegEncoder;
 use std::time::{Duration, Instant};
 
@@ -98,6 +99,7 @@ impl Phone {
             }
         };
         let (x, y) = (action.x, action.y);
+        let mut committed = None;
         let command = match action.kind.as_str() {
             "click" | "double_click" => {
                 point(x, y)?;
@@ -131,10 +133,17 @@ impl Phone {
                     .all(|b| b == b' ' || b.is_ascii_graphic())
                     || action.text.contains("%s")
                 {
-                    return Err("ADB 文本输入支持可打印 ASCII".into());
+                    let id =
+                        uuid::Uuid::parse_str(&action.action_id).map_err(|_| "无效输入标识")?;
+                    committed = Some(format!("committed:{id}"));
+                    format!(
+                        "am broadcast --receiver-foreground -a dev.aiphone.input.INPUT -p dev.aiphone.input --es text_b64 '{}' --es action_id {id}",
+                        STANDARD.encode(&action.text)
+                    )
+                } else {
+                    let literal = action.text.replace(' ', "%s").replace('\'', "'\\''");
+                    format!("input text '{literal}'")
                 }
-                let literal = action.text.replace(' ', "%s").replace('\'', "'\\''");
-                format!("input text '{literal}'")
             }
             "key" => {
                 let key = match action.key.as_str() {
@@ -172,6 +181,9 @@ impl Phone {
                 output.code,
                 String::from_utf8_lossy(&output.stderr)
             ));
+        }
+        if committed.is_some_and(|id| !String::from_utf8_lossy(&output.stdout).contains(&id)) {
+            return Err("手机输入法未确认写入，请启用 AImanity 输入法并聚焦文本框".into());
         }
         Ok(HostDesktopReply::default())
     }

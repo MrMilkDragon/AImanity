@@ -12,9 +12,20 @@ use tokio_util::sync::CancellationToken;
 pub async fn request_tracked(
     config: &ModelConfig,
     client: &reqwest::Client,
-    mut body: Value,
+    body: Value,
     cancel: &CancellationToken,
     timing: &mut crate::model_timing::Timing,
+) -> Result<Vec<Value>, String> {
+    request_with_text(config, client, body, cancel, timing, |_| {}).await
+}
+
+pub async fn request_with_text(
+    config: &ModelConfig,
+    client: &reqwest::Client,
+    mut body: Value,
+    cancel: &CancellationToken,
+    timing: &mut model_timing::Timing,
+    mut on_text: impl FnMut(&str) + Send,
 ) -> Result<Vec<Value>, String> {
     body["model"] = json!(config.model);
     body["stream"] = json!(true);
@@ -131,11 +142,17 @@ pub async fn request_tracked(
                     timing.first_bytes_received();
                 }
                 let (output, has_text) = if chat_protocol {
-                    (chat_parser.feed(&chunk)?, chat_parser.has_text())
+                    (
+                        chat_parser.feed_text(&chunk, &mut on_text)?,
+                        chat_parser.has_text(),
+                    )
                 } else if messages_protocol {
-                    (messages_parser.feed(&chunk)?, messages_parser.has_text())
+                    (
+                        messages_parser.feed_text(&chunk, &mut on_text)?,
+                        messages_parser.has_text(),
+                    )
                 } else {
-                    (parser.feed(&chunk)?, parser.has_text)
+                    (parser.feed_text(&chunk, &mut on_text)?, parser.has_text)
                 };
                 if has_text {
                     timing.text_received();
@@ -429,7 +446,15 @@ impl ResponseStream {
             .collect()
     }
 
+    #[cfg(test)]
     fn feed(&mut self, chunk: &[u8]) -> Result<Option<Vec<Value>>, String> {
+        self.feed_text(chunk, &mut |_| {})
+    }
+    fn feed_text(
+        &mut self,
+        chunk: &[u8],
+        on_text: &mut impl FnMut(&str),
+    ) -> Result<Option<Vec<Value>>, String> {
         for data in self.sse.feed(chunk)? {
             if data.is_empty() || data == "[DONE]" {
                 continue;
@@ -438,6 +463,9 @@ impl ResponseStream {
             match event["type"].as_str() {
                 Some("response.output_text.delta") => {
                     self.has_text |= has_text(&event["delta"]);
+                    if let Some(text) = event["delta"].as_str() {
+                        on_text(text);
+                    }
                 }
                 Some("response.completed") => {
                     let output = Self::completed(&event["response"])?;

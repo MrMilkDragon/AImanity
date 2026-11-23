@@ -93,25 +93,9 @@ word_box selected Choose >/dev/null
 # On the language page, Continue is the centered solid button below the
 # options. Its height and position follow the rendered canvas. Read the
 # button from the framebuffer when OCR misses the reversed white text.
+rustc --edition 2024 -O scripts/mobile-button-row.rs -o "$RUNNER_TEMP/mobile-button-row"
 button_y=$(convert evidence/selected.png -colorspace Gray -threshold '25%' -depth 8 gray:- | \
-  ruby -e '
-    w,h = ARGV.map(&:to_i)
-    image = STDIN.binmode.read
-    abort "Unexpected grayscale frame size" unless image.bytesize == w*h
-    bands = []
-    first = nil
-    (h/2..h*97/100).each do |y|
-      row = image.byteslice(y*w + w*35/100, w*30/100)
-      if row.count("\x00") > w*0.04 then first ||= y
-      elsif first
-        bands << [first,y-1]
-        first = nil
-      end
-    end
-    button = bands.select { |top,bottom| bottom-top > h*0.018 }.max_by { |top,bottom| bottom-top }
-    abort "No centered action button in selected language frame" unless button
-    puts button.sum/2
-  ' "$width" "$height")
+  "$RUNNER_TEMP/mobile-button-row" "$width" "$height")
 adb shell input tap "$((width/2))" "$button_y"
 wait_word settings devices
 sleep 1

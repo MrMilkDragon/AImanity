@@ -20,7 +20,7 @@ impl Workspace {
         }
         let result = match name {
             "files/list" => self.listing(req!(FileLocation))?.encode_to_vec(),
-            "registry/state" => self.get::<wire::RegistryState>("registry")?.encode_to_vec(),
+            "registry/state" => self.registry()?.encode_to_vec(),
             "desktop/state" => self.get::<wire::DeviceLinkState>("links")?.encode_to_vec(),
             "registry/device-save" => self
                 .edit_registry(|state, _| {
@@ -54,18 +54,69 @@ impl Workspace {
                     Ok(())
                 })?
                 .encode_to_vec(),
-            "registry/device-forget" => self
-                .edit_registry(|s, _| {
-                    let id = req!(DesktopRequest).device_id;
-                    let i = s
-                        .devices
-                        .iter()
-                        .position(|d| d.id == id)
-                        .ok_or("设备不存在")?;
-                    s.devices.remove(i);
-                    Ok(())
-                })?
-                .encode_to_vec(),
+            "registry/device-forget" | "registry/device-disconnect" => {
+                let id = req!(DesktopRequest).device_id;
+                let state = self.peers.remove(&id, || {
+                    if name == "registry/device-disconnect" {
+                        return self.get::<wire::RegistryState>("registry");
+                    }
+                    self.write_registry(|s, tx| {
+                        let i = s
+                            .devices
+                            .iter()
+                            .position(|d| d.id == id)
+                            .ok_or("设备不存在")?;
+                        s.devices.remove(i);
+                        let mut links: wire::DeviceLinkState =
+                            read(&tx.open_table(RECORDS)?, "links")?;
+                        links.links.retain(|link| {
+                            link.source_device_id != id && link.target_device_id != id
+                        });
+                        put(tx, "links", &links)
+                    })
+                })?;
+                self.peers.available(state).encode_to_vec()
+            }
+            "desktop/link" => {
+                let q = req!(DeviceLinkRequest);
+                if q.source_device_id == q.target_device_id {
+                    return Err("请选择两台不同设备".into());
+                }
+                let tx = self.db.begin_write()?;
+                let devices: wire::RegistryState = read(&tx.open_table(RECORDS)?, "registry")?;
+                if ![&q.source_device_id, &q.target_device_id]
+                    .iter()
+                    .all(|id| devices.devices.iter().any(|d| &d.id == *id))
+                {
+                    return Err("设备不存在".into());
+                }
+                let mut links: wire::DeviceLinkState = read(&tx.open_table(RECORDS)?, "links")?;
+                let index = links.links.iter().position(|l| {
+                    (l.source_device_id == q.source_device_id
+                        && l.target_device_id == q.target_device_id)
+                        || (l.source_device_id == q.target_device_id
+                            && l.target_device_id == q.source_device_id)
+                });
+                if let Some(index) = index {
+                    let l = &mut links.links[index];
+                    if l.connected != q.connected {
+                        l.connected = q.connected;
+                        l.revision += 1;
+                    }
+                } else if q.connected {
+                    links.links.push(wire::DeviceLink {
+                        id: uuid::Uuid::now_v7().to_string(),
+                        source_device_id: q.source_device_id,
+                        target_device_id: q.target_device_id,
+                        connected: true,
+                        revision: 1,
+                    });
+                }
+                put(&tx, "links", &links)?;
+                tx.commit()?;
+                self.peers.signal();
+                links.encode_to_vec()
+            }
             "registry/agent-config-save" => self
                 .save_agent(req!(AgentConfigurationSaveRequest))?
                 .encode_to_vec(),
@@ -150,7 +201,26 @@ impl Workspace {
         Ok(result)
     }
 
+    pub(super) fn registry(&self) -> Result<wire::RegistryState> {
+        Ok(self.peers.available(self.get("registry")?))
+    }
+    pub(crate) fn device_state(&self) -> Result<(wire::RegistryState, wire::DeviceLinkState)> {
+        let tx = self.db.begin_read()?;
+        let records = tx.open_table(RECORDS)?;
+        Ok((
+            self.peers.available(read(&records, "registry")?),
+            read(&records, "links")?,
+        ))
+    }
     fn edit_registry(
+        &self,
+        edit: impl FnOnce(&mut wire::RegistryState, &WriteTransaction) -> Result<()>,
+    ) -> Result<wire::RegistryState> {
+        let state = self.write_registry(edit)?;
+        self.peers.signal();
+        Ok(self.peers.available(state))
+    }
+    pub(super) fn write_registry(
         &self,
         edit: impl FnOnce(&mut wire::RegistryState, &WriteTransaction) -> Result<()>,
     ) -> Result<wire::RegistryState> {

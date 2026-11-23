@@ -32,7 +32,15 @@ pub struct Layout {
 fn input_uses_the_visible_screen_in_each_orientation() {
     for phone in [0.5, 2.] {
         let aspects = [phone, 1.6];
-        let layout = Layout::target(Size::new(1440., 900.), 0, true, aspects, [true; 2]);
+        let layout = Layout::target(
+            Size::new(1440., 900.),
+            0,
+            true,
+            aspects,
+            [true; 2],
+            [true, false],
+            true,
+        );
         for (i, aspect) in aspects.into_iter().enumerate() {
             let rect = layout.devices[i];
             let inset = layout.device_radius[i] / 3.;
@@ -51,13 +59,29 @@ fn input_uses_the_visible_screen_in_each_orientation() {
 #[cfg(test)]
 #[test]
 fn an_empty_workspace_gives_the_chat_both_margins_and_no_device_input() {
-    let layout = Layout::target(WORKBENCH, 0, false, [0.5, 1.6], [false; 2]);
+    let layout = Layout::target(
+        WORKBENCH,
+        0,
+        false,
+        [0.5, 1.6],
+        [false; 2],
+        [true, false],
+        false,
+    );
     assert_eq!(layout.chat.x, SIDE_INSET);
     assert_eq!(layout.chat.width, WORKBENCH.width - 2. * SIDE_INSET);
     assert_eq!(layout.devices, [Rectangle::default(); 2]);
     assert!(layout.local(0, Point::ORIGIN).is_none());
     assert!(layout.device_at(0, true, layout.chat.center()).is_none());
-    let desktop = Layout::target(WORKBENCH, 1, false, [0.5, 1.6], [false, true]);
+    let desktop = Layout::target(
+        WORKBENCH,
+        1,
+        false,
+        [0.5, 1.6],
+        [false, true],
+        [true, false],
+        false,
+    );
     assert_eq!(desktop.devices[0], Rectangle::default());
     assert!(desktop.devices[1].height > 0.);
     assert!(desktop.devices[1].y + desktop.devices[1].height < desktop.chat.y);
@@ -70,8 +94,10 @@ impl Layout {
         linked: bool,
         aspects: [f32; 2],
         present: [bool; 2],
+        phones: [bool; 2],
+        cable_connected: bool,
     ) -> Self {
-        let wide = linked || focus == 1 || aspects[0] > 1.;
+        let wide = linked || !phones[focus] || aspects[focus] > 1.;
         let (top, gap) = if wide { (60., 18.) } else { (66., 24.) };
         let inset = SIDE_INSET;
         let bottom = 20.;
@@ -105,7 +131,7 @@ impl Layout {
                 continue;
             }
             let rear = !linked && index != focus;
-            let rear_phone = wide && rear && index == 0;
+            let rear_phone = wide && rear && phones[index];
             let pane_width = if linked {
                 linked_column - inset
             } else if rear_phone {
@@ -126,7 +152,7 @@ impl Layout {
             let content_width = (pane_width - borders).min((max_height - borders) * aspect);
             let width = content_width + borders;
             let height = content_width / aspect + borders;
-            let screen_top = if index == 1 {
+            let screen_top = if !phones[index] {
                 top + (stage_height + header_height + 12. - height) * 0.5
             } else {
                 top + header_height + 12.
@@ -143,7 +169,7 @@ impl Layout {
                 width,
                 height,
             };
-            let toolbar_width = if index == 0 { 156. } else { 124. };
+            let toolbar_width = if phones[index] { 156. } else { 124. };
             toolbars[index] = Rectangle {
                 x: if linked {
                     screen_left - (toolbar_width - width).max(0.) * 0.5
@@ -211,8 +237,8 @@ impl Layout {
             chat,
             angles,
             device_radius,
-            cable: if linked { 1. } else { 0. },
-            cable_end: if linked { 1. } else { 0. },
+            cable: f32::from(linked && cable_connected),
+            cable_end: f32::from(linked && cable_connected),
         }
     }
 

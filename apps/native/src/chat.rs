@@ -873,7 +873,10 @@ impl Chat {
                             .padding(text_column),
                         );
                     }
-                } else if matches!(event.kind.as_str(), "tool" | "audit" | "model") {
+                } else if matches!(
+                    event.kind.as_str(),
+                    "tool" | "device_input" | "audit" | "model"
+                ) {
                     let step = steps.get(event.id.as_str());
                     let title = match event.kind.as_str() {
                         "model" => locale.tr("模型"),

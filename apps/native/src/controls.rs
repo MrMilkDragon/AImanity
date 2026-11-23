@@ -46,6 +46,7 @@ pub enum Icon {
     Check,
     Settings,
     Cable,
+    Compare,
     Refresh,
     Volume,
     Muted,
@@ -198,6 +199,9 @@ impl Icon {
             Self::Check => "<path d='m5 12 4 4L19 6'/>",
             Self::Settings => {
                 "<path d='m10 2-.7 3-2 .9L4.5 5 2 9.3l2.2 2.1v2L2 15.5 4.5 20l2.8-.9 2 .9.7 3h5l.7-3 2-.9 2.8.9 2.5-4.5-2.2-2.1v-2L23 9.3 20.5 5l-2.8.9-2-.9L15 2Z'/><circle cx='12.5' cy='12.5' r='3'/>"
+            }
+            Self::Compare => {
+                r#"<rect x="2" y="5" width="9" height="14" rx="2"/><rect x="14" y="5" width="8" height="14" rx="2"/>"#
             }
             Self::Cable => {
                 "<path d='M7 2v4M11 2v4M5 6h8v4a4 4 0 0 1-8 0ZM9 14v3a4 4 0 0 0 8 0v-3M15 10h4v4h-4Z'/>"

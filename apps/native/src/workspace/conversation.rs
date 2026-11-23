@@ -1,6 +1,13 @@
 use super::*;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
+use std::time::{Duration, Instant};
+
+pub(super) struct LiveReply {
+    pub run: String,
+    pub text: String,
+    last_sent: Instant,
+}
 
 #[derive(Clone, prost::Message)]
 pub(super) struct Job {
@@ -15,6 +22,23 @@ pub(super) struct Job {
 }
 
 impl Workspace {
+    pub(super) fn show_text(&self, run: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        let mut live = self.live.lock().unwrap();
+        let entry = live.get_or_insert_with(|| LiveReply {
+            run: run.into(),
+            text: String::new(),
+            last_sent: Instant::now(),
+        });
+        let show = entry.text.is_empty() || entry.last_sent.elapsed() >= Duration::from_millis(40);
+        entry.text.push_str(delta);
+        if show {
+            entry.last_sent = Instant::now();
+            self.changed();
+        }
+    }
     pub(crate) fn history(&self, q: wire::ChatHistoryRequest) -> Result<wire::ChatState> {
         let tx = self.db.begin_read()?;
         let mut state: wire::ChatState = read(&tx.open_table(RECORDS)?, "chat")?;
@@ -55,6 +79,16 @@ impl Workspace {
             }
         }
         page.sort_by_key(|m| m.ordinal);
+        if let Some(active) = self.live.lock().unwrap().as_ref()
+            && let Some(reply) = page
+                .iter_mut()
+                .find(|m| m.run_id == active.run && m.role == "assistant" && m.active)
+        {
+            if !reply.text.is_empty() {
+                reply.text.push_str("\n\n");
+            }
+            reply.text.push_str(&active.text);
+        }
         state.messages = page;
         Ok(state)
     }
@@ -87,8 +121,13 @@ impl Workspace {
             .ok_or("请先配置模型")?;
         let model: wire::ModelDraft =
             read(&records, &format!("model/{}", agent.model_connection_id))?;
-        if !q.device_id.is_empty() {
-            return Err("设备执行器尚未接入本地工作区".into());
+        if !q.device_id.is_empty()
+            && !registry
+                .devices
+                .iter()
+                .any(|device| device.id == q.device_id && device.paired)
+        {
+            return Err("当前工作区未授权这台设备".into());
         }
         let n = messages.last()?.map_or(1, |(k, _)| k.value() + 1);
         let mut attachments = Vec::with_capacity(q.attachment_ids.len());
@@ -240,11 +279,13 @@ impl Workspace {
         let started = crate::connection::epoch_ms() as u64;
         let output = self.answer(n, &id, &job, &token).await;
         if token.is_cancelled() {
+            self.live.lock().unwrap().take();
             return Ok(());
         }
         let tx = self.db.begin_write()?;
         let mut running = self.run.lock().unwrap();
         if token.is_cancelled() {
+            self.live.lock().unwrap().take();
             return Ok(());
         }
         let mut msgs = tx.open_table(MESSAGES)?;
@@ -252,10 +293,13 @@ impl Workspace {
         let mut head: wire::ChatState = read(&tx.open_table(RECORDS)?, "chat")?;
         let (status, error) = match output {
             Ok((text, events)) => {
-                reply.text = text;
+                if !reply.text.is_empty() {
+                    reply.text.push_str("\n\n");
+                }
+                reply.text.push_str(&text);
                 let mut log: wire::HarnessEventList =
                     read(&tx.open_table(RECORDS)?, &format!("events/{id}"))?;
-                for mut event in events.into_iter().filter(|v| v.message_id.is_empty()) {
+                for mut event in events {
                     event.message_id = reply.id.clone();
                     log.events.push(event);
                 }
@@ -301,13 +345,14 @@ impl Workspace {
         tx.open_table(JOBS)?.remove(n)?;
         put(&tx, "chat", &head)?;
         tx.commit()?;
+        self.live.lock().unwrap().take();
         running.take();
         drop(running);
         self.changed();
         Ok(())
     }
 
-    pub(super) fn context(&self, n: u64, instructions: &str) -> Result<Vec<Value>> {
+    pub(super) fn context(&self, n: u64, instructions: &str) -> Result<(Vec<Value>, bool)> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(MESSAGES)?;
         let mut rows = table
@@ -316,9 +361,27 @@ impl Workspace {
             .take(80)
             .map(|r| Ok(wire::ChatMessage::decode(r?.1.value())?))
             .collect::<Result<Vec<_>>>()?;
+        let mut repeat_input = false;
+        if let Some(request) = rows.first() {
+            let records = tx.open_table(RECORDS)?;
+            for prior in rows.iter().skip(1).filter(|m| {
+                m.role == "user" && m.text == request.text && m.attachments == request.attachments
+            }) {
+                let events: wire::HarnessEventList =
+                    read(&records, &format!("events/{}", prior.run_id))?;
+                if events
+                    .events
+                    .iter()
+                    .any(|e| e.kind == "device_input" && e.status == "succeeded")
+                {
+                    repeat_input = true;
+                    break;
+                }
+            }
+        }
         rows.reverse();
         let mut input = vec![
-            json!({"role":"system","content":"Use the available tools when the task needs workspace information or device work. Use a device only when an appropriate authorized tool is available. Confirm actions from their tool receipts."}),
+            json!({"role":"system","content":"Carry out the current user's device instructions through the available tools. Every user message starts a new run, even when it repeats an earlier instruction. Previous replies and screen observations are not input receipts. Report actions only after their tool confirms input in this run."}),
         ];
         if !instructions.trim().is_empty() {
             input.push(json!({"role":"system","content":instructions}));
@@ -347,6 +410,6 @@ impl Workspace {
             }
             input.push(json!({"role":m.role,"content":parts}));
         }
-        Ok(input)
+        Ok((input, repeat_input))
     }
 }

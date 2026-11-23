@@ -12,6 +12,7 @@ use tokio_tungstenite::tungstenite::http::HeaderValue;
 pub struct Connection {
     http: reqwest::Client,
     pub(crate) workspace: Arc<crate::workspace::Workspace>,
+    devices_changed: tokio::sync::watch::Receiver<u64>,
     phone: Option<HeaderValue>,
 }
 #[derive(Clone, Debug)]
@@ -51,7 +52,7 @@ pub enum Press {
     Left,
     Right,
     Hold,
-    Double,
+    Second,
 }
 
 #[derive(Clone, Debug)]
@@ -92,19 +93,17 @@ impl Connection {
                 .no_proxy()
                 .build()
                 .map_err(|e| e.to_string())?,
+            devices_changed: workspace.registry_changes(),
             workspace,
             phone: None,
         };
         client.session().await
     }
-    pub async fn session(self) -> Result<Session, String> {
-        let client = self;
-        let (registry, links) = tokio::try_join!(
-            client.rpc("registry/state", wire::RegistryRequest {}),
-            client.rpc("desktop/state", wire::RegistryRequest {}),
-        )?;
+    pub async fn session(mut self) -> Result<Session, String> {
+        self.devices_changed.borrow_and_update();
+        let (registry, links) = self.workspace.device_state().map_err(|e| e.to_string())?;
         Ok(Session {
-            client,
+            client: self,
             registry,
             links,
         })
@@ -124,14 +123,17 @@ impl Connection {
         O::decode(bytes.as_slice()).map_err(|e| e.to_string())
     }
     pub async fn history(&self) -> Result<wire::ChatState, String> {
-        self.rpc(
-            "assistant/history",
-            wire::ChatHistoryRequest {
-                limit: 80,
-                ..Default::default()
-            },
-        )
+        let workspace = self.workspace.clone();
+        tokio::task::spawn_blocking(move || {
+            workspace
+                .history(wire::ChatHistoryRequest {
+                    limit: 80,
+                    ..Default::default()
+                })
+                .map_err(|e| e.to_string())
+        })
         .await
+        .map_err(|e| e.to_string())?
     }
     pub async fn audio_stream(&self, index: usize) -> Result<reqwest::Response, String> {
         let route = if index == 0 { "audio" } else { "desktop/audio" };
@@ -222,6 +224,19 @@ impl Connection {
             }
         })
     }
+    pub fn device_events(
+        mut self,
+    ) -> impl futures_util::Stream<Item = Result<(wire::RegistryState, wire::DeviceLinkState), String>>
+    {
+        iced::stream::channel(1, async move |mut output| {
+            while self.devices_changed.changed().await.is_ok() {
+                let state = self.workspace.device_state().map_err(|e| e.to_string());
+                if output.send(state).await.is_err() {
+                    break;
+                }
+            }
+        })
+    }
     pub fn frames(
         self,
         device: wire::RegisteredDevice,
@@ -229,51 +244,69 @@ impl Connection {
         iced::stream::channel::<LatestFrame>(1, async move |mut output| {
             let pending = LatestFrame::default();
             if device.paired {
+                let Some(mut input) = self.workspace.frame_updates(&device.id) else {
+                    return;
+                };
+                let mut previous: Option<(Vec<u8>, Arc<Vec<u8>>)> = None;
                 let mut sequence = 0;
                 loop {
+                    let received = Instant::now();
+                    let mut delay = RECONNECT_DELAY;
                     let result = async {
-                        let reply: wire::HostDesktopReply = self
-                            .rpc(
-                                "peer/action",
-                                wire::DesktopActionRequest {
-                                    device_id: device.id.clone(),
-                                    action_id: uuid::Uuid::now_v7().to_string(),
-                                    kind: "observe".into(),
-                                    ..Default::default()
-                                },
-                            )
+                        let reply = self
+                            .workspace
+                            .manual_input(wire::DesktopActionRequest {
+                                device_id: device.id.clone(),
+                                action_id: uuid::Uuid::now_v7().to_string(),
+                                kind: "observe".into(),
+                                ..Default::default()
+                            })
                             .await?;
-                        let decoded = tokio::task::spawn_blocking(move || {
-                            image::load_from_memory_with_format(
-                                &reply.jpeg,
-                                image::ImageFormat::Jpeg,
-                            )
-                            .map(|im| im.into_rgba8())
-                        })
-                        .await
-                        .map_err(|e| e.to_string())?
-                        .map_err(|e| e.to_string())?;
-                        sequence += 1;
+                        let pixels = match &previous {
+                            Some((jpeg, pixels)) if *jpeg == reply.jpeg => {
+                                delay = Duration::from_millis(350);
+                                pixels.clone()
+                            }
+                            _ => {
+                                let jpeg = reply.jpeg;
+                                let (jpeg, pixels) = tokio::task::spawn_blocking(move || {
+                                    let image = image::load_from_memory_with_format(
+                                        &jpeg,
+                                        image::ImageFormat::Jpeg,
+                                    )
+                                    .map_err(|e| e.to_string())?
+                                    .into_rgba8();
+                                    if image.dimensions() != (reply.width, reply.height) {
+                                        return Err("画面尺寸与设备回执不一致".to_string());
+                                    }
+                                    Ok((jpeg, Arc::new(image.into_raw())))
+                                })
+                                .await
+                                .map_err(|e| e.to_string())??;
+                                previous = Some((jpeg, pixels.clone()));
+                                sequence += 1;
+                                delay = Duration::from_millis(65);
+                                pixels
+                            }
+                        };
                         Ok(Frame {
                             observation_id: reply.observation_id,
-                            width: decoded.width(),
-                            height: decoded.height(),
-                            pixels: Arc::new(decoded.into_raw()),
+                            width: reply.width,
+                            height: reply.height,
+                            pixels,
                             sequence,
                             captured_ms: 0.,
-                            received: Instant::now(),
+                            received,
                         })
                     }
                     .await;
-                    let interval = if result.is_ok() {
-                        Duration::from_millis(350)
-                    } else {
-                        RECONNECT_DELAY
-                    };
                     if pending.replace(result) && output.send(pending.clone()).await.is_err() {
                         return;
                     }
-                    tokio::time::sleep(interval).await;
+                    tokio::select! {
+                        result = input.changed() => if result.is_err() { return; },
+                        _ = tokio::time::sleep_until((received + delay).into()) => {}
+                    }
                 }
             }
 
@@ -423,7 +456,10 @@ impl Connection {
                     action.y = y as i32;
                     match press {
                         Press::Left => "click",
-                        Press::Double => "double_click",
+                        Press::Second => {
+                            action.clicks = 2;
+                            "click"
+                        }
                         _ if device.kind == "phone" => "long_press",
                         _ => return Err("共享电脑暂不支持此鼠标按键".into()),
                     }
@@ -461,7 +497,7 @@ impl Connection {
                 DeviceInput::Rotate(_) => return Err("请在手机上调整屏幕方向".into()),
             }
             .into();
-            let _: wire::HostDesktopReply = self.rpc("peer/action", action).await?;
+            self.workspace.manual_input(action).await?;
             return Ok(());
         }
 
@@ -477,7 +513,7 @@ impl Connection {
                 DeviceInput::Tap {
                     x,
                     y,
-                    press: Press::Left | Press::Double,
+                    press: Press::Left | Press::Second,
                 } => Action::Tap(wire::TapAction { x, y }),
                 DeviceInput::Tap { x, y, .. } => Action::LongPress(wire::LongPressAction {
                     x,
@@ -566,7 +602,7 @@ impl Connection {
                     request.x = x as i32;
                     request.y = y as i32;
                     request.button = if matches!(press, Press::Right) { 3 } else { 1 };
-                    request.clicks = if matches!(press, Press::Double) { 2 } else { 1 };
+                    request.clicks = 1;
                 }
                 DeviceInput::Drag {
                     x, y, to_x, to_y, ..
@@ -610,15 +646,17 @@ pub fn epoch_ms() -> f64 {
 #[cfg(test)]
 impl Connection {
     pub fn for_state_test() -> Self {
+        let workspace = crate::workspace::Workspace::from_db(
+            redb::Database::builder()
+                .create_with_backend(redb::backends::InMemoryBackend::new())
+                .unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         Self {
             http: reqwest::Client::new(),
-            workspace: crate::workspace::Workspace::from_db(
-                redb::Database::builder()
-                    .create_with_backend(redb::backends::InMemoryBackend::new())
-                    .unwrap(),
-                Default::default(),
-            )
-            .unwrap(),
+            devices_changed: workspace.registry_changes(),
+            workspace,
             phone: None,
         }
     }

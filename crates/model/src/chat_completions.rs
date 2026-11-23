@@ -162,6 +162,7 @@ struct Call {
 pub struct ChatStream {
     sse: crate::model_sse::SseDecoder,
     text: String,
+    has_text: bool,
     reasoning: String,
     reasoning_details: Vec<Value>,
     calls: BTreeMap<u64, Call>,
@@ -169,10 +170,17 @@ pub struct ChatStream {
 }
 impl ChatStream {
     pub fn has_text(&self) -> bool {
-        !self.text.trim().is_empty()
+        self.has_text
     }
 
     pub fn feed(&mut self, chunk: &[u8]) -> Result<Option<Vec<Value>>, String> {
+        self.feed_text(chunk, &mut |_| {})
+    }
+    pub(crate) fn feed_text(
+        &mut self,
+        chunk: &[u8],
+        on_text: &mut impl FnMut(&str),
+    ) -> Result<Option<Vec<Value>>, String> {
         for data in self.sse.feed(chunk)? {
             let data = data.trim();
             if data.is_empty() {
@@ -201,6 +209,8 @@ impl ChatStream {
                 }
                 if let Some(text) = delta["content"].as_str() {
                     self.text.push_str(text);
+                    self.has_text |= !text.trim().is_empty();
+                    on_text(text);
                 }
                 if let Some(calls) = delta["tool_calls"].as_array() {
                     for part in calls {
@@ -322,13 +332,21 @@ mod tests {
     #[test]
     fn fragmented_unicode_and_forced_tool_are_translated() {
         let mut p = ChatStream::default();
+        let mut visible = String::new();
         let bytes="data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"成功\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n".as_bytes();
         let cut = bytes.iter().position(|b| *b > 127).unwrap() + 1;
-        assert!(p.feed(&bytes[..cut]).unwrap().is_none());
+        assert!(
+            p.feed_text(&bytes[..cut], &mut |text| visible.push_str(text))
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(
-            p.feed(&bytes[cut..]).unwrap().unwrap()[0]["content"][0]["text"],
+            p.feed_text(&bytes[cut..], &mut |text| visible.push_str(text))
+                .unwrap()
+                .unwrap()[0]["content"][0]["text"],
             "成功"
         );
+        assert_eq!(visible, "成功");
         let value=request_body(&json!({"input":[],"tools":[{"type":"function","name":"phone_observe","parameters":{"type":"object"}}],"tool_choice":{"type":"function","name":"phone_observe"}}),false).unwrap();
         assert_eq!(value["tool_choice"]["function"]["name"], "phone_observe");
     }
