@@ -4,10 +4,12 @@ use iced::{
     widget::{button, column, container, float, image, row, rule, space, stack, text},
 };
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_os = "android"))]
+use std::io::Read;
 use std::{
     collections::BTreeMap,
     fs,
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     sync::LazyLock,
     time::{Duration, Instant},
@@ -15,6 +17,15 @@ use std::{
 
 #[path = "host_memory.rs"]
 mod host_memory;
+
+#[cfg(target_os = "android")]
+#[path = "android_assets.rs"]
+pub(crate) mod android_assets;
+
+#[cfg(target_os = "android")]
+pub(crate) fn initialize_android(app: android_activity::AndroidApp) -> Result<(), String> {
+    android_assets::initialize(app)
+}
 
 const GIB: u64 = 1024_u64.pow(3);
 const SETUP_CONTROL: f32 = 44.;
@@ -64,6 +75,7 @@ pub fn glass_background<'a, M: 'a>(content: Element<'a, M>) -> Element<'a, M> {
 
 #[derive(Deserialize)]
 struct CapacityPolicy {
+    #[cfg(not(target_os = "android"))]
     minimum_ram_gb: u64,
     minimum_free_gb: u64,
     minimum_resume_free_gb: u64,
@@ -77,6 +89,7 @@ static CAPACITY_POLICY: LazyLock<CapacityPolicy> = LazyLock::new(|| {
 #[derive(Clone, Copy)]
 struct Capacity {
     memory: u64,
+    memory_required: u64,
     disk: u64,
     disk_required: u64,
 }
@@ -84,7 +97,7 @@ struct Capacity {
 impl Capacity {
     fn rows(self) -> [(&'static str, u64, u64); 2] {
         [
-            ("主机内存", self.memory, CAPACITY_POLICY.minimum_ram_gb),
+            ("主机内存", self.memory, self.memory_required),
             ("可用磁盘", self.disk, self.disk_required),
         ]
     }
@@ -169,6 +182,12 @@ pub struct Bundle {
     pub resource: PathBuf,
     inventory: BTreeMap<String, String>,
 }
+#[cfg(target_os = "android")]
+pub fn data_home() -> Result<PathBuf, String> {
+    android_assets::home()
+}
+
+#[cfg(not(target_os = "android"))]
 pub fn data_home() -> Result<PathBuf, String> {
     if let Some(path) = std::env::var_os("AIMANITY_DATA_DIR") {
         let path = PathBuf::from(path);
@@ -193,6 +212,7 @@ pub fn data_home() -> Result<PathBuf, String> {
         .ok_or_else(|| "Application data directory unavailable".into())
 }
 
+#[cfg(not(target_os = "android"))]
 pub fn bundle_inventory(resource: &Path) -> Result<BTreeMap<String, String>, String> {
     let inventory: BTreeMap<String, String> =
         serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/integrity.json")))
@@ -215,6 +235,7 @@ pub fn bundle_inventory(resource: &Path) -> Result<BTreeMap<String, String>, Str
     Ok(inventory)
 }
 
+#[cfg(not(target_os = "android"))]
 pub fn verify_bundle(resource: &Path) -> Result<(), String> {
     use sha2::{Digest, Sha256};
     for (name, expected) in bundle_inventory(resource)? {
@@ -242,6 +263,14 @@ pub fn verify_bundle(resource: &Path) -> Result<(), String> {
     Ok(())
 }
 impl Bundle {
+    #[cfg(target_os = "android")]
+    pub fn resource_dir() -> Result<PathBuf, String> {
+        let id = android_assets::manifest()
+            .map_err(|e| e.to_string())?
+            .map_or_else(|| String::from("missing"), |(id, _)| id);
+        Ok(data_home()?.join("resources").join(id))
+    }
+    #[cfg(not(target_os = "android"))]
     pub fn resource_dir() -> Result<PathBuf, String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let folder = exe.parent().ok_or("离线资源目录不存在")?;
@@ -257,7 +286,13 @@ impl Bundle {
         let resource = Self::resource_dir()?;
         Ok(Self {
             home: data_home()?,
+            #[cfg(not(target_os = "android"))]
             inventory: bundle_inventory(&resource)?,
+            #[cfg(target_os = "android")]
+            inventory: android_assets::manifest()
+                .map_err(|e| e.to_string())?
+                .map(|(_, files)| files)
+                .unwrap_or_default(),
             resource,
         })
     }
@@ -284,13 +319,23 @@ impl Bundle {
                     .as_str()
                     .is_some_and(|id| !id.is_empty())))
     }
-    fn capacity(&self, admitted: bool) -> Result<Capacity, String> {
+    fn capacity(&self, admitted: bool, request: &Request) -> Result<Capacity, String> {
         let volume = self
             .home
             .ancestors()
             .find(|p| p.is_dir())
             .ok_or("找不到安装磁盘")?;
+        #[cfg(target_os = "android")]
+        let memory_required =
+            (u64::from(request.phone.memory_mb) + u64::from(request.desktop.memory_mb) + 1536)
+                .div_ceil(1024);
+        #[cfg(not(target_os = "android"))]
+        let memory_required = {
+            let _ = request;
+            CAPACITY_POLICY.minimum_ram_gb
+        };
         Ok(Capacity {
+            memory_required,
             memory: host_memory::total_memory_bytes() / GIB,
             disk: fs2::available_space(volume).map_err(|error| error.to_string())? / GIB,
             disk_required: if admitted {
@@ -301,10 +346,14 @@ impl Bundle {
         })
     }
     pub fn host(&self, request: &Request) -> Result<Host, String> {
+        #[cfg(target_os = "android")]
+        if self.inventory.is_empty() {
+            return Err("Offline Android and Linux guest assets are missing from this APK".into());
+        }
         let path = self.home.join("request.json");
         let admitted = self.installed()? || path.is_file();
         if let Some((label, available, required)) = self
-            .capacity(admitted)?
+            .capacity(admitted, request)?
             .rows()
             .into_iter()
             .find(|(_, available, required)| available < required)
@@ -318,6 +367,7 @@ impl Bundle {
         if !admitted {
             request.store(&self.home)?;
         }
+        #[cfg(not(target_os = "android"))]
         let images = if cfg!(any(windows, target_os = "linux")) {
             self.inventory.get("qemu/manifest.json")
         } else {
@@ -329,12 +379,22 @@ impl Bundle {
             request: path,
             #[cfg(target_os = "macos")]
             source: self.inventory["source.payload"].clone(),
+            #[cfg(not(target_os = "android"))]
             android: self.inventory["android.payload"].clone(),
+            #[cfg(not(target_os = "android"))]
             images: images.ok_or("找不到设备镜像")?.clone(),
+            #[cfg(not(target_os = "android"))]
             resume: admitted,
         })
     }
     pub fn mark_installed(&self) -> Result<(), String> {
+        #[cfg(target_os = "android")]
+        let payload = self
+            .resource
+            .file_name()
+            .and_then(|p| p.to_str())
+            .ok_or("Android manifest missing")?;
+        #[cfg(not(target_os = "android"))]
         let payload = &self.inventory["source.payload"];
         let bytes = serde_json::to_vec(&serde_json::json!({"format":1,"payload":payload,
             "installed_payload":payload,"progress":{"phase":"devices","state":"ready","error":""}}))
@@ -357,8 +417,12 @@ pub enum Field {
     Memory,
     Storage,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum Message {
+    #[cfg(target_os = "android")]
+    EditCpu(bool, String),
+    #[cfg(target_os = "android")]
+    SubmitCpu(bool),
     Choose(Locale),
     Continue,
     Set(bool, Field, u16),
@@ -367,6 +431,8 @@ pub enum Message {
     Stop,
 }
 pub struct Setup {
+    #[cfg(target_os = "android")]
+    cpu_drafts: [Option<String>; 2],
     pub bundle: Bundle,
     pub request: Request,
     pub locale: Option<Locale>,
@@ -382,11 +448,14 @@ impl Setup {
     pub fn new(bundle: Bundle, request: Option<Request>, installed: bool) -> Self {
         let locale = request.as_ref().map(|r| Locale::parse(&r.locale));
         let attempted = request.is_some();
-        let capacity = bundle.capacity(installed || attempted);
+        let request = request.unwrap_or_default();
+        let capacity = bundle.capacity(installed || attempted, &request);
         Self {
             bundle,
             attempted,
-            request: request.unwrap_or_default(),
+            request,
+            #[cfg(target_os = "android")]
+            cpu_drafts: [None, None],
             locale,
             language: locale.unwrap_or_default(),
             language_entry: iced::Animation::new(false)
@@ -400,16 +469,44 @@ impl Setup {
     }
     pub fn update(&mut self, message: Message) {
         match message {
+            #[cfg(target_os = "android")]
+            Message::EditCpu(desktop, value) => {
+                if value.len() <= 2 && value.bytes().all(|b| b.is_ascii_digit()) {
+                    let valid = value.parse().ok().filter(|n| CPU_CHOICES.contains(n));
+                    self.cpu_drafts[usize::from(desktop)] = valid.is_none().then_some(value);
+                    if let Some(count) = valid {
+                        self.request.set(desktop, Field::Cpu, count);
+                    }
+                }
+            }
+            #[cfg(target_os = "android")]
+            Message::SubmitCpu(desktop) => self.cpu_drafts[usize::from(desktop)] = None,
             Message::Choose(locale) => self.language = locale,
             Message::Continue => {
                 self.locale = Some(self.language);
                 self.request.locale = self.language.code().into();
-                self.capacity = self.bundle.capacity(false);
+                self.capacity = self
+                    .bundle
+                    .capacity(self.installed || self.attempted, &self.request);
                 self.language_entry.go_mut(true, Instant::now());
             }
-            Message::RefreshCapacity => self.capacity = self.bundle.capacity(false),
+            Message::RefreshCapacity => {
+                self.capacity = self
+                    .bundle
+                    .capacity(self.installed || self.attempted, &self.request)
+            }
             Message::Set(desktop, field, value) => {
+                #[cfg(target_os = "android")]
+                if matches!(field, Field::Cpu) {
+                    self.cpu_drafts[usize::from(desktop)] = None;
+                }
                 self.request.set(desktop, field, value);
+                #[cfg(target_os = "android")]
+                {
+                    self.capacity = self
+                        .bundle
+                        .capacity(self.installed || self.attempted, &self.request);
+                }
             }
             Message::Start | Message::Stop => {}
         }
@@ -542,9 +639,9 @@ impl Setup {
             }
             content = content.push(column![
                 line(),
-                Self::guest(false, self.request.phone, locale, reduced_motion),
+                self.guest(false, self.request.phone, locale, reduced_motion),
                 line(),
-                Self::guest(true, self.request.desktop, locale, reduced_motion),
+                self.guest(true, self.request.desktop, locale, reduced_motion),
                 line(),
             ]);
             let (checks, eligible): (Element<'_, Message>, _) = match &self.capacity {
@@ -572,6 +669,8 @@ impl Setup {
                 ),
                 Err(error) => (text(error).size(13).style(style::error_text).into(), false),
             };
+            #[cfg(target_os = "android")]
+            let eligible = eligible && self.cpu_drafts.iter().all(Option::is_none);
             let panel = column![
                 container(content)
                     .width(Length::Fill)
@@ -585,6 +684,12 @@ impl Setup {
                             "macOS · Apple Silicon"
                         } else if cfg!(windows) {
                             "Windows 11"
+                        } else if cfg!(target_os = "android") {
+                            if cfg!(target_arch = "aarch64") {
+                                "Android · ARM64"
+                            } else {
+                                "Android · x86_64"
+                            }
                         } else {
                             "Linux · x86_64"
                         })
@@ -735,16 +840,45 @@ impl Setup {
         }
     }
     fn guest(
+        &self,
         desktop: bool,
         guest: Guest,
         locale: Locale,
         reduced_motion: bool,
     ) -> Element<'static, Message> {
         let tr = |key: &'static str| locale.tr(key);
-        let fields =
-            resource_controls(desktop, guest, None, locale, reduced_motion, move |f, v| {
-                Message::Set(desktop, f, v)
-            });
+        #[cfg(target_os = "android")]
+        let cpu_input = {
+            let value = self.cpu_drafts[usize::from(desktop)]
+                .clone()
+                .unwrap_or_else(|| guest.cpus.to_string());
+            let invalid = self.cpu_drafts[usize::from(desktop)].is_some();
+            iced::widget::text_input("1/2/4", &value)
+                .width(50)
+                .padding([1, 4])
+                .size(14)
+                .align_x(iced::alignment::Horizontal::Right)
+                .style(move |theme, status| {
+                    let mut style = style::input(theme, status);
+                    if invalid {
+                        style.border.color = style::ERROR;
+                    }
+                    style
+                })
+                .on_input(move |value| Message::EditCpu(desktop, value))
+                .on_submit(Message::SubmitCpu(desktop))
+                .into()
+        };
+        let fields = resource_controls(
+            desktop,
+            guest,
+            None,
+            locale,
+            reduced_motion,
+            #[cfg(target_os = "android")]
+            Some(cpu_input),
+            move |f, v| Message::Set(desktop, f, v),
+        );
         row![
             row![
                 if desktop {
@@ -768,17 +902,20 @@ impl Setup {
     }
 }
 
+const CPU_CHOICES: &[u16] = &[1, 2, 4];
+
 pub(crate) fn resource_controls<M: Clone + 'static>(
     desktop: bool,
     guest: Guest,
     existing: Option<u16>,
     locale: Locale,
     reduced_motion: bool,
+    #[cfg(target_os = "android")] mut cpu_input: Option<Element<'static, M>>,
     change: impl Fn(Field, u16) -> M + Copy + 'static,
 ) -> Element<'static, M> {
     let tr = |key: &'static str| locale.tr(key);
     let specs: [(&str, Field, &'static [u16], u16); 3] = [
-        (tr("处理器"), Field::Cpu, &[1, 2, 4], guest.cpus.into()),
+        (tr("处理器"), Field::Cpu, CPU_CHOICES, guest.cpus.into()),
         (
             tr("内存"),
             Field::Memory,
@@ -815,12 +952,19 @@ pub(crate) fn resource_controls<M: Clone + 'static>(
             .iter()
             .position(|&value| value == current)
             .unwrap_or(0);
+        let display_value: Element<'static, M> = text(value).size(14).font(SETUP_TITLE).into();
+        #[cfg(target_os = "android")]
+        let display_value = if matches!(field, Field::Cpu) {
+            cpu_input.take().unwrap_or(display_value)
+        } else {
+            display_value
+        };
         let mut control = column![
             container(
                 row![
                     text(label).size(12).style(style::muted_text),
                     space::horizontal(),
-                    text(value).size(14).font(SETUP_TITLE)
+                    display_value
                 ]
                 .spacing(6)
             )

@@ -5,7 +5,7 @@ use std::path::Path;
 
 pub const RUNTIME: &str = "/var/lib/aiphone/installation/user/data/android/user";
 
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 pub(crate) async fn observe(
     expected: &DeviceBridgePeerOwner,
 ) -> Result<ai_phone_api::wire::NativeAndroidBooted> {

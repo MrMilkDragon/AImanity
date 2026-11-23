@@ -21,7 +21,7 @@ pub(super) fn emit() -> Vec<u8> {
             Class {
                 name: HOME,
                 parent: "Landroid/app/Activity;",
-                with_context: false,
+                constructor_args: &[],
                 interfaces: &[RUNNABLE],
                 fields: &[
                     ("apps", "Ljava/util/ArrayList;", 2),
@@ -44,7 +44,7 @@ pub(super) fn emit() -> Vec<u8> {
             Class {
                 name: "Ldev/aiphone/home/HomePackages;",
                 parent: RECEIVER,
-                with_context: false,
+                constructor_args: &[],
                 interfaces: &[],
                 fields: &[OWNER],
                 natives: &[("onReceive", ("V", &[CONTEXT, INTENT]), 1)],
@@ -52,7 +52,7 @@ pub(super) fn emit() -> Vec<u8> {
             Class {
                 name: "Ldev/aiphone/home/HomeInsets;",
                 parent: OBJECT,
-                with_context: false,
+                constructor_args: &[],
                 interfaces: &["Landroid/view/View$OnApplyWindowInsetsListener;"],
                 fields: &[OWNER],
                 natives: &[("onApplyWindowInsets", (INSETS, &[VIEW, INSETS]), 1)],
@@ -60,7 +60,7 @@ pub(super) fn emit() -> Vec<u8> {
             Class {
                 name: SCROLL,
                 parent: "Landroid/widget/HorizontalScrollView;",
-                with_context: true,
+                constructor_args: &["Landroid/content/Context;"],
                 interfaces: &[RUNNABLE],
                 fields: &[
                     OWNER,
@@ -73,7 +73,7 @@ pub(super) fn emit() -> Vec<u8> {
             Class {
                 name: "Ldev/aiphone/home/HomeIcon;",
                 parent: OBJECT,
-                with_context: false,
+                constructor_args: &[],
                 interfaces: &[
                     "Landroid/view/View$OnClickListener;",
                     "Landroid/view/View$OnTouchListener;",
@@ -98,7 +98,7 @@ pub(super) fn emit() -> Vec<u8> {
             Class {
                 name: "Ldev/aiphone/home/HomeGrid;",
                 parent: OBJECT,
-                with_context: false,
+                constructor_args: &[],
                 interfaces: &["Landroid/view/View$OnDragListener;"],
                 fields: &[
                     OWNER,
@@ -113,7 +113,7 @@ pub(super) fn emit() -> Vec<u8> {
             Class {
                 name: "Ldev/aiphone/home/HomeMenu;",
                 parent: OBJECT,
-                with_context: false,
+                constructor_args: &[],
                 interfaces: &["Landroid/view/MenuItem$OnMenuItemClickListener;"],
                 fields: &[OWNER, ("app", RESOLVE, 2), ("action", "I", 2)],
                 natives: &[("onMenuItemClick", ("Z", &["Landroid/view/MenuItem;"]), 1)],
@@ -121,7 +121,7 @@ pub(super) fn emit() -> Vec<u8> {
             Class {
                 name: "Ldev/aiphone/home/HomeSort;",
                 parent: OBJECT,
-                with_context: false,
+                constructor_args: &[],
                 interfaces: &["Ljava/util/Comparator;"],
                 fields: &[("manager", "Landroid/content/pm/PackageManager;", 2)],
                 natives: &[("compare", ("I", &[OBJECT, OBJECT]), 1)],

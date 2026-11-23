@@ -374,7 +374,7 @@ impl Files {
             }
             Message::Pick(i) => {
                 let target = self.panes[i].location(&self.panes[i].path);
-                return Task::perform(rfd::AsyncFileDialog::new().pick_files(), move |files| {
+                return Task::perform(crate::documents::AsyncFileDialog::new().pick_files(), move |files| {
                     Message::Upload(
                         target.clone(),
                         files
@@ -436,25 +436,8 @@ impl Files {
                 let client = client.clone();
                 return Task::perform(
                     async move {
-                        let dialog = rfd::AsyncFileDialog::new();
-                        let targets = if sources.len() == 1 {
-                            let Some(file) = dialog
-                                .set_file_name(leaf(&sources[0].path))
-                                .save_file()
-                                .await
-                            else {
-                                return Ok(vec![]);
-                            };
-                            vec![file.path().to_owned()]
-                        } else {
-                            let Some(folder) = dialog.pick_folder().await else {
-                                return Ok(vec![]);
-                            };
-                            sources
-                                .iter()
-                                .map(|source| folder.path().join(leaf(&source.path)))
-                                .collect()
-                        };
+                        let names = sources.iter().map(|source| leaf(&source.path).to_owned()).collect::<Vec<_>>();
+                        let targets = crate::documents::download_targets(&names).await?;
                         for (source, target) in sources.into_iter().zip(targets) {
                             let path = if source.device_id.is_empty() {
                                 source.path
@@ -479,7 +462,7 @@ impl Files {
                                 .await?
                                 .path
                             };
-                            client.download_file(&path, &target).await?;
+                            crate::documents::download(&client, &path, &target).await?;
                         }
                         Ok(Vec::new())
                     },

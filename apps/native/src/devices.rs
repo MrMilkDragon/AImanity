@@ -326,6 +326,8 @@ impl Devices {
                     Some(original.storage(desktop)),
                     locale,
                     reduced_motion,
+                    #[cfg(target_os = "android")]
+                    None,
                     move |field, value| Message::Resource(desktop, field, value),
                 ));
                 if original != guest {

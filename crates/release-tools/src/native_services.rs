@@ -55,6 +55,7 @@ fn check_public(bytes: &[u8], role: &str, home: &str) -> Result<()> {
 fn host() -> Result<&'static str> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => Ok("macos-arm64"),
+        ("linux", "aarch64") => Ok("linux-arm64"),
         ("linux", "x86_64") => Ok("linux-x64"),
         _ => Err("Unsupported native service build host".into()),
     }
@@ -353,7 +354,7 @@ pub(super) fn package(linux_ocr: Option<&Path>, linux_rootfs: Option<Value>) -> 
     if let Some(bridge) = bridge {
         let bytes = fs::read(bridge)?;
         check_public(&bytes, "desktop-bridge", &std::env::var("HOME")?)?;
-        let architecture = if host == "macos-arm64" { 183u16 } else { 62 };
+        let architecture = if host.ends_with("-arm64") { 183u16 } else { 62 };
         if bytes.len() < 64
             || !bytes.starts_with(b"\x7fELF\x02\x01")
             || bytes[18..20] != architecture.to_le_bytes()
@@ -447,4 +448,39 @@ pub(super) fn run(args: &[OsString]) -> Result<Value> {
         }
         _ => Err("native-services requires build, receipt, or verify DIRECTORY".into()),
     }
+}
+
+pub(super) fn android_guest(args: &[OsString]) -> Result<Value> {
+    let [output, image] = args else {
+        return Err("android-linux-context OUTPUT WORKSPACE-TAR".into());
+    };
+    if host()? != "linux-arm64" {
+        return Err("Android guest requires ARM64 Linux services".into());
+    }
+    let folder = Path::new(output);
+    fs::create_dir_all(folder)?;
+    let root = std::env::current_dir()?;
+    run(&["build".into()])?;
+    let image =
+        crate::client_payload::copy_payload(Some(image.into()), &folder.join("images.payload"))?
+            .ok_or("Missing Linux workspace")?;
+    let rootfs =
+        json!({"sha256":image,"size_bytes":folder.join("images.payload").metadata()?.len()});
+    let mut files = package(None, Some(rootfs))?;
+    let apps = PathBuf::from(
+        std::env::var_os("AI_PHONE_RELEASE_PHONE_APPS")
+            .ok_or("Missing ARM64 guest applications")?,
+    );
+    let inventory: Value = serde_json::from_reader(File::open(apps.join("manifest.json"))?)?;
+    if inventory["browser"]["abi"] != "arm64-v8a" {
+        return Err("Expected ARM64 Android browser".into());
+    }
+    files.extend(source::component(&apps, "runtime/phone-apps", &inventory)?);
+    let version = source::payload(&root, folder, files, vec!["native-services", "phone-apps"])?;
+    fs::write(folder.join("source.sha256"), format!("{version}\n"))?;
+    fs::copy(
+        "target/release/ai-phone-assistant",
+        folder.join("bootstrap.program"),
+    )?;
+    Ok(json!({"identity":version}))
 }

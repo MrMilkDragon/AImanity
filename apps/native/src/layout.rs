@@ -2,11 +2,11 @@ use iced::{Point, Rectangle, Size};
 
 pub const WORKBENCH: Size = Size::new(1440., 900.);
 
-pub fn fit_workbench(window: Size) -> (f32, iced::Vector) {
-    let scale = (window.width / WORKBENCH.width).min(window.height / WORKBENCH.height);
+pub fn fit_canvas(window: Size, canvas: Size) -> (f32, iced::Vector) {
+    let scale = (window.width / canvas.width).min(window.height / canvas.height);
     let origin = iced::Vector::new(
-        ((window.width / scale - WORKBENCH.width) * 0.5).max(0.),
-        ((window.height / scale - WORKBENCH.height) * 0.5).max(0.),
+        ((window.width / scale - canvas.width) * 0.5).max(0.),
+        ((window.height / scale - canvas.height) * 0.5).max(0.),
     );
     (scale, origin)
 }

@@ -38,6 +38,8 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(unix)]
         "windows-release" => windows_release::seal(rest).map(Some),
         #[cfg(unix)]
+        "android-linux-context" => native_services::android_guest(rest).map(Some),
+        #[cfg(unix)]
         "windows-release-context" => windows_release::prepare(rest).map(Some),
         #[cfg(unix)]
         "windows-guest-assets" => windows_release::assets::run(rest).map(Some),
@@ -61,6 +63,7 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         "factory-android" => assets::factory_android().map(|()| None),
         "fetch-windows-aosp" => assets::windows_aosp(rest).map(|()| None),
         "windows-cuttlefish" => cuttlefish::run(rest).map(|()| None),
+        "android-avf-boot" => cuttlefish::android_avf_boot(rest).map(|()| None),
         "android-component" => android_component::seal(rest).map(Some),
         "stage-windows-android-audio" => assets::windows_audio(rest).map(|()| None),
         #[cfg(windows)]
@@ -69,6 +72,7 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(unix)]
         "factory-images" => image_factory::run(rest).map(Some),
         "build-android-apk" => android_package::build(rest).map(Some),
+        "mobile-activity-dex" => android_package::mobile_dex(rest).map(|()| None),
         "build-android-network" => android_package::network_dex::build(rest).map(|()| None),
         "phone-apps" => phone_apps::run(rest).map(Some),
         "decode-capsule" => {

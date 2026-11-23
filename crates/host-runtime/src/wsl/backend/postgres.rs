@@ -28,7 +28,7 @@ mv "$stage/data" "$state/data"
 sync -f "$state"
 "#;
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub(super) fn check_guest() -> Result<()> {
     filesystem::regular(&Path::new(BIN).join("postgres")).map(|_| ())
 }

@@ -106,7 +106,13 @@ fn ramdisk(out: &mut impl Write) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn stage(root: &Path, out: &Path) -> Result<()> {
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum Target {
+    X86Qemu,
+    Arm64Avf,
+}
+
+pub(super) fn stage(root: &Path, out: &Path, target: Target) -> Result<()> {
     let boot = fs::read(root.join("boot.img"))?;
     let generic = fs::read(root.join("init_boot.img"))?;
     let vendor = fs::read(root.join("vendor_boot.img"))?;
@@ -120,10 +126,22 @@ pub(super) fn stage(root: &Path, out: &Path) -> Result<()> {
         return Err("Expected Cuttlefish Android boot image headers v4".into());
     }
     let kernel = bytes(&boot, 4096, le32(&boot, 8)?)?;
-    if bytes(kernel, 514, 4)? != b"HdrS" {
-        return Err("Expected Linux bzImage".into());
+    match target {
+        Target::X86Qemu => {
+            if bytes(kernel, 514, 4)? != b"HdrS" {
+                return Err("Expected Linux bzImage".into());
+            }
+            fs::write(out.join("bzImage"), kernel)?;
+        }
+        Target::Arm64Avf => {
+            // The AOSP boot payload can store the arm64 Image compressed.
+            // The Android factory decodes it and verifies ARM64_IMAGE_MAGIC.
+            fs::write(out.join("kernel.payload"), kernel)?;
+            let cmdline = bytes(&vendor, 28, 2048)?;
+            let cmdline = cmdline.split(|b| *b == 0).next().unwrap_or_default();
+            fs::write(out.join("vendor-cmdline"), std::str::from_utf8(cmdline)?)?;
+        }
     }
-    fs::write(out.join("bzImage"), kernel)?;
 
     let page = le32(&vendor, 12)?;
     let entry = le32(&vendor, 2120)?;
@@ -141,6 +159,12 @@ pub(super) fn stage(root: &Path, out: &Path) -> Result<()> {
     let entries = include_str!("bootconfig.txt")
         .replace("{vbmeta.size}", &size.to_string())
         .replace("{vbmeta.digest}", &digest);
+    let entries = if target == Target::Arm64Avf {
+        let (_, platform) = entries.split_once('\n').ok_or("Missing boot devices")?;
+        format!("androidboot.boot_devices=10000.pci\n{platform}")
+    } else {
+        entries
+    };
     let mut body = format!("{official}\n{entries}").into_bytes();
     body.resize((body.len() + 1).next_multiple_of(4), 0);
     let checksum = body
@@ -148,7 +172,9 @@ pub(super) fn stage(root: &Path, out: &Path) -> Result<()> {
         .fold(0_u32, |sum, byte| sum.wrapping_add(u32::from(*byte)));
 
     let mut initrd = fs::File::create_new(out.join("initrd.img"))?;
-    ramdisk(&mut initrd)?;
+    if target == Target::X86Qemu {
+        ramdisk(&mut initrd)?;
+    }
     for row in bytes(&vendor, table, table_size)?.chunks_exact(entry) {
         if le32(row, 8)? != 2 {
             initrd.write_all(bytes(&vendor, base + le32(row, 4)?, le32(row, 0)?)?)?;

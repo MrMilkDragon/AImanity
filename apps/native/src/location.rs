@@ -308,7 +308,7 @@ impl Location {
                 }
             }
             Message::Attribution => {
-                let _ = open::that_detached("https://www.openstreetmap.org/copyright");
+                let _ = crate::platform::open_link("https://www.openstreetmap.org/copyright");
             }
         }
         Task::none()

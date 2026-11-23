@@ -1,13 +1,13 @@
 //! Sealed Linux backend initialization; native phone readiness belongs to the host.
 mod postgres;
 pub(crate) mod process;
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 use crate::profile;
 use crate::{Error, Result, filesystem};
 #[cfg(target_os = "macos")]
 pub(crate) use postgres::MAC_POSTGRES_SHUTDOWN;
 use process::Execute;
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 use process::Process;
 use serde_json::{Value, json};
 use std::{
@@ -18,10 +18,10 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::process::Command;
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 use tokio::sync::watch;
 
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 const PATH: &str = "/opt/aiphone/linux/bin:/usr/local/bin:/usr/bin:/bin";
 const REDIS: &str = "/opt/aiphone/redis";
 const REDIS_CLI: &str = "/opt/aiphone/redis/bin/redis-cli";
@@ -34,7 +34,7 @@ fn text(path: &Path) -> Result<String> {
         .map(str::to_owned)
         .ok_or(Error::Invalid("wsl_initializer_path"))
 }
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 fn environment(inherited: impl IntoIterator<Item = (String, String)>) -> BTreeMap<String, String> {
     let mut env: BTreeMap<_, _> = inherited
         .into_iter()
@@ -271,7 +271,7 @@ pub(crate) fn token(root: &Path, section: &str) -> Result<()> {
         .collect::<String>();
     filesystem::publish_private(&folder, "token", value.as_bytes(), true)
 }
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub(crate) async fn initialize_request(request: &[u8]) -> Result<()> {
     let request = profile::parse_request(request)
         .map_err(|_| Error::Invalid("wsl_initialization_request"))?;
@@ -299,7 +299,7 @@ pub(crate) async fn initialize_request(request: &[u8]) -> Result<()> {
     let _ = signal.await;
     result
 }
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 async fn initialize<E: Execute>(
     bundle: &Path,
     home: &Path,
@@ -357,6 +357,10 @@ async fn initialize<E: Execute>(
         .checked(backend.command(&stage[0], &stage[1..]), Vec::new())
         .await?;
     phase("profile");
+    #[cfg(target_arch = "aarch64")]
+    backend
+        .env
+        .insert("AI_PHONE_SERIAL".into(), "127.0.0.1:5555".into());
     if request.android_qemu {
         filesystem::directory(Path::new(crate::device_bridge::guest::RUNTIME), true)?;
         backend.env.insert(
@@ -370,7 +374,11 @@ async fn initialize<E: Execute>(
     profile::prepare_request(
         &root,
         Path::new("/opt/aiphone/native-phone-bridge"),
-        "android35-x86_64",
+        if cfg!(target_arch = "aarch64") {
+            "android35-arm64"
+        } else {
+            "android35-x86_64"
+        },
         request,
         PATH,
     )?;

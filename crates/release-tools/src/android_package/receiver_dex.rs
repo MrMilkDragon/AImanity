@@ -7,7 +7,6 @@ type Proto = (Name, Types);
 type Method = (Name, Name, Proto);
 
 const VOID: Proto = ("V", &[]);
-const CONTEXT_CTOR: Proto = ("V", &["Landroid/content/Context;"]);
 const STRING: Name = "Ljava/lang/String;";
 const SYSTEM: Name = "Ljava/lang/System;";
 const RECEIVER: Name = "Landroid/content/BroadcastReceiver;";
@@ -22,18 +21,14 @@ pub(super) struct Class {
     pub name: Name,
     pub parent: Name,
     pub interfaces: Types,
-    pub with_context: bool,
+    pub constructor_args: Types,
     pub fields: &'static [(Name, Name, u32)],
     pub natives: &'static [(Name, Proto, u32)],
 }
 
 impl Class {
     fn constructor(&self) -> Proto {
-        if self.with_context {
-            CONTEXT_CTOR
-        } else {
-            VOID
-        }
+        ("V", self.constructor_args)
     }
 }
 
@@ -41,7 +36,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: "Ldev/aiphone/input/PhoneNotifications;",
         parent: "Landroid/service/notification/NotificationListenerService;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &["Ljava/lang/Runnable;"],
         fields: &[
             ("file", "Landroid/util/AtomicFile;", 2),
@@ -64,7 +59,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: "Ldev/aiphone/input/UiTreeReceiver;",
         parent: RECEIVER,
-        with_context: false,
+        constructor_args: &[],
         interfaces: &[],
         fields: &[("imeOwner", IME, 2)],
         natives: &[(
@@ -79,7 +74,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: IME,
         parent: "Landroid/inputmethodservice/InputMethodService;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &[],
         fields: &[("inputReceiver", RECEIVER, 2)],
         natives: &[
@@ -91,7 +86,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: ATTENTION,
         parent: "Landroid/accessibilityservice/AccessibilityService;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &[],
         fields: &[
             ("active", ATTENTION, 10),
@@ -126,7 +121,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: TIMER,
         parent: "Ljava/lang/Object;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &["Ljava/lang/Runnable;"],
         fields: &[("owner", ATTENTION, 2), ("heartbeat", "Z", 2)],
         natives: &[("run", VOID, 1)],
@@ -134,7 +129,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: SCREENSHOT,
         parent: "Ljava/lang/Object;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &["Landroid/accessibilityservice/AccessibilityService$TakeScreenshotCallback;"],
         fields: &[
             ("owner", ATTENTION, 2),
@@ -350,14 +345,24 @@ pub(super) fn emit_for(schema: &[Class], library: Name) -> Vec<u8> {
                     0x000e,
                 ],
             );
-            let registers = 1 + u32::from(class.with_context);
+            let registers = 1 + class.constructor_args.len() as u32;
+            // Retain the original bytecode of the existing Home and Unicode IME APKs.
+            // A range invokes the keyboard connection's three-register superclass constructor.
+            let (invoke, operands) = match class.constructor_args {
+                [] => (0x1070, 0),
+                [_] => (0x2070, 0x10),
+                args => {
+                    assert!(args.iter().all(|ty| !matches!(*ty, "J" | "D")));
+                    (0x76 | ((registers as u16) << 8), 0)
+                }
+            };
             let init = code(
                 &mut dex,
                 registers,
                 &[
-                    0x70 | ((registers as u16) << 12),
+                    invoke,
                     method((class.parent, "<init>", class.constructor())) as u16,
-                    if registers == 2 { 0x10 } else { 0 },
+                    operands,
                     0x000e,
                 ],
             );

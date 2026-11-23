@@ -101,6 +101,7 @@ dependencies = [
  "ai-phone-api",
  "ai-phone-host-runtime",
  "ai-phone-local-speech",
+ "android-activity",
  "arboard",
  "base64 0.22.1",
  "block2 0.6.2",
@@ -115,8 +116,11 @@ dependencies = [
  "futures-util",
  "hex",
  "iced",
+ "iced_winit",
  "image",
+ "jni 0.21.1",
  "libc",
+ "ndk-context",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-av-foundation",
@@ -140,6 +144,7 @@ dependencies = [
  "windows-sys 0.61.2",
  "x11rb",
  "xcap",
+ "xz2",
 ]
 
 [[package]]
@@ -2102,8 +2107,6 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7589888c8e951899cc688247a69933bb7a0511f0b4b2e122ac3fcd5dacb37f72"
 dependencies = [
  "iced_debug",
  "iced_program",
