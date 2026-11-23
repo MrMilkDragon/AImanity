@@ -165,6 +165,7 @@ done
 tap_word settings Memory
 adb shell settings put secure show_ime_with_hard_keyboard 1
 adb shell input tap "$((cx+cw*3/4))" "$((cy+ch/2))"
+adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL
 ime_status=keyboard-not-detected
 key_location() {
   awk -F '\t' -v key="$2" -v top="$keyboard_top" '
@@ -190,16 +191,19 @@ done
 # Start with the symbols layout where a tap on the numeral commits it.
 # A numeral printed as a secondary hint on a letter needs a long press.
 if [[ -n $symbols ]]; then
-  read -r sx sy <<< "$symbols"
-  adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL
-  adb shell input tap "$sx" "$sy"
   for attempt in {1..8}; do
-    sleep 0.5
+    if [[ -n $symbols ]]; then
+      read -r sx sy <<< "$symbols"
+      adb shell input tap "$sx" "$sy"
+    fi
+    sleep 0.8
     capture symbols
+    symbols=$(key_location symbols '123')
+    if [[ -n $symbols ]]; then continue; fi
     digit=$(key_location symbols '^2$')
     if [[ -n $digit ]]; then break; fi
   done
-  if [[ -n $digit ]]; then
+  if [[ -n ${digit:-} ]]; then
     read -r dx dy <<< "$digit"
     adb shell input tap "$dx" "$dy"
     adb shell input keyevent KEYCODE_ENTER
