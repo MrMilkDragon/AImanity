@@ -105,7 +105,6 @@ After=local-fs.target aimanity-avf-relay.service network.target
 Requires=aimanity-avf-relay.service
 
 [Service]
-ExecStartPre=/usr/sbin/resize2fs /dev/vda
 ExecStart=/usr/local/libexec/aiphone-bootstrap --avf-guest-control
 Restart=on-failure
 RestartSec=5
