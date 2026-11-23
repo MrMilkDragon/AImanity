@@ -1,0 +1,141 @@
+name: Replay an existing signed Android workbench APK
+on:
+  push:
+    branches: ['build/android-mobile-retest/*']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    name: Verify the original APK and signer
+    runs-on: ubuntu-24.04
+    outputs:
+      filename: ${{ steps.check.outputs.filename }}
+      digest: ${{ steps.check.outputs.digest }}
+      source_run: ${{ steps.check.outputs.source_run }}
+      package_id: ${{ steps.check.outputs.package_id }}
+      signing: release
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_CERT: ${{ vars.ANDROID_APP_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          id=${GITHUB_REF_NAME##*/}
+          [[ $id == 45123851629 ]]
+          run="repos/$GITHUB_REPOSITORY/actions/runs/$id"
+          gh api "$run" | jq -e --arg repo "$GITHUB_REPOSITORY" '.head_repository.full_name == $repo and .event=="push" and .head_branch=="build/android-mobile-release/45119232922-45121365863" and .path==".github/workflows/android-mobile.yml"'
+          gh api "$run/jobs" | jq -e '.jobs | any(.[]; .name=="package" and .conclusion=="success")'
+          read -r artifact checksum < <(gh api "$run/artifacts" | jq -r '[.artifacts[] | select(.name=="android-workbench-candidate" and .expired==false)] | select(length==1) | .[0] | [.id,.digest] | @tsv')
+          [[ $artifact == 14795450992 && $checksum == sha256:8aec8fe48617796de496243f3428752fb9c51be970f7f5ced1746d7f2340ab0d ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > original.zip
+          printf '%s  original.zip\n' "${checksum#sha256:}" | sha256sum --check --strict
+          apk=AImanity-0.0.5-android-universal.apk
+          [[ $(unzip -Z1 original.zip) == "$apk" ]]
+          unzip -p original.zip "$apk" > "$apk"
+          sdk="$ANDROID_HOME/build-tools/35.0.0"
+          "$sdk/apksigner" verify --verbose --print-certs "$apk" | tee signature.txt
+          actual_cert=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' signature.txt)
+          expected_cert=$(printf %s "$EXPECTED_CERT" | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          [[ $actual_cert == fba9f11b578fe22f2c867bcd179985c9b07b9c2e3eca4c06d4387debbfc9916d && $actual_cert == "$expected_cert" ]]
+          "$sdk/aapt" dump badging "$apk" > badging.txt
+          grep -F "package: name='dev.aimanity.native'" badging.txt
+          grep -F "native-code: 'arm64-v8a' 'x86_64'" badging.txt
+          digest=$(sha256sum "$apk" | cut -d ' ' -f1)
+          [[ $digest == b04d1fc75997e97618d019dff13b3315ed055d73af78f6ec1d21de23a6f51340 ]]
+          printf 'source_run=%s\nfilename=%s\ndigest=%s\npackage_id=dev.aimanity.native\n' "$id" "$apk" "$digest" >> "$GITHUB_OUTPUT"
+          printf 'Source run %s, artifact %s, original APK SHA-256 %s\n' "$id" "$artifact" "$digest" >> "$GITHUB_STEP_SUMMARY"
+  screens:
+    name: Android 15 ${{ matrix.profile }} cold launch and input
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { profile: phone, device: pixel_5 }
+          - { profile: tablet, device: pixel_tablet }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-workbench-candidate
+          run-id: ${{ needs.package.outputs.source_run }}
+          github-token: ${{ github.token }}
+          path: client
+      - name: Exercise a clean Android Virtual Device
+        env:
+          PROFILE: ${{ matrix.profile }}
+          AVD_DEVICE: ${{ matrix.device }}
+          APK: client/${{ needs.package.outputs.filename }}
+          APK_SHA256: ${{ needs.package.outputs.digest }}
+          PACKAGE: ${{ needs.package.outputs.package_id }}
+        run: |
+          set -euo pipefail
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          mkdir -p evidence
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y tesseract-ocr tesseract-ocr-eng imagemagick
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          image='system-images;android-35;google_apis;x86_64'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator platform-tools "$image"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/android-user"
+          export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
+          export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avd_path="$ANDROID_AVD_HOME/europium.avd"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n europium -k "$image" -d "$AVD_DEVICE" -p "$avd_path"
+          avd_config="$avd_path/config.ini"
+          test -s "$avd_config"
+          printf 'avd.ini.encoding=UTF-8\npath=%s\ntarget=android-35\n' "$avd_path" > "$ANDROID_AVD_HOME/europium.ini"
+          emulator -list-avds | grep -Fx europium
+          sed -i '/^disk.dataPartition.size[[:space:]]*=/d' "$avd_config"
+          echo 'disk.dataPartition.size=8G' >> "$avd_config"
+          emulator -avd europium -no-window -no-audio -no-snapshot -wipe-data -no-boot-anim -accel on \
+            -gpu swiftshader_indirect -memory 4096 -cores 4 > evidence/emulator.log 2>&1 &
+          trap 'adb emu kill >/dev/null 2>&1 || true' EXIT
+          timeout 90 adb wait-for-device
+          timeout 300 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == 1 ]]; do sleep 2; done'
+          bash scripts/mobile-smoke.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: android-${{ matrix.profile }}-evidence
+          path: evidence/
+          if-no-files-found: ignore
+          retention-days: 14
+  deliver:
+    name: Retain the Android-tested APK
+    needs: [package, screens]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-workbench-candidate
+          run-id: ${{ needs.package.outputs.source_run }}
+          github-token: ${{ github.token }}
+          path: client
+      - name: Match the bytes installed on both devices
+        env:
+          FILE: ${{ needs.package.outputs.filename }}
+          DIGEST: ${{ needs.package.outputs.digest }}
+        run: |
+          cd client
+          printf '%s  %s\n' "$DIGEST" "$FILE" | sha256sum --check --strict
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        id: deliver
+        with:
+          name: android-workbench-${{ needs.package.outputs.signing }}-apk
+          path: client/${{ needs.package.outputs.filename }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Link the tested APK
+        env:
+          ARTIFACT_URL: ${{ steps.deliver.outputs.artifact-url }}
+          DIGEST: ${{ needs.package.outputs.digest }}
+        run: printf '[Download the tested APK](%s) · SHA-256 `%s`\n' "$ARTIFACT_URL" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
