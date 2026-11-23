@@ -179,6 +179,9 @@ fn key(input: &mut Enigo, name: &str) -> Result<()> {
         Key::Control
     };
     let plain = match name {
+        "volumedown" => Key::VolumeDown,
+        "volumeup" => Key::VolumeUp,
+        "volumemute" => Key::VolumeMute,
         "enter" => Key::Return,
         "tab" => Key::Tab,
         "escape" => Key::Escape,

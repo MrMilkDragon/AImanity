@@ -1,6 +1,8 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, field, form_select, icon_button, text_button},
+    controls::{
+        Icon, action_button, content_button, form_input, form_select, icon_button, text_button,
+    },
     deployment::{self, Field, Request},
     locale::Locale,
     style,
@@ -8,15 +10,20 @@ use crate::{
 use ai_phone_api::wire;
 use iced::{
     Element, Length, Subscription, Task,
-    widget::{button, column, row, space, text},
+    widget::{button, column, container, row, rule, space, text},
 };
 use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub enum Message {
-    Choose(String),
+    Open,
+    Edit(String),
     Invite(wire::DevicePairRequest),
-    Invitation(Result<wire::DeviceInvitation, String>),
+    Invitation(
+        wire::DevicePairRequest,
+        Result<wire::DeviceInvitation, String>,
+    ),
+    Repair(String),
     ExpireInvitation(std::time::Instant),
     Disconnect(String, bool),
     CopyCode,
@@ -35,7 +42,10 @@ pub enum Message {
     Resource(bool, Field, u16),
     Restart,
     Install,
-    Installed(Result<wire::DesktopProvisionJob, String>),
+    Installed(
+        wire::DesktopProvisionRequest,
+        Result<wire::DesktopProvisionJob, String>,
+    ),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,7 +56,19 @@ impl std::fmt::Display for Memory {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum Startup {
+    Pair(wire::DevicePairRequest),
+    Desktop(wire::DesktopProvisionRequest),
+}
+#[derive(Debug)]
+pub struct Issue {
+    pub reason: String,
+    pub retry: Option<Startup>,
+}
 pub struct Devices {
+    pub issues: std::collections::HashMap<String, Issue>,
+    starting: std::collections::HashSet<String>,
     pub selected: String,
     pub(super) invitation: Option<(wire::DeviceInvitation, std::time::Instant)>,
     draft: Option<wire::DeviceSaveRequest>,
@@ -54,7 +76,7 @@ pub struct Devices {
     error: String,
     cpus: u32,
     memory: u32,
-    job: Option<wire::DesktopProvisionJob>,
+    jobs: Vec<wire::DesktopProvisionJob>,
     pub registry: Option<wire::RegistryState>,
     pub applied: Option<Request>,
     pub resources: Option<Request>,
@@ -63,13 +85,15 @@ impl Default for Devices {
     fn default() -> Self {
         Self {
             selected: String::new(),
+            issues: Default::default(),
+            starting: Default::default(),
             invitation: None,
             draft: None,
             busy: false,
             error: String::new(),
             cpus: 2,
             memory: 2560,
-            job: None,
+            jobs: Vec::new(),
             registry: None,
             applied: None,
             resources: None,
@@ -77,6 +101,55 @@ impl Default for Devices {
     }
 }
 impl Devices {
+    pub fn connection_failed(&mut self, id: &str, reason: String) -> bool {
+        match self.issues.get_mut(id) {
+            Some(issue) => {
+                if issue.retry.is_none() {
+                    issue.reason = reason;
+                }
+                false
+            }
+            None => {
+                self.issues.insert(
+                    id.to_owned(),
+                    Issue {
+                        reason,
+                        retry: None,
+                    },
+                );
+                true
+            }
+        }
+    }
+    pub fn frame_received(&mut self, id: &str) -> bool {
+        self.issues.remove(id).is_some()
+    }
+    fn launch(&mut self, action: Startup, client: &Connection) -> Task<Message> {
+        let client = client.clone();
+        match action {
+            Startup::Pair(request) => {
+                if !self.starting.insert(request.id.clone()) {
+                    return Task::none();
+                }
+                let retry = request.clone();
+                Task::perform(
+                    async move { client.rpc("registry/device-invite", request).await },
+                    move |r| Message::Invitation(retry.clone(), r),
+                )
+            }
+            Startup::Desktop(mut request) => {
+                if !self.starting.insert(request.device_id.clone()) {
+                    return Task::none();
+                }
+                request.request_id = uuid::Uuid::now_v7().to_string();
+                let retry = request.clone();
+                Task::perform(
+                    async move { client.rpc("desktop/provision", request).await },
+                    move |r| Message::Installed(retry.clone(), r),
+                )
+            }
+        }
+    }
     fn available(&self, registry: &wire::RegistryState) -> Vec<&'static str> {
         [
             ("phone", registry.phone_limit),
@@ -96,9 +169,9 @@ impl Devices {
         .collect()
     }
     fn running(&self) -> bool {
-        self.job
-            .as_ref()
-            .is_some_and(|j| matches!(j.status.as_str(), "queued" | "running"))
+        self.jobs
+            .iter()
+            .any(|j| matches!(j.status.as_str(), "queued" | "running"))
     }
     pub fn subscription(&self) -> Subscription<Message> {
         if self.running() {
@@ -115,19 +188,20 @@ impl Devices {
     ) -> Task<Message> {
         let change_kind = matches!(message, Message::Kind(_));
         match message {
-            Message::Invite(request) => {
-                self.busy = true;
-                self.error.clear();
-                let client = client.clone();
-                return Task::perform(
-                    async move { client.rpc("registry/device-invite", request).await },
-                    Message::Invitation,
-                );
+            Message::Repair(id) => {
+                if let Some(action) = self.issues.get(&id).and_then(|i| i.retry.clone()) {
+                    return self.launch(action, client);
+                }
             }
-            Message::Invitation(r) => {
-                self.busy = false;
+            Message::Invite(request) => {
+                self.error.clear();
+                return self.launch(Startup::Pair(request), client);
+            }
+            Message::Invitation(request, r) => {
+                self.starting.remove(&request.id);
                 match r {
                     Ok(invite) => {
+                        self.issues.remove(&request.id);
                         self.selected = invite.device_id.clone();
                         self.draft = None;
                         let issued = std::time::Instant::now();
@@ -143,7 +217,17 @@ impl Devices {
                             );
                         }
                     }
-                    Err(e) => self.error = e,
+                    Err(reason) => {
+                        self.selected = request.id.clone();
+                        self.draft = None;
+                        self.issues.insert(
+                            request.id.clone(),
+                            Issue {
+                                reason,
+                                retry: Some(Startup::Pair(request)),
+                            },
+                        );
+                    }
                 }
             }
             Message::ExpireInvitation(issued) => {
@@ -191,20 +275,23 @@ impl Devices {
                     Err(e) => self.error = e.to_string(),
                 }
             }
-            Message::Choose(id) => {
-                self.selected = id;
+            Message::Open => {
                 self.draft = None;
-                self.job = None;
-                if registry
-                    .devices
-                    .iter()
-                    .any(|device| device.id == self.selected && device.paired)
-                {
-                    self.resources = None;
+                self.error.clear();
+            }
+            Message::Edit(id) => {
+                let Some(d) = registry.devices.iter().find(|d| d.id == id) else {
                     return Task::none();
-                }
+                };
+                self.selected = id;
                 self.resources = self.applied.clone();
-                return self.update(Message::Check, registry, client);
+                self.draft = Some(wire::DeviceSaveRequest {
+                    id: d.id.clone(),
+                    expected_revision: d.revision,
+                    name: d.name.clone(),
+                    kind: d.kind.clone(),
+                });
+                return iced::widget::operation::focus("device-name");
             }
             Message::New(kind) => {
                 let id = uuid::Uuid::now_v7().to_string();
@@ -214,22 +301,9 @@ impl Devices {
                     kind,
                     ..Default::default()
                 });
+                return iced::widget::operation::focus("device-name");
             }
             Message::Name(name) | Message::Kind(name) => {
-                if self.draft.is_none()
-                    && let Some(device) = registry
-                        .devices
-                        .iter()
-                        .find(|d| d.id == self.selected)
-                        .or_else(|| registry.devices.first())
-                {
-                    self.draft = Some(wire::DeviceSaveRequest {
-                        id: device.id.clone(),
-                        expected_revision: device.revision,
-                        name: device.name.clone(),
-                        kind: device.kind.clone(),
-                    });
-                }
                 if let Some(draft) = &mut self.draft {
                     if change_kind {
                         draft.kind = name;
@@ -280,12 +354,27 @@ impl Devices {
             }
             Message::Jobs(result) => match result {
                 Ok(state) => {
-                    let was_running = self.running();
-                    self.job = state
-                        .jobs
-                        .into_iter()
-                        .find(|j| j.device_id == self.selected);
-                    if was_running && self.job.as_ref().is_some_and(|j| j.status == "completed") {
+                    let finished =
+                        self.running() && state.jobs.iter().any(|j| j.status == "completed");
+                    for job in &state.jobs {
+                        if job.status == "failed" {
+                            self.issues.insert(
+                                job.device_id.clone(),
+                                Issue {
+                                    reason: job.error.clone(),
+                                    retry: Some(Startup::Desktop(wire::DesktopProvisionRequest {
+                                        device_id: job.device_id.clone(),
+                                        cpus: job.cpus,
+                                        memory_mb: job.memory_mb,
+                                        template_id: job.template_id.clone(),
+                                        ..Default::default()
+                                    })),
+                                },
+                            );
+                        }
+                    }
+                    self.jobs = state.jobs;
+                    if finished {
                         let client = client.clone();
                         return Task::perform(
                             async move { client.rpc("registry/state", wire::RegistryRequest {}).await },
@@ -304,260 +393,397 @@ impl Devices {
             }
             Message::Restart => {}
             Message::Install => {
-                self.busy = true;
                 self.error.clear();
-                let client = client.clone();
                 let request = wire::DesktopProvisionRequest {
                     device_id: self.selected.clone(),
-                    request_id: uuid::Uuid::now_v7().to_string(),
+                    request_id: String::new(),
                     cpus: self.cpus,
                     memory_mb: self.memory,
                     template_id: "debian13-openbox".into(),
                 };
-                return Task::perform(
-                    async move { client.rpc("desktop/provision", request).await },
-                    Message::Installed,
-                );
+                return self.launch(Startup::Desktop(request), client);
             }
-            Message::Installed(r) => {
-                self.busy = false;
-                match r {
-                    Ok(job) => {
-                        self.job = Some(job);
+            Message::Installed(request, r) => {
+                let id = request.device_id.clone();
+                self.starting.remove(&id);
+                if registry.devices.iter().any(|d| d.id == id) {
+                    match r {
+                        Ok(job) if job.status != "failed" => {
+                            if job.status == "completed" {
+                                self.issues.remove(&id);
+                            }
+                            self.jobs.retain(|old| old.device_id != id);
+                            self.jobs.push(job);
+                        }
+                        other => {
+                            let reason = match other {
+                                Ok(job) => job.error,
+                                Err(cause) => cause,
+                            };
+                            self.issues.insert(
+                                id,
+                                Issue {
+                                    reason,
+                                    retry: Some(Startup::Desktop(request)),
+                                },
+                            );
+                        }
                     }
-                    Err(e) => self.error = e,
                 }
             }
         }
         Task::none()
     }
-    pub fn view<'a>(
+    pub fn new_device(&self, registry: &wire::RegistryState) -> Message {
+        Message::New(
+            self.available(registry)
+                .first()
+                .copied()
+                .unwrap_or("paired-phone")
+                .into(),
+        )
+    }
+
+    pub fn actions<'a>(
+        &'a self,
+        registry: &'a wire::RegistryState,
+        locale: Locale,
+    ) -> Element<'a, Message> {
+        let add = content_button(
+            row![Icon::Plus.view(), text(locale.tr("添加设备")).size(13)]
+                .spacing(6)
+                .align_y(iced::Center),
+            style::TOOL_CONTROL,
+        )
+        .padding([0, 8])
+        .on_press_maybe((!self.busy && self.draft.is_none()).then(|| self.new_device(registry)));
+        let actions = row![].align_y(iced::Center).spacing(6);
+        #[cfg(not(target_os = "android"))]
+        let actions = actions.push(
+            text_button(locale.tr("共享设备"))
+                .height(style::TOOL_CONTROL)
+                .on_press(Message::Share(locale.code().into())),
+        );
+        actions.push(add).into()
+    }
+
+    pub fn editing(&self) -> bool {
+        self.draft.is_some()
+    }
+
+    pub fn view<'a, M: Clone + 'a>(
         &'a self,
         registry: &'a wire::RegistryState,
         locale: Locale,
         reduced_motion: bool,
-    ) -> Element<'a, Message> {
+        tools: impl Fn(usize, &str) -> Option<Element<'a, M>>,
+        receipt: Option<Element<'a, M>>,
+        manage: fn(Message) -> M,
+    ) -> Element<'a, M> {
+        let admin = |element: Element<'a, Message>| element.map(manage);
         let tr = |key: &'static str| locale.tr(key);
-        let available = self.available(registry);
-        let device = registry
-            .devices
-            .iter()
-            .find(|d| d.id == self.selected)
-            .or_else(|| registry.devices.first());
-        let draft = self.draft.as_ref();
-        let name = draft
-            .map(|d| d.name.as_str())
-            .or_else(|| device.map(|d| d.name.as_str()));
         let mut list = column![].spacing(4);
-        for d in &registry.devices {
-            let selected = device.is_some_and(|current| current.id == d.id);
-            list = list.push(
-                button(
-                    row![
-                        if d.kind == "phone" {
-                            Icon::PhonePortrait
-                        } else {
-                            Icon::Screen
-                        }
-                        .view(),
-                        text(&d.name)
-                            .size(13)
-                            .line_height(style::FIELD_LINE)
-                            .width(Length::Fill)
-                            .wrapping(text::Wrapping::None)
-                    ]
-                    .spacing(8)
-                    .align_y(iced::Center),
-                )
-                .padding([10, 8])
-                .width(Length::Fill)
-                .style(move |theme, status| {
-                    let mut row = style::quiet(theme, status);
-                    if selected {
-                        row.background = Some(iced::Color::BLACK.scale_alpha(0.065).into());
-                    }
-                    row
-                })
-                .on_press_maybe((!self.busy).then(|| Message::Choose(d.id.clone()))),
-            );
-        }
-        {
-            let kind = available.first().copied().unwrap_or("paired-phone");
-            let enabled = !self.busy && draft.is_none_or(|d| d.expected_revision != 0);
-            list = list.push(
-                button(
-                    row![Icon::Plus.view(), text(tr("添加设备")).size(13)]
-                        .spacing(8)
-                        .align_y(iced::Center),
-                )
-                .width(Length::Fill)
-                .padding([10, 8])
-                .style(style::quiet)
-                .on_press_maybe(enabled.then(|| Message::New(kind.into()))),
-            );
-        }
-        #[cfg(not(target_os = "android"))]
-        {
-            list = list
-                .push(text_button(tr("共享设备")).on_press(Message::Share(locale.code().into())));
-        }
-        let mut form = column![].spacing(10);
-        if let Some(name) = name {
-            form = form.push(field(tr("名称"), name, Message::Name, !self.busy));
-        }
-        if let Some(draft) = draft.filter(|d| d.expected_revision == 0) {
-            let mut choices = Vec::new();
-            for (kind, key) in [
+        if let Some(d) = self.draft.as_ref().filter(|d| d.expected_revision == 0) {
+            let available = self.available(registry);
+            let choices = [
                 ("phone", "Android 手机"),
                 ("desktop", "Linux 电脑"),
                 ("paired-phone", "远程 Android"),
                 ("paired-desktop", "远程电脑"),
-            ] {
-                if kind.starts_with("paired-") || available.contains(&kind) {
-                    choices.push((kind, tr(key)));
-                }
-            }
+            ]
+            .into_iter()
+            .filter(|(kind, _)| kind.starts_with("paired-") || available.contains(kind))
+            .map(|(kind, label)| (kind, tr(label)))
+            .collect::<Vec<_>>();
             let selected = choices
                 .iter()
-                .find(|(kind, _)| *kind == draft.kind)
+                .find(|(kind, _)| *kind == d.kind)
                 .map(|(_, label)| *label);
             let labels = choices.iter().map(|(_, label)| *label).collect::<Vec<_>>();
-            form = form
-                .push(text(tr("设备类型")).size(12).color(style::MUTED))
-                .push(
-                    form_select(labels, selected, move |label| {
-                        Message::Kind(choices.iter().find(|(_, l)| *l == label).unwrap().0.into())
-                    })
-                    .width(Length::Fill),
-                );
-        } else if let Some(device) = device {
-            let desktop = device.kind == "desktop";
-            if !device.system.is_empty() {
-                form = form.push(
-                    text(device.system.replace(" · 待安装", ""))
-                        .size(12)
-                        .color(style::MUTED),
-                );
-            }
-            if device.paired {
-                if let Some((invite, _)) = self
-                    .invitation
-                    .as_ref()
-                    .filter(|(i, _)| i.device_id == device.id)
-                {
-                    form = form.push(
-                        row![
-                            text(&invite.code).size(12),
-                            icon_button(Icon::Copy, Some(Message::CopyCode))
-                        ]
-                        .align_y(iced::Center)
-                        .spacing(6),
-                    );
-                } else if device.connected {
-                    form = form.push(action_button(
-                        tr("断开"),
-                        Some(Message::Disconnect(device.id.clone(), false)),
-                    ));
-                } else {
-                    form = form.push(action_button(
-                        tr("生成配对码"),
-                        Some(Message::Invite(wire::DevicePairRequest {
-                            id: device.id.clone(),
-                            name: device.name.clone(),
-                            kind: device.kind.clone(),
-                        })),
-                    ));
-                }
-            } else if device.runtime_state == "managed"
-                && let (Some(applied), Some(edited)) = (&self.applied, &self.resources)
-            {
-                let original = applied.guest(desktop);
-                let guest = edited.guest(desktop);
-                form = form.push(deployment::resource_controls(
-                    desktop,
-                    guest,
-                    Some(original.storage(desktop)),
-                    locale,
-                    reduced_motion,
-                    #[cfg(target_os = "android")]
-                    None,
-                    move |field, value| Message::Resource(desktop, field, value),
-                ));
-                if original != guest {
-                    form = form.push(action_button(
-                        tr("应用并重启两台设备"),
-                        (!self.busy && self.draft.is_none()).then_some(Message::Restart),
-                    ));
-                }
-            } else if desktop && device.runtime_state != "managed" && device.id == self.selected {
-                form = form
-                    .push(
-                        row![
-                            column![
-                                text(tr("处理器")).size(12),
-                                form_select([1, 2, 4], Some(self.cpus), Message::Cpu)
-                                    .width(Length::Fill)
-                            ],
-                            column![
-                                text(tr("内存")).size(12),
-                                form_select(
-                                    [2048, 2560, 3072, 4096].map(Memory),
-                                    Some(Memory(self.memory)),
-                                    Message::Memory
-                                )
-                                .width(Length::Fill)
-                            ]
-                        ]
-                        .spacing(8),
-                    )
-                    .push(
+            let name = column![
+                text(tr("名称")).size(12).style(style::muted_text),
+                form_input("", &d.name)
+                    .id("device-name")
+                    .on_input_maybe((!self.busy).then_some(Message::Name))
+            ]
+            .spacing(6)
+            .width(Length::Fill);
+            let kind = column![
+                text(tr("设备类型")).size(12).style(style::muted_text),
+                form_select(labels, selected, move |label| Message::Kind(
+                    choices.iter().find(|(_, l)| *l == label).unwrap().0.into()
+                ))
+                .width(Length::Fill)
+            ]
+            .spacing(6)
+            .width(Length::Fill);
+            let apply = if d.kind.starts_with("paired-") {
+                tr("生成配对码")
+            } else {
+                tr("保存")
+            };
+            list = list.push(admin(
+                column![
+                    row![name, kind].spacing(12).align_y(iced::Bottom),
+                    row![
+                        space::horizontal(),
+                        text_button(tr("撤销"))
+                            .on_press_maybe((!self.busy).then_some(Message::Discard)),
                         action_button(
-                            self.job
-                                .as_ref()
-                                .filter(|_| self.running())
-                                .map_or(tr("安装系统"), |j| j.stage.as_str()),
-                            (!self.busy && !self.running()).then_some(Message::Install),
+                            apply,
+                            (!self.busy && !d.name.trim().is_empty()).then_some(Message::Save)
                         )
-                        .width(Length::Fill),
-                    );
-            }
-            form = form.push(text_button(tr("移除设备")).on_press_maybe(
-                (!self.busy).then(|| Message::Disconnect(device.id.clone(), true)),
+                    ]
+                    .spacing(6)
+                    .align_y(iced::Center)
+                ]
+                .spacing(10)
+                .into(),
             ));
+            if !registry.devices.is_empty() {
+                list = list.push(rule::horizontal(1).style(rule::weak));
+            }
+        }
+        for (index, device) in registry.devices.iter().enumerate() {
+            let editing = self
+                .draft
+                .as_ref()
+                .filter(|d| d.expected_revision != 0 && d.id == device.id);
+            let icon = if device.kind == "phone" {
+                Icon::PhonePortrait
+            } else {
+                Icon::Screen
+            };
+            let mut line = row![container(icon.view()).width(30.).align_x(iced::Center)]
+                .align_y(iced::Center)
+                .spacing(6);
+            if let Some(d) = editing {
+                let can_save = !self.busy && !d.name.trim().is_empty();
+                let input = form_input(tr("名称"), &d.name)
+                    .id("device-name")
+                    .padding(6)
+                    .on_input_maybe((!self.busy).then_some(Message::Name))
+                    .on_submit_maybe(can_save.then_some(Message::Save));
+                line = line
+                    .push(admin(input.into()))
+                    .push(admin(icon_button(
+                        Icon::Check,
+                        can_save.then_some(Message::Save),
+                    )))
+                    .push(admin(icon_button(
+                        Icon::Close,
+                        (!self.busy).then_some(Message::Discard),
+                    )));
+            } else {
+                line = line.push(
+                    container(text(&device.name).size(14).wrapping(text::Wrapping::None))
+                        .width(Length::Fill)
+                        .height(style::CONTROL_HEIGHT)
+                        .align_y(iced::Center)
+                        .clip(true)
+                        .padding([0, 4]),
+                );
+                if let Some(controls) = tools(index, &device.id) {
+                    line = line.push(controls);
+                }
+                if let Some(issue) = self.issues.get(&device.id) {
+                    let repair = issue.retry.is_some();
+                    let symbol = Icon::Warning.view().style(|_, _| iced::widget::svg::Style {
+                        color: Some(iced::Color::from_rgb8(155, 91, 26)),
+                    });
+                    let glyph = container(symbol).center(style::CONTROL_HEIGHT);
+                    let trigger: Element<'_, Message> = if repair {
+                        button(glyph)
+                            .padding(0)
+                            .style(style::quiet)
+                            .on_press_maybe(
+                                (!self.starting.contains(&device.id))
+                                    .then(|| Message::Repair(device.id.clone())),
+                            )
+                            .into()
+                    } else {
+                        glyph.into()
+                    };
+                    let title = if repair {
+                        tr("启动失败")
+                    } else {
+                        tr("连接失败")
+                    };
+                    let mut tip = column![
+                        text(title).size(13),
+                        text(locale.tr(&issue.reason)).size(13)
+                    ]
+                    .spacing(4);
+                    if repair {
+                        tip = tip.push(text(tr("点击重试")).size(12).color(style::MUTED));
+                    }
+                    line = line.push(admin(
+                        iced::widget::tooltip(
+                            trigger,
+                            container(tip).max_width(310.).padding(8),
+                            iced::widget::tooltip::Position::Bottom,
+                        )
+                        .gap(4)
+                        .style(container::rounded_box)
+                        .into(),
+                    ));
+                } else if device.paired
+                    && !device.connected
+                    && self
+                        .invitation
+                        .as_ref()
+                        .is_none_or(|(i, _)| i.device_id != device.id)
+                {
+                    let request = wire::DevicePairRequest {
+                        id: device.id.clone(),
+                        name: device.name.clone(),
+                        kind: device.kind.clone(),
+                    };
+                    line = line.push(admin(
+                        text_button(tr("生成配对码"))
+                            .on_press_maybe(
+                                (!self.starting.contains(&device.id))
+                                    .then_some(Message::Invite(request)),
+                            )
+                            .into(),
+                    ));
+                } else if !device.paired
+                    && device.kind == "desktop"
+                    && device.runtime_state != "managed"
+                {
+                    line = line.push(admin(
+                        text_button(tr("安装系统"))
+                            .on_press(Message::Edit(device.id.clone()))
+                            .into(),
+                    ));
+                }
+                line = line
+                    .push(admin(icon_button(
+                        Icon::Edit,
+                        (!self.busy).then(|| Message::Edit(device.id.clone())),
+                    )))
+                    .push(admin(icon_button(
+                        Icon::Trash,
+                        (!self.busy).then(|| Message::Disconnect(device.id.clone(), true)),
+                    )));
+            }
+            list = list.push(container(line).padding(4).height(52).align_y(iced::Center).width(Length::Fill));
+            let invitation = self
+                .invitation
+                .as_ref()
+                .filter(|(i, _)| i.device_id == device.id);
+            if editing.is_some() || invitation.is_some() {
+                let mut details: Vec<Element<'a, Message>> = Vec::new();
+                let desktop = device.kind == "desktop";
+                if device.paired {
+                    if let Some((invite, _)) = invitation {
+                        details.push(
+                            row![
+                                text(&invite.code).size(13),
+                                icon_button(Icon::Copy, Some(Message::CopyCode))
+                            ]
+                            .spacing(6)
+                            .align_y(iced::Center)
+                            .into(),
+                        );
+                    } else if device.connected {
+                        details.push(
+                            text_button(tr("断开"))
+                                .on_press_maybe(
+                                    (!self.busy)
+                                        .then(|| Message::Disconnect(device.id.clone(), false)),
+                                )
+                                .into(),
+                        );
+                    }
+                } else if device.runtime_state == "managed"
+                    && let (Some(applied), Some(edited)) = (&self.applied, &self.resources)
+                {
+                    let original = applied.guest(desktop);
+                    let guest = edited.guest(desktop);
+                    details.push(deployment::resource_controls(
+                        desktop,
+                        guest,
+                        Some(original.storage(desktop)),
+                        locale,
+                        reduced_motion,
+                        #[cfg(target_os = "android")]
+                        None,
+                        move |f, v| Message::Resource(desktop, f, v),
+                    ));
+                    if original != guest {
+                        details.push(
+                            action_button(
+                                tr("应用并重启两台设备"),
+                                (!self.busy).then_some(Message::Restart),
+                            )
+                            .into(),
+                        );
+                    }
+                } else if desktop
+                    && device.runtime_state != "managed"
+                    && !self.issues.contains_key(&device.id)
+                {
+                    let cpu = column![
+                        text(tr("处理器")).size(12).style(style::muted_text),
+                        form_select([1, 2, 4], Some(self.cpus), Message::Cpu).width(Length::Fill)
+                    ]
+                    .spacing(6)
+                    .width(Length::Fill);
+                    let mem = column![
+                        text(tr("内存")).size(12).style(style::muted_text),
+                        form_select(
+                            [2048, 2560, 3072, 4096].map(Memory),
+                            Some(Memory(self.memory)),
+                            Message::Memory
+                        )
+                        .width(Length::Fill)
+                    ]
+                    .spacing(6)
+                    .width(Length::Fill);
+                    details.push(row![cpu, mem].spacing(12).into());
+                    let stage = self
+                        .jobs
+                        .iter()
+                        .find(|j| {
+                            j.device_id == device.id
+                                && matches!(j.status.as_str(), "queued" | "running")
+                        })
+                        .map_or(tr("安装系统"), |j| j.stage.as_str());
+                    details.push(
+                        action_button(
+                            stage,
+                            (!self.starting.contains(&device.id)
+                                && !self.jobs.iter().any(|j| {
+                                    j.device_id == device.id
+                                        && matches!(j.status.as_str(), "queued" | "running")
+                                }))
+                            .then_some(Message::Install),
+                        )
+                        .into(),
+                    );
+                }
+                if !details.is_empty() {
+                    list = list.push(admin(
+                        container(column(details).spacing(8))
+                            .padding(iced::Padding::ZERO.left(44.).right(4.).bottom(6.))
+                            .width(Length::Fill)
+                            .into(),
+                    ));
+                }
+            }
+            if index + 1 < registry.devices.len() {
+                list = list.push(rule::horizontal(1).style(rule::weak));
+            }
+        }
+        if let Some(receipt) = receipt {
+            list = list
+                .push(rule::horizontal(1).style(rule::weak))
+                .push(container(receipt).padding([2, 4]).width(Length::Fill));
         }
         if !self.error.is_empty() {
-            form = form.push(text(&self.error).size(12).color(style::ERROR));
+            list = list.push(text(&self.error).size(12).color(style::ERROR));
         }
-        if let Some(job) = self.job.as_ref().filter(|j| !j.error.is_empty()) {
-            form = form.push(text(&job.error).size(12).color(style::ERROR));
-        }
-        let actions = if let Some(draft) = draft {
-            row![
-                space::horizontal(),
-                text_button(tr("撤销")).on_press_maybe((!self.busy).then_some(Message::Discard)),
-                action_button(
-                    if draft.kind.starts_with("paired-") {
-                        tr("生成配对码")
-                    } else {
-                        tr("保存")
-                    },
-                    (!self.busy && !draft.name.trim().is_empty()).then_some(Message::Save)
-                )
-            ]
-            .align_y(iced::Center)
-            .spacing(8)
-        } else {
-            row![]
-        };
-        column![
-            row![
-                iced::widget::container(list).width(142),
-                form.width(Length::Fill)
-            ]
-            .spacing(14),
-            actions
-        ]
-        .spacing(12)
-        .into()
+        list.into()
     }
 }

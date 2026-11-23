@@ -1,4 +1,9 @@
 {
+  "启动失败": "Error de inicio",
+  "点击重试": "Haz clic para reintentar",
+  "共享端已关闭连接": "El dispositivo compartido ha cerrado la conexión",
+  "设备在返回回执前断开连接": "El dispositivo se desconectó antes de responder",
+  "设备回执超时": "El dispositivo no respondió a tiempo",
   "已断开": "Sin conexión",
   "共享设备": "Compartir dispositivo",
   "这台电脑": "Este equipo",

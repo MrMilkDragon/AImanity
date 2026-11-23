@@ -29,7 +29,9 @@ impl Primitive {
             .tiles
             .iter()
             .zip(&scene.devices)
-            .filter(|(tile, _)| tile.screen.expand(25.).intersects(&scene.layout.board))
+            .filter(|(tile, _)| {
+                tile.visible() && tile.screen.expand(25.).intersects(&scene.layout.board)
+            })
             .map(|(tile, d)| board::Tile {
                 id: tile.id.clone(),
                 frame: d.frame.clone(),

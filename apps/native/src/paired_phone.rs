@@ -145,8 +145,14 @@ impl Phone {
                     format!("input text '{literal}'")
                 }
             }
+            "rotate" if matches!(action.amount, 0 | 1) => {
+                format!("wm user-rotation lock {}", action.amount)
+            }
             "key" => {
                 let key = match action.key.as_str() {
+                    "volumedown" => 25,
+                    "volumeup" => 24,
+                    "volumemute" => 164,
                     "enter" => 66,
                     "tab" => 61,
                     "escape" => 111,

@@ -500,7 +500,10 @@ impl Connection {
                     };
                     "scroll"
                 }
-                DeviceInput::Rotate(_) => return Err("请在手机上调整屏幕方向".into()),
+                DeviceInput::Rotate(rotation) => {
+                    action.amount = rotation as i32;
+                    "rotate"
+                }
             }
             .into();
             self.workspace.manual_input(action).await?;

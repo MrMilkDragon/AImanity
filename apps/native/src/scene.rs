@@ -103,6 +103,7 @@ pub struct Pointer {
     pub preedit: Option<iced::advanced::input_method::Preedit>,
 }
 struct BoardPress {
+    device: Option<String>,
     source: PointerSource,
     start: Point,
     last: Point,
@@ -138,19 +139,28 @@ impl Scene {
         if self.occludes_device(position) {
             return None;
         }
+        let middle = matches!(source, PointerSource::Mouse(mouse::Button::Middle));
+        let header = self.layout.header_at(position).filter(|_| !middle);
         let hit = self.layout.device_at(position);
-        if matches!(source, PointerSource::Mouse(mouse::Button::Middle)) || hit.is_none() {
+        if middle || header.is_some() || hit.is_none() {
             if matches!(source, PointerSource::Mouse(mouse::Button::Right)) {
                 return None;
             }
             state.pan = Some(BoardPress {
+                device: header.map(|index| self.layout.tiles[index].id.clone()),
                 source,
                 start: position,
                 last: position,
                 moved: false,
             });
             state.pressed = None;
-            return Some(shader::Action::publish(Message::CanvasFocus).and_capture());
+            if header.is_some() {
+                state.previous_tap = None;
+            }
+            return Some(
+                shader::Action::publish(header.map_or(Message::CanvasFocus, Message::ShowDevice))
+                    .and_capture(),
+            );
         }
         let (device, from) = hit?;
         state.previous_tap = None;
@@ -178,7 +188,11 @@ impl Scene {
         pan.last = at;
         pan.moved = true;
         state.previous_tap = None;
-        Some(shader::Action::publish(Message::Pan(delta)).and_capture())
+        let action = match &pan.device {
+            Some(id) => Message::MoveDevice(id.clone(), delta),
+            None => Message::Pan(delta),
+        };
+        Some(shader::Action::publish(action).and_capture())
     }
     fn release_press(
         &self,
@@ -193,7 +207,8 @@ impl Scene {
                 if matches!(source, PointerSource::Touch(_)) {
                     state.touch_released = Some((at, now));
                 }
-                if !pan.moved
+                if pan.device.is_none()
+                    && !pan.moved
                     && at.distance(pan.start) < 4.
                     && !self.occludes_device(at)
                     && self.layout.device_at(at).is_none()
@@ -543,7 +558,7 @@ impl shader::Program<Message> for Scene {
             .position_from(bounds.position())
             .filter(|p| !self.occludes_device(*p))
         {
-            return if self.layout.device_at(at).is_some() {
+            return if self.layout.header_at(at).is_none() && self.layout.device_at(at).is_some() {
                 mouse::Interaction::Pointer
             } else {
                 mouse::Interaction::Grab
@@ -610,6 +625,15 @@ mod tests {
             Some(Message::Input(0, DeviceInput::Scroll { .. }))
         ));
         assert!(fire(chat, wheel).is_none());
+        let title = scene.layout.tiles[0].header.center();
+        let to_title = title + iced::Vector::new(48., 17.);
+        assert!(matches!(fire(title, press), Some(Message::ShowDevice(0))));
+        assert!(
+            matches!(fire(to_title, mouse::Event::CursorMoved { position: to_title }),
+            Some(Message::MoveDevice(id,delta)) if id == "one" && delta == to_title-title)
+        );
+        assert!(fire(chat, release).is_none());
+        assert!(fire(to_title, mouse::Event::CursorMoved { position: to_title }).is_none());
         let to = blank + iced::Vector::new(34., 18.);
         assert!(matches!(fire(blank, press), Some(Message::CanvasFocus)));
         assert!(

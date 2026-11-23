@@ -8,6 +8,7 @@ use std::borrow::Borrow;
 #[derive(Clone, Copy)]
 pub enum Icon {
     Devices,
+    Warning,
     Network,
     Pin,
     Book,
@@ -16,7 +17,7 @@ pub enum Icon {
     Target,
     Screen,
     PhonePortrait,
-    PhoneLandscape,
+    RotatePhone,
     Camera,
     Copy,
     Cut,
@@ -121,6 +122,9 @@ pub const ICON_SIZE: f32 = 18.;
 impl Icon {
     pub fn view<'a>(self) -> svg::Svg<'a> {
         let path = match self {
+            Self::Warning => {
+                "<path d='m10.3 4-8 14a1.8 1.8 0 0 0 1.6 2.7h16.2a1.8 1.8 0 0 0 1.6-2.7l-8-14a2 2 0 0 0-3.4 0Z'/><path d='M12 9v4m0 3v.2'/>"
+            }
             Self::Devices => {
                 "<path d='M13 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v2M6 21h6m-3-4v4'/><rect x='15' y='9' width='7' height='12' rx='1.6'/>"
             }
@@ -151,8 +155,8 @@ impl Icon {
             Self::PhonePortrait => {
                 "<rect x='5' y='2' width='14' height='20' rx='2'/><path d='M12 18h.01'/>"
             }
-            Self::PhoneLandscape => {
-                "<rect x='2' y='5' width='20' height='14' rx='2'/><path d='M6 12h.01'/>"
+            Self::RotatePhone => {
+                "<rect x='8' y='5' width='8' height='14' rx='1.5'/><path d='M2.5 11a9.5 9.5 0 0 1 4-7M2 6v5h5m14.5 2a9.5 9.5 0 0 1-4 7m4.5-2v-5h-5'/>"
             }
             Self::Camera => "<path d='M4 9V5h4m8 0h4v4m0 6v4h-4m-8 0H4v-4M3 12h18'/>",
             Self::Copy => {

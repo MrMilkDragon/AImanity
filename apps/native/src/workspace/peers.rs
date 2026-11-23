@@ -24,6 +24,7 @@ type Call = (
     oneshot::Sender<wire::HostDesktopReply>,
 );
 enum Peer {
+    Offline(String),
     Invitation {
         code: Uuid,
         kind: String,
@@ -153,11 +154,17 @@ impl Peers {
             code: code.to_string(),
         })
     }
-    fn finished(&self, id: &str, session: Uuid) {
+    pub(super) fn disconnect_reason(&self, id: &str) -> Option<String> {
+        match self.entries.lock().unwrap().get(id) {
+            Some(Peer::Offline(reason)) => Some(reason.clone()),
+            _ => None,
+        }
+    }
+    fn finished(&self, id: &str, session: Uuid, reason: String) {
         let mut map = self.entries.lock().unwrap();
         if matches!(map.get(id), Some(Peer::Connected { session: active, .. }) if *active == session)
         {
-            map.remove(id);
+            map.insert(id.to_owned(), Peer::Offline(reason));
             self.signal();
         }
     }
@@ -254,55 +261,54 @@ async fn accept(
     let failed = peers.clone();
     let reserved = id.clone();
     ws.max_message_size(5 * 1024 * 1024)
-        .on_failed_upgrade(move |_| failed.finished(&reserved, session))
+        .on_failed_upgrade(move |e: axum::Error| failed.finished(&reserved, session, e.to_string()))
         .on_upgrade(move |socket| async move {
             peers.signal();
-            exchange(socket, rx, stop).await;
-            peers.finished(&id, session);
+            if let Err(error) = exchange(socket, rx, stop).await {
+                peers.finished(&id, session, error.to_string());
+            }
         })
 }
-async fn exchange(mut socket: WebSocket, mut calls: mpsc::Receiver<Call>, stop: CancellationToken) {
-    if socket
-        .send(Frame::Binary(bytes::Bytes::new()))
-        .await
-        .is_err()
-    {
-        return;
-    }
+async fn exchange(
+    mut socket: WebSocket,
+    mut calls: mpsc::Receiver<Call>,
+    stop: CancellationToken,
+) -> Result<()> {
+    socket.send(Frame::Binary(bytes::Bytes::new())).await?;
     loop {
         let call = tokio::select! {
             biased;
-            _ = stop.cancelled() => break,
-            inbound = socket.recv() => match inbound {
-                Some(Ok(Frame::Ping(_) | Frame::Pong(_))) => continue,
-                _ => break,
+            _ = stop.cancelled() => return Ok(()),
+            inbound = socket.recv() => match inbound.transpose()? {
+                Some(Frame::Ping(_) | Frame::Pong(_)) => continue,
+                Some(Frame::Close(Some(close))) if !close.reason.is_empty() => return Err(close.reason.to_string().into()),
+                _ => return Err("共享端已关闭连接".into()),
             },
             item = calls.recv() => item,
         };
         let Some((request, answer)) = call else {
-            break;
+            return Ok(());
         };
         if answer.is_closed() {
             continue;
         }
-        if socket
+        socket
             .send(Frame::Binary(request.encode_to_vec().into()))
-            .await
-            .is_err()
-        {
-            break;
-        }
-        let received = tokio::select! { biased;
-            _ = stop.cancelled() => break,
-            received = tokio::time::timeout(Duration::from_secs(20), socket.recv()) => received,
+            .await?;
+        let reply = tokio::select! { biased;
+            _ = stop.cancelled() => return Ok(()),
+            received = tokio::time::timeout(Duration::from_secs(20), async {
+                loop {
+                    match socket.recv().await.transpose()? {
+                        Some(Frame::Binary(bytes)) => return Result::Ok(wire::HostDesktopReply::decode(bytes)?),
+                        Some(Frame::Ping(_) | Frame::Pong(_)) => continue,
+                        Some(Frame::Close(Some(close))) if !close.reason.is_empty() => return Err(close.reason.to_string().into()),
+                        _ => return Err("设备在返回回执前断开连接".into()),
+                    }
+                }
+            }) => received.map_err(|_| "设备回执超时")?,
         };
-        let Ok(Some(Ok(Frame::Binary(bytes)))) = received else {
-            break;
-        };
-        let Ok(reply) = wire::HostDesktopReply::decode(bytes) else {
-            break;
-        };
-        let _ = answer.send(reply);
+        let _ = answer.send(reply?);
     }
 }
 
@@ -312,6 +318,55 @@ mod tests {
     use futures_util::StreamExt;
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
+    #[tokio::test]
+    async fn failed_listener_start_retries_the_same_device_and_accepts_a_real_connection()
+    -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let work = Workspace::open(dir.path())?;
+        let held = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
+        let addr = held.local_addr()?;
+        let device = wire::DevicePairRequest {
+            id: "repair".into(),
+            name: "Phone".into(),
+            kind: "phone".into(),
+        };
+        let error = work
+            .start_pairing(device.clone(), addr.port())
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().kind(),
+            std::io::ErrorKind::AddrInUse
+        );
+        assert_eq!(work.registry()?.devices.len(), 1);
+        drop(held);
+        let invite = work.start_pairing(device, addr.port()).await?;
+        let mut req = format!("ws://{addr}/v1/peer/share").into_client_request()?;
+        req.headers_mut()
+            .insert("authorization", format!("Bearer {}", invite.code).parse()?);
+        req.headers_mut()
+            .insert("x-aimanity-device", "phone".parse()?);
+        let (mut socket, _) = tokio_tungstenite::connect_async(req).await?;
+        socket.next().await.unwrap()?;
+        let registry = work.registry()?;
+        assert_eq!(registry.devices.len(), 1);
+        assert!(registry.devices[0].connected);
+        let mut changed = work.registry_changes();
+        socket
+            .close(Some(tokio_tungstenite::tungstenite::protocol::CloseFrame {
+                code: tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::Normal,
+                reason: "peer ended session".into(),
+            }))
+            .await?;
+        changed.changed().await?;
+        assert!(!work.registry()?.devices[0].connected);
+        assert_eq!(
+            work.disconnect_reason("repair").as_deref(),
+            Some("peer ended session")
+        );
+        work.stop().await;
+        Ok(())
+    }
     #[tokio::test]
     async fn closing_an_open_workspace_revokes_the_upgraded_socket() -> Result<()> {
         let root = tempfile::tempdir()?;

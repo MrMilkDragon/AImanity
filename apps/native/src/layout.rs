@@ -62,6 +62,7 @@ mod tests {
             assert_eq!(layout.tiles.len(), aspects.len());
             assert_eq!(layout.chat, empty.chat);
             assert!(layout.board.contains(layout.chat.center()));
+            assert_eq!(layout.chat.width, layout.chat.x - 2. * SIDE_INSET);
             assert_eq!(
                 WORKBENCH.width - layout.chat.x - layout.chat.width,
                 SIDE_INSET
@@ -124,13 +125,30 @@ pub struct Layout {
     pub grid_origin: Point,
     pub grid_spacing: f32,
 }
+impl Tile {
+    pub fn shift(&mut self, delta: Vector) {
+        self.screen = self.screen + delta;
+        self.header = self.header + delta;
+    }
+    pub fn hidden(id: String) -> Self {
+        Self {
+            id,
+            screen: Rectangle::default(),
+            header: Rectangle::default(),
+            radius: 0.,
+        }
+    }
+    pub fn visible(&self) -> bool {
+        self.screen.width > 0.
+    }
+}
 impl Layout {
     pub fn home(size: Size, devices: impl IntoIterator<Item = (String, f32)>) -> Self {
         let board = Rectangle::new(
             Point::new(0., STAGE_TOP),
             Size::new(size.width, size.height - STAGE_TOP),
         );
-        let chat_width = (size.width * 0.3375).round();
+        let chat_width = (size.width - 3. * SIDE_INSET) * 0.5;
         let chat = Rectangle::new(
             Point::new(size.width - SIDE_INSET - chat_width, STAGE_TOP + 6.),
             Size::new(chat_width, board.height - SIDE_INSET - 6.),
@@ -149,21 +167,18 @@ impl Layout {
         let mut sheet = Size::ZERO;
         const GAP: f32 = 32.;
         const HEAD: f32 = 40.;
-        // Pack tall phones beside stacked wide displays, keeping device identity independent of placement.
+        let mut order = (0..devices.len()).collect::<Vec<_>>();
+        order.sort_by_key(|&i| devices[i].1.width >= devices[i].1.height);
         for count in 1..=devices
             .len()
             .min(2 * (devices.len() as f32).sqrt().ceil() as usize)
         {
             let mut columns = vec![Size::ZERO; count];
-            let mut positions = Vec::with_capacity(devices.len());
-            for (_, s) in &devices {
-                let column = columns
-                    .iter()
-                    .enumerate()
-                    .min_by(|(_, a), (_, b)| a.height.total_cmp(&b.height))
-                    .unwrap()
-                    .0;
-                positions.push((column, columns[column].height));
+            let mut positions = vec![(0, 0.); devices.len()];
+            for (rank, &i) in order.iter().enumerate() {
+                let s = devices[i].1;
+                let column = rank * count / devices.len();
+                positions[i] = (column, columns[column].height);
                 columns[column].width = columns[column].width.max(s.width);
                 columns[column].height += s.height + HEAD + GAP;
             }
@@ -203,9 +218,10 @@ impl Layout {
                 );
                 let radius = (display.width.min(display.height) * 0.045).min(13. * best);
                 let screen = display.expand(radius / 3.);
+                let header_height = (HEAD * best - 4.).clamp(24., 36.);
                 let header = Rectangle::new(
-                    Point::new(screen.x, screen.y - HEAD * best + 3.),
-                    Size::new(screen.width, HEAD * best - 7.),
+                    Point::new(screen.x, screen.y - header_height - 4.),
+                    Size::new(screen.width, header_height),
                 );
                 Tile {
                     id,
@@ -243,7 +259,7 @@ impl Layout {
                 Size::new(r.width * camera.zoom, r.height * camera.zoom),
             )
         };
-        for t in &mut view.tiles {
+        for t in view.tiles.iter_mut().filter(|t| t.visible()) {
             t.screen = transform(t.screen);
             t.header = transform(t.header);
             t.radius *= camera.zoom;
@@ -264,12 +280,18 @@ impl Layout {
                 ),
             )
         };
-        for (i, tile) in next.tiles.iter_mut().enumerate() {
+        for (i, tile) in next
+            .tiles
+            .iter_mut()
+            .enumerate()
+            .filter(|(_, t)| t.visible())
+        {
             if let Some(old) = self
                 .tiles
                 .get(i)
                 .filter(|old| old.id == tile.id)
                 .or_else(|| self.tiles.iter().find(|old| old.id == tile.id))
+                .filter(|old| old.visible())
             {
                 tile.screen = rect(old.screen, tile.screen);
                 tile.header = rect(old.header, tile.header);
@@ -285,6 +307,14 @@ impl Layout {
         next
     }
 
+    pub fn header_at(&self, p: Point) -> Option<usize> {
+        if !self.board.contains(p) || self.chat.contains(p) {
+            return None;
+        }
+        self.tiles
+            .iter()
+            .rposition(|tile| tile.visible() && tile.header.contains(p))
+    }
     pub fn device_at(&self, p: Point) -> Option<(usize, Point)> {
         if !self.board.contains(p) || self.chat.contains(p) {
             return None;
@@ -292,6 +322,7 @@ impl Layout {
         self.tiles
             .iter()
             .enumerate()
+            .rev()
             .find_map(|(i, _)| self.local(i, p).map(|at| (i, at)))
     }
 
@@ -301,7 +332,8 @@ impl Layout {
         let bezel = tile.radius / 3.;
         let dx = ((p.x - r.center_x()).abs() - (r.width * 0.5 - tile.radius)).max(0.);
         let dy = ((p.y - r.center_y()).abs() - (r.height * 0.5 - tile.radius)).max(0.);
-        if !self.board.contains(p)
+        if !tile.visible()
+            || !self.board.contains(p)
             || self.chat.contains(p)
             || !r.contains(p)
             || dx.hypot(dy) > tile.radius - bezel

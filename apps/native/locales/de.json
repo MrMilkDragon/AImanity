@@ -1,4 +1,9 @@
 {
+  "启动失败": "Start fehlgeschlagen",
+  "点击重试": "Zum Wiederholen klicken",
+  "共享端已关闭连接": "Das freigebende Gerät hat die Verbindung geschlossen",
+  "设备在返回回执前断开连接": "Das Gerät hat die Verbindung vor der Antwort getrennt",
+  "设备回执超时": "Zeitüberschreitung bei der Geräteantwort",
   "已断开": "Offline",
   "共享设备": "Gerät freigeben",
   "这台电脑": "Dieser Computer",

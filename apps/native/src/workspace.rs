@@ -155,6 +155,9 @@ impl Workspace {
             let _ = worker.await;
         }
     }
+    pub(crate) fn disconnect_reason(&self, id: &str) -> Option<String> {
+        self.peers.disconnect_reason(id)
+    }
     pub(crate) fn frame_updates(&self, id: &str) -> Option<watch::Receiver<()>> {
         self.peers.frames(id)
     }
@@ -189,6 +192,15 @@ impl Workspace {
         read(&self.db.begin_read()?.open_table(RECORDS)?, key)
     }
 
+    async fn start_pairing(
+        &self,
+        request: wire::DevicePairRequest,
+        port: u16,
+    ) -> Result<wire::DeviceInvitation> {
+        let invitation = self.peers.invite(self, request)?;
+        self.peers.listen(port).await?;
+        Ok(invitation)
+    }
     pub(crate) async fn rpc(
         self: &Arc<Self>,
         route: &str,
@@ -197,14 +209,10 @@ impl Workspace {
         let name = route.strip_prefix("assistant/").unwrap_or(route);
         if name == "registry/device-invite" {
             let q = wire::DevicePairRequest::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
-            self.peers
-                .listen(peers::PORT)
-                .await
-                .map_err(|e| e.to_string())?;
             return self
-                .peers
-                .invite(self, q)
-                .map(|i| i.encode_to_vec())
+                .start_pairing(q, peers::PORT)
+                .await
+                .map(|invite| invite.encode_to_vec())
                 .map_err(|e| e.to_string());
         }
         if name == "registry/model-test" {

@@ -1,4 +1,9 @@
 {
+  "启动失败": "Couldn’t start",
+  "点击重试": "Click to retry",
+  "共享端已关闭连接": "The sharing device closed the connection",
+  "设备在返回回执前断开连接": "The device disconnected before replying",
+  "设备回执超时": "The device response timed out",
   "已断开": "Offline",
   "共享设备": "Share a device",
   "这台电脑": "This computer",

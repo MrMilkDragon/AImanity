@@ -52,10 +52,7 @@ use iced::{
     window,
 };
 use layout::Layout;
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 const APP_ID: &str = "dev.aimanity.workspace";
 const SETUP_SIZE: Size = Size::new(680., 600.);
@@ -88,11 +85,14 @@ enum Message {
     Proxy(proxy::Message),
     Modes(modes::Message),
     SetLocale(locale::Locale),
+    CaptureDevice(String),
+    CloseCapture,
     Captured(String, Result<Capture, String>),
     SaveCapture,
     AttachCapture,
     CaptureSaved(Result<(), String>),
     ShowDevice(usize),
+    MoveDevice(String, iced::Vector),
     Pan(iced::Vector),
     Zoom(iced::Point, f32),
     ResetBoard,
@@ -113,7 +113,8 @@ enum Message {
     PanelSize(iced::Size),
     PanelFocus,
     ClosedPaneInput,
-    Rotate(usize),
+    Rotate(String),
+    MediaKey(String, &'static str),
     Uninstall,
     UninstallPrepared(Result<Option<uninstall::Plan>, String>),
 }
@@ -121,9 +122,7 @@ enum Message {
 struct Capture {
     name: String,
     image: image::Handle,
-    png: Arc<Vec<u8>>,
-    width: f32,
-    height: f32,
+    png: bytes::Bytes,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Panel {
@@ -137,7 +136,6 @@ enum Panel {
     Files,
     Goal,
     Agent,
-    Capture(usize),
 }
 #[derive(Clone, PartialEq, Eq)]
 enum ChildPane {
@@ -195,7 +193,7 @@ struct App {
     modes: modes::Modes,
     reduced_motion: bool,
     locale: locale::Locale,
-    capture: Option<Capture>,
+    capture: Option<(String, Option<Capture>)>,
     cursor: iced::Point,
     error: String,
     root: String,
@@ -308,16 +306,41 @@ impl App {
         (app, task)
     }
     fn rearrange(&mut self, animate: bool) {
-        self.home = Layout::home(
+        let on_canvas = |d: &stage::Device| {
+            connection::reachable(&d.info) && !self.device_admin.issues.contains_key(&d.info.id)
+        };
+        let mut home = Layout::home(
             WORKBENCH,
-            self.devices.iter().map(|d| (d.info.id.clone(), d.aspect())),
+            self.devices
+                .iter()
+                .filter(|d| on_canvas(d))
+                .map(|d| (d.info.id.clone(), d.aspect())),
         );
+        let mut visible = home.tiles.into_iter();
+        home.tiles = self
+            .devices
+            .iter()
+            .map(|device| {
+                if on_canvas(device) {
+                    let mut tile = visible.next().unwrap();
+                    tile.shift(device.offset);
+                    tile
+                } else {
+                    layout::Tile::hidden(device.info.id.clone())
+                }
+            })
+            .collect();
+        self.home = home;
         self.move_camera(animate);
     }
     fn move_camera(&mut self, animate: bool) {
         self.target = self.home.project(&mut self.camera);
         for (d, tile) in self.devices.iter().zip(&self.target.tiles) {
-            let shown = tile.screen.intersects(&self.target.board) || d.busy || d.waiting;
+            let shown = if tile.visible() {
+                tile.screen.intersects(&self.target.board) || d.busy || d.waiting
+            } else {
+                connection::reachable(&d.info)
+            };
             d.visible.send_if_modified(|was| {
                 let changed = *was != shown;
                 *was = shown;
@@ -354,11 +377,6 @@ impl App {
             .keyboard_target
             .and_then(|i| self.devices.get(i))
             .map(|d| d.info.id.clone());
-        let capture = if let Panel::Capture(i) = self.panel {
-            self.devices.get(i).map(|d| d.info.id.clone())
-        } else {
-            None
-        };
         let mut previous: std::collections::HashMap<_, _> = std::mem::take(&mut self.devices)
             .into_iter()
             .map(|d| (d.info.id.clone(), d))
@@ -368,6 +386,12 @@ impl App {
             let mut device = previous
                 .remove(&info.id)
                 .unwrap_or_else(|| stage::Device::new(info.clone()));
+            if info.paired
+                && !info.connected
+                && let Some(cause) = client.workspace.disconnect_reason(&info.id)
+            {
+                self.device_admin.connection_failed(&info.id, cause);
+            }
             device.info = info.clone();
             if connection::reachable(info) {
                 if device.stream.is_none() {
@@ -395,7 +419,6 @@ impl App {
                 device.audio.stop();
                 device.frame = None;
                 device.trace = None;
-                device.error.clear();
                 device.busy = false;
                 device.waiting = false;
                 device.queue.clear();
@@ -410,16 +433,18 @@ impl App {
         self.keyboard_target = keyboard
             .and_then(|id| self.device_index(&id))
             .filter(|&i| connection::reachable(&self.devices[i].info));
+        self.device_admin
+            .issues
+            .retain(|id, _| registry.devices.iter().any(|d| d.id == *id));
         self.agents.registry = registry;
         self.files.set_devices(&self.agents.registry.devices);
         self.rearrange(true);
-        if let Some(id) = capture {
-            if let Some(i) = self.device_index(&id) {
-                self.panel = Panel::Capture(i);
-            } else {
-                self.panel = Panel::Agent;
-                self.set_popup(false);
-            }
+        if self
+            .capture
+            .as_ref()
+            .is_some_and(|(id, _)| self.device_index(id).is_none())
+        {
+            self.capture = None;
         }
         Task::batch(tasks)
     }
@@ -428,6 +453,9 @@ impl App {
     }
     fn set_popup(&mut self, open: bool) {
         if self.popup != open {
+            if !open {
+                self.capture = None;
+            }
             if !open && self.panel == Panel::Todos {
                 self.todos.cancel_drag();
             }
@@ -672,8 +700,8 @@ impl App {
                             );
                         }
                         self.devices[index].receive(frame);
-                        self.devices[index].error.clear();
-                        if resized {
+                        let recovered = self.device_admin.frame_received(&id);
+                        if resized || recovered {
                             self.rearrange(true);
                         }
                         if std::mem::take(&mut self.devices[index].waiting)
@@ -683,7 +711,16 @@ impl App {
                         }
                     }
                     Some(Err(error)) => {
-                        self.devices[index].error = error;
+                        if self.device_admin.connection_failed(&id, error) {
+                            self.devices[index].frame = None;
+                            self.devices[index].trace = None;
+                            self.devices[index].queue.clear();
+                            self.devices[index].waiting = false;
+                            if self.keyboard_target == Some(index) {
+                                self.keyboard_target = None;
+                            }
+                            self.rearrange(true);
+                        }
                     }
                     None => {}
                 }
@@ -888,27 +925,72 @@ impl App {
                     self.error = error.to_string();
                 }
             }
+            Message::CaptureDevice(device_id) => {
+                let Some(index) = self.device_index(&device_id) else {
+                    return Task::none();
+                };
+                let Some(frame) = self.devices[index].frame.clone() else {
+                    return Task::none();
+                };
+                let kind = if self.devices[index].phone() {
+                    "Android"
+                } else {
+                    "Linux"
+                };
+                self.capture = Some((device_id.clone(), None));
+                return Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            let mut png = Vec::new();
+                            use ::image::ImageEncoder;
+                            ::image::codecs::png::PngEncoder::new(&mut png)
+                                .write_image(
+                                    &frame.pixels,
+                                    frame.width,
+                                    frame.height,
+                                    ::image::ExtendedColorType::Rgba8,
+                                )
+                                .map_err(|e| e.to_string())?;
+                            let png = bytes::Bytes::from(png);
+                            let image = image::Handle::from_bytes(png.clone());
+                            let name = format!(
+                                "{}-{}.png",
+                                kind,
+                                chrono::Local::now().format("%Y%m%d-%H%M%S%.3f")
+                            );
+                            Ok(Capture { png, image, name })
+                        })
+                        .await
+                        .map_err(|e| e.to_string())?
+                    },
+                    move |r| Message::Captured(device_id.clone(), r),
+                );
+            }
             Message::Captured(id, result) => {
-                if let Panel::Capture(index) = self.panel
-                    && self.devices.get(index).is_some_and(|d| d.info.id == id)
+                if let Some((device, preview)) = &mut self.capture
+                    && *device == id
                 {
                     match result {
-                        Ok(capture) => self.capture = Some(capture),
-                        Err(error) => self.error = error,
+                        Ok(image) => *preview = Some(image),
+                        Err(error) => {
+                            self.capture = None;
+                            self.error = error;
+                        }
                     }
                 }
             }
+            Message::CloseCapture => self.capture = None,
             Message::AttachCapture => {
-                if let Some(capture) = self.capture.clone() {
+                if let Some((_, Some(capture))) = self.capture.take() {
                     self.set_popup(false);
                     return self.update(Message::Conversation(chat::Message::Capture(
                         capture.name,
-                        (*capture.png).clone(),
+                        capture.png.to_vec(),
                     )));
                 }
             }
             Message::SaveCapture => {
-                if let Some(capture) = self.capture.clone() {
+                if let Some((_, Some(capture))) = self.capture.clone() {
                     return Task::perform(
                         async move {
                             if let Some(target) = documents::AsyncFileDialog::new()
@@ -963,25 +1045,22 @@ impl App {
                 self.error = "运行设备的配置尚未接入本地工作区".into();
             }
             Message::Devices(message) => {
-                if let devices::Message::Choose(id) = &message
-                    && let Some(i) = self.device_index(id)
-                    && self.focus != i
-                {
-                    self.focus = i;
-                    self.keyboard_target = None;
-                    let p = self.layout.tiles[i].screen.center();
-                    if !self.layout.board.contains(p) || self.layout.chat.contains(p) {
-                        self.camera.pan += self.home.grid_origin - p;
-                        self.move_camera(true);
-                    }
-                }
                 if let Some(client) = self.connection.clone() {
+                    let status_change = matches!(
+                        &message,
+                        devices::Message::Installed(..)
+                            | devices::Message::Invitation(..)
+                            | devices::Message::Jobs(..)
+                    );
                     let task = self
                         .device_admin
                         .update(message, &self.agents.registry, &client)
                         .map(Message::Devices);
                     if let Some(registry) = self.device_admin.registry.take() {
                         return Task::batch([task, self.display_devices(registry, &client)]);
+                    }
+                    if status_change {
+                        self.rearrange(true);
                     }
                     return task;
                 }
@@ -1046,6 +1125,16 @@ impl App {
                     .filter(|d| connection::reachable(&d.info))
                     .map(|_| index);
             }
+            Message::MoveDevice(id, delta) => {
+                if let Some(index) = self.device_index(&id)
+                    && self.home.tiles[index].visible()
+                {
+                    let delta = delta * (1. / self.camera.zoom);
+                    self.devices[index].offset += delta;
+                    self.home.tiles[index].shift(delta);
+                    self.move_camera(false);
+                }
+            }
             Message::CanvasFocus => self.keyboard_target = None,
             Message::Pan(delta) => {
                 self.keyboard_target = None;
@@ -1059,7 +1148,10 @@ impl App {
             Message::ResetBoard => {
                 self.keyboard_target = None;
                 self.camera = layout::Camera::default();
-                self.move_camera(true);
+                for device in &mut self.devices {
+                    device.offset = iced::Vector::ZERO;
+                }
+                self.rearrange(true);
             }
             Message::Input(index, input) if !self.devices[index].phone() => {
                 return self.desktop_input(index, input);
@@ -1220,6 +1312,9 @@ impl App {
                 {
                     return self.update(Message::Knowledge(message));
                 }
+                if self.popup && self.panel == Panel::Devices && self.device_admin.editing() {
+                    return self.update(Message::Devices(devices::Message::Discard));
+                }
                 if self.popup && self.panel == Panel::Agent && self.agents.adding() {
                     return self.update(Message::Agents(agents::Message::Back));
                 }
@@ -1303,6 +1398,7 @@ impl App {
                     let _ = self.update(Message::Agents(agents::Message::Back));
                 }
                 if self.panel != panel {
+                    self.capture = None;
                     self.todos.cancel_drag();
                     self.panel = panel;
                     self.popup_amount = 0.;
@@ -1319,8 +1415,15 @@ impl App {
                 self.keyboard_target = None;
                 self.pinned = true;
             }
-            Message::Rotate(index) => {
-                if let Some(frame) = &self.devices[index].frame {
+            Message::MediaKey(id, key) => {
+                if let Some(i) = self.device_index(&id) {
+                    return self.input(i, DeviceInput::Key(key.into()));
+                }
+            }
+            Message::Rotate(id) => {
+                if let Some(index) = self.device_index(&id)
+                    && let Some(frame) = &self.devices[index].frame
+                {
                     let rotation = u32::from(frame.width < frame.height);
                     return self.input(index, DeviceInput::Rotate(rotation));
                 }
@@ -1461,7 +1564,7 @@ impl App {
                     false,
                 )
             }
-            Panel::Devices => (650., 610., true),
+            Panel::Devices => (650., 640., true),
             Panel::Language => (280., 480., false),
             Panel::Skills => (650., 560., true),
             Panel::Knowledge => (850., 590., false),
@@ -1473,10 +1576,6 @@ impl App {
             ),
             Panel::Proxy => (420., 480., true),
             Panel::Goal => (650., 364., true),
-            Panel::Capture(i) if self.devices.get(i).is_some_and(|d| d.aspect() < 1.) => {
-                (360., 580., true)
-            }
-            Panel::Capture(_) => (700., 580., true),
         };
         let height = if fit {
             self.panel_content_height.min(max_height)
@@ -1487,10 +1586,7 @@ impl App {
     }
     fn panel_bounds(&self, size: Size) -> Rectangle {
         let anchor = self.panel_anchor(self.panel);
-        if !(matches!(self.panel, Panel::Todos | Panel::Goal)
-            || matches!(self.panel, Panel::Capture(_))
-                && anchor.center_y() > WORKBENCH.height * 0.5)
-        {
+        if !matches!(self.panel, Panel::Todos | Panel::Goal) {
             return surface::tool_rect(WORKBENCH, anchor, size, false);
         }
         let height = size.height.min(anchor.y - 26.);
@@ -1514,33 +1610,97 @@ impl App {
         Panel::Files,
         Panel::Agent,
     ];
-    fn device_dock(&self, index: usize) -> Rectangle {
-        let tile = &self.layout.tiles[index];
-        let d = &self.devices[index];
-        let managed = !d.info.paired && connection::reachable(&d.info);
-        let width =
-            12. + if managed {
-                92. + if d.phone() { 32. } else { 0. }
-            } else {
-                0.
-            } + if d.frame.is_some() { 32. } else { 0. };
-        let height = 40.;
-        let x = tile
-            .screen
-            .x
-            .clamp(layout::SIDE_INSET, self.layout.chat.x - width - 12.);
-        let below = tile.screen.y + tile.screen.height + 9.;
-        let y = if below + height <= WORKBENCH.height - 12. {
-            below
+    fn device_tools(&self, index: usize, id: &str) -> Option<Element<'_, Message>> {
+        let device = self.devices.get(index).filter(|d| d.info.id == id)?;
+        if !connection::reachable(&device.info)
+            || self.device_admin.issues.contains_key(&device.info.id)
+        {
+            return None;
+        }
+        let id = &device.info.id;
+        let ready = device.frame.is_some();
+        let key = |name| ready.then(|| Message::MediaKey(id.clone(), name));
+        let volume: Element<'_, Message> = if device.info.paired {
+            row![
+                surface::tool_action(controls::Icon::Minus, key("volumedown")),
+                surface::tool_action(controls::Icon::Volume, key("volumemute")),
+                surface::tool_action(controls::Icon::Plus, key("volumeup"))
+            ]
+            .into()
         } else {
-            tile.header.y - height - 6.
+            device
+                .audio
+                .view(self.connection.is_some(), self.reduced_motion)
+                .map(move |m| Message::Audio(id.clone(), m))
         };
-        Rectangle::new(
-            iced::Point::new(
-                x,
-                y.clamp(layout::STAGE_TOP, WORKBENCH.height - height - 12.),
+        let rotate: Element<'_, Message> = if device.phone() {
+            iced::widget::tooltip(
+                surface::tool_action(
+                    controls::Icon::RotatePhone,
+                    ready.then(|| Message::Rotate(id.clone())),
+                ),
+                text(self.locale.tr(if device.aspect() > 1. {
+                    "切换竖屏"
+                } else {
+                    "切换横屏"
+                }))
+                .size(12),
+                iced::widget::tooltip::Position::Bottom,
+            )
+            .style(container::rounded_box)
+            .into()
+        } else {
+            space::horizontal().width(style::TOOL_CONTROL).into()
+        };
+        let pending = matches!(&self.capture,Some((owner,None)) if owner == id);
+        let shot = iced::widget::tooltip(
+            surface::tool_action(
+                controls::Icon::Camera,
+                (ready && !pending).then(|| Message::CaptureDevice(id.clone())),
             ),
-            Size::new(width, height),
+            text(self.locale.tr("截图")).size(12),
+            iced::widget::tooltip::Position::Bottom,
+        )
+        .style(container::rounded_box);
+        Some(
+            row![
+                rotate,
+                container(volume).width(3. * style::TOOL_CONTROL),
+                shot
+            ]
+            .spacing(6)
+            .align_y(iced::Center)
+            .into(),
+        )
+    }
+    fn capture_receipt(&self) -> Option<Element<'_, Message>> {
+        let (_, preview) = self.capture.as_ref()?;
+        let Some(capture) = preview else {
+            return Some(crate::loading::orb(18., self.reduced_motion).into());
+        };
+        let preview = iced::widget::tooltip(
+            container(text(&capture.name).size(13).wrapping(text::Wrapping::None))
+                .clip(true)
+                .width(Length::Fill),
+            image(capture.image.clone())
+                .width(210)
+                .height(150)
+                .content_fit(iced::ContentFit::Contain),
+            iced::widget::tooltip::Position::Bottom,
+        )
+        .gap(4)
+        .style(container::rounded_box);
+        Some(
+            row![
+                controls::Icon::Image.view(),
+                preview,
+                controls::text_button(self.locale.tr("保存图片")).on_press(Message::SaveCapture),
+                controls::text_button(self.locale.tr("附到对话")).on_press(Message::AttachCapture),
+                surface::tool_action(controls::Icon::Close, Some(Message::CloseCapture))
+            ]
+            .spacing(8)
+            .align_y(iced::Center)
+            .into(),
         )
     }
     fn panel_anchor(&self, panel: Panel) -> Rectangle {
@@ -1559,13 +1719,6 @@ impl App {
                     chat.y + chat.height - vertical - chat::COMPOSER_PADDING.bottom - size,
                 ),
                 Size::new(size, size),
-            );
-        }
-        if let Panel::Capture(i) = panel {
-            let dock = self.device_dock(i);
-            return Rectangle::new(
-                iced::Point::new(dock.x + dock.width - 38., dock.y + 4.),
-                Size::new(32., 32.),
             );
         }
         let [top, gap, height] = style::NAVIGATION;
@@ -1607,12 +1760,7 @@ impl App {
     }
     fn load_panel(&mut self) -> Task<Message> {
         let message = match self.panel {
-            Panel::Devices => {
-                let Some(d) = self.devices.get(self.focus) else {
-                    return Task::none();
-                };
-                Message::Devices(devices::Message::Choose(d.info.id.clone()))
-            }
+            Panel::Devices => Message::Devices(devices::Message::Open),
             Panel::Todos => Message::Todos(todos::Message::Load),
             Panel::Skills => Message::Skills(skills::Message::Load),
             Panel::Knowledge => Message::Knowledge(knowledge::Message::Load),
@@ -1620,54 +1768,6 @@ impl App {
             Panel::Proxy => Message::Proxy(proxy::Message::Load),
             Panel::Files => Message::Files(Box::new(files::Message::Load)),
             Panel::Goal => Message::Modes(modes::Message::Refresh),
-            Panel::Capture(index) => {
-                self.capture = None;
-                let device_id = self.devices[index].info.id.clone();
-                let Some(frame) = self.devices[index].frame.clone() else {
-                    return Task::none();
-                };
-                let kind = if self.devices[index].phone() {
-                    "Android"
-                } else {
-                    "Linux"
-                };
-                return Task::perform(
-                    async move {
-                        tokio::task::spawn_blocking(move || {
-                            let mut png = Vec::new();
-                            use ::image::ImageEncoder;
-                            ::image::codecs::png::PngEncoder::new(&mut png)
-                                .write_image(
-                                    &frame.pixels,
-                                    frame.width,
-                                    frame.height,
-                                    ::image::ExtendedColorType::Rgba8,
-                                )
-                                .map_err(|e| e.to_string())?;
-                            let image = image::Handle::from_rgba(
-                                frame.width,
-                                frame.height,
-                                frame.pixels.as_ref().clone(),
-                            );
-                            let name = format!(
-                                "{}-{}.png",
-                                kind,
-                                chrono::Local::now().format("%Y%m%d-%H%M%S")
-                            );
-                            Ok(Capture {
-                                png: Arc::new(png),
-                                image,
-                                name,
-                                width: frame.width as f32,
-                                height: frame.height as f32,
-                            })
-                        })
-                        .await
-                        .map_err(|e| e.to_string())?
-                    },
-                    move |r| Message::Captured(device_id.clone(), r),
-                );
-            }
             _ => return Task::none(),
         };
         self.update(message)
@@ -1936,11 +2036,15 @@ impl App {
             Panel::Location => locale.tr("模拟位置"),
             Panel::Proxy => locale.tr("工作台代理"),
             Panel::Goal => "Task & Goal",
-            Panel::Capture(_) => locale.tr("截图"),
             Panel::Agent => unreachable!(),
         };
         let actions = row![].align_y(iced::Center).spacing(2);
         let actions = match self.panel {
+            Panel::Devices => actions.push(
+                self.device_admin
+                    .actions(&self.agents.registry, locale)
+                    .map(Message::Devices),
+            ),
             Panel::Skills => actions.push(self.skills.actions().map(Message::Skills)),
             Panel::Knowledge => actions.push(self.knowledge.new_action().map(Message::Knowledge)),
             Panel::Location if self.location.enabled() => {
@@ -1959,10 +2063,14 @@ impl App {
         let language_row_inset = 12.;
         let language_border_inset = 1.;
         let content = match self.panel {
-            Panel::Devices => self
-                .device_admin
-                .view(&self.agents.registry, locale, self.reduced_motion)
-                .map(Message::Devices),
+            Panel::Devices => self.device_admin.view(
+                &self.agents.registry,
+                locale,
+                self.reduced_motion,
+                |i, id| self.device_tools(i, id),
+                self.capture_receipt(),
+                Message::Devices,
+            ),
             Panel::Agent => unreachable!(),
             Panel::Skills => self.skills.view(locale).map(Message::Skills),
             Panel::Knowledge => self
@@ -2028,54 +2136,6 @@ impl App {
             }))
             .spacing(3)
             .into(),
-            Panel::Capture(_) => {
-                let mut body = column![].spacing(16);
-                let inset = style::window_insets(width).0;
-                if let Some(capture) = &self.capture {
-                    let side = self.panel_target().width - 2. * inset;
-                    let height = (side * capture.height / capture.width)
-                        .min(420.)
-                        .min((WORKBENCH.height - 230.).max(1.));
-                    body = body
-                        .push(
-                            image(capture.image.clone())
-                                .width(Length::Fill)
-                                .height(height)
-                                .content_fit(iced::ContentFit::Contain),
-                        )
-                        .push(
-                            row![
-                                space::horizontal(),
-                                controls::text_button(locale.tr("保存图片"))
-                                    .on_press(Message::SaveCapture),
-                                controls::text_button(locale.tr("附到对话"))
-                                    .on_press(Message::AttachCapture)
-                                    .style(|theme, status| {
-                                        let mut appearance = style::quiet(theme, status);
-                                        let fill = if matches!(
-                                            status,
-                                            iced::widget::button::Status::Hovered
-                                                | iced::widget::button::Status::Pressed
-                                        ) {
-                                            style::ACCENT
-                                        } else {
-                                            iced::Color::from_rgb8(0xf2, 0xf2, 0xf2)
-                                        };
-                                        appearance.background = Some(fill.into());
-                                        appearance
-                                    })
-                            ]
-                            .spacing(18)
-                            .align_y(iced::Center),
-                        );
-                } else {
-                    body = body.push(
-                        container(crate::loading::orb(20., self.reduced_motion))
-                            .center_x(Length::Fill),
-                    );
-                }
-                body.into()
-            }
         };
         let padded = container(content).padding(padding).width(Length::Fill);
         let body: Element<'_, Message> = match self.panel {
@@ -2202,9 +2262,6 @@ impl App {
             self.modes.voice_error(),
             self.modes.proactive_error(),
             self.devices.get(self.focus).map_or("", |d| d.audio.error()),
-            self.devices
-                .get(self.focus)
-                .map_or("", |d| d.error.as_str()),
             self.chat.error.as_str(),
             self.chat_connection_error.as_str(),
         ]
@@ -2231,7 +2288,7 @@ impl App {
                 Panel::Proxy => (Icon::Network, self.proxy.enabled()),
                 Panel::Knowledge => (Icon::Book, false),
                 Panel::Files => (Icon::Folder, false),
-                Panel::Capture(_) | Panel::Todos | Panel::Goal => unreachable!(),
+                Panel::Todos | Panel::Goal => unreachable!(),
             };
             let click = self
                 .connection
@@ -2268,7 +2325,20 @@ impl App {
                 trigger
             });
         }
-        let leading = container(error).width(Length::Fill).clip(true);
+        let mut leading = row![].spacing(6).align_y(iced::Center);
+        if self.camera != layout::Camera::default()
+            || self.devices.iter().any(|d| d.offset != iced::Vector::ZERO)
+        {
+            leading = leading.push(sized_icon_button(
+                Icon::LocateFixed,
+                Some(Message::ResetBoard),
+                36.,
+                36.,
+            ));
+        }
+        let leading = leading
+            .push(container(error).width(Length::Fill).clip(true))
+            .width(Length::Fill);
         let nav = row![
             leading,
             row![
@@ -2315,6 +2385,9 @@ impl App {
                 .into(),
         ];
         for (index, (d, tile)) in self.devices.iter().zip(&self.layout.tiles).enumerate() {
+            if !tile.visible() {
+                continue;
+            }
             let h = tile.header;
             if h.intersects(&board) && h.height >= 17. {
                 let icon = if d.phone() {
@@ -2345,12 +2418,12 @@ impl App {
                 ]
                 .spacing(7)
                 .align_y(iced::Center);
-                let label = button(container(label).width(Length::Fill).clip(true))
-                    .style(style::quiet)
+                let label = container(label)
+                    .align_y(iced::Center)
+                    .clip(true)
                     .height(h.height)
                     .width(h.width)
-                    .padding([0, 1])
-                    .on_press(Message::ShowDevice(index));
+                    .padding([0, 1]);
                 board_widgets.push(pin(label).x(h.x).y(h.y).into());
             }
             if d.frame.is_none() && tile.screen.intersects(&board) {
@@ -2371,7 +2444,7 @@ impl App {
                 );
             }
         }
-        if self.devices.is_empty() {
+        if !self.layout.tiles.iter().any(layout::Tile::visible) {
             let add = button(
                 row![Icon::Plus.view(), text(self.locale.tr("添加设备")).size(15)]
                     .spacing(8)
@@ -2386,64 +2459,6 @@ impl App {
                     .width(self.layout.chat.x - 2. * layout::SIDE_INSET))
                 .x(layout::SIDE_INSET)
                 .y(board.center_y() - 20.)
-                .into(),
-            );
-        } else if let Some(d) = self.devices.get(self.focus) {
-            let index = self.focus;
-            let mut tools = row![].align_y(iced::Center);
-            if !d.info.paired && connection::reachable(&d.info) {
-                let id = &d.info.id;
-                tools = tools.push(
-                    d.audio
-                        .view(self.connection.is_some(), self.reduced_motion)
-                        .map(move |m| Message::Audio(id.clone(), m)),
-                );
-                if d.phone() {
-                    tools = tools.push(surface::tool_action(
-                        if d.aspect() > 1. {
-                            Icon::PhoneLandscape
-                        } else {
-                            Icon::PhonePortrait
-                        },
-                        d.frame.as_ref().map(|_| Message::Rotate(index)),
-                    ));
-                }
-            }
-            if d.frame.is_some() {
-                tools = tools.push(surface::tool_action(
-                    Icon::Camera,
-                    Some(Message::OpenPanel(Panel::Capture(index), true)),
-                ));
-            }
-            let dock = self.device_dock(index);
-            if dock.width > 12. {
-                let hud = container(tools)
-                    .padding([4, 6])
-                    .style(|_| container::Style {
-                        background: Some(iced::Color::WHITE.scale_alpha(0.87).into()),
-                        border: iced::border::rounded(13.)
-                            .width(0.75)
-                            .color(iced::Color::from_rgba8(110, 127, 139, 0.28)),
-                        shadow: iced::Shadow {
-                            color: iced::Color::BLACK.scale_alpha(0.09),
-                            offset: iced::Vector::new(0., 3.),
-                            blur_radius: 12.,
-                        },
-                        ..Default::default()
-                    });
-                stage.push(pin(hud).x(dock.x).y(dock.y).into());
-            }
-        }
-        if self.camera != layout::Camera::default() {
-            stage.push(
-                pin(sized_icon_button(
-                    Icon::LocateFixed,
-                    Some(Message::ResetBoard),
-                    36.,
-                    36.,
-                ))
-                .x(layout::SIDE_INSET)
-                .y(board.y + 4.)
                 .into(),
             );
         }

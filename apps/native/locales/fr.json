@@ -1,4 +1,9 @@
 {
+  "启动失败": "Échec du démarrage",
+  "点击重试": "Cliquer pour réessayer",
+  "共享端已关闭连接": "L’appareil partagé a fermé la connexion",
+  "设备在返回回执前断开连接": "L’appareil s’est déconnecté avant de répondre",
+  "设备回执超时": "Délai de réponse de l’appareil dépassé",
   "已断开": "Hors ligne",
   "共享设备": "Partager un appareil",
   "这台电脑": "Cet ordinateur",
