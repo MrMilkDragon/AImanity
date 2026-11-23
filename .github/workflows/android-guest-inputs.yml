@@ -1,0 +1,52 @@
+name: Prepare Android ARM64 guest for AVF
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/europium-android-avf]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Fetch the pinned Europium ARM64 Android source images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/europium-input"
+          mkdir -p "$work"
+          cd "$work"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/14739028529/zip" > input.zip
+          echo '15508fd26acad9aed3ec6cfe69a8090e10e65977af0872d1626f4a044517ae69  input.zip' | sha256sum -c -
+          unzip -p input.zip android-arm64-inputs.tar.xz | tar --sparse -xJf -
+          rm input.zip
+      - name: Prepare and validate ARM64 boot and partition assets
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends lz4 android-sdk-libsparse-utils
+          rustup toolchain install 1.96.0 --profile minimal
+          export RUSTUP_TOOLCHAIN=1.96.0
+          bash scripts/mobile-android-images.sh "$RUNNER_TEMP/europium-input" "$RUNNER_TEMP/avf-inputs"
+          cd "$RUNNER_TEMP/avf-inputs"
+          sha256sum android/* speech/* > "$RUNNER_TEMP/android-prepared.sha256"
+          sha256sum --check "$RUNNER_TEMP/android-prepared.sha256"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: europium-mobile-android-avf-assets
+          path: ${{ runner.temp }}/avf-inputs/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: android-guest-preparation-receipt
+          path: ${{ runner.temp }}/android-prepared.sha256
+          if-no-files-found: error
+          retention-days: 30

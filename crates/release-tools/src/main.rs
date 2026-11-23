@@ -61,6 +61,7 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         "factory-android" => assets::factory_android().map(|()| None),
         "fetch-windows-aosp" => assets::windows_aosp(rest).map(|()| None),
         "windows-cuttlefish" => cuttlefish::run(rest).map(|()| None),
+        "android-avf-boot" => cuttlefish::android_avf_boot(rest).map(|()| None),
         "android-component" => android_component::seal(rest).map(Some),
         "stage-windows-android-audio" => assets::windows_audio(rest).map(|()| None),
         #[cfg(windows)]
