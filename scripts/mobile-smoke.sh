@@ -201,6 +201,19 @@ if [[ -n $symbols ]]; then
     symbols=$(key_location symbols '123')
     if [[ -n $symbols ]]; then continue; fi
     digit=$(key_location symbols '^2$')
+    if [[ -z $digit && $AVD_DEVICE == pixel_5 && -n $(key_location symbols '^ABC$') ]]; then
+      # The Pixel 5 symbols row has ten evenly spaced number keys. Sparse
+      # OCR can skip the 2 even when its two neighbors are clearly visible.
+      three=$(key_location symbols '^3$')
+      four=$(key_location symbols '^4$')
+      if [[ -n $three && -n $four ]]; then
+        read -r x3 y3 <<< "$three"
+        read -r x4 y4 <<< "$four"
+        if (( x4 > x3 && x4-x3 > width/16 && x4-x3 < width/8 && y3-y4 < 8 && y4-y3 < 8 )); then
+          digit="$((2*x3-x4)) $y3"
+        fi
+      fi
+    fi
     if [[ -n $digit ]]; then break; fi
   done
   if [[ -n ${digit:-} ]]; then
