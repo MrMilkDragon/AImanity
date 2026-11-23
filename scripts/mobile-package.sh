@@ -65,8 +65,10 @@ done
 "$sdk/aapt2" compile --dir "$app/res" -o "$work/resources.zip"
 "$sdk/aapt2" link -I "$ANDROID_HOME/platforms/android-35/android.jar" --manifest "$app/AndroidManifest.xml" \
   "${manifest_args[@]}" -o "$work/base.apk" "$work/resources.zip"
-zip -q -0 -r "$work/base.apk" classes.dex lib/
-zip -q -0 -r "$work/base.apk" assets/
+zip -q -0 "$work/base.apk" classes.dex
+# PackageManager extracts these libraries at install (extractNativeLibs).
+zip -q -9 -r "$work/base.apk" lib/ assets/notices/
+if [[ -n ${ASSETS_RUN:-} ]]; then zip -q -0 -r "$work/base.apk" assets/mobile-assets/; fi
 "$sdk/zipalign" -P 16 -f 4 "$work/base.apk" "$work/aligned.apk"
 "$sdk/apksigner" sign --ks "$work/identity.p12" --ks-key-alias aimanity --ks-pass env:APK_SIGN_PASS \
   --key-pass env:APK_SIGN_PASS --v4-signing-enabled false --out "$filename" "$work/aligned.apk"

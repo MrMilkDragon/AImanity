@@ -242,7 +242,24 @@ pub fn lock_aspect(id: window::Id, aspect: Size) -> Task<()> {
     })
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(target_os = "android")]
+pub fn content_size(_id: window::Id) -> Task<Size> {
+    let Ok(app) = crate::deployment::android_assets::activity() else {
+        return Task::none();
+    };
+    let Some(surface) = app.native_window() else {
+        return Task::none();
+    };
+    // Match winit's Android density conversion. These dimensions never include
+    // the workbench's application scale, even for queued resize notifications.
+    let scale = app.config().density().unwrap_or(160) as f32 / 160.0;
+    Task::done(Size::new(
+        surface.width() as f32 / scale,
+        surface.height() as f32 / scale,
+    ))
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "android")))]
 pub fn content_size(id: window::Id) -> Task<Size> {
     window::size(id)
 }
