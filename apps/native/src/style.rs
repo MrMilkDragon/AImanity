@@ -13,6 +13,8 @@ pub const LATIN_FONT: iced::Font = iced::Font::with_name(if cfg!(target_os = "ma
     "Helvetica Neue"
 } else if cfg!(windows) {
     "Segoe UI"
+} else if cfg!(target_os = "android") {
+    "Roboto"
 } else {
     "Noto Sans"
 });

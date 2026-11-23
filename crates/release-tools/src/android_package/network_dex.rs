@@ -5,7 +5,7 @@ use std::{ffi::OsString, fs, path::Path};
 const CLASS: Class = Class {
     name: "Ldev/aiphone/network/DataUsageWarnings;",
     parent: "Ljava/lang/Object;",
-    with_context: false,
+    constructor_args: &[],
     interfaces: &[],
     fields: &[],
     natives: &[("main", ("V", &["[Ljava/lang/String;"]), 9)],

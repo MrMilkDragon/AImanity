@@ -79,7 +79,7 @@ impl Skills {
             Message::ChooseFile => {
                 return Task::perform(
                     async {
-                        rfd::AsyncFileDialog::new()
+                        crate::documents::AsyncFileDialog::new()
                             .add_filter("SKILL.md", &["md", "txt"])
                             .pick_file()
                             .await
@@ -174,7 +174,7 @@ impl Skills {
                 }
             }
             Message::OpenSource(source) => {
-                if let Err(error) = open::that(source) {
+                if let Err(error) = crate::platform::open_link(source) {
                     self.error = error.to_string();
                 }
             }

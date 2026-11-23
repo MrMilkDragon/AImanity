@@ -568,7 +568,7 @@ impl Chat {
             Message::Pick => {
                 return Task::perform(
                     async {
-                        rfd::AsyncFileDialog::new()
+                        crate::documents::AsyncFileDialog::new()
                             .set_title("添加附件")
                             .pick_files()
                             .await
@@ -693,7 +693,7 @@ impl Chat {
                 let client = client.clone();
                 return Task::perform(
                     async move {
-                        if let Some(target) = rfd::AsyncFileDialog::new()
+                        if let Some(target) = crate::documents::AsyncFileDialog::new()
                             .set_file_name(&file.name)
                             .save_file()
                             .await
@@ -795,7 +795,7 @@ impl Chat {
             }
             Message::Link(url) => {
                 return Task::perform(
-                    async move { open::that(url).map_err(|e| e.to_string()) },
+                    async move { crate::platform::open_link(url).map_err(|e| e.to_string()) },
                     Message::Opened,
                 );
             }

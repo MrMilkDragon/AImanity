@@ -35,7 +35,7 @@ pub(crate) fn total_memory_bytes() -> u64 {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 pub(crate) fn total_memory_bytes() -> u64 {
     std::fs::read_to_string("/proc/meminfo")
         .ok()

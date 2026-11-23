@@ -247,6 +247,7 @@ pub fn content_size(id: window::Id) -> Task<Size> {
     window::size(id)
 }
 
+#[cfg(not(target_os = "android"))]
 pub async fn read_clipboard() -> Result<Option<ClipboardContent>, String> {
     tokio::task::spawn_blocking(|| {
         let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
@@ -361,4 +362,18 @@ pub fn menu() -> iced::Task<crate::Message> {
     item.setSubmenu(Some(&edit));
     menu.addItem(&item);
     iced::Task::run(receiver, std::convert::identity)
+}
+
+pub fn open_link(value: impl AsRef<str>) -> std::io::Result<()> {
+    #[cfg(target_os = "android")]
+    return crate::android_os::open("android.intent.action.VIEW", value.as_ref())
+        .map_err(std::io::Error::other);
+    #[cfg(not(target_os = "android"))]
+    open::that_detached(value.as_ref())
+}
+#[cfg(target_os = "android")]
+pub async fn read_clipboard() -> Result<Option<ClipboardContent>, String> {
+    tokio::task::spawn_blocking(crate::android_os::clipboard)
+        .await
+        .map_err(|e| e.to_string())?
 }

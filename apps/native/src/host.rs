@@ -1,14 +1,20 @@
+#[cfg(not(target_os = "android"))]
 use futures_util::SinkExt;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::process::Stdio;
+#[cfg(not(target_os = "android"))]
 use tokio::sync::oneshot;
 #[cfg(target_os = "macos")]
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
 };
+
+#[cfg(target_os = "android")]
+#[path = "android_host.rs"]
+mod android_host;
 
 #[derive(Clone, Deserialize)]
 pub struct Host {
@@ -17,7 +23,9 @@ pub struct Host {
     pub request: PathBuf,
     #[cfg(target_os = "macos")]
     pub source: String,
+    #[cfg(not(target_os = "android"))]
     pub android: String,
+    #[cfg(not(target_os = "android"))]
     pub images: String,
     #[serde(default = "default_resume")]
     pub resume: bool,
@@ -214,6 +222,8 @@ impl Host {
     }
 
     pub async fn stop(home: PathBuf) -> Result<(), String> {
+        #[cfg(target_os = "android")]
+        let result = android_host::stop(&home).await;
         #[cfg(target_os = "macos")]
         let result = ai_phone_host_runtime::stop_macos_installation(&home).await;
         #[cfg(any(windows, target_os = "linux"))]
@@ -223,6 +233,13 @@ impl Host {
 }
 
 pub async fn credentials(root: &Path) -> Result<(String, String), String> {
+    #[cfg(target_os = "android")]
+    {
+        ai_phone_host_runtime::vm_control::native_credentials(&android_host::key(root))
+            .await
+            .map(|credentials| (credentials.assistant_token, credentials.phone_token))
+            .map_err(|e| e.to_string())
+    }
     #[cfg(target_os = "macos")]
     {
         tokio::try_join!(

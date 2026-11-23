@@ -26,6 +26,8 @@ pub fn events(
     cancel: Arc<AtomicBool>,
 ) -> impl Stream<Item = Event> {
     iced::stream::channel(12, async move |mut output| {
+        #[cfg(target_os="android")]
+        if let Err(error)=crate::android_os::microphone().await { let _=output.send(Event::Error(error)).await; return; }
         let (sender, mut events) = tokio::sync::mpsc::channel(12);
         let (levels, mut updates) = watch::channel(MicrophoneLevels::default());
         let consumer = cancel.clone();

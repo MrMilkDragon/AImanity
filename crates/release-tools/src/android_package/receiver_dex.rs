@@ -7,7 +7,6 @@ type Proto = (Name, Types);
 type Method = (Name, Name, Proto);
 
 const VOID: Proto = ("V", &[]);
-const CONTEXT_CTOR: Proto = ("V", &["Landroid/content/Context;"]);
 const STRING: Name = "Ljava/lang/String;";
 const SYSTEM: Name = "Ljava/lang/System;";
 const RECEIVER: Name = "Landroid/content/BroadcastReceiver;";
@@ -22,18 +21,14 @@ pub(super) struct Class {
     pub name: Name,
     pub parent: Name,
     pub interfaces: Types,
-    pub with_context: bool,
+    pub constructor_args: Types,
     pub fields: &'static [(Name, Name, u32)],
     pub natives: &'static [(Name, Proto, u32)],
 }
 
 impl Class {
     fn constructor(&self) -> Proto {
-        if self.with_context {
-            CONTEXT_CTOR
-        } else {
-            VOID
-        }
+        ("V", self.constructor_args)
     }
 }
 
@@ -41,7 +36,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: "Ldev/aiphone/input/PhoneNotifications;",
         parent: "Landroid/service/notification/NotificationListenerService;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &["Ljava/lang/Runnable;"],
         fields: &[
             ("file", "Landroid/util/AtomicFile;", 2),
@@ -64,7 +59,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: "Ldev/aiphone/input/UiTreeReceiver;",
         parent: RECEIVER,
-        with_context: false,
+        constructor_args: &[],
         interfaces: &[],
         fields: &[("imeOwner", IME, 2)],
         natives: &[(
@@ -79,7 +74,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: IME,
         parent: "Landroid/inputmethodservice/InputMethodService;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &[],
         fields: &[("inputReceiver", RECEIVER, 2)],
         natives: &[
@@ -91,7 +86,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: ATTENTION,
         parent: "Landroid/accessibilityservice/AccessibilityService;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &[],
         fields: &[
             ("active", ATTENTION, 10),
@@ -126,7 +121,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: TIMER,
         parent: "Ljava/lang/Object;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &["Ljava/lang/Runnable;"],
         fields: &[("owner", ATTENTION, 2), ("heartbeat", "Z", 2)],
         natives: &[("run", VOID, 1)],
@@ -134,7 +129,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: SCREENSHOT,
         parent: "Ljava/lang/Object;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &["Landroid/accessibilityservice/AccessibilityService$TakeScreenshotCallback;"],
         fields: &[
             ("owner", ATTENTION, 2),
@@ -350,14 +345,15 @@ pub(super) fn emit_for(schema: &[Class], library: Name) -> Vec<u8> {
                     0x000e,
                 ],
             );
-            let registers = 1 + u32::from(class.with_context);
+            let registers = 1 + class.constructor_args.len() as u32;
+            assert!(registers <= 5 && class.constructor_args.iter().all(|ty| !matches!(*ty, "J" | "D")));
             let init = code(
                 &mut dex,
                 registers,
                 &[
-                    0x70 | ((registers as u16) << 12),
+                    0x76 | ((registers as u16) << 8), // invoke-direct/range {v0 .. vN}
                     method((class.parent, "<init>", class.constructor())) as u16,
-                    if registers == 2 { 0x10 } else { 0 },
+                    0,
                     0x000e,
                 ],
             );

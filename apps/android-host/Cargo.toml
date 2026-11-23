@@ -1,0 +1,18 @@
+[package]
+name = "aimanity-android-host"
+version = "0.0.5"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+publish = false
+
+[workspace]
+
+[dependencies]
+serde = {version = "1", features = ["derive"]}
+serde_json = "1"
+tempfile = "3"
+libc = "=0.2.191"
+
+[profile.release]
+strip = true

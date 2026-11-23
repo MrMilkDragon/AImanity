@@ -13,7 +13,7 @@ use tokio::net::TcpStream;
 
 pub const GUEST_PORT: u16 = 17861;
 const LIMIT: usize = 16448;
-#[cfg(any(test, windows, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, windows, target_os = "android", all(target_os = "linux", target_arch = "x86_64")))]
 const NATIVE_PORTS: [u16; 4] = [17862, 17863, 17864, 17865];
 
 pub async fn native_credentials(
@@ -35,7 +35,7 @@ pub async fn native_credentials(
 }
 
 /// Bind the four local data-plane sockets for the client lifetime.
-#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(windows, target_os = "android", all(target_os = "linux", target_arch = "x86_64")))]
 pub async fn expose_native_services(key: &Path) -> Result<tokio::task::JoinSet<()>> {
     use ai_phone_api::wire::LinuxVmNativeService;
     use std::sync::Arc;

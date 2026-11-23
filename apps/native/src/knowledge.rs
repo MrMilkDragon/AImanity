@@ -376,7 +376,7 @@ impl Knowledge {
                                 None => Ok(None),
                             };
                         }
-                        let Some(file) = rfd::AsyncFileDialog::new()
+                        let Some(file) = crate::documents::AsyncFileDialog::new()
                             .add_filter("图片", &["png", "jpg", "jpeg", "webp"])
                             .pick_file()
                             .await
@@ -426,7 +426,7 @@ impl Knowledge {
             },
             Message::OpenLink(url) => {
                 if (url.starts_with("https://") || url.starts_with("http://"))
-                    && let Err(error) = open::that(url)
+                    && let Err(error) = crate::platform::open_link(url)
                 {
                     self.document_error = error.to_string();
                 }
