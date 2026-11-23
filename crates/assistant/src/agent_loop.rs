@@ -88,7 +88,9 @@ impl LoopState {
         };
         feed(name);
         let desktop = metadata.filter(|receipt| {
-            name == "computer_observe" || (name == "host_desktop" && receipt["kind"] == "observe")
+            name == "computer_observe"
+                || (matches!(name, "host_desktop" | "device_interact")
+                    && receipt["kind"] == "observe")
         });
         let is_desktop_frame = if let Some(receipt) = desktop
             && let Some(parts) = result.as_array()

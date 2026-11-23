@@ -429,8 +429,9 @@ pub async fn verify(
         if let Some(observation) = observation {
             learning_evidence.insert(id.clone(), observation);
         }
-        if name == "host_desktop"
-            && !crate::host_desktop::receipt_in_session(&result, host_session.as_deref())
+        if (name == "host_desktop"
+            && !crate::host_desktop::receipt_in_session(&result, host_session.as_deref()))
+            || (name == "device_interact" && !app.run_signals.peers.contains_output(&result))
         {
             limit_result(&mut result, &mut 0);
         } else {

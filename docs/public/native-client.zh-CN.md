@@ -42,3 +42,14 @@ cargo build --release --locked --manifest-path apps/native/Cargo.toml
 各平台工厂在原生二进制文件之外打包离线系统与服务。[macOS 工厂](engineering/macos-full-runtime.md) · [Windows 工厂](windows-client-factory.md) · [Linux 工作流](../../.github/workflows/linux-packages.yml)
 
 [下载与宿主要求](release-status.md)
+
+## 共享手机或电脑（Fluorine 开发版）
+
+1. 在工作区的「配置中心 → 设备」添加「远程 Android」或「远程电脑」，命名并复制配对码。配对码五分钟有效。
+2. 在提供设备的电脑上打开「配置中心 → 设备 → 共享设备」。选择「这台电脑」，或点「查找手机」，选择已经授权 USB 调试或无线 ADB 的 Android。单独打开共享窗口可运行 `aimanity-native --share-device zh-CN`。
+3. 填入已建立信任的工作区 SSH 主机别名和配对码，点击「开始共享」。已有 SSH 隧道时，将工作区回环地址的 17863 端口转发到另一个本机端口（如 17869），填入该本机端口。Linux 桌面共享使用 X11 会话。
+4. 在工作区选中设备即可查看画面并操作。Agent 通过 `device_list` 读取各台已授权设备的前台应用或窗口，选中后依据实际画面操作。在被控端点击「停止共享」，或在工作区点击「断开」，都会结束授权。重连时生成新的配对码。
+
+Android 支持点按、长按、滑动、滚动、导航键和可打印 ASCII 文本。电脑支持主显示器画面、鼠标和键盘，文字输入绑定到观察时的前台窗口。远程设备的声音和文件传输待接入。操作工作区所在电脑沿用逐任务的本机授权。
+
+没有图形界面的 Android 接入机可以运行 `aimanity-native --share-android <SSH主机或本机转发端口> <ADB序列号>`，通过标准输入提供配对码。

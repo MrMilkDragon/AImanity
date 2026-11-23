@@ -15,6 +15,14 @@ use std::time::Duration;
 #[derive(Clone, Debug)]
 pub enum Message {
     Choose(String),
+    Invite(wire::DevicePairRequest),
+    Invitation(Result<wire::DeviceInvitation, String>),
+    RefreshPeers,
+    PeerState(Result<wire::RegistryState, String>),
+    Disconnect(String, bool),
+    CopyCode,
+    #[cfg(not(target_os = "android"))]
+    Share(String),
     New(String),
     Name(String),
     Kind(String),
@@ -40,7 +48,8 @@ impl std::fmt::Display for Memory {
 }
 
 pub struct Devices {
-    selected: String,
+    pub selected: String,
+    invitation: Option<(wire::DeviceInvitation, std::time::Instant)>,
     draft: Option<wire::DeviceSaveRequest>,
     busy: bool,
     error: String,
@@ -55,6 +64,7 @@ impl Default for Devices {
     fn default() -> Self {
         Self {
             selected: String::new(),
+            invitation: None,
             draft: None,
             busy: false,
             error: String::new(),
@@ -75,7 +85,12 @@ impl Devices {
         ]
         .into_iter()
         .filter(|(kind, max)| {
-            registry.devices.iter().filter(|d| &d.kind == kind).count() < *max as usize
+            registry
+                .devices
+                .iter()
+                .filter(|d| !d.paired && &d.kind == kind)
+                .count()
+                < *max as usize
         })
         .map(|(kind, _)| kind)
         .collect()
@@ -86,7 +101,9 @@ impl Devices {
             .is_some_and(|j| matches!(j.status.as_str(), "queued" | "running"))
     }
     pub fn subscription(&self) -> Subscription<Message> {
-        if self.running() {
+        if self.invitation.is_some() {
+            iced::time::every(Duration::from_secs(1)).map(|_| Message::RefreshPeers)
+        } else if self.running() {
             iced::time::every(Duration::from_millis(1800)).map(|_| Message::Check)
         } else {
             Subscription::none()
@@ -100,8 +117,94 @@ impl Devices {
     ) -> Task<Message> {
         let change_kind = matches!(message, Message::Kind(_));
         match message {
+            Message::Invite(request) => {
+                self.busy = true;
+                self.error.clear();
+                let client = client.clone();
+                return Task::perform(
+                    async move { client.rpc("registry/device-invite", request).await },
+                    Message::Invitation,
+                );
+            }
+            Message::Invitation(r) => {
+                self.busy = false;
+                match r {
+                    Ok(invite) => {
+                        self.selected = invite.device_id.clone();
+                        self.draft = None;
+                        self.invitation = Some((invite, std::time::Instant::now()));
+                        return self.update(Message::RefreshPeers, registry, client);
+                    }
+                    Err(e) => self.error = e,
+                }
+            }
+            Message::RefreshPeers => {
+                if self
+                    .invitation
+                    .as_ref()
+                    .is_some_and(|(_, at)| at.elapsed() >= Duration::from_secs(300))
+                {
+                    self.invitation = None;
+                }
+                let client = client.clone();
+                return Task::perform(
+                    async move { client.rpc("registry/state", wire::RegistryRequest {}).await },
+                    Message::PeerState,
+                );
+            }
+            Message::PeerState(r) => match r {
+                Ok(state) => {
+                    if self.invitation.as_ref().is_some_and(|(v, _)| {
+                        state
+                            .devices
+                            .iter()
+                            .any(|d| d.id == v.device_id && d.connected)
+                    }) {
+                        self.invitation = None;
+                    }
+                    self.registry = Some(state);
+                }
+                Err(e) => self.error = e,
+            },
+            Message::Disconnect(id, forget) => {
+                self.busy = true;
+                self.invitation = None;
+                let client = client.clone();
+                return Task::perform(
+                    async move {
+                        client
+                            .rpc(
+                                if forget {
+                                    "registry/device-forget"
+                                } else {
+                                    "registry/device-disconnect"
+                                },
+                                wire::DesktopRequest { device_id: id },
+                            )
+                            .await
+                    },
+                    Message::Saved,
+                );
+            }
+            Message::CopyCode => {
+                if let Some((i, _)) = &self.invitation {
+                    return iced::clipboard::write(i.code.clone());
+                }
+            }
+            #[cfg(not(target_os = "android"))]
+            Message::Share(locale) => {
+                match std::env::current_exe().and_then(|p| {
+                    std::process::Command::new(p)
+                        .args(["--share-device", &locale])
+                        .spawn()
+                }) {
+                    Ok(_) => {}
+                    Err(e) => self.error = e.to_string(),
+                }
+            }
             Message::Choose(id) => {
                 self.selected = id;
+                self.registry = Some(registry.clone());
                 self.draft = None;
                 self.resources = self.applied.clone();
                 return self.update(Message::Check, registry, client);
@@ -141,6 +244,17 @@ impl Devices {
             Message::Discard => self.draft = None,
             Message::Save => {
                 if let Some(draft) = self.draft.clone() {
+                    if let Some(kind) = draft.kind.strip_prefix("paired-") {
+                        return self.update(
+                            Message::Invite(wire::DevicePairRequest {
+                                id: draft.id,
+                                name: draft.name,
+                                kind: kind.to_owned(),
+                            }),
+                            registry,
+                            client,
+                        );
+                    }
                     self.busy = true;
                     self.error.clear();
                     let client = client.clone();
@@ -263,49 +377,52 @@ impl Devices {
                 .on_press_maybe((!self.busy).then(|| Message::Choose(d.id.clone()))),
             );
         }
-        if let Some(kind) = available.first() {
+        {
+            let kind = available.first().copied().unwrap_or("paired-phone");
             list = list.push(
                 row![
                     text(tr("添加设备")).size(12),
                     icon_button(
                         Icon::Plus,
                         (!self.busy && draft.is_none_or(|d| d.expected_revision != 0))
-                            .then(|| Message::New((*kind).into()))
+                            .then(|| Message::New(kind.into()))
                     )
                 ]
                 .align_y(iced::Center),
             );
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            list = list
+                .push(text_button(tr("共享设备")).on_press(Message::Share(locale.code().into())));
         }
         let mut form = column![].spacing(10);
         if let Some(name) = name {
             form = form.push(field(tr("名称"), name, Message::Name, !self.busy));
         }
         if let Some(draft) = draft.filter(|d| d.expected_revision == 0) {
-            let choices: Vec<_> = available
-                .into_iter()
-                .map(|kind| {
-                    if kind == "phone" {
-                        tr("Android 手机")
-                    } else {
-                        tr("Linux 电脑")
-                    }
-                })
-                .collect();
-            let phone = tr("Android 手机");
+            let mut choices = Vec::new();
+            for (kind, key) in [
+                ("phone", "Android 手机"),
+                ("desktop", "Linux 电脑"),
+                ("paired-phone", "远程 Android"),
+                ("paired-desktop", "远程电脑"),
+            ] {
+                if kind.starts_with("paired-") || available.contains(&kind) {
+                    choices.push((kind, tr(key)));
+                }
+            }
+            let selected = choices
+                .iter()
+                .find(|(kind, _)| *kind == draft.kind)
+                .map(|(_, label)| *label);
+            let labels = choices.iter().map(|(_, label)| *label).collect::<Vec<_>>();
             form = form
-                .push(text(tr("系统")).size(12).color(style::MUTED))
+                .push(text(tr("设备类型")).size(12).color(style::MUTED))
                 .push(
-                    form_select(
-                        choices,
-                        Some(if draft.kind == "phone" {
-                            phone
-                        } else {
-                            tr("Linux 电脑")
-                        }),
-                        move |label| {
-                            Message::Kind(if label == phone { "phone" } else { "desktop" }.into())
-                        },
-                    )
+                    form_select(labels, selected, move |label| {
+                        Message::Kind(choices.iter().find(|(_, l)| *l == label).unwrap().0.into())
+                    })
                     .width(Length::Fill),
                 );
         } else if let Some(device) = device {
@@ -315,7 +432,39 @@ impl Devices {
                     .size(12)
                     .color(style::MUTED),
             );
-            if device.runtime_state == "managed"
+            if device.paired {
+                if let Some((invite, _)) = self
+                    .invitation
+                    .as_ref()
+                    .filter(|(i, _)| i.device_id == device.id)
+                {
+                    form = form.push(
+                        row![
+                            text(&invite.code).size(12),
+                            icon_button(Icon::Copy, Some(Message::CopyCode))
+                        ]
+                        .align_y(iced::Center)
+                        .spacing(6),
+                    );
+                } else if device.connected {
+                    form = form.push(action_button(
+                        tr("断开"),
+                        Some(Message::Disconnect(device.id.clone(), false)),
+                    ));
+                } else {
+                    form = form.push(action_button(
+                        tr("生成配对码"),
+                        Some(Message::Invite(wire::DevicePairRequest {
+                            id: device.id.clone(),
+                            name: device.name.clone(),
+                            kind: device.kind.clone(),
+                        })),
+                    ));
+                }
+                form = form.push(text_button(tr("移除设备")).on_press_maybe(
+                    (!self.busy).then(|| Message::Disconnect(device.id.clone(), true)),
+                ));
+            } else if device.runtime_state == "managed"
                 && let (Some(applied), Some(edited)) = (&self.applied, &self.resources)
             {
                 let original = applied.guest(desktop);
@@ -380,7 +529,11 @@ impl Devices {
                 space::horizontal(),
                 text_button(tr("撤销")).on_press_maybe((!self.busy).then_some(Message::Discard)),
                 action_button(
-                    tr("保存"),
+                    if draft.kind.starts_with("paired-") {
+                        tr("生成配对码")
+                    } else {
+                        tr("保存")
+                    },
                     (!self.busy && !draft.name.trim().is_empty()).then_some(Message::Save)
                 )
             ]

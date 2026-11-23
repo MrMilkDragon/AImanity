@@ -145,7 +145,7 @@ impl Files {
     pub fn set_devices(&mut self, devices: &[Option<wire::RegisteredDevice>; 2]) {
         for (index, device) in devices.iter().enumerate() {
             let pane = &mut self.panes[index + 1];
-            if let Some(device) = device {
+            if let Some(device) = device.as_ref().filter(|d| !d.paired) {
                 if pane.device.as_deref() != Some(device.id.as_str()) {
                     *pane = Pane::new(&device.name, Some(device.id.clone()));
                 }
@@ -374,16 +374,19 @@ impl Files {
             }
             Message::Pick(i) => {
                 let target = self.panes[i].location(&self.panes[i].path);
-                return Task::perform(crate::documents::AsyncFileDialog::new().pick_files(), move |files| {
-                    Message::Upload(
-                        target.clone(),
-                        files
-                            .unwrap_or_default()
-                            .iter()
-                            .map(|f| f.path().to_owned())
-                            .collect(),
-                    )
-                });
+                return Task::perform(
+                    crate::documents::AsyncFileDialog::new().pick_files(),
+                    move |files| {
+                        Message::Upload(
+                            target.clone(),
+                            files
+                                .unwrap_or_default()
+                                .iter()
+                                .map(|f| f.path().to_owned())
+                                .collect(),
+                        )
+                    },
+                );
             }
             Message::Upload(target, paths) => {
                 if paths.is_empty() {
@@ -436,7 +439,10 @@ impl Files {
                 let client = client.clone();
                 return Task::perform(
                     async move {
-                        let names = sources.iter().map(|source| leaf(&source.path).to_owned()).collect::<Vec<_>>();
+                        let names = sources
+                            .iter()
+                            .map(|source| leaf(&source.path).to_owned())
+                            .collect::<Vec<_>>();
                         let targets = crate::documents::download_targets(&names).await?;
                         for (source, target) in sources.into_iter().zip(targets) {
                             let path = if source.device_id.is_empty() {

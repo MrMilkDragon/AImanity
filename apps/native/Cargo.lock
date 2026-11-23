@@ -98,6 +98,7 @@ dependencies = [
 name = "aimanity-native"
 version = "0.0.5"
 dependencies = [
+ "ai-phone-adb",
  "ai-phone-api",
  "ai-phone-host-runtime",
  "ai-phone-local-speech",

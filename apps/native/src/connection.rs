@@ -22,6 +22,7 @@ pub struct Session {
 }
 #[derive(Clone, Debug)]
 pub struct Frame {
+    pub observation_id: String,
     pub width: u32,
     pub height: u32,
     pub pixels: Arc<Vec<u8>>,
@@ -384,6 +385,55 @@ impl Connection {
     ) -> impl futures_util::Stream<Item = LatestFrame> {
         iced::stream::channel::<LatestFrame>(1, async move |mut output| {
             let pending = LatestFrame::default();
+            if device.paired {
+                let mut sequence = 0;
+                loop {
+                    let result = async {
+                        let reply: wire::HostDesktopReply = self
+                            .rpc(
+                                "peer/action",
+                                wire::DesktopActionRequest {
+                                    device_id: device.id.clone(),
+                                    action_id: uuid::Uuid::now_v7().to_string(),
+                                    kind: "observe".into(),
+                                    ..Default::default()
+                                },
+                            )
+                            .await?;
+                        let decoded = tokio::task::spawn_blocking(move || {
+                            image::load_from_memory_with_format(
+                                &reply.jpeg,
+                                image::ImageFormat::Jpeg,
+                            )
+                            .map(|im| im.into_rgba8())
+                        })
+                        .await
+                        .map_err(|e| e.to_string())?
+                        .map_err(|e| e.to_string())?;
+                        sequence += 1;
+                        Ok(Frame {
+                            observation_id: reply.observation_id,
+                            width: decoded.width(),
+                            height: decoded.height(),
+                            pixels: Arc::new(decoded.into_raw()),
+                            sequence,
+                            captured_ms: 0.,
+                            received: Instant::now(),
+                        })
+                    }
+                    .await;
+                    let interval = if result.is_ok() {
+                        Duration::from_millis(350)
+                    } else {
+                        RECONNECT_DELAY
+                    };
+                    if pending.replace(result) && output.send(pending.clone()).await.is_err() {
+                        return;
+                    }
+                    tokio::time::sleep(interval).await;
+                }
+            }
+
             let route = if device.kind == "phone" {
                 "screen"
             } else {
@@ -448,6 +498,7 @@ impl Connection {
                             sequence += 1;
                             reconnecting = false;
                             if pending.replace(Ok(Frame {
+                                observation_id: String::new(),
                                 width: decoded.width(),
                                 height: decoded.height(),
                                 pixels: Arc::new(decoded.into_raw()),
@@ -482,6 +533,9 @@ impl Connection {
         device: Option<wire::RegisteredDevice>,
     ) -> Option<wire::DeviceCursor> {
         let device = device?;
+        if device.paired {
+            return None;
+        }
         if device.kind == "phone" {
             self.rpc(
                 "phone/cursor",
@@ -508,7 +562,66 @@ impl Connection {
         &self,
         device: &wire::RegisteredDevice,
         input: DeviceInput,
+        observation: String,
     ) -> Result<(), String> {
+        if device.paired {
+            if observation.is_empty() {
+                return Err("请先获取设备画面".into());
+            }
+            let mut action = wire::DesktopActionRequest {
+                device_id: device.id.clone(),
+                action_id: uuid::Uuid::now_v7().to_string(),
+                observation_id: observation,
+                ..Default::default()
+            };
+            action.kind = match input {
+                DeviceInput::Tap { x, y, press } => {
+                    action.x = x as i32;
+                    action.y = y as i32;
+                    match press {
+                        Press::Left => "click",
+                        Press::Double => "double_click",
+                        _ if device.kind == "phone" => "long_press",
+                        _ => return Err("共享电脑暂不支持此鼠标按键".into()),
+                    }
+                }
+                DeviceInput::Drag {
+                    x, y, to_x, to_y, ..
+                } => {
+                    if device.kind != "phone" {
+                        return Err("共享电脑暂不支持拖动".into());
+                    }
+                    action.x = x as i32;
+                    action.y = y as i32;
+                    action.to_x = to_x as i32;
+                    action.to_y = to_y as i32;
+                    "swipe"
+                }
+                DeviceInput::Text(v) => {
+                    action.text = v;
+                    "type"
+                }
+                DeviceInput::Key(v) => {
+                    action.key = v.to_ascii_lowercase();
+                    "key"
+                }
+                DeviceInput::Scroll { x, y, amount } => {
+                    action.x = x as i32;
+                    action.y = y as i32;
+                    action.amount = if device.kind == "phone" {
+                        amount.signum() * 2
+                    } else {
+                        amount
+                    };
+                    "scroll"
+                }
+                DeviceInput::Rotate(_) => return Err("请在手机上调整屏幕方向".into()),
+            }
+            .into();
+            let _: wire::HostDesktopReply = self.rpc("peer/action", action).await?;
+            return Ok(());
+        }
+
         if device.kind == "phone" {
             let scope = wire::TakeControlRequest {
                 phone_id: device.id.clone(),
@@ -672,6 +785,7 @@ fn stalled_renderer_keeps_the_latest_frame_and_one_wakeup() {
         let pixels = Arc::new(vec![0; 16]);
         let live = Arc::downgrade(&pixels);
         wakes += usize::from(slot.replace(Ok(Frame {
+            observation_id: String::new(),
             width: 2,
             height: 2,
             pixels,

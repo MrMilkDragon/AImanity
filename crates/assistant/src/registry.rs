@@ -152,8 +152,8 @@ pub async fn pin_run_for(
     } else {
         Some(Uuid::parse_str(agent).map_err(|_| sqlx::Error::Protocol("invalid_agent".into()))?)
     };
-    let row = sqlx::query("SELECT a.id,a.revision,a.name,a.instructions,a.model_connection_id,m.model_revision,r.device_id,
-        r.device_id IS NULL OR (d.runtime_state='managed' AND d.default_agent_id=a.id) IS TRUE AS available
+    let row = sqlx::query("SELECT a.id,a.revision,a.name,a.instructions,a.model_connection_id,m.model_revision,r.device_id,COALESCE(d.paired,false) paired,
+        r.device_id IS NULL OR ((d.runtime_state='managed' OR (d.paired AND d.runtime_state='registered')) AND d.default_agent_id=a.id) IS TRUE AS available
         FROM runs r JOIN registry_meta w ON w.owner_id=$2
         LEFT JOIN devices d ON d.id=r.device_id AND d.owner_id=w.owner_id
         JOIN agents a ON a.id=CASE WHEN r.device_id IS NULL OR r.origin='user' THEN w.active_agent_id ELSE d.default_agent_id END
@@ -166,6 +166,7 @@ pub async fn pin_run_for(
     }
     if let Some(device) = row.get::<Option<&str>, _>("device_id")
         && device != PHONE
+        && !row.get::<bool, _>("paired")
         && !sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS(SELECT 1 FROM device_runtimes WHERE device_id=$1)",
         )
@@ -331,7 +332,7 @@ async fn select_first_if_missing(tx: &mut Transaction<'_, Postgres>) -> sqlx::Re
 async fn state(app: &App) -> Result<wire::RegistryState> {
     let mut tx = app.db.begin().await.map_err(storage)?;
     bootstrap(&mut tx, &app.settings).await.map_err(storage)?;
-    let devices = sqlx::query("SELECT id,revision,name,kind,system,runtime_state,default_agent_id FROM devices WHERE owner_id=$1 AND runtime_state<>'archived' ORDER BY created_at,id").bind(OWNER).fetch_all(&mut *tx).await.map_err(storage)?;
+    let devices = sqlx::query("SELECT id,revision,name,kind,system,runtime_state,paired FROM devices WHERE owner_id=$1 AND runtime_state<>'archived' ORDER BY created_at,id").bind(OWNER).fetch_all(&mut *tx).await.map_err(storage)?;
     let agents = sqlx::query("SELECT a.id,a.revision,a.name,a.model_connection_id,a.instructions FROM agents a
         JOIN model_connections m ON m.id=a.model_connection_id
         WHERE a.owner_id=$1 AND a.retired_at IS NULL AND m.model_revision>0 ORDER BY a.created_at,a.id")
@@ -379,6 +380,8 @@ async fn state(app: &App) -> Result<wire::RegistryState> {
                 kind: r.get("kind"),
                 system: r.get("system"),
                 runtime_state: r.get("runtime_state"),
+                paired: r.get("paired"),
+                connected: app.run_signals.peers.connected(r.get("id")),
             })
             .collect(),
         agents: agents
@@ -395,6 +398,49 @@ async fn state(app: &App) -> Result<wire::RegistryState> {
             })
             .collect(),
     })
+}
+async fn invite_peer(
+    app: &App,
+    request: wire::DevicePairRequest,
+) -> Result<wire::DeviceInvitation> {
+    uuid(&request.id)?;
+    let label = name(&request.name)?;
+    let system = match request.kind.as_str() {
+        "phone" => "Android",
+        "desktop" => "Desktop",
+        _ => return Err(invalid("设备类型无效")),
+    };
+    let mut tx = app.db.begin().await.map_err(storage)?;
+    bootstrap(&mut tx, &app.settings).await.map_err(storage)?;
+    let saved: Option<(String, bool, String)> =
+        sqlx::query_as("SELECT kind,paired,runtime_state FROM devices WHERE id=$1 AND owner_id=$2")
+            .bind(&request.id)
+            .bind(OWNER)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(storage)?;
+    match saved {
+        Some((kind, true, state)) if kind == request.kind && state != "archived" => {}
+        Some(_) => return Err(conflict("设备编号已占用")),
+        None => {
+            let agent = active_agent(&mut tx).await.map_err(storage)?;
+            sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state,default_agent_id,paired) VALUES($1,$2,$3,$4,'registered',$5,true)")
+                .bind(&request.id).bind(label).bind(&request.kind).bind(system).bind(agent).execute(&mut *tx).await.map_err(storage)?;
+            if let Some(agent) = agent {
+                sqlx::query("INSERT INTO agent_device_bindings(agent_id,device_id) VALUES($1,$2)")
+                    .bind(agent)
+                    .bind(&request.id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(storage)?;
+            }
+        }
+    }
+    tx.commit().await.map_err(storage)?;
+    app.run_signals
+        .peers
+        .invite(&request.id, &request.kind)
+        .map_err(|e| conflict(&e))
 }
 async fn save_device(app: &App, r: wire::DeviceSaveRequest) -> Result<()> {
     if r.id != PHONE {
@@ -421,7 +467,7 @@ async fn save_device(app: &App, r: wire::DeviceSaveRequest) -> Result<()> {
     }
     if old.is_none() {
         let count: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM devices WHERE owner_id=$1 AND kind=$2 AND runtime_state<>'archived'")
+            sqlx::query_scalar("SELECT count(*) FROM devices WHERE owner_id=$1 AND kind=$2 AND NOT paired AND runtime_state<>'archived'")
                 .bind(OWNER)
                 .bind(&r.kind)
                 .fetch_one(&mut *tx)
@@ -792,6 +838,15 @@ pub async fn route(
         match operation.as_str() {
             "state" => {
                 read!(wire::RegistryRequest);
+            }
+            "device-invite" => return Ok(pb(StatusCode::OK,invite_peer(&app,read!(wire::DevicePairRequest)).await?)),
+            "device-disconnect" | "device-forget" => {
+                let id=read!(wire::DesktopRequest).device_id;
+                if operation=="device-forget" {
+                    sqlx::query("UPDATE devices SET runtime_state='archived',revision=revision+1 WHERE id=$1 AND owner_id=$2 AND paired AND runtime_state<>'archived'")
+                        .bind(&id).bind(OWNER).execute(&app.db).await.map_err(storage)?;
+                }
+                app.run_signals.peers.disconnect(&id);
             }
             "device-save" => save_device(&app, read!(wire::DeviceSaveRequest)).await?,
             "agent-config-save" => {

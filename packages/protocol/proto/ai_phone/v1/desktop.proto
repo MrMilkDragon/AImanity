@@ -59,6 +59,7 @@ message DesktopActionRequest {
   // Replace the current editable field through real select-all/paste input.
   // Rejected when the observed foreground window or editable focus is unavailable.
   bool replace = 16;
+  string control_session = 17;
 }
 message DeviceFilesRequest { string device_id = 1; string path = 2; }
 message DeviceFile { string name = 1; string path = 2; bool directory = 3; uint64 bytes = 4; }
@@ -100,4 +101,5 @@ message HostDesktopReply {
   string error = 6;
   repeated string displays = 7;
   string display = 8;
+  string foreground = 9;
 }

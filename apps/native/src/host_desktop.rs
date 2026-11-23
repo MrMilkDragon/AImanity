@@ -68,6 +68,43 @@ impl Permission {
     }
 }
 
+pub(super) struct Views<T>(Vec<(String, Option<String>, T)>);
+impl<T> Default for Views<T> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+impl<T> Views<T> {
+    pub fn remember(&mut self, request: &DesktopActionRequest, id: String, value: T) {
+        // Manual previews can advance one frame while a click is in flight.
+        if request.epoch == 2 {
+            if self
+                .0
+                .iter()
+                .filter(|(_, owner, _)| owner.is_none())
+                .count()
+                == 2
+                && let Some(oldest) = self.0.iter().position(|(_, owner, _)| owner.is_none())
+            {
+                self.0.remove(oldest);
+            }
+        } else {
+            self.0.retain(|(_, owner, _)| owner.is_none());
+        }
+        let owner = (request.epoch != 2).then(|| request.control_session.clone());
+        self.0.push((id, owner, value));
+    }
+    pub fn take(&mut self, request: &DesktopActionRequest) -> Option<T> {
+        let owner = (request.epoch != 2).then_some(request.control_session.as_str());
+        let i = self.0.iter().position(|(id, source, _)| {
+            *id == request.observation_id && source.as_deref() == owner
+        })?;
+        let (_, _, value) = self.0.swap_remove(i);
+        self.0.clear();
+        Some(value)
+    }
+}
+
 struct View {
     id: String,
     display: String,
@@ -97,11 +134,12 @@ fn focused_window() -> Option<usize> {
 
 fn observe(display: &str) -> Result<(View, HostDesktopReply)> {
     let monitors = Monitor::all()?;
+    let only_display = monitors.len() == 1;
     let mut displays = Vec::with_capacity(monitors.len());
     let mut selected = None;
     for monitor in monitors {
         let id = monitor.id()?.to_string();
-        if id == display || (display.is_empty() && monitor.is_primary()?) {
+        if id == display || (display.is_empty() && (only_display || monitor.is_primary()?)) {
             selected = Some((id.clone(), monitor));
         }
         displays.push(id);
@@ -246,6 +284,39 @@ fn execute(
     if live.has_changed().is_err() {
         return Err("本机授权已结束".into());
     }
+    if action.kind == "foreground" {
+        let active = xcap::Window::all()?
+            .into_iter()
+            .find(|w| w.is_focused().unwrap_or(false));
+        let foreground = active
+            .as_ref()
+            .and_then(|w| w.title().ok())
+            .unwrap_or_default();
+        #[cfg(target_os = "linux")]
+        let foreground = if foreground.is_empty()
+            && let Some(window) = active
+        {
+            use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
+            let (x11, _) = x11rb::connect(None)?;
+            let name = x11
+                .get_property(
+                    false,
+                    window.id()?,
+                    AtomEnum::WM_NAME,
+                    AtomEnum::ANY,
+                    0,
+                    200,
+                )?
+                .reply()?;
+            String::from_utf8_lossy(&name.value).into_owned()
+        } else {
+            foreground
+        };
+        return Ok(HostDesktopReply {
+            foreground: foreground.chars().take(200).collect(),
+            ..Default::default()
+        });
+    }
     if action.kind == "observe" {
         let (next, reply) = observe(&action.device_id)?;
         *view = Some(next);
@@ -344,69 +415,130 @@ pub fn permission() -> Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
+pub fn permission() -> Result<()> {
+    Enigo::new(&Settings::default())?;
+    Ok(())
+}
+
 pub async fn serve(
     token: HeaderValue,
     request_id: String,
     ready: oneshot::Sender<()>,
-    mut stop: watch::Receiver<()>,
+    stop: watch::Receiver<()>,
 ) -> std::result::Result<(), String> {
     let result: Result<()> = async {
         let mut request =
             format!("ws://127.0.0.1:17863/v1/host/desktop/{request_id}").into_client_request()?;
         request.headers_mut().insert("authorization", token);
-        let (mut socket, _) = tokio_tungstenite::connect_async(request).await?;
-        let Some(Ok(Frame::Binary(first))) = socket.next().await else {
-            return Err("本机桌面已有使用中的任务".into());
-        };
-        HostDesktopReply::decode(first)?;
-        if ready.send(()).is_err() {
-            return Ok(());
-        }
-        let mut view = None;
-        loop {
-            let received = tokio::select! {
-                biased;
-                _ = stop.changed() => break,
-                received = socket.next() => received,
-            };
-            let Some(msg) = received else {
-                break;
-            };
-            let bytes = match msg? {
-                Frame::Binary(bytes) => bytes,
-                Frame::Close(_) => break,
-                _ => continue,
-            };
-            let action = DesktopActionRequest::decode(bytes)?;
-            let live = stop.clone();
-            let (next, reply) = tokio::task::spawn_blocking(move || {
-                let mut reply =
-                    execute(&mut view, &action, &live).unwrap_or_else(|e| HostDesktopReply {
-                        error: e.to_string(),
-                        ..Default::default()
-                    });
-                reply.action_id = action.action_id;
-                (view, reply)
-            })
-            .await?;
-            view = next;
-            if stop.has_changed().is_err() {
-                break;
-            }
-            socket
-                .send(Frame::Binary(reply.encode_to_vec().into()))
-                .await?;
-        }
-        let _ = socket.close(None).await;
+        let (socket, _) = tokio_tungstenite::connect_async(request).await?;
+        serve_socket(socket, None, ready, stop).await?;
         Ok(())
     }
     .await;
     result.map_err(|e| e.to_string())
 }
 
+pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
+    mut socket: tokio_tungstenite::WebSocketStream<S>,
+    mut phone: Option<crate::paired_phone::Phone>,
+    ready: oneshot::Sender<()>,
+    mut stop: watch::Receiver<()>,
+) -> Result<()> {
+    let first = tokio::select! {biased; _=stop.changed()=>return Ok(()), msg=tokio::time::timeout(std::time::Duration::from_secs(8),socket.next())=>msg?};
+    let Some(Ok(Frame::Binary(first))) = first else {
+        return Err("本机桌面已有使用中的任务".into());
+    };
+    HostDesktopReply::decode(first)?;
+    if ready.send(()).is_err() {
+        return Ok(());
+    }
+    let mut views = Views::default();
+    loop {
+        let received = tokio::select! {
+            biased;
+            _ = stop.changed() => break,
+            received = socket.next() => received,
+        };
+        let Some(msg) = received else {
+            break;
+        };
+        let bytes = match msg? {
+            Frame::Binary(bytes) => bytes,
+            Frame::Close(_) => break,
+            _ => continue,
+        };
+        let action = DesktopActionRequest::decode(bytes)?;
+        let id = action.action_id.clone();
+        let result = if let Some(phone) = phone.as_mut() {
+            tokio::select! {biased; _=stop.changed()=>break, reply=phone.perform(&action)=>reply}
+        } else {
+            let live = stop.clone();
+            let mut view = if action.kind == "observe" {
+                None
+            } else {
+                views.take(&action)
+            };
+            let (action, next, result) = tokio::task::spawn_blocking(move || {
+                let result = execute(&mut view, &action, &live).map_err(|e| e.to_string());
+                (action, view, result)
+            })
+            .await?;
+            if let Some(next) = next {
+                views.remember(&action, next.id.clone(), next);
+            }
+            result
+        };
+        let mut reply = result.unwrap_or_else(|error| HostDesktopReply {
+            error,
+            ..Default::default()
+        });
+        reply.action_id = id;
+        if stop.has_changed().is_err() {
+            break;
+        }
+        socket
+            .send(Frame::Binary(reply.encode_to_vec().into()))
+            .await?;
+    }
+    let _ = socket.close(None).await;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_views_belong_to_the_observer_and_expire_after_input() {
+        let mut frames = Views::default();
+        let mut agent = DesktopActionRequest {
+            control_session: "task A".into(),
+            epoch: 1,
+            ..Default::default()
+        };
+        let mut manual = DesktopActionRequest {
+            epoch: 2,
+            ..Default::default()
+        };
+        frames.remember(&agent, "model".into(), 1);
+        for (id, frame) in [("first", 2), ("second", 3), ("third", 4)] {
+            frames.remember(&manual, id.into(), frame);
+        }
+        agent.observation_id = "model".into();
+        let other = DesktopActionRequest {
+            control_session: "task B".into(),
+            ..agent.clone()
+        };
+        assert_eq!(frames.take(&other), None);
+        manual.observation_id = "first".into();
+        assert_eq!(frames.take(&manual), None);
+        manual.observation_id = "model".into();
+        assert_eq!(frames.take(&manual), None);
+        manual.observation_id = "second".into();
+        assert_eq!(frames.take(&manual), Some(3));
+        assert_eq!(frames.take(&agent), None);
+    }
 
     #[test]
     fn desktop_access_is_local_and_grants_expire() {

@@ -7,6 +7,7 @@ use tokio::sync::{Notify, broadcast};
 
 pub(crate) struct RunSignals {
     pub host: crate::host_desktop::DesktopSession,
+    pub peers: crate::peers::Sessions,
     pub queue: Notify,
     pub app_tools_activity: tokio::sync::watch::Sender<()>,
     pub input: Notify,
@@ -24,6 +25,7 @@ impl Default for RunSignals {
     fn default() -> Self {
         Self {
             host: Default::default(),
+            peers: Default::default(),
             queue: Notify::new(),
             app_tools_activity: tokio::sync::watch::channel(()).0,
             input: Notify::new(),

@@ -43,25 +43,34 @@ pub fn after_model_switch(context: &[Value], boundary: usize) -> Cow<'_, [Value]
 pub fn scope_host_images<'a>(
     mut context: Cow<'a, [Value]>,
     session: Option<&str>,
+    peers: &crate::peers::Sessions,
 ) -> Cow<'a, [Value]> {
-    let host: HashSet<&str> = context
+    let sources: HashMap<&str, &str> = context
         .iter()
-        .filter(|v| v["name"] == "host_desktop")
-        .filter_map(|v| v["call_id"].as_str())
+        .filter_map(|call| {
+            let name = call["name"].as_str()?;
+            matches!(name, "device_interact" | "host_desktop")
+                .then_some((call["call_id"].as_str()?, name))
+        })
         .collect();
-    if host.is_empty() {
+    if sources.is_empty() {
         return context;
     }
     let archived: Vec<usize> = context
         .iter()
         .enumerate()
         .filter_map(|(index, item)| {
-            if item["type"] != "function_call_output" || !host.contains(item["call_id"].as_str()?) {
+            if item["type"] != "function_call_output" {
                 return None;
             }
+            let source = *sources.get(item["call_id"].as_str()?)?;
             let value = &item["output"];
             (value.as_array()?.iter().any(|v| v["type"] == "input_image")
-                && !crate::host_desktop::receipt_in_session(value, session))
+                && !(if source == "host_desktop" {
+                    crate::host_desktop::receipt_in_session(value, session)
+                } else {
+                    peers.contains_output(value)
+                }))
             .then_some(index)
         })
         .collect();
@@ -567,7 +576,7 @@ mod tests {
             ]}));
         }
         for (grant, parts) in [(Some("active"), [1, 2, 2]), (None, [1, 1, 2])] {
-            let outgoing = scope_host_images(Cow::Borrowed(&context), grant);
+            let outgoing = scope_host_images(Cow::Borrowed(&context), grant, &Default::default());
             for (item, expected) in [1, 3, 5].into_iter().zip(parts) {
                 assert_eq!(outgoing[item]["output"].as_array().unwrap().len(), expected);
                 assert_eq!(context[item]["output"].as_array().unwrap().len(), 2);

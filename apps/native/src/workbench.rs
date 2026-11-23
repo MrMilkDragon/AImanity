@@ -24,9 +24,15 @@ mod locale;
 mod location;
 mod modes;
 mod occlude;
+#[cfg(not(target_os = "android"))]
+mod paired_phone;
+#[cfg(not(target_os = "android"))]
+mod peer_connection;
 mod platform;
 mod proxy;
 mod scene;
+#[cfg(not(target_os = "android"))]
+mod sharing;
 mod skills;
 mod spring_slider;
 mod style;
@@ -64,7 +70,7 @@ enum Message {
     Host(host::Event),
     Setup(deployment::Message),
     Connected(Result<Box<connection::Session>, String>),
-    Frame(usize, connection::LatestFrame),
+    Frame(usize, String, connection::LatestFrame),
     PollAgentPointers,
     AgentPointers(Box<[Option<wire::DeviceCursor>; 2]>),
     Chat(Result<wire::ChatState, String>),
@@ -90,7 +96,7 @@ enum Message {
     Focus(usize),
     Input(usize, DeviceInput),
     DesktopClickElapsed(Instant),
-    InputDone(usize, Result<(), String>, Instant),
+    InputDone(usize, String, Result<(), String>, Instant),
     Retry,
     Quit,
     Tick(Instant),
@@ -217,6 +223,7 @@ struct App {
     keyboard_target: Option<usize>,
     busy: [bool; 2],
     input_queue: [std::collections::VecDeque<DeviceInput>; 2],
+    awaiting_peer_frame: [bool; 2],
     desktop_click: Option<(Instant, DeviceInput)>,
     streams: Option<iced::task::Handle>,
     ui_scale: f32,
@@ -287,6 +294,7 @@ impl App {
             keyboard_target: None,
             busy: [false, false],
             input_queue: Default::default(),
+            awaiting_peer_frame: [false; 2],
             desktop_click: None,
             streams: None,
             ui_scale: 1.,
@@ -408,6 +416,30 @@ impl App {
             Some(Instant::now())
         };
     }
+    fn stage_devices(&self, registry: &wire::RegistryState) -> [Option<wire::RegisteredDevice>; 2] {
+        std::array::from_fn(|index| {
+            let kind = if index == 0 { "phone" } else { "desktop" };
+            registry
+                .devices
+                .iter()
+                .filter(|d| {
+                    d.kind == kind && (d.runtime_state == "managed" || (d.paired && d.connected))
+                })
+                .min_by_key(|d| {
+                    if d.id == self.device_admin.selected {
+                        0
+                    } else if self.devices[index]
+                        .as_ref()
+                        .is_some_and(|old| old.id == d.id)
+                    {
+                        1
+                    } else {
+                        2
+                    }
+                })
+                .cloned()
+        })
+    }
     fn accept_link(&mut self, state: wire::DeviceLinkState) {
         if let [Some(phone), Some(pc)] = &self.devices
             && let Some(link) = state.links.into_iter().find(|link| {
@@ -504,7 +536,7 @@ impl App {
         Task::batch([previous, next])
     }
     fn input(&mut self, index: usize, mut input: DeviceInput) -> Task<Message> {
-        if self.busy[index] {
+        if self.busy[index] || self.awaiting_peer_frame[index] {
             match (self.input_queue[index].back_mut(), &input) {
                 (Some(DeviceInput::Text(previous)), DeviceInput::Text(text)) => {
                     previous.push_str(text);
@@ -538,9 +570,14 @@ impl App {
         }
         self.busy[index] = true;
         let started = Instant::now();
+        let target = device.id.clone();
+        let observation = self.frames[index]
+            .as_ref()
+            .map(|f| f.observation_id.clone())
+            .unwrap_or_default();
         Task::perform(
-            async move { client.input(&device, input).await },
-            move |r| Message::InputDone(index, r, started),
+            async move { client.input(&device, input, observation).await },
+            move |r| Message::InputDone(index, target.clone(), r, started),
         )
     }
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -673,21 +710,30 @@ impl App {
                         }
                         self.device_admin.applied = Some(setup.request);
                     }
-                    self.devices = std::array::from_fn(|i| {
-                        registry
-                            .devices
-                            .iter()
-                            .find(|d| {
-                                d.kind == if i == 0 { "phone" } else { "desktop" }
-                                    && d.runtime_state == "managed"
-                            })
-                            .cloned()
-                    });
+                    let next = self.stage_devices(&registry);
+                    for (index, (old, new)) in self.devices.iter().zip(&next).enumerate() {
+                        if old.as_ref().map(|d| &d.id) != new.as_ref().map(|d| &d.id) {
+                            if index == 1 {
+                                self.desktop_click = None;
+                            }
+                            self.frames[index] = None;
+                            self.frame_errors[index].clear();
+                            self.busy[index] = false;
+                            self.input_queue[index].clear();
+                            self.awaiting_peer_frame[index] = false;
+                            self.agent_traces[index] = None;
+                        }
+                    }
+                    self.devices = next;
                     if self.devices[self.focus].is_none() && self.devices[1 - self.focus].is_some()
                     {
                         self.focus = 1 - self.focus;
                     }
-                    if self.devices.iter().any(Option::is_none) {
+                    if self
+                        .devices
+                        .iter()
+                        .any(|d| d.as_ref().is_none_or(|v| v.paired))
+                    {
                         self.linked = false;
                     }
                     self.accept_link(links);
@@ -749,14 +795,17 @@ impl App {
                     }
                     for (index, device) in self.devices.iter().enumerate() {
                         if let Some(device) = device {
-                            tasks.push(
-                                self.audio[index]
-                                    .restore(&self.root, &device.id)
-                                    .map(move |m| Message::Audio(index, m)),
-                            );
+                            if !device.paired {
+                                tasks.push(
+                                    self.audio[index]
+                                        .restore(&self.root, &device.id)
+                                        .map(move |m| Message::Audio(index, m)),
+                                );
+                            }
+                            let device_id = device.id.clone();
                             tasks
                                 .push(Task::run(client.clone().frames(device.clone()), move |r| {
-                                    Message::Frame(index, r)
+                                    Message::Frame(index, device_id.clone(), r)
                                 }));
                         }
                     }
@@ -802,7 +851,12 @@ impl App {
                     Err(error) => self.error = error,
                 }
             }
-            Message::Frame(index, pending) => match pending.take() {
+            Message::Frame(index, id, _)
+                if self.devices[index].as_ref().is_none_or(|d| d.id != id) =>
+            {
+                return Task::none();
+            }
+            Message::Frame(index, _, pending) => match pending.take() {
                 Some(Ok(frame)) => {
                     let resized = self.frames[index]
                         .as_ref()
@@ -818,8 +872,18 @@ impl App {
                     if resized {
                         self.rearrange();
                     }
+                    if std::mem::take(&mut self.awaiting_peer_frame[index])
+                        && let Some(next) = self.input_queue[index].pop_front()
+                    {
+                        return self.input(index, next);
+                    }
                 }
-                Some(Err(error)) => self.frame_errors[index] = error,
+                Some(Err(error)) => {
+                    self.frame_errors[index] = error;
+                    if self.devices[index].as_ref().is_some_and(|d| d.paired) {
+                        return self.update(Message::Devices(devices::Message::RefreshPeers));
+                    }
+                }
                 None => {}
             },
             Message::PollAgentPointers if !self.pointer_polling && self.after_stop.is_none() => {
@@ -1139,20 +1203,16 @@ impl App {
                         .update(message, &self.agents.registry, client)
                         .map(Message::Devices);
                     if let Some(registry) = self.device_admin.registry.take() {
-                        let added = registry.devices.iter().any(|d| {
-                            d.runtime_state == "managed"
-                                && self.devices.iter().flatten().all(|old| old.id != d.id)
+                        let next = self.stage_devices(&registry);
+                        let changed = self.devices.iter().zip(&next).any(|(old, new)| {
+                            old.as_ref().map(|d| &d.id) != new.as_ref().map(|d| &d.id)
                         });
-                        for device in self.devices.iter_mut().flatten() {
-                            if let Some(updated) =
-                                registry.devices.iter().find(|d| d.id == device.id)
-                            {
-                                device.clone_from(updated);
-                            }
+                        if !changed {
+                            self.devices = next;
                         }
                         self.agents.registry = registry;
                         self.files.set_devices(&self.devices);
-                        if added {
+                        if changed {
                             let root = self.root.clone();
                             return Task::batch([
                                 task,
@@ -1221,7 +1281,10 @@ impl App {
                     return self.input(1, input);
                 }
             }
-            Message::InputDone(index, result, started) => {
+            Message::InputDone(index, id, result, started) => {
+                if self.devices[index].as_ref().is_none_or(|d| d.id != id) {
+                    return Task::none();
+                }
                 self.busy[index] = false;
                 eprintln!(
                     "native_metric input_receipt device={index} ms={:0.3} success={}",
@@ -1231,6 +1294,9 @@ impl App {
                 if let Err(error) = result {
                     self.error = error;
                     self.input_queue[index].clear();
+                } else if self.devices[index].as_ref().is_some_and(|d| d.paired) {
+                    self.awaiting_peer_frame[index] = true;
+                    self.error.clear();
                 } else if let Some(next) = self.input_queue[index].pop_front() {
                     return self.input(index, next);
                 } else {
@@ -2444,7 +2510,11 @@ impl App {
                 }),
             });
         let mut shared = row![];
-        if self.devices.iter().all(Option::is_some) {
+        if self
+            .devices
+            .iter()
+            .all(|d| d.as_ref().is_some_and(|d| !d.paired))
+        {
             shared = shared.push(
                 button(container(cable).center(Length::Fill))
                     .width(style::NAV_ICON_WIDTH)
@@ -2553,13 +2623,16 @@ impl App {
                 continue;
             }
             let rect = self.layout.toolbars[index];
-            let mut tools = row![
-                self.audio[index]
-                    .view(self.connection.is_some(), self.reduced_motion)
-                    .map(move |m| Message::Audio(index, m))
-            ]
-            .align_y(iced::Center);
-            if index == 0 {
+            let paired = self.devices[index].as_ref().is_some_and(|d| d.paired);
+            let mut tools = row![].align_y(iced::Center);
+            if !paired {
+                tools = tools.push(
+                    self.audio[index]
+                        .view(self.connection.is_some(), self.reduced_motion)
+                        .map(move |m| Message::Audio(index, m)),
+                );
+            }
+            if index == 0 && !paired {
                 let landscape = self.aspects()[0] > 1.;
                 tools = tools.push(surface::tool_action(
                     if landscape {
@@ -2690,6 +2763,19 @@ fn run_workbench(
     #[cfg(not(target_os = "android"))]
     {
         let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+        if let [mode, target, serial] = arguments.as_slice()
+            && mode == "--share-android"
+        {
+            std::process::exit(peer_connection::android_cli(
+                &target.to_string_lossy(),
+                &serial.to_string_lossy(),
+            ));
+        }
+        if let [mode, locale] = arguments.as_slice()
+            && mode == "--share-device"
+        {
+            return sharing::window(locale::Locale::parse(&locale.to_string_lossy()));
+        }
         if let Some(code) = client_update::run(&arguments) {
             std::process::exit(code);
         }

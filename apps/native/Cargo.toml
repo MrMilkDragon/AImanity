@@ -19,6 +19,7 @@ winit = { path = "vendor/winit" }
 [dependencies]
 iced = { version = "=0.14.0", default-features = false, features = ["wgpu", "tokio", "image-without-codecs", "advanced", "advanced-shaping", "svg", "markdown", "canvas", "x11", "wayland"] }
 ai-phone-api = { path = "../../crates/api" }
+ai-phone-adb = { path = "../../crates/adb-client" }
 ai-phone-host-runtime = { path = "../../crates/host-runtime" }
 ai-phone-local-speech = { path = "../../crates/local-speech" }
 cpal = "=0.16.0"

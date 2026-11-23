@@ -48,6 +48,7 @@ mod model_context;
 mod model_sse;
 mod model_timing;
 mod notification_policy;
+mod peers;
 mod phone_system;
 mod private_file;
 mod proactive;
@@ -363,6 +364,11 @@ async fn serve(arguments: Vec<std::ffi::OsString>) -> Result<(), Box<dyn std::er
             post(device_network::route),
         )
         .route("/v1/desktop/{operation}", post(desktop::route))
+        .route(
+            "/v1/peer/share",
+            axum::routing::get(peers::connect).head(peers::identity),
+        )
+        .route("/v1/peer/action", post(peers::manual))
         .route("/v1/files/{operation}", post(files::route))
         .route("/v1/settings/{operation}", post(settings::route))
         .route("/v1/proactive/{operation}", post(proactive::route))

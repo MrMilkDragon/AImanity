@@ -3,6 +3,15 @@ package ai_phone.v1;
 import "ai_phone/v1/settings.proto";
 
 message RegistryRequest {}
+message DevicePairRequest {
+  string id = 1;
+  string name = 2;
+  string kind = 3;
+}
+message DeviceInvitation {
+  string device_id = 1;
+  string code = 2;
+}
 message RegisteredDevice {
   string id = 1;
   uint64 revision = 2;
@@ -12,6 +21,8 @@ message RegisteredDevice {
   string runtime_state = 6;
   reserved 7;
   reserved "default_agent_id";
+  bool paired = 8;
+  bool connected = 9;
 }
 message RegisteredAgent {
   string id = 1;

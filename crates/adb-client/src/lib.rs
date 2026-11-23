@@ -37,6 +37,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Client {
     port: u16,
     serial: String,
+    transport_id: Option<u64>,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub struct Output {
@@ -50,6 +51,47 @@ pub struct Limits {
     pub stderr: usize,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct ConnectedDevice {
+    pub serial: String,
+    pub model: String,
+    pub transport_id: u64,
+}
+
+/// Devices for which the local ADB server already holds a usable transport.
+pub async fn devices(port: u16, deadline: Duration) -> Result<Vec<ConnectedDevice>> {
+    bounded(deadline, async {
+        let mut socket = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await?;
+        command(&mut socket, "host:devices-l").await?;
+        let bytes = string(&mut socket, 65535).await?;
+        let listing = std::str::from_utf8(&bytes).map_err(|_| Error::Protocol)?;
+        Ok(listing
+            .lines()
+            .filter_map(|line| {
+                let mut fields = line.split_ascii_whitespace();
+                let serial = fields.next()?;
+                if fields.next()? != "device" {
+                    return None;
+                }
+                let model = fields
+                    .clone()
+                    .find_map(|f| f.strip_prefix("model:"))
+                    .unwrap_or(serial);
+                let transport_id = fields
+                    .find_map(|f| f.strip_prefix("transport_id:"))?
+                    .parse()
+                    .ok()?;
+                Some(ConnectedDevice {
+                    serial: serial.into(),
+                    model: model.replace('_', " "),
+                    transport_id,
+                })
+            })
+            .collect())
+    })
+    .await
+}
+
 impl Client {
     pub fn new(port: u16, serial: String) -> Result<Self> {
         if port == 0
@@ -59,7 +101,16 @@ impl Client {
         {
             return Err(Error::Protocol);
         }
-        Ok(Self { port, serial })
+        Ok(Self {
+            port,
+            serial,
+            transport_id: None,
+        })
+    }
+    pub fn attached(port: u16, device: ConnectedDevice) -> Result<Self> {
+        let mut client = Self::new(port, device.serial)?;
+        client.transport_id = Some(device.transport_id);
+        Ok(client)
     }
     async fn connect(&self) -> Result<TcpStream> {
         let socket = TcpStream::connect((Ipv4Addr::LOCALHOST, self.port)).await?;
@@ -68,7 +119,11 @@ impl Client {
     }
     async fn device(&self, service: &str) -> Result<TcpStream> {
         let mut socket = self.connect().await?;
-        command(&mut socket, &format!("host:transport:{}", self.serial)).await?;
+        let target = match self.transport_id {
+            Some(id) => format!("host:transport-id:{id}"),
+            None => format!("host:transport:{}", self.serial),
+        };
+        command(&mut socket, &target).await?;
         command(&mut socket, service).await?;
         Ok(socket)
     }

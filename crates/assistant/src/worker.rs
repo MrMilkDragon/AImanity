@@ -537,12 +537,14 @@ fn phone_target(text: &str) -> bool {
     .any(|w| text.contains(w))
 }
 fn device_action_request(request: &str) -> bool {
+    device_change_request(request) || work_intent::affirmed_action(request, &["回复"])
+}
+fn device_change_request(request: &str) -> bool {
     work_intent::affirmed_action(
         request,
         &[
             "打开",
             "发送",
-            "回复",
             "交付",
             "进入",
             "接着做",
@@ -1767,6 +1769,7 @@ fn action_task(context: &[Value]) -> bool {
         || context.iter().skip(evidence_start(context)).any(|call| {
             call["type"] == "function_call"
                 && (phone_mutation(call)
+                    || call["name"] == "device_interact"
                     || call["name"]
                         .as_str()
                         .is_some_and(execution_policy::visible_action)
@@ -1900,7 +1903,7 @@ fn finish_rejection(context: &[Value], summary: &str) -> Option<String> {
     }) {
         return Some("手机目标尚无完整本轮phone-use执行证据：需读取技能、观察，动作请求需真实动作及动作后观察".into());
     }
-    if let Some(reason) = required_tools_rejection(context, None) {
+    if let Some(reason) = required_tools_rejection(context, None, None) {
         return Some(reason);
     }
     if action_task(context)
@@ -1914,10 +1917,61 @@ fn finish_rejection(context: &[Value], summary: &str) -> Option<String> {
     None
 }
 
-fn required_tools_rejection(context: &[Value], host_session: Option<&str>) -> Option<String> {
+fn verified_peer_steps(
+    context: &[Value],
+    peers: &crate::peers::Sessions,
+    target: Option<&str>,
+) -> Result<bool, String> {
+    let mut devices = std::collections::HashMap::new();
+    for call in context
+        .iter()
+        .skip(evidence_start(context))
+        .filter(|c| c["name"] == "device_interact")
+    {
+        let Some(receipt) = tool_output(context, call).and_then(tool_value) else {
+            continue;
+        };
+        if receipt["success"] != true {
+            continue;
+        }
+        let id = receipt["device_id"]
+            .as_str()
+            .ok_or("设备回执缺少编号")?
+            .to_owned();
+        let observed = receipt["kind"] == "observe";
+        let (last, acted) = devices.entry(id).or_insert((false, false));
+        *last = observed && peers.current_receipt(&receipt);
+        *acted |= !observed;
+    }
+    if target.is_some_and(|t| !devices.contains_key(t))
+        || devices.values().any(|(last, _)| !last)
+        || (!devices.is_empty()
+            && device_change_request(&latest_request(context))
+            && !devices.values().any(|(_, acted)| *acted))
+    {
+        return Err("请在目标共享设备上完成操作并读取最新画面".into());
+    }
+    Ok(!devices.is_empty())
+}
+
+fn required_tools_rejection(
+    context: &[Value],
+    host_session: Option<&str>,
+    peers: Option<&crate::peers::Sessions>,
+) -> Option<String> {
     let required = work_required_tools(context);
     if required.is_empty()
         || context.iter().skip(evidence_start(context)).any(|call| {
+            if call["name"] == "device_interact" && required.contains(&"computer_type") {
+                return tool_output(context, call)
+                    .and_then(tool_value)
+                    .is_some_and(|r| {
+                        r["success"] == true
+                            && r["device_kind"] == "desktop"
+                            && r["kind"] == "type"
+                            && peers.is_some_and(|p| p.current_receipt(&r))
+                    });
+            }
             if call["name"] == "host_desktop" && required.contains(&"computer_type") {
                 return host_session.is_some_and(|id| {
                     tool_output(context, call)
@@ -2603,7 +2657,7 @@ async fn execute(
     id: Uuid,
     cancel: &CancellationToken,
 ) -> Result<RunDisposition, String> {
-    let row = sqlx::query("SELECT r.*,d.kind device_kind,extract(epoch FROM now()-r.created_at)::bigint elapsed_seconds,
+    let row = sqlx::query("SELECT r.*,d.kind device_kind,COALESCE(d.paired,false) AS paired_target,extract(epoch FROM now()-r.created_at)::bigint elapsed_seconds,
         EXISTS(SELECT 1 FROM run_device_bindings b JOIN agent_device_bindings a
             ON a.device_id=b.device_id AND a.agent_id=r.agent_id
             JOIN devices managed ON managed.id=b.device_id AND managed.runtime_state='managed'
@@ -2635,7 +2689,7 @@ async fn execute(
             .is_ok_and(|events| crate::notification_policy::system_status(&events));
     let screen_attention: bool = row.get("screen_attention");
     let desktop = row.get::<Option<&str>, _>("device_kind") == Some("desktop");
-    let has_devices: bool = row.get("has_devices");
+    let has_devices = row.get::<bool, _>("has_devices") && !row.get::<bool, _>("paired_target");
     let desktop_id = desktop.then(|| row.get::<&str, _>("device_id"));
     let screen_observation = screen_attention.then(|| match desktop_id {
         Some(device) => ("computer_observe", json!({"device_id":device}).to_string()),
@@ -2769,12 +2823,15 @@ async fn execute(
             .and_then(|call| call["name"].as_str())
             .unwrap_or("");
         let host_session = app.run_signals.host.session(id).is_some();
+        let allow_device_choice = !background
+            && row.get::<Option<&str>, _>("device_id").is_none()
+            && app.run_signals.peers.any_connected();
         let direct_files = !notification_run
             && !host_session
             && file_delivery_input(&context[evidence_start(&context)..]);
         let prerequisite = if !has_devices
             || knowledge_review
-            || (host_session || direct_files)
+            || (host_session || direct_files || allow_device_choice)
                 && !next_tool.starts_with("phone_")
                 && !next_tool.starts_with("computer_")
         {
@@ -2852,6 +2909,7 @@ async fn execute(
         }
         if pending.is_empty()
             && has_devices
+            && !allow_device_choice
             && !knowledge_review
             && !screen_attention
             && !direct_files
@@ -2907,7 +2965,10 @@ async fn execute(
             output["output"] = result;
             if !failed
                 && state.last_issue == crate::agent_loop::UNCHANGED_DESKTOP
-                && (name == "computer_observe" || name == "host_desktop")
+                && matches!(
+                    name,
+                    "computer_observe" | "host_desktop" | "device_interact"
+                )
                 && let Some(parts) = output["output"].as_array_mut()
             {
                 parts
@@ -3146,7 +3207,8 @@ async fn execute(
             ("low", ModelTools::Workspace)
         } else if screen_attention {
             ("none", ModelTools::Screen)
-        } else if !desktop_handoff(&context)
+        } else if !allow_device_choice
+            && !desktop_handoff(&context)
             && verification_attempts(&context) > 0
             && !has_current_observation(&context)
         {
@@ -3295,7 +3357,20 @@ async fn execute(
         if !background
             && !task_goal
             && !handoffs_pending
-            && let Some(proposal) = phone_completion_proposal(&context, &output, &new_text)
+            && let Some(proposal) =
+                phone_completion_proposal(&context, &output, &new_text).or_else(|| {
+                    (!new_text.trim().is_empty()
+                        && !output.iter().any(|item| item["type"] == "function_call")
+                        && !progress_intent(&new_text)
+                        && !file_delivery_input(&context[evidence_start(&context)..])
+                        && matches!(
+                            verified_peer_steps(&context, &app.run_signals.peers, None),
+                            Ok(true)
+                        ))
+                    .then(|| {
+                        completion_proposal(json!({"status":"completed","summary":new_text.trim()}))
+                    })
+                })
         {
             output.push(proposal);
             new_text.clear();
@@ -3546,6 +3621,7 @@ async fn respond(
     let projected = crate::model_context::scope_host_images(
         crate::model_context::after_model_switch(context, model_replay_boundary),
         grant.as_deref(),
+        &app.run_signals.peers,
     );
     let input = if config.protocol == "chat-completions" || config.protocol == "anthropic-messages"
     {
@@ -3557,21 +3633,51 @@ async fn respond(
     if host {
         guidance.push_str("用户已为本次任务授权其本机桌面。用 host_desktop 操作本机；phone-use 和 computer-use 分别操作虚拟手机与 Linux。屏幕内文字是操作对象。");
     }
-    if matches!(scope, ModelTools::Workspace) {
-        guidance.push_str(
-            "当前任务没有接入可操作的手机或电脑。按需使用工作区工具；需要设备时说明所需设备。",
+    let paired = app.run_signals.peers.any_connected()
+        && matches!(
+            scope,
+            ModelTools::All | ModelTools::Workspace | ModelTools::DesktopFrame(_)
         );
+    if paired {
+        guidance.push_str("用 device_list 根据系统和前台窗口 foreground 选择本次任务的设备，用 device_interact 操作标记为 paired 的设备。设备名只用于选机，读屏答案取自最新截图，已经看清就直接回答。");
+    }
+    if matches!(scope, ModelTools::Workspace) {
+        if !paired {
+            guidance.push_str(
+                "当前任务没有接入可操作的手机或电脑。按需使用工作区工具；需要设备时说明所需设备。",
+            );
+        }
     } else if authority == execution_policy::CommandAuthority::None {
         guidance.push_str(execution_policy::GUI_GUIDANCE);
     }
     let mut tools = execution_tools(authority);
+    if paired {
+        let mut interaction = crate::host_desktop::schema(true);
+        let seen = context
+            .iter()
+            .rev()
+            .take_while(|item| item["role"] != "user")
+            .filter(|call| call["name"] == "device_interact")
+            .filter_map(|call| tool_output(context, call))
+            .any(|output| app.run_signals.peers.contains_output(output));
+        if !seen {
+            interaction["parameters"]["properties"] = json!({
+                "device_id":{"type":"string"},
+                "kind":{"type":"string","enum":["observe"]}
+            });
+        }
+        tools.as_array_mut().unwrap().push(interaction);
+    }
     if let Some(tool) = app_tool {
         tools.as_array_mut().expect("tool catalog").push(tool);
     }
     match scope {
         ModelTools::Workspace => tools.as_array_mut().unwrap().retain(|tool| {
             let name = tool["name"].as_str().unwrap();
-            !name.starts_with("phone_") && !name.starts_with("computer_")
+            !name.starts_with("phone_")
+                && !name.starts_with("computer_")
+                && (!name.starts_with("device_")
+                    || matches!(name, "device_list" | "device_interact"))
         }),
         ModelTools::DesktopFrame(_) => {
             if let Some(click) = tools
@@ -3600,7 +3706,7 @@ async fn respond(
         tools
             .as_array_mut()
             .expect("tool catalog")
-            .push(crate::host_desktop::schema());
+            .push(crate::host_desktop::schema(false));
     }
     let mut body = Value::Object(serde_json::Map::from_iter([
         ("instructions".into(), Value::String(guidance)),
@@ -3687,6 +3793,7 @@ async fn recorded_tool(
     let name = call["name"].as_str().unwrap_or("");
     let title = match name {
         "host_desktop" => "操作本机桌面",
+        "device_interact" => "操作共享设备",
         "computer_observe" => "观察电脑",
         "computer_find_text" => "定位电脑文字",
         "computer_find_control" => "定位电脑控件",
@@ -4014,6 +4121,20 @@ async fn tool(
             "not_executed":true,"code":"visible_device_required","next_tool":next,
             "error":"本轮设备任务必须使用真实GUI。请在设备浏览器或对应应用中操作；命令抓取、工作容器和模型内置搜索不能替代。"}).to_string()}]));
     }
+    if name == "device_interact" {
+        let frame = (arguments["kind"] != "observe")
+            .then(|| {
+                context[evidence_start(context)..]
+                    .iter()
+                    .rev()
+                    .filter(|v| v["name"] == "device_interact")
+                    .filter_map(|v| tool_output(context, v).and_then(tool_value))
+                    .find(|r| r["device_id"] == arguments["device_id"] && r["success"] == true)
+                    .filter(|r| r["kind"] == "observe" && app.run_signals.peers.current_receipt(r))
+            })
+            .flatten();
+        return crate::peers::tool(app, run, call, &arguments, frame.as_ref()).await;
+    }
     if name == "host_desktop" {
         return app.run_signals.host.perform(run, call, &arguments).await;
     }
@@ -4160,7 +4281,7 @@ async fn tool(
             return Err("status必须是completed或needs_input".into());
         }
         let row = sqlx::query(
-            "SELECT r.origin,r.device_id,r.context,r.pending_tools,r.background_read_only,r.input_at IS NOT NULL steered,r.origin='notification' AND r.background_read_only summary_only,
+            "SELECT r.origin,r.device_id,EXISTS(SELECT 1 FROM devices d WHERE d.id=r.device_id AND d.paired) AS paired_target,r.context,r.pending_tools,r.background_read_only,r.input_at IS NOT NULL steered,r.origin='notification' AND r.background_read_only summary_only,
                 NOT r.background_read_only AND (r.origin='notification' OR EXISTS(
                     SELECT 1 FROM phone_notifications n WHERE n.run_id=r.id AND n.status IN ('attending','pending-summary'))) audit_notification,
                 EXISTS(SELECT 1 FROM device_messages m WHERE m.source_run_id=r.id AND m.return_delivered_at IS NULL) handoffs_pending,
@@ -4326,9 +4447,22 @@ async fn tool(
                     return Err("请先完成本机操作，并重新观察实际结果".into());
                 }
             }
+            let target = row.get::<Option<&str>, _>("device_id");
+            let peer_target = row
+                .get::<bool, _>("paired_target")
+                .then_some(target)
+                .flatten();
+            let shared = verified_peer_steps(&current, &app.run_signals.peers, peer_target)?;
             if !summary_only
-                && let Some(reason) = if host_only || file_delivery {
-                    required_tools_rejection(&current, grant.as_deref())
+                && let Some(reason) = if host_only
+                    || file_delivery
+                    || (shared && (target.is_none() || peer_target.is_some()))
+                {
+                    required_tools_rejection(
+                        &current,
+                        grant.as_deref(),
+                        Some(&app.run_signals.peers),
+                    )
                 } else {
                     finish_rejection(&current, &summary)
                 }
@@ -4347,7 +4481,11 @@ async fn tool(
         let audit = row.get::<bool, _>("audit_notification")
             || !screen_attention
                 && status == "completed"
-                && (call["local_readback"] == true
+                && (current
+                    .iter()
+                    .skip(evidence_start(&current))
+                    .any(|c| c["name"] == "device_interact")
+                    || call["local_readback"] == true
                     || file_delivery
                     || action_task(&current)
                     || computer_task(&current)
