@@ -16,6 +16,7 @@ installed_sha=$(adb shell sha256sum "$apk_path" | awk '{print $1}')
 adb shell pm clear "$PACKAGE" | grep -F Success
 adb shell am start -W -S -n "$activity" | tee evidence/cold-launch.txt
 grep -F 'Status: ok' evidence/cold-launch.txt
+grep -F 'LaunchState: COLD' evidence/cold-launch.txt
 
 # Locate rendered words in the actual framebuffer. All tap coordinates use
 # this screenshot's pixel coordinates on the selected virtual hardware.
@@ -50,6 +51,12 @@ wait_word languages English
 read -r width height < <(identify -format '%w %h\n' evidence/languages.png)
 (( width > height ))
 adb shell am get-config > evidence/config.txt
+{
+  adb shell wm size
+  adb shell wm density
+  adb shell getprop ro.build.fingerprint
+  adb shell getprop ro.product.cpu.abi
+} > evidence/device.txt
 smallest=$(sed -nE '/^config:/s/.*-sw([0-9]+)dp-.*/\1/p' evidence/config.txt | head -1)
 [[ $smallest =~ ^[0-9]+$ ]]
 case "$PROFILE" in
@@ -57,9 +64,19 @@ case "$PROFILE" in
   tablet) (( smallest >= 600 ));;
   *) exit 1;;
 esac
-tap_word languages English
-wait_word selected Continue
-tap_word selected Continue
+for attempt in {1..8}; do
+  # Activity creation can resize the surface after the first present.
+  # Retap only while the actual localized heading has yet to change.
+  capture languages
+  if word_box languages English >/dev/null; then tap_word languages English; fi
+  sleep 1
+  capture selected
+  if word_box selected Choose >/dev/null; then break; fi
+done
+word_box selected Choose >/dev/null
+# The dark Continue button is centered 55/600 logical units above the
+# bottom. Tesseract's sparse full-screen pass can miss its reversed text.
+adb shell input tap "$((width/2))" "$((height*545/600))"
 wait_word settings devices
 
 # Read and edit the first CPU value, next to the Phone label. The two
@@ -99,6 +116,7 @@ done
 
 # Try the installed system IME as well. Some AVD keyboard layouts don't
 # expose digit keys to OCR. Record this separately from hardware key input.
+tap_word settings Memory
 adb shell settings put secure show_ime_with_hard_keyboard 1
 adb shell input tap "$((cx+cw*3/4))" "$((cy+ch/2))"
 sleep 1
