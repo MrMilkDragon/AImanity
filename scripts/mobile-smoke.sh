@@ -46,6 +46,22 @@ tap_word() {
   read -r x y w h < <(word_box "$1" "$2")
   adb shell input tap "$((x+w/2))" "$((y+h/2))"
 }
+hide_keyboard() {
+  local info="evidence/$1-input-method.txt"
+  sleep 0.5
+  adb shell dumpsys input_method > "$info"
+  if grep -qE 'mInputShown=true|inputShown=true' "$info"; then
+    # A landscape phone keyboard can cover the edited control after Enter.
+    adb shell input keyevent KEYCODE_BACK
+    for attempt in {1..10}; do
+      sleep 0.4
+      adb shell dumpsys input_method > "$info"
+      if ! grep -qE 'mInputShown=true|inputShown=true' "$info"; then return; fi
+    done
+    echo "System keyboard still covers the app after Back" >&2
+    return 1
+  fi
+}
 
 wait_word languages English
 read -r width height < <(identify -format '%w %h\n' evidence/languages.png)
@@ -135,6 +151,7 @@ adb shell input tap "$((cx+cw*3/4))" "$((cy+ch/2))"
 adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL
 adb shell input text 4
 adb shell input keyevent KEYCODE_ENTER
+hide_keyboard hardware
 for attempt in {1..10}; do
   capture edited
   after=$(cpu_value edited)
@@ -173,6 +190,7 @@ if grep -qE 'mInputShown=true|inputShown=true' evidence/input-method.txt; then
       read -r dx dy <<< "$digit"
       adb shell input tap "$dx" "$dy"
       adb shell input keyevent KEYCODE_ENTER
+      hide_keyboard soft
       for attempt in {1..8}; do
         capture ime-edited
         observed=$(cpu_value ime-edited)
