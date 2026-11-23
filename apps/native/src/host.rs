@@ -27,10 +27,12 @@ pub struct Host {
     pub android: String,
     #[cfg(not(target_os = "android"))]
     pub images: String,
+    #[cfg(not(target_os = "android"))]
     #[serde(default = "default_resume")]
     pub resume: bool,
 }
 
+#[cfg(not(target_os = "android"))]
 fn default_resume() -> bool {
     true
 }

@@ -4,10 +4,12 @@ use iced::{
     widget::{button, column, container, float, image, row, rule, space, stack, text},
 };
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_os = "android"))]
+use std::io::Read;
 use std::{
     collections::BTreeMap,
     fs,
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     sync::LazyLock,
     time::{Duration, Instant},
@@ -73,6 +75,7 @@ pub fn glass_background<'a, M: 'a>(content: Element<'a, M>) -> Element<'a, M> {
 
 #[derive(Deserialize)]
 struct CapacityPolicy {
+    #[cfg(not(target_os = "android"))]
     minimum_ram_gb: u64,
     minimum_free_gb: u64,
     minimum_resume_free_gb: u64,
@@ -209,6 +212,7 @@ pub fn data_home() -> Result<PathBuf, String> {
         .ok_or_else(|| "Application data directory unavailable".into())
 }
 
+#[cfg(not(target_os = "android"))]
 pub fn bundle_inventory(resource: &Path) -> Result<BTreeMap<String, String>, String> {
     let inventory: BTreeMap<String, String> =
         serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/integrity.json")))
@@ -231,6 +235,7 @@ pub fn bundle_inventory(resource: &Path) -> Result<BTreeMap<String, String>, Str
     Ok(inventory)
 }
 
+#[cfg(not(target_os = "android"))]
 pub fn verify_bundle(resource: &Path) -> Result<(), String> {
     use sha2::{Digest, Sha256};
     for (name, expected) in bundle_inventory(resource)? {
@@ -378,6 +383,7 @@ impl Bundle {
             android: self.inventory["android.payload"].clone(),
             #[cfg(not(target_os = "android"))]
             images: images.ok_or("找不到设备镜像")?.clone(),
+            #[cfg(not(target_os = "android"))]
             resume: admitted,
         })
     }

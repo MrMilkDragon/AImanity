@@ -67,8 +67,16 @@ wait_word settings devices
 read -r cpu_x cpu_y cpu_w cpu_h < <(word_box settings CPU)
 read -r mem_x mem_y mem_w mem_h < <(word_box settings Memory)
 (( mem_x > cpu_x && cpu_h > 0 ))
-read -r cx cy cw ch < <(awk -v x="$mem_x" -v y="$cpu_y" -v h="$cpu_h" -v height="$height" \
-  'BEGIN {s=height/600; print int(x-41*s),int(y-3*s),int(20*s),int(h+8*s)}')
+value_box=$(awk -F '\t' -v left="$((cpu_x+cpu_w))" -v right="$mem_x" -v y="$cpu_y" -v h="$cpu_h" '
+  $1 == 5 && $12 == "2" && $7 >= left && $7+$9 < right && $8 < y+h && $8+$10 > y {
+    pad=int($10/3)+1; print $7-pad, $8-pad, $9+2*pad, $10+2*pad; exit
+  }' evidence/settings.tsv)
+if [[ -z $value_box ]]; then
+  # The CPU and Memory label origins are 158 logical units apart in setup.
+  value_box=$(awk -v x="$mem_x" -v l="$cpu_x" -v y="$cpu_y" -v h="$cpu_h" \
+    'BEGIN {s=(x-l)/158; print int(x-41*s),int(y-3*s),int(20*s),int(h+8*s)}')
+fi
+read -r cx cy cw ch <<< "$value_box"
 cpu_value() {
   local shot=$1
   convert "evidence/$shot.png" -crop "${cw}x${ch}+${cx}+${cy}" +repage -resize 400% \
@@ -88,12 +96,55 @@ for attempt in {1..10}; do
   sleep 1
 done
 [[ $after == 4 ]] || { echo "Expected edited phone CPU value 4, read '$after'" >&2; exit 1; }
+
+# Try the installed system IME as well. Some AVD keyboard layouts don't
+# expose digit keys to OCR. Record this separately from hardware key input.
+adb shell settings put secure show_ime_with_hard_keyboard 1
+adb shell input tap "$((cx+cw*3/4))" "$((cy+ch/2))"
+sleep 1
+adb shell dumpsys input_method > evidence/input-method.txt
+ime_status=keyboard-not-detected
+if grep -qE 'mInputShown=true|inputShown=true' evidence/input-method.txt; then
+  capture keyboard
+  key_location() {
+    awk -F '\t' -v key="$2" -v h="$height" '
+      $1 == 5 && $8 > h * 0.55 && $12 ~ key {print int($7+$9/2),int($8+$10/2); exit}
+    ' "evidence/$1.tsv"
+  }
+  # Start with the symbols layout where a tap on the numeral commits it.
+  # A numeral printed as a secondary hint on a letter needs a long press.
+  symbols=$(key_location keyboard '123')
+  ime_status=key-layout-unavailable
+  if [[ -n $symbols ]]; then
+    read -r sx sy <<< "$symbols"
+    adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL
+    adb shell input tap "$sx" "$sy"
+    sleep 0.5
+    capture symbols
+    digit=$(key_location symbols '^2$')
+    if [[ -n $digit ]]; then
+      read -r dx dy <<< "$digit"
+      adb shell input tap "$dx" "$dy"
+      adb shell input keyevent KEYCODE_ENTER
+      for attempt in {1..8}; do
+        capture ime-edited
+        observed=$(cpu_value ime-edited)
+        if [[ $observed == 2 ]]; then break; fi
+        sleep 1
+      done
+      [[ $observed == 2 ]] || { echo "System keyboard digit did not reach the CPU field" >&2; exit 1; }
+      ime_status=system-keyboard-tap-2-read-back
+    fi
+  fi
+fi
+adb shell input keyevent KEYCODE_ENTER
 adb shell dumpsys window > evidence/window.txt
 grep -F 'mCurrentFocus=' evidence/window.txt | grep -F "$activity"
 adb shell pidof "$PACKAGE"
 jq -n --arg device "$AVD_DEVICE" --arg profile "$PROFILE" --arg sha256 "$installed_sha" \
   --argjson width "$width" --argjson height "$height" --argjson smallestWidthDp "$smallest" \
-  --argjson before "$before" --argjson after "$after" \
+  --argjson before "$before" --argjson after "$after" --arg ime "$ime_status" \
   '{device:$device,profile:$profile,installedApkSha256:$sha256,$width,$height,$smallestWidthDp,
-     input:{method:"adb-injected-key-events",screen:"English setup",field:"Phone CPU",before:$before,typed:"4",observed:$after}}' > evidence/receipt.json
+     input:{method:"adb-injected-key-events",screen:"English setup",field:"Phone CPU",before:$before,typed:"4",observed:$after},
+     systemKeyboard:$ime}' > evidence/receipt.json
 cat evidence/receipt.json >> "$GITHUB_STEP_SUMMARY"

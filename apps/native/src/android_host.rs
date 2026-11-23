@@ -196,12 +196,21 @@ async fn stop_child(child: &mut Child, home: &Path) -> Result<(), String> {
     if child.try_wait().map_err(|e| e.to_string())?.is_some() {
         return Ok(());
     }
-    // Flush the Linux guest before releasing either AVF handle. Owner EOF covers partial startup.
-    let _ = tokio::time::timeout(
+    // The guest acknowledges before invoking poweroff. Keep both Binder handles alive until
+    // Linux actually exits; EOF releases the session on a failed or timed-out shutdown.
+    let acknowledged = tokio::time::timeout(
         Duration::from_secs(4),
         vm_control::shutdown(vm_control::GUEST_PORT, &key(home)),
     )
-    .await;
+    .await
+    .is_ok_and(|r| r.is_ok());
+    if acknowledged
+        && tokio::time::timeout(Duration::from_secs(18), child.wait())
+            .await
+            .is_ok_and(|r| r.is_ok())
+    {
+        return Ok(());
+    }
     drop(child.stdin.take());
     match tokio::time::timeout(Duration::from_secs(10), child.wait()).await {
         Ok(result) => result.map(|_| ()).map_err(|e| e.to_string()),
@@ -273,7 +282,7 @@ impl Host {
 
 pub(super) async fn stop(home: &Path) -> Result<(), String> {
     SHUTDOWN.send_modify(|generation| *generation = generation.wrapping_add(1));
-    tokio::time::timeout(Duration::from_secs(18), async {
+    tokio::time::timeout(Duration::from_secs(35), async {
         loop {
             match lease(home) {
                 Ok(_) => return Ok(()),

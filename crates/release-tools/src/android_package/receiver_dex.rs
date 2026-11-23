@@ -346,14 +346,23 @@ pub(super) fn emit_for(schema: &[Class], library: Name) -> Vec<u8> {
                 ],
             );
             let registers = 1 + class.constructor_args.len() as u32;
-            assert!(registers <= 5 && class.constructor_args.iter().all(|ty| !matches!(*ty, "J" | "D")));
+            // Retain the original bytecode of the existing Home and Unicode IME APKs.
+            // A range invokes the keyboard connection's three-register superclass constructor.
+            let (invoke, operands) = match class.constructor_args {
+                [] => (0x1070, 0),
+                [_] => (0x2070, 0x10),
+                args => {
+                    assert!(args.iter().all(|ty| !matches!(*ty, "J" | "D")));
+                    (0x76 | ((registers as u16) << 8), 0)
+                }
+            };
             let init = code(
                 &mut dex,
                 registers,
                 &[
-                    0x76 | ((registers as u16) << 8), // invoke-direct/range {v0 .. vN}
+                    invoke,
                     method((class.parent, "<init>", class.constructor())) as u16,
-                    0,
+                    operands,
                     0x000e,
                 ],
             );

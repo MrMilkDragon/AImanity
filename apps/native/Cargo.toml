@@ -14,6 +14,7 @@ crate-type = ["cdylib"]
 [patch.crates-io]
 cryoglyph = { path = "vendor/cryoglyph" }
 iced_winit = { path = "vendor/iced_winit" }
+winit = { path = "vendor/winit" }
 
 [dependencies]
 iced = { version = "=0.14.0", default-features = false, features = ["wgpu", "tokio", "image-without-codecs", "advanced", "advanced-shaping", "svg", "markdown", "canvas", "x11", "wayland"] }
@@ -87,6 +88,5 @@ open = "5"
 android-activity = { version = "=0.6.1", features = ["native-activity"] }
 iced_winit = { version = "=0.14.1", default-features = false }
 jni = "=0.21.1"
-ndk-context = "=0.1.1"
 libc = "=0.2.191"
 xz2 = { version = "=0.1.7", features = ["static"] }

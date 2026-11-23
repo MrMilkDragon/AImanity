@@ -184,3 +184,121 @@ fn main() -> io::Result<()> {
         )
     })
 }
+
+#[cfg(test)]
+mod profile;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cid_receipt_only_identifies_a_running_vm_session() {
+        assert_eq!(
+            started_cid("Created VM from cfg with CID 19, state is STARTING."),
+            Some(19)
+        );
+        assert!(started_cid("Created VM from cfg with CID 2, state is READY.").is_none());
+        assert!(started_cid("Created VM from cfg with CID 9, state is DEAD.").is_none());
+        assert!(started_cid("vm is ready").is_none());
+    }
+
+    #[cfg(all(unix, not(target_os = "android")))]
+    #[test]
+    fn stopping_supervisor_reaps_both_owned_cli_processes() -> io::Result<()> {
+        use std::{
+            fs,
+            os::unix::{fs::PermissionsExt, net::UnixStream},
+        };
+        let directory = tempfile::tempdir()?;
+        let cli = directory.path().join("vm-test");
+        let script = r#"#!/bin/sh
+for argument; do cfg=$argument; done
+echo $$ > "$cfg.pid"
+case "$cfg" in *android.json) cid=41;; *) cid=47;; esac
+echo "Created VM from "$cfg" with CID $cid, state is STARTING."
+exec sleep 40
+"#;
+        fs::write(&cli, script)?;
+        fs::set_permissions(&cli, fs::Permissions::from_mode(0o700))?;
+        let configs = GUESTS.map(|name| directory.path().join(format!("{name}.json")));
+        for config in &configs {
+            fs::write(config, b"{}")?;
+        }
+        let (owner, input) = UnixStream::pair()?;
+        run(&cli, configs.clone(), input, move |cids| {
+            assert_eq!(cids, [41, 47]);
+            drop(owner);
+            Ok(())
+        })?;
+        for config in configs {
+            let pid = fs::read_to_string(config.with_extension("json.pid"))?;
+            let status = Command::new("/bin/kill")
+                .args(["-0", pid.trim()])
+                .stderr(Stdio::null())
+                .status()?;
+            assert!(!status.success());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn prepare_preserves_guest_data_and_limits_control_disk_to_linux() -> io::Result<()> {
+        use serde_json::{Value, json};
+        use std::{fs, sync::atomic::AtomicBool};
+        let root = tempfile::tempdir()?;
+        let state = root.path().join("state");
+        let assets = root.path().join("assets");
+        fs::create_dir(&state)?;
+        let profile = root.path().join("request.json");
+        let chosen = json!({
+            "phone":{"cpus":1,"memory_mb":1536,"storage_gb":16},
+            "desktop":{"cpus":2,"memory_mb":2048,"storage_gb":16}
+        });
+        fs::write(&profile, chosen.to_string())?;
+        fs::write(state.join("control.key"), [7u8; 32])?;
+        for (name, disk) in [("android", "userdata.img"), ("linux", "rootfs.img")] {
+            let guest = assets.join(name);
+            fs::create_dir_all(&guest)?;
+            fs::write(guest.join("Image"), b"kernel-fixture")?;
+            fs::write(guest.join(disk), b"seed")?;
+            let disk = if name == "android" {
+                json!({"writable":true, "partitions":[{"label":"userdata","path":disk,"writable":true}]})
+            } else {
+                json!({"writable":true,"image":disk})
+            };
+            fs::write(
+                guest.join("avf.json"),
+                json!({"kernel":"Image","disks":[disk]}).to_string(),
+            )?;
+        }
+        let cancelled = AtomicBool::new(false);
+        let [phone, linux] = profile::prepare(&assets, &state, &profile, &cancelled)?;
+        let json = |path: &Path| -> io::Result<Value> {
+            Ok(serde_json::from_reader(fs::File::open(path)?)?)
+        };
+        assert_eq!(json(&phone)?["disks"].as_array().unwrap().len(), 1);
+        let linux_config = json(&linux)?;
+        assert_eq!(linux_config["disks"].as_array().unwrap().len(), 2);
+        assert_eq!(linux_config["params"], "nr_cpus=2");
+        let control = fs::read(state.join("control.raw"))?;
+        assert_eq!(&control[..8], b"AIMAVF01");
+        assert_eq!(&control[8..40], &[7u8; 32]);
+        let len = u32::from_le_bytes(control[40..44].try_into().unwrap()) as usize;
+        assert_eq!(
+            serde_json::from_slice::<Value>(&control[44..44 + len])?,
+            chosen
+        );
+        let disk = state.join("android/userdata.img");
+        assert_eq!(fs::metadata(&disk)?.len(), 16u64 << 30);
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&disk)?
+            .write_all(b"customer")?;
+        profile::prepare(&assets, &state, &profile, &cancelled)?;
+        let mut bytes = [0; 8];
+        fs::File::open(&disk)?.read_exact(&mut bytes)?;
+        assert_eq!(&bytes, b"customer");
+        Ok(())
+    }
+}
