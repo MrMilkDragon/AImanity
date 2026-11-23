@@ -328,8 +328,8 @@
     },
     {
       "path": "apps/native/build.rs",
-      "size": 1008,
-      "sha256": "81846687ce5d820ff129abb11b7e32a0fa60411fc8271702aef980141110c9c6"
+      "size": 2299,
+      "sha256": "ad3c72e23751a351479a91811832f97aac681937accfdb35659d8acfb4999d87"
     },
     {
       "path": "apps/native/entitlements.plist",
@@ -483,8 +483,8 @@
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 21777,
-      "sha256": "0f57e0365d33b8187e9ae2d30d89933577b8bfb2ffa6cd6fa4e38ff4a5c5d402"
+      "size": 25534,
+      "sha256": "e27039ba8abe875a0385c33f848e5275f8b493b1bd8b617807125fb03f7db2f3"
     },
     {
       "path": "apps/native/src/host_desktop_mobile.rs",
@@ -673,8 +673,8 @@
     },
     {
       "path": "apps/native/src/workspace/device_run.rs",
-      "size": 7422,
-      "sha256": "ddb1b229449ca3e091e8360dff9542017b63eb4e0f935a30dadec82539e4827a"
+      "size": 8421,
+      "sha256": "a3a0d3dd1a6ce084d79ab7caf0348c6b7f060203d3f7eb2fc8f8f23e9eff3275"
     },
     {
       "path": "apps/native/src/workspace/documents.rs",
@@ -693,18 +693,23 @@
     },
     {
       "path": "apps/native/src/workspace/records.rs",
-      "size": 16555,
-      "sha256": "83efcfb9747cc68650eab25f2f46fbd54f7d509bd5ff751fd8175988e45be5d6"
+      "size": 16766,
+      "sha256": "3187ae09fb7e297ca5d69cd08e570010e4ba705ed37d202d8eaa1fa97a6a0547"
+    },
+    {
+      "path": "apps/native/src/workspace/skills.rs",
+      "size": 3672,
+      "sha256": "c353a61c62f3cb03ad2e1921c9bb7d01503b84564e928f9b1b693f023e9a4c34"
     },
     {
       "path": "apps/native/src/workspace/worker.rs",
-      "size": 14052,
-      "sha256": "c59b95928889695308e6faf4c7ecec2d999c515ad55e45daf9efb7c76497a239"
+      "size": 15774,
+      "sha256": "6761223be2eef01746e641384fa6076e2f3fda8a75b4ae3c89aaa618ddea488d"
     },
     {
       "path": "apps/native/src/workspace.rs",
-      "size": 15153,
-      "sha256": "8bc5123f4057c9e512f72a105457402470ce2f34515306c9b4ff3f1aaeb2d31d"
+      "size": 17000,
+      "sha256": "fc32ad0f10fe7bd509add78a17542079097656dc4bdf61e91c0d0953e07eeed1"
     },
     {
       "path": "apps/native/vendor/cryoglyph/Cargo.toml",
@@ -2693,8 +2698,8 @@
     },
     {
       "path": "crates/assistant/src/workbench.rs",
-      "size": 56463,
-      "sha256": "ed358df37c94fd0b0415891ae262b13fcaa79f662fc2ef0c6d3cf8a208e22b5b"
+      "size": 56064,
+      "sha256": "65e423969b7b4429a88cebd16d284c5905079b20ffff298c67c21e483dba5d46"
     },
     {
       "path": "crates/assistant/src/worker/action_cue.rs",
@@ -4678,8 +4683,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/desktop.proto",
-      "size": 3972,
-      "sha256": "82d29362938e0a675c78ebe8b2387e8f64cc69d1fddf0cf3fb137bddb2dd4f53"
+      "size": 4118,
+      "sha256": "690a44090926958d4b7b5a29dbe6e6b4d6bdb8b78bd031f3c0e8dbe7a67677c9"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/device_network.proto",
@@ -4993,8 +4998,8 @@
     },
     {
       "path": "skills/builtin/draw/SKILL.md",
-      "size": 3634,
-      "sha256": "674b4853b34ef4bd44aca35943b899f6abee5b54e058ca1f6b2d715014f6f288"
+      "size": 2947,
+      "sha256": "4b89580b76a90494d52a7b90cf43458e90abeac177be42fc31af2556552f943a"
     },
     {
       "path": "skills/builtin/files-android/SKILL.md",
@@ -5375,6 +5380,11 @@
       "path": "skills/builtin/xiaohongshu/SKILL.md",
       "size": 1786,
       "sha256": "bce292f91194d458cdb4267fc4acc5883f55a39a15b54cbb1540e8ebfc02b7ec"
+    },
+    {
+      "path": "skills/core.txt",
+      "size": 133,
+      "sha256": "89df9ec38394815a73eeec8f660ab2c83e3374b67e2ac4a02a79062e5c5b6fee"
     }
   ]
 }

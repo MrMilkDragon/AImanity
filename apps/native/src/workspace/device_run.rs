@@ -25,6 +25,8 @@ pub(super) struct DesktopInput {
     text: String,
     #[serde(default)]
     key: String,
+    #[serde(default)]
+    strokes: Vec<Vec<[i32; 2]>>,
 }
 
 impl DesktopInput {
@@ -50,9 +52,28 @@ impl DesktopInput {
             amount: self.amount,
             text: self.text,
             key: self.key,
+            strokes: self
+                .strokes
+                .into_iter()
+                .map(|path| wire::BrushStroke {
+                    points: path
+                        .into_iter()
+                        .map(|[x, y]| wire::ScreenPoint { x, y })
+                        .collect(),
+                })
+                .collect(),
             ..Default::default()
         }
     }
+}
+
+pub(super) fn add_stroke(tool: &mut Value) {
+    let props = &mut tool["parameters"]["properties"];
+    props["kind"]["enum"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("stroke"));
+    props["strokes"] = json!({"type":"array","description":"On a computer, draw each path with the active brush held down, in observed screenshot pixels. Lift between paths.","minItems":1,"maxItems":32,"items":{"type":"array","minItems":2,"maxItems":128,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"integer"}}}});
 }
 
 pub(super) fn device_info(device: &wire::RegisteredDevice) -> Value {
@@ -84,8 +105,12 @@ impl DeviceRun {
     pub(super) fn tool(&self) -> Value {
         let ids: Vec<_> = self.devices.iter().map(|d| &d.id).collect();
         let roster: Vec<_> = self.devices.iter().map(device_info).collect();
-        json!({"type":"function","name":"device_interact","description":format!("Operate a connected device. For system navigation or a named key use kind=key and the key parameter. For a visible control observe, then use screenshot pixels. Devices: {}",json!(roster)),
-            "parameters":{"type":"object","properties":{"device_id":{"type":"string","enum":ids},"kind":{"type":"string","enum":["foreground","observe","key","click","double_click","scroll","long_press","swipe","type"]},"key":{"type":"string","enum":["home","back","enter","tab","escape","backspace","left","right","up","down","save","select_all","undo","redo"],"description":"Phone navigation includes home and back. Desktop shortcuts include save, select_all, undo, redo."},"x":{"type":"integer"},"y":{"type":"integer"},"to_x":{"type":"integer"},"to_y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"}},"required":["device_id","kind"]}})
+        let mut tool = json!({"type":"function","name":"device_interact","description":format!("Operate a connected device. For system navigation or a named key use kind=key and the key parameter. For a visible control observe, then use screenshot pixels. Devices: {}",json!(roster)),
+            "parameters":{"type":"object","properties":{"device_id":{"type":"string","enum":ids},"kind":{"type":"string","enum":["foreground","observe","key","click","double_click","scroll","long_press","swipe","type"]},"key":{"type":"string","enum":["home","back","enter","tab","escape","backspace","left","right","up","down","save","select_all","undo","redo"],"description":"Phone navigation includes home and back. Desktop shortcuts include save, select_all, undo, redo."},"x":{"type":"integer"},"y":{"type":"integer"},"to_x":{"type":"integer"},"to_y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"}},"required":["device_id","kind"]}});
+        if self.devices.iter().any(|d| d.kind != "phone") {
+            add_stroke(&mut tool);
+        }
+        tool
     }
     pub(super) async fn perform(
         &mut self,
@@ -163,20 +188,20 @@ impl DeviceRun {
         event.content = info.to_string();
         Ok(device_output(&info, reply))
     }
+}
 
-    pub(super) fn retire_image(&mut self, id: &str, input: &mut [Value]) {
-        if let Some(index) = self.images.remove(id) {
-            let item = &mut input[index];
-            let key = if item["type"] == "function_call_output" {
-                "output"
-            } else {
-                "content"
-            };
-            if let Some(parts) = item[key].as_array_mut()
-                && parts.last().is_some_and(|p| p["type"] == "input_image")
-            {
-                parts.pop();
-            }
+pub(super) fn retire_image(index: Option<usize>, input: &mut [Value]) {
+    if let Some(index) = index {
+        let item = &mut input[index];
+        let key = if item["type"] == "function_call_output" {
+            "output"
+        } else {
+            "content"
+        };
+        if let Some(parts) = item[key].as_array_mut()
+            && parts.last().is_some_and(|p| p["type"] == "input_image")
+        {
+            parts.pop();
         }
     }
 }

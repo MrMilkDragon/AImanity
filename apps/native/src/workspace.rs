@@ -11,6 +11,7 @@ mod documents;
 mod files;
 mod peers;
 mod records;
+mod skills;
 mod worker;
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
@@ -82,6 +83,7 @@ impl Workspace {
         tx.open_table(PENDING)?;
         tx.open_table(BLOBS)?;
         tx.open_table(documents::DOCUMENTS)?;
+        tx.open_table(skills::ENABLED)?;
         {
             let mut data = tx.open_table(RECORDS)?;
             if data.get("chat")?.is_none() {
@@ -169,6 +171,23 @@ impl Workspace {
         q.control_session.clear();
         self.peers.perform(q).await.map_err(|e| e.to_string())
     }
+    pub(super) async fn host_action(
+        &self,
+        action: wire::DesktopActionRequest,
+    ) -> Result<wire::HostDesktopReply> {
+        if action.action_id.is_empty() {
+            return Err("操作缺少回执编号".into());
+        }
+        let grant = self
+            .host
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|(owner, grant)| *owner == action.control_session && grant.active())
+            .map(|(_, grant)| grant.clone())
+            .ok_or("本任务未授权使用宿主机")?;
+        Ok(tokio::task::spawn_blocking(move || grant.perform(&action)).await??)
+    }
     pub(crate) fn registry_changes(&self) -> watch::Receiver<u64> {
         self.peers.changes.subscribe()
     }
@@ -207,6 +226,15 @@ impl Workspace {
         bytes: Vec<u8>,
     ) -> std::result::Result<Vec<u8>, String> {
         let name = route.strip_prefix("assistant/").unwrap_or(route);
+        if name == "host-desktop/action" {
+            let action =
+                wire::DesktopActionRequest::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
+            return self
+                .host_action(action)
+                .await
+                .map(|reply| reply.encode_to_vec())
+                .map_err(|e| e.to_string());
+        }
         if name == "registry/device-invite" {
             let q = wire::DevicePairRequest::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
             return self
@@ -299,6 +327,28 @@ fn put(tx: &WriteTransaction, key: &str, value: &impl Message) -> Result<()> {
 mod tests {
     use super::*;
     use redb::ReadableTableMetadata;
+
+    #[tokio::test]
+    async fn host_action_only_accepts_the_authorized_task() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let workspace = Workspace::open(dir.path())?;
+        let (_stop, live) = watch::channel(());
+        *workspace.host.lock().unwrap() = Some((
+            "drawing".into(),
+            Arc::new(crate::host_desktop::Grant::new(live)),
+        ));
+        let request = wire::DesktopActionRequest {
+            kind: "stroke".into(),
+            action_id: "a".into(),
+            control_session: "another-task".into(),
+            ..Default::default()
+        };
+        let result = workspace
+            .rpc("host-desktop/action", request.encode_to_vec())
+            .await;
+        assert!(result.unwrap_err().contains("未授权"));
+        Ok(())
+    }
 
     #[test]
     fn devices_of_the_same_kind_keep_their_own_identity_after_reopen() -> Result<()> {

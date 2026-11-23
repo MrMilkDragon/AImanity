@@ -1,4 +1,6 @@
-use super::device_run::{DesktopInput, DeviceRun, device_info, device_output};
+use super::device_run::{
+    DesktopInput, DeviceRun, add_stroke, device_info, device_output, retire_image,
+};
 use super::*;
 use aimanity_model::model_timing::Timing;
 use serde::Deserialize;
@@ -15,19 +17,17 @@ impl Workspace {
         let config = Self::model(job.model.clone().ok_or("任务缺少模型")?)?;
         let client = self.client(&config.proxy_url)?;
         let (mut input, mut input_pending) = self.context(n, &job.instructions)?;
-        let host = if job.request.as_ref().is_some_and(|q| q.use_host_desktop) {
-            Some(
-                self.host
-                    .lock()
-                    .unwrap()
-                    .as_ref()
-                    .filter(|(owner, grant)| owner == id && grant.active())
-                    .map(|(_, g)| g.clone())
-                    .ok_or("请为当前任务重新授权本机桌面")?,
-            )
-        } else {
-            None
-        };
+        let host = job.request.as_ref().is_some_and(|q| q.use_host_desktop);
+        if host
+            && !self
+                .host
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|(owner, grant)| owner == id && grant.active())
+        {
+            return Err("请为当前任务重新授权本机桌面".into());
+        }
         let target = job.request.as_ref().map_or("", |q| q.device_id.as_str());
         let registry = self.registry()?;
         if target.is_empty() {
@@ -56,7 +56,7 @@ impl Workspace {
         for event in previous
             .events
             .iter()
-            .filter(|e| e.title == "device_interact")
+            .filter(|e| matches!(e.title.as_str(), "device_interact" | "host_desktop"))
         {
             let receipt: Value = serde_json::from_str(&event.content)?;
             if event.status == "dispatched"
@@ -69,10 +69,13 @@ impl Workspace {
         if !history.is_empty() {
             input.push(json!({"role":"user","content":format!("Resuming this run. These are recorded device operations. Inspect the current state before continuing: {}",json!(history))}));
         }
+        let skills = self.active_skill_ids()?;
         let mut tools = vec![
+            json!({"type":"function","name":"skill_read","description":"Read an enabled guide when its topic matches the task.","parameters":{"type":"object","properties":{"id":{"type":"string","enum":skills}},"required":["id"]}}),
             json!({"type":"function","name":"search_knowledge","description":"Find documents in this workspace by title or content.","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}),
         ];
         let mut events = Vec::new();
+        let mut host_image = None;
         if !device_run.devices.is_empty() {
             tools.push(device_run.tool());
         }
@@ -101,8 +104,10 @@ impl Workspace {
                 .unwrap()
                 .extend(output.as_array().unwrap().iter().cloned());
         }
-        if host.is_some() {
-            tools.push(json!({"type":"function","name":"host_desktop","description":"Observe the authorized display or act using the observation ID from that display. Coordinates use screenshot pixels.","parameters":{"type":"object","properties":{"kind":{"type":"string","enum":["observe","click","double_click","scroll","type","key"]},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"},"key":{"type":"string"}},"required":["kind"]}}));
+        if host {
+            let mut tool = json!({"type":"function","name":"host_desktop","description":"Observe the authorized display or act using the observation ID from that display. Coordinates use screenshot pixels.","parameters":{"type":"object","properties":{"kind":{"type":"string","enum":["observe","click","double_click","scroll","type","key"]},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"},"key":{"type":"string"}},"required":["kind"]}});
+            add_stroke(&mut tool);
+            tools.push(tool);
         }
         loop {
             let started = crate::connection::epoch_ms() as u64;
@@ -111,7 +116,12 @@ impl Workspace {
             if input_pending {
                 let mut choices: Vec<_> = tools
                     .iter()
-                    .filter(|t| t["name"] == "device_interact")
+                    .filter(|t| {
+                        matches!(
+                            t["name"].as_str(),
+                            Some("device_interact" | "skill_read" | "host_desktop")
+                        )
+                    })
                     .cloned()
                     .collect();
                 choices.push(json!({"type":"function","name":"report_no_input","description":"End with the actual reason if no device input is appropriate or available for this request.","parameters":{"type":"object","properties":{"reason":{"type":"string"}},"required":["reason"]}}));
@@ -178,6 +188,15 @@ impl Workspace {
                         )
                         .into());
                     }
+                    "skill_read" => {
+                        #[derive(Deserialize)]
+                        struct Read {
+                            id: String,
+                        }
+                        let q: Read = serde_json::from_str(args)?;
+                        event.content = q.id.clone();
+                        Value::String(self.read_active_skill(&q.id)?.into())
+                    }
                     "search_knowledge" => {
                         #[derive(Deserialize)]
                         struct Query {
@@ -214,7 +233,7 @@ impl Workspace {
                                 event.kind != "device_input" || event.status != "dispatched";
                         }
                         if kind != "foreground" && event.status != "not_executed" {
-                            device_run.retire_image(&device, &mut input);
+                            retire_image(device_run.images.remove(&device), &mut input);
                         }
                         if result.is_array() {
                             device_run.images.insert(device, input.len());
@@ -222,12 +241,28 @@ impl Workspace {
                         result
                     }
                     "host_desktop" => {
-                        let grant = host.as_ref().ok_or("本任务未授权使用宿主机")?.clone();
                         let data: DesktopInput = serde_json::from_str(args)?;
-                        let req = data.request(&event.id, id);
-                        let reply =
-                            tokio::task::spawn_blocking(move || grant.perform(&req)).await??;
-                        let info = json!({"action_id":reply.action_id,"observation_id":reply.observation_id,"width":reply.width,"height":reply.height});
+                        let action = data.request(&event.id, id);
+                        let is_input = action.kind != "observe";
+                        let mut info = json!({"action_id":event.id,"kind":action.kind});
+                        if is_input {
+                            event.kind = "device_input".into();
+                            event.status = "dispatched".into();
+                            event.content = info.to_string();
+                            events.push(event.clone());
+                            self.record_tools(n, id, std::mem::take(&mut events))?;
+                        }
+                        let reply = self.host_action(action).await?;
+                        retire_image(host_image.take(), &mut input);
+                        if !reply.jpeg.is_empty() {
+                            host_image = Some(input.len());
+                        }
+                        if is_input {
+                            input_pending = false;
+                        }
+                        info["observation_id"] = json!(reply.observation_id);
+                        info["width"] = json!(reply.width);
+                        info["height"] = json!(reply.height);
                         event.content = info.to_string();
                         device_output(&info, reply)
                     }

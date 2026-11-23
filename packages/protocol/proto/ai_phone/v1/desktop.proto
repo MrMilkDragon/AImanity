@@ -39,6 +39,8 @@ message DesktopObservation {
   uint64 window_id = 12;
   uint32 process_id = 13;
 }
+message ScreenPoint { sint32 x = 1; sint32 y = 2; }
+message BrushStroke { repeated ScreenPoint points = 1; }
 message DesktopActionRequest {
   string device_id = 1;
   string action_id = 2;
@@ -60,6 +62,7 @@ message DesktopActionRequest {
   // Rejected when the observed foreground window or editable focus is unavailable.
   bool replace = 16;
   string control_session = 17;
+  repeated BrushStroke strokes = 18;
 }
 message DeviceFilesRequest { string device_id = 1; string path = 2; }
 message DeviceFile { string name = 1; string path = 2; bool directory = 3; uint64 bytes = 4; }

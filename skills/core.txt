@@ -1,0 +1,12 @@
+autonomous-learning
+browser-android
+calc
+computer-use
+device-transfer
+draw
+files-android
+impress
+phone-use
+wechat
+writer
+xiaohongshu

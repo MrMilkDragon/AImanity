@@ -215,24 +215,40 @@ fn key(input: &mut Enigo, name: &str) -> Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
+fn mouse_event(
+    source: &core_graphics::event_source::CGEventSource,
+    kind: core_graphics::event::CGEventType,
+    point: (i32, i32),
+    clicks: i64,
+) -> Result<()> {
     use core_graphics::{
         event::{
-            CGEvent, CGEventTapLocation, CGEventType, CGMouseButton, EventField, ScrollEventUnit,
+            CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, EventField,
         },
+        geometry::CGPoint,
+    };
+    let p = CGPoint::new(f64::from(point.0), f64::from(point.1));
+    let event = CGEvent::new_mouse_event(source.clone(), kind, p, CGMouseButton::Left)
+        .map_err(|_| "无法创建鼠标事件")?;
+    event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, clicks);
+    if matches!(kind, CGEventType::LeftMouseDragged) {
+        event.set_flags(CGEventFlags::CGEventFlagNonCoalesced);
+    }
+    event.post(CGEventTapLocation::HID);
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
+    use core_graphics::{
+        event::{CGEvent, CGEventTapLocation, CGEventType, ScrollEventUnit},
         event_source::{CGEventSource, CGEventSourceStateID},
         geometry::CGPoint,
     };
     let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
         .map_err(|_| "无法取得鼠标输入源")?;
     let point = CGPoint::new(f64::from(x), f64::from(y));
-    let post = |kind, clicks| -> Result<()> {
-        let event = CGEvent::new_mouse_event(source.clone(), kind, point, CGMouseButton::Left)
-            .map_err(|_| "无法创建鼠标事件")?;
-        event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, clicks);
-        event.post(CGEventTapLocation::HID);
-        Ok(())
-    };
+    let post = |kind, clicks| mouse_event(&source, kind, (x, y), clicks);
     post(CGEventType::MouseMoved, 0)?;
     if action.kind == "scroll" {
         let event = CGEvent::new_scroll_event(
@@ -278,6 +294,116 @@ fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
         if action.kind == "double_click" {
             input.button(Button::Left, Direction::Click)?;
         }
+    }
+    Ok(())
+}
+
+impl View {
+    fn point(&self, x: i32, y: i32) -> Result<(i32, i32)> {
+        let map = |p: i32, image: u32, size: u32, origin: i32| -> Result<i32> {
+            let p = u32::try_from(p)?;
+            if p >= image {
+                return Err("操作点在显示器外".into());
+            }
+            Ok(origin + (u64::from(p) * u64::from(size) / u64::from(image)) as i32)
+        };
+        Ok((
+            map(x, self.image.0, self.size.0, self.origin.0)?,
+            map(y, self.image.1, self.size.1, self.origin.1)?,
+        ))
+    }
+}
+
+enum Pen {
+    Down,
+    Move,
+    Up,
+}
+
+fn paint_strokes(
+    current: &View,
+    action: &DesktopActionRequest,
+    live: &watch::Receiver<()>,
+) -> Result<()> {
+    if !(1..=32).contains(&action.strokes.len()) {
+        return Err("A stroke action accepts 1–32 paths".into());
+    }
+    let paths = action
+        .strokes
+        .iter()
+        .map(|path| {
+            if !(2..=128).contains(&path.points.len()) {
+                return Err("Each brush stroke needs 2–128 points".into());
+            }
+            path.points
+                .iter()
+                .map(|p| current.point(p.x, p.y))
+                .collect::<Result<Vec<_>>>()
+        })
+        .collect::<Result<Vec<_>>>()?;
+    #[cfg(target_os = "macos")]
+    let pen = {
+        use core_graphics::{
+            event::CGEventType as E,
+            event_source::{CGEventSource, CGEventSourceStateID},
+        };
+        let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
+            .map_err(|_| "无法取得鼠标输入源")?;
+        move |p, phase| -> Result<()> {
+            if matches!(phase, Pen::Down) {
+                mouse_event(&source, E::MouseMoved, p, 0)?;
+            }
+            mouse_event(
+                &source,
+                match phase {
+                    Pen::Down => E::LeftMouseDown,
+                    Pen::Move => E::LeftMouseDragged,
+                    Pen::Up => E::LeftMouseUp,
+                },
+                p,
+                1,
+            )?;
+            // Drawing views sample the live pointer. Give each drag point a 120 Hz input interval.
+            std::thread::sleep(std::time::Duration::from_micros(8333));
+            Ok(())
+        }
+    };
+    #[cfg(any(windows, target_os = "linux"))]
+    let mut pen = {
+        use enigo::{Button, Coordinate, Mouse};
+        let mut input = Enigo::new(&Settings::default())?;
+        move |(x, y), phase| -> Result<()> {
+            match phase {
+                Pen::Down => {
+                    input.move_mouse(x, y, Coordinate::Abs)?;
+                    input.button(Button::Left, Direction::Press)?;
+                }
+                Pen::Move => input.move_mouse(x, y, Coordinate::Abs)?,
+                Pen::Up => input.button(Button::Left, Direction::Release)?,
+            }
+            Ok(())
+        }
+    };
+    for path in paths {
+        if current.focus.is_none() || current.focus != focused_window() {
+            return Err("前台窗口已切换，请重新观察".into());
+        }
+        if live.has_changed().is_err() {
+            return Err("本机授权已结束".into());
+        }
+        let mut current = path[0];
+        pen(current, Pen::Down)?;
+        let movement = path[1..].iter().try_for_each(|&next| -> Result<()> {
+            if live.has_changed().is_err() {
+                return Err("本机授权已结束".into());
+            }
+            pen(next, Pen::Move)?;
+            current = next;
+            Ok(())
+        });
+        let release = pen(current, Pen::Up);
+        movement?;
+        release?;
     }
     Ok(())
 }
@@ -341,17 +467,10 @@ fn execute(
     }
     match action.kind.as_str() {
         "click" | "double_click" | "scroll" => {
-            let map = |p: i32, image: u32, size: u32, origin: i32| -> Result<i32> {
-                let p = u32::try_from(p)?;
-                if p >= image {
-                    return Err("操作点在显示器外".into());
-                }
-                Ok(origin + (u64::from(p) * u64::from(size) / u64::from(image)) as i32)
-            };
-            let x = map(action.x, current.image.0, current.size.0, current.origin.0)?;
-            let y = map(action.y, current.image.1, current.size.1, current.origin.1)?;
+            let (x, y) = current.point(action.x, action.y)?;
             pointer(action, x, y)?;
         }
+        "stroke" => paint_strokes(&current, action, live)?,
         "type" | "key" => {
             let send = || -> Result<()> {
                 if live.has_changed().is_err() {

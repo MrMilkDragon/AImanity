@@ -202,6 +202,10 @@ impl Workspace {
             "cancel" | "resume" => self
                 .control(req!(ChatRunRequest), name == "resume")?
                 .encode_to_vec(),
+            "workbench/skills" => self.skill_list()?.encode_to_vec(),
+            "workbench/skill-update" => self
+                .set_builtin_skill(req!(SkillUpdateRequest))?
+                .encode_to_vec(),
             "workbench/events" => self
                 .get::<wire::HarnessEventList>(&format!(
                     "events/{}",
