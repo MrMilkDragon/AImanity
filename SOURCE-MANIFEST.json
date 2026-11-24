@@ -183,8 +183,8 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 17189,
-      "sha256": "7e92df8b9edc5d4bb84ee16038d4f0686212a581cab4e69fb6b423e18f70d821"
+      "size": 17369,
+      "sha256": "e05b004846d834719399a09f6ea94cdd2ef036f8837e40a78bd909c71a2ae016"
     },
     {
       "path": "ai-phone",
@@ -1923,8 +1923,8 @@
     },
     {
       "path": "config/native-notice-supplements.json",
-      "size": 73032,
-      "sha256": "2f8d36d3c2f33d29feaa9b674560667bd950da0cc4957a96e3a89b41dfcd6f02"
+      "size": 72539,
+      "sha256": "16613ff201d76a58aeb16595bd479359e2e1b6d40b3766070017b7b8f0b33e42"
     },
     {
       "path": "config/ocr-models.json",

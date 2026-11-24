@@ -510,18 +510,6 @@
       ]
     },
     {
-      "package": "iced_winit@0.14.1",
-      "repository": "https://github.com/iced-rs/iced",
-      "commit": "38237dd294da3256c2ac4d3f8288fc73956c91e0",
-      "files": [
-        {
-          "file": "docs/public/licenses/native/fc9086ba4eba4b77-iced-LICENSE",
-          "sha256": "fc9086ba4eba4b77e4c603906362742bc3715ffa2c7810c6074fe7780d3a0398",
-          "url": "https://raw.githubusercontent.com/iced-rs/iced/38237dd294da3256c2ac4d3f8288fc73956c91e0/LICENSE"
-        }
-      ]
-    },
-    {
       "package": "image@0.25.10",
       "repository": "https://github.com/image-rs/image",
       "commit": "76e57184f22772dad1138e96954e57945406b15e",

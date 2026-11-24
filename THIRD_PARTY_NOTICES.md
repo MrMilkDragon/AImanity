@@ -6,7 +6,7 @@ Original AImanity code is licensed under **Apache-2.0**. Third-party software, d
 
 The public **source export** contains project source, lockfiles, attribution records and selected upstream licence texts. It excludes SDK archives, guest images, prebuilt runtime components and personal data.
 
-A **complete client bundle** includes the web application, native services, phone integration APKs, container host, guest applications, Android runtime and container images. See [runtime bundles](docs/public/runtime-bundles.md) and [release status](docs/public/release-status.md).
+A **complete client bundle** includes the native Rust workbench, device tools, speech model and guest system images. See [runtime bundles](docs/public/runtime-bundles.md) and [release status](docs/public/release-status.md).
 
 See [distribution requirements](docs/public/distribution-requirements.md) for the installer inventory and [offline Android runtime](docs/public/engineering/android-runtime.md) for the packaged sources.
 
@@ -17,6 +17,7 @@ See [distribution requirements](docs/public/distribution-requirements.md) for th
 | redb 5.0.0 | [Upstream](https://github.com/cberner/redb), [MIT licence](docs/public/licenses/native/redb-LICENSE-MIT.txt) | Embedded database in the Fluorine client. |
 | Rhai 1.27.0 | [Upstream](https://github.com/rhaiscript/rhai), [MIT licence](docs/public/licenses/native/rhai-LICENSE-MIT.txt) | Embedded interpreter for application MCP tools. |
 | Iced 0.14.0 | [Upstream](https://github.com/iced-rs/iced/tree/0.14.0), [MIT licence](docs/public/licenses/native-ui/iced-LICENSE) | Native workbench UI; locked dependencies in apps/native/Cargo.lock |
+| iced_winit 0.14.1 | [Upstream revision](https://github.com/iced-rs/iced/tree/38237dd294da3256c2ac4d3f8288fc73956c91e0), [bundled MIT licence](apps/native/vendor/iced_winit/LICENSE) | Patched window integration for the native client. |
 | Cryoglyph 0.1.0 | [Upstream](https://github.com/iced-rs/cryoglyph), [licences](apps/native/vendor/cryoglyph) | Native GPU text renderer. The bundled source uses lru 0.18 for its glyph cache. |
 | Enigo 0.6.1 | [Upstream](https://github.com/enigo-rs/enigo), [MIT licence](docs/public/licenses/native-ui/enigo-LICENSE) | User-authorized keyboard and pointer input on local and paired desktops |
 | XCap 0.9.10 | [Upstream](https://github.com/nashaofu/xcap), [Apache-2.0 licence](docs/public/licenses/native-ui/xcap-LICENSE) | Screen capture on local and paired desktops |
