@@ -798,8 +798,8 @@
     },
     {
       "path": "apps/native/tests/installed/window.rs",
-      "size": 10644,
-      "sha256": "5c5604c4cd094d0d29cd8a25faf6c0d4c28feb77dc7ca7a88deece05c08fbcb2"
+      "size": 12482,
+      "sha256": "9b50647d43110ff4954894dd6a6f2deedcf1230c5c0149d9647bb3fb9d28261b"
     },
     {
       "path": "apps/native/tests/installed/windows.rs",

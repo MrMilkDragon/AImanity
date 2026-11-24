@@ -1,7 +1,6 @@
 use super::Result;
 #[cfg(windows)]
-use enigo::Keyboard;
-use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings};
+use enigo::{Button, Coordinate, Direction, Enigo, Keyboard, Mouse, Settings};
 use std::{
     fs::File,
     path::{Path, PathBuf},
@@ -25,6 +24,7 @@ use xcap::Window;
 
 pub(super) struct Client {
     child: Child,
+    #[cfg(windows)]
     input: Enigo,
     evidence: PathBuf,
     window: Window,
@@ -62,12 +62,29 @@ impl Client {
             }
         })
         .await??;
+        #[cfg(target_os = "macos")]
+        {
+            use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+            let process =
+                NSRunningApplication::runningApplicationWithProcessIdentifier(pid.try_into()?)
+                    .ok_or("Cannot find the installed workbench process")?;
+            #[allow(deprecated)]
+            process.activateWithOptions(NSApplicationActivationOptions::ActivateIgnoringOtherApps);
+            timeout(Duration::from_secs(8), async {
+                while !window.is_focused()? {
+                    sleep(Duration::from_millis(50)).await;
+                }
+                Result::Ok(())
+            })
+            .await??;
+        }
         #[cfg(windows)]
         unsafe {
             SetForegroundWindow(window.id()? as usize as _);
         }
         Ok(Self {
             child,
+            #[cfg(windows)]
             input: Enigo::new(&Settings::default())?,
             evidence: evidence.into(),
             window,
@@ -150,8 +167,33 @@ impl Client {
         if !self.window.is_focused()? {
             return Err("The workbench lost focus".into());
         }
-        self.input.move_mouse(x, y, Coordinate::Abs)?;
-        self.input.button(Button::Left, Direction::Click)?;
+        #[cfg(target_os = "macos")]
+        {
+            use core_graphics::{
+                event::{CGEvent, CGEventTapLocation, CGEventType, CGMouseButton, EventField},
+                event_source::{CGEventSource, CGEventSourceStateID},
+                geometry::CGPoint,
+            };
+            let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
+                .map_err(|_| "No session input source")?;
+            let point = CGPoint::new(f64::from(x), f64::from(y));
+            for kind in [
+                CGEventType::MouseMoved,
+                CGEventType::LeftMouseDown,
+                CGEventType::LeftMouseUp,
+            ] {
+                let event =
+                    CGEvent::new_mouse_event(source.clone(), kind, point, CGMouseButton::Left)
+                        .map_err(|_| "Cannot post a workbench click")?;
+                event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, 1);
+                event.post(CGEventTapLocation::HID);
+            }
+        }
+        #[cfg(windows)]
+        {
+            self.input.move_mouse(x, y, Coordinate::Abs)?;
+            self.input.button(Button::Left, Direction::Click)?;
+        }
         Ok(())
     }
     pub async fn workspace(&mut self) -> Result<()> {
