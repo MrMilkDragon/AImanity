@@ -18,6 +18,14 @@ on:
         options: [preview, release]
         default: preview
         required: true
+      preview_run:
+        description: Existing signed preview to test again
+        required: false
+        type: string
+      preview_sha256:
+        description: APK digest from that preview's package job
+        required: false
+        type: string
       assets_run:
         description: Successful Android and Linux AVF asset run IDs, separated by a hyphen
         required: false
@@ -26,13 +34,14 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: android-mobile-${{ github.ref }}
+  group: android-mobile-${{ github.ref }}-${{ inputs.preview_run || 'build' }}
   cancel-in-progress: true
 env:
   CARGO_INCREMENTAL: '0'
   CARGO_PROFILE_RELEASE_LTO: 'thin'
 jobs:
   native:
+    if: inputs.preview_run == ''
     strategy:
       fail-fast: false
       matrix:
@@ -258,6 +267,7 @@ jobs:
   screens:
     name: Android 15 ${{ matrix.profile }} cold launch and input
     needs: package
+    if: "!cancelled() && (needs.package.result == 'success' || inputs.preview_run != '')"
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
@@ -274,13 +284,15 @@ jobs:
         with:
           name: android-workbench-candidate
           path: client
+          run-id: ${{ inputs.preview_run || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Exercise a clean Android Virtual Device
         env:
           PROFILE: ${{ matrix.profile }}
           AVD_DEVICE: ${{ matrix.device }}
-          APK: client/${{ needs.package.outputs.filename }}
-          APK_SHA256: ${{ needs.package.outputs.digest }}
-          PACKAGE: ${{ needs.package.outputs.package_id }}
+          APK: client/${{ needs.package.outputs.filename || 'AImanity-workbench-preview.apk' }}
+          APK_SHA256: ${{ needs.package.outputs.digest || inputs.preview_sha256 }}
+          PACKAGE: ${{ needs.package.outputs.package_id || 'dev.aimanity.workspace.preview' }}
         run: |
           set -euo pipefail
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"

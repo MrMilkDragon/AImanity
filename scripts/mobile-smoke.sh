@@ -109,7 +109,7 @@ for attempt in {1..8}; do
   sleep 0.4
 done
 grep -Fq 'connection=dev.aimanity.mobile.KeyboardConnection@' evidence/composer-focus.txt
-adb shell input text Orbit
+adb shell 'input text O && input keyevent KEYCODE_R KEYCODE_B KEYCODE_I KEYCODE_T'
 hide_keyboard hardware
 wait_word typed Orbit
 read -r x y w h < <(word_box typed Orbit)
