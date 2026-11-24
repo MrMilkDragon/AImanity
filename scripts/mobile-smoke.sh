@@ -9,6 +9,15 @@ adb shell input keyevent KEYCODE_WAKEUP
 adb shell wm dismiss-keyguard
 adb shell settings put secure immersive_mode_confirmations confirmed
 adb shell settings put secure show_ime_with_hard_keyboard 1
+adb shell cmd connectivity airplane-mode enable
+adb shell svc wifi disable
+adb shell svc data disable
+[[ $(adb shell settings get global airplane_mode_on | tr -d '\r') == 1 ]]
+for attempt in {1..20}; do
+  adb shell dumpsys connectivity | grep -F 'Active default network: none' > evidence/offline.txt && break
+  sleep 0.25
+done
+test -s evidence/offline.txt
 adb install "$APK"
 apk_path=$(adb shell pm path "$PACKAGE" | tr -d '\r' | sed -n 's/^package://p')
 installed_sha=$(adb shell sha256sum "$apk_path" | awk '{print $1}')

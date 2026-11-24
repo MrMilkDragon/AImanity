@@ -48,6 +48,14 @@ jobs:
           artifact-ids: ${{ inputs.candidate_artifact }}
           github-token: ${{ github.token }}
           path: ${{ env.AIMANITY_QA_ROOT }}/candidate
+      - name: Restrict installer and installed client to offline operation
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem "$env:AIMANITY_QA_ROOT/candidate/*.exe" -File).FullName
+          $client = Join-Path $env:AIMANITY_QA_ROOT 'installed/ai-phone-client.exe'
+          foreach ($program in @($setup, $client)) {
+            New-NetFirewallRule -DisplayName "AImanity offline QA $program" -Program $program -Direction Outbound -Action Block -RemoteAddress Internet | Out-Null
+          }
       - name: Install the exact signed EXE
         env:
           AIMANITY_QA_SOURCE: ${{ inputs.source_sha }}

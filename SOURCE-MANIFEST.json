@@ -58,8 +58,8 @@
     },
     {
       "path": ".github/workflows/client-factory.yml",
-      "size": 10397,
-      "sha256": "10dd09d69d88671ce9ff3b3e1873ff8d3376279b79fea336d51cb0e81cda8924"
+      "size": 13299,
+      "sha256": "f8e2eaecdc8fc87847d0a5e35cccf00a7b22558c920482f399d2ae9d070a27f3"
     },
     {
       "path": ".github/workflows/client.yml",
@@ -78,8 +78,8 @@
     },
     {
       "path": ".github/workflows/linux-install-check.yml",
-      "size": 4613,
-      "sha256": "5cfcbd9bfb142c2ece502e3e17100268cda0108924bca8a707fd6a9c26007ae4"
+      "size": 4976,
+      "sha256": "617577376fa1acb606b7d362761cebf16d88053957d3bc55c6f3f2da743a8b66"
     },
     {
       "path": ".github/workflows/linux-packages.yml",
@@ -113,8 +113,8 @@
     },
     {
       "path": ".github/workflows/windows-installer-acceptance.yml",
-      "size": 3024,
-      "sha256": "62e6bcfd6e65021ecd062097511e55f40c17185affe97221acd9ebe770628fe5"
+      "size": 3536,
+      "sha256": "67743d07dfd20355cdf0b374087f3613f6812ae1fff3dba86065b0cde660757e"
     },
     {
       "path": ".github/workflows/windows-qemu.yml",
@@ -798,13 +798,18 @@
     },
     {
       "path": "apps/native/tests/installed/window.rs",
-      "size": 9450,
-      "sha256": "3c67ad871ff35d9f993521711014b9f77c6cd61218a723397e11d85b5834725d"
+      "size": 10644,
+      "sha256": "5c5604c4cd094d0d29cd8a25faf6c0d4c28feb77dc7ca7a88deece05c08fbcb2"
     },
     {
       "path": "apps/native/tests/installed/windows.rs",
       "size": 3890,
       "sha256": "f09cb6bde31455ca5a7c8daa7837108f4b3922abc2d1ac5809ba64cf20bbd1a4"
+    },
+    {
+      "path": "apps/native/tests/installed_macos.rs",
+      "size": 1645,
+      "sha256": "8f756e118982079a9ffd4d292a5a2e19ec41cd94368b18196b06c5f907405fe1"
     },
     {
       "path": "apps/native/vendor/cryoglyph/Cargo.toml",
@@ -4993,8 +4998,8 @@
     },
     {
       "path": "scripts/check-linux-guests.sh",
-      "size": 3135,
-      "sha256": "9557ae1817a71aff03e146f86c0493e67ba075fb59f24194758587d8653d43ea"
+      "size": 3506,
+      "sha256": "a27c8c30a6fc5db89a0e12bf2094971e457c5dbab64df17bb94009defd1f25f4"
     },
     {
       "path": "scripts/check-native-workspace.sh",
@@ -5033,8 +5038,8 @@
     },
     {
       "path": "scripts/mobile-smoke.sh",
-      "size": 8179,
-      "sha256": "373f16129c17f14d7f503515b82bc9020624c8bb17fde7a62ca01e84acaf0bdd"
+      "size": 8535,
+      "sha256": "62a418785bf33cea986e98be7a6f1a867720a071ebf94206105ef5af56c78158"
     },
     {
       "path": "scripts/native-host",

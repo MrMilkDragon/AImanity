@@ -5,8 +5,11 @@ on:
       platform:
         description: Complete offline installer
         type: choice
-        options: [macos, windows]
+        options: [macos, windows, check-macos]
         required: true
+      candidate_run:
+        description: Mac factory run for installation and reopen
+        type: string
 permissions:
   contents: read
   actions: read
@@ -222,3 +225,59 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 2
+  check-macos:
+    if: inputs.platform == 'check-macos'
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      CARGO_BUILD_JOBS: '3'
+      CARGO_INCREMENTAL: '0'
+      CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: complete-macos-installer
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/installer
+      - name: Install the signed disk image in an empty Applications directory
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run }}
+        run: |
+          set -euo pipefail
+          source=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" --jq 'select(.path==".github/workflows/client-factory.yml" and .conclusion=="success")|.head_sha')
+          test -n "$source"
+          dmg="$RUNNER_TEMP/installer/AImanity-0.0.6-macos-arm64.dmg"
+          jq -e --arg source "$source" '.source_commit==$source and .complete_device_bundle' "$dmg.manifest.json"
+          test "$(shasum -a 256 "$dmg" | cut -d' ' -f1)" = "$(jq -r .sha256 "$dmg.manifest.json")"
+          codesign --verify --strict "$dmg"
+          mount="$RUNNER_TEMP/mounted"
+          installed="$RUNNER_TEMP/Applications/AImanity.app"
+          mkdir "$mount" "$RUNNER_TEMP/Applications" "$RUNNER_TEMP/acceptance"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          ditto "$mount/AImanity.app" "$installed"
+          hdiutil detach "$mount"
+          codesign --verify --deep --strict "$installed"
+          exe="$installed/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$installed/Contents/Info.plist")"
+          "$exe" --verify-bundled-host "$installed/Contents/Resources/host"
+          echo "AIMANITY_QA_ROOT=$RUNNER_TEMP/acceptance" >> "$GITHUB_ENV"
+          echo "AIMANITY_QA_CLIENT=$exe" >> "$GITHUB_ENV"
+      - name: Launch, close and reopen the installed app offline
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          cargo +1.96.0 test --locked --manifest-path apps/native/Cargo.toml --test installed_macos -- --ignored --nocapture
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: macos-offline-workbench
+          path: |
+            ${{ runner.temp }}/acceptance/*.log
+            ${{ runner.temp }}/acceptance/*.png
+          if-no-files-found: ignore
+          retention-days: 7

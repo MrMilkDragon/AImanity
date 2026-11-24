@@ -1,20 +1,27 @@
 use super::Result;
-use enigo::{Button, Coordinate, Direction, Enigo, Keyboard, Mouse, Settings};
+#[cfg(windows)]
+use enigo::Keyboard;
+use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings};
 use std::{
     fs::File,
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
 };
+#[cfg(windows)]
+use tokio::time::Instant;
 use tokio::{
     process::{Child, Command},
-    time::{Instant, sleep, timeout},
+    time::{sleep, timeout},
 };
+#[cfg(windows)]
 use windows_sys::Win32::{
     System::Threading::CREATE_NO_WINDOW,
     UI::WindowsAndMessaging::{PostMessageW, SetForegroundWindow, WM_CLOSE},
 };
-use xcap::{Monitor, Window};
+#[cfg(windows)]
+use xcap::Monitor;
+use xcap::Window;
 
 pub(super) struct Client {
     child: Child,
@@ -25,8 +32,15 @@ pub(super) struct Client {
 
 impl Client {
     pub async fn launch(exe: &Path, profile: &Path, evidence: &Path, log: &Path) -> Result<Self> {
-        let mut child = Command::new(exe)
-            .creation_flags(CREATE_NO_WINDOW)
+        #[cfg(windows)]
+        let mut command = Command::new(exe);
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
+        #[cfg(target_os = "macos")]
+        let mut command = Command::new("/usr/bin/sandbox-exec");
+        #[cfg(target_os = "macos")]
+        command.args(["-p", "(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip \"localhost:*\"))"]).arg(exe);
+        let mut child = command
             .env("AIMANITY_DATA_DIR", profile)
             .stderr(File::create(log)?)
             .stdout(Stdio::null())
@@ -48,6 +62,7 @@ impl Client {
             }
         })
         .await??;
+        #[cfg(windows)]
         unsafe {
             SetForegroundWindow(window.id()? as usize as _);
         }
@@ -58,6 +73,19 @@ impl Client {
             window,
         })
     }
+    #[cfg(target_os = "macos")]
+    fn pixels(&self) -> Result<(image::RgbaImage, i32, i32)> {
+        let frame = self.window.capture_image()?;
+        let w = self.window.width()?;
+        let h = self.window.height()?;
+        let pixels = if frame.dimensions() == (w, h) {
+            frame
+        } else {
+            image::imageops::resize(&frame, w, h, image::imageops::FilterType::Triangle)
+        };
+        Ok((pixels, self.window.x()?, self.window.y()?))
+    }
+    #[cfg(windows)]
     fn pixels(&self) -> Result<(image::RgbaImage, i32, i32)> {
         let (x, y) = (self.window.x()?, self.window.y()?);
         let (w, h) = (
@@ -138,6 +166,7 @@ impl Client {
         })
         .await?
     }
+    #[cfg(windows)]
     pub async fn word(&mut self, word: &str, click: bool) -> Result<()> {
         let until = Instant::now() + Duration::from_secs(35);
         let image = self.evidence.join("window.png");
@@ -195,6 +224,7 @@ impl Client {
         }
         Err(format!("The installed client did not display {word}").into())
     }
+    #[cfg(windows)]
     pub fn type_name(&mut self, value: &str) -> Result<()> {
         if !self.window.is_focused()? {
             return Err("The installed client lost focus".into());
@@ -203,6 +233,9 @@ impl Client {
         Ok(())
     }
     pub async fn close(&mut self) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        self.click(self.window.x()? + 14, self.window.y()? + 14)?;
+        #[cfg(windows)]
         if unsafe { PostMessageW(self.window.id()? as usize as _, WM_CLOSE, 0, 0) } == 0 {
             return Err(std::io::Error::last_os_error().into());
         }
@@ -212,6 +245,7 @@ impl Client {
         }
         Ok(())
     }
+    #[cfg(windows)]
     pub async fn create_guest(&mut self, kind: &str) -> Result<()> {
         self.word("Add", true).await?;
         self.word("Name", false).await?;
@@ -222,6 +256,7 @@ impl Client {
         }
         self.word("installation", true).await
     }
+    #[cfg(windows)]
     pub async fn frame(&mut self, kind: &str, log: &Path) -> Result<()> {
         let until = Instant::now() + Duration::from_secs(1500);
         let marker = format!(" kind={kind}");
