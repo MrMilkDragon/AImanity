@@ -113,8 +113,8 @@
     },
     {
       "path": ".github/workflows/windows-installer-acceptance.yml",
-      "size": 3536,
-      "sha256": "67743d07dfd20355cdf0b374087f3613f6812ae1fff3dba86065b0cde660757e"
+      "size": 3983,
+      "sha256": "908914b0e560788588adaa23a03621f1caf385d8a24dfd1270400071825211c9"
     },
     {
       "path": ".github/workflows/windows-qemu.yml",

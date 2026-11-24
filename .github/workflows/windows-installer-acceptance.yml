@@ -21,6 +21,10 @@ jobs:
   exact-exe:
     runs-on: windows-2025
     timeout-minutes: 90
+    env:
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -61,12 +65,17 @@ jobs:
           AIMANITY_QA_SOURCE: ${{ inputs.source_sha }}
         shell: pwsh
         run: cargo run --locked -p ai-phone-host-runtime --bin qualify-windows-installer
+      - name: Open and reopen the signed client in an empty offline workspace
+        shell: pwsh
+        run: |
+          $env:AIMANITY_QA_CLIENT = Join-Path $env:AIMANITY_QA_ROOT 'installed/ai-phone-client.exe'
+          cargo test --locked --manifest-path apps/native/Cargo.toml --bin aimanity-native windows_empty_workbench -- --ignored --nocapture
       - name: Locate native controls on the Windows desktop
         shell: pwsh
         run: |
           choco install tesseract --yes --no-progress
           "AIMANITY_QA_OCR=$env:ProgramFiles\Tesseract-OCR\tesseract.exe" >> $env:GITHUB_ENV
-      - name: Exercise the empty workbench, on-demand guests and cold reopen
+      - name: Create on-demand guests and reopen both devices
         run: cargo test --locked --manifest-path apps/native/Cargo.toml --bin aimanity-native windows_installed_guests -- --ignored --nocapture
       - name: Retain isolated workbench evidence
         if: always()
