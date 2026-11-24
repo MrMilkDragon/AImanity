@@ -44,7 +44,7 @@ fn app_class<'a>(
         .l()?;
     Ok(class.into())
 }
-pub fn show(purpose: Option<input_method::Purpose>) {
+pub fn show(editor: Option<(input_method::Purpose, i32)>) {
     let Some(app) = ACTIVITY.lock().unwrap().clone() else {
         return;
     };
@@ -61,7 +61,7 @@ pub fn show(purpose: Option<input_method::Purpose>) {
                     )?
                     .l()?;
                 let mut slot = VIEW.lock().unwrap();
-                if let Some(purpose) = purpose {
+                if let Some((purpose, baseline)) = editor {
                     let input_type = if purpose == input_method::Purpose::Secure { 0x81 } else { 1 };
                     let type_changed = INPUT_TYPE.swap(input_type, Ordering::Relaxed) != input_type;
                     if slot.is_none() {
@@ -81,7 +81,7 @@ pub fn show(purpose: Option<input_method::Purpose>) {
                             &[2.into()],
                         )?;
                         let layout = env.new_object(
-                            "android/view/ViewGroup$LayoutParams",
+                            "android/widget/FrameLayout$LayoutParams",
                             "(II)V",
                             &[1.into(), 1.into()],
                         )?;
@@ -94,6 +94,9 @@ pub fn show(purpose: Option<input_method::Purpose>) {
                         *slot = Some(env.new_global_ref(view)?);
                     }
                     let view = slot.as_ref().unwrap().as_obj();
+                    let layout = env.call_method(view, "getLayoutParams", "()Landroid/view/ViewGroup$LayoutParams;", &[])?.l()?;
+                    env.set_field(&layout, "topMargin", "I", baseline.into())?;
+                    env.call_method(view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[(&layout).into()])?;
                     if !env.call_method(view, "hasFocus", "()Z", &[])?.z()? {
                         env.call_method(view, "requestFocus", "()Z", &[])?;
                     } else if type_changed {

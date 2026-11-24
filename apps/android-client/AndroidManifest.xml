@@ -14,6 +14,7 @@
         android:allowBackup="false" android:extractNativeLibs="true">
         <activity android:name="dev.aimanity.mobile.WorkbenchActivity" android:exported="true"
             android:launchMode="singleTask" android:screenOrientation="sensorLandscape"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density">
             <meta-data android:name="android.app.lib_name" android:value="aimanity_native"/>
             <intent-filter>

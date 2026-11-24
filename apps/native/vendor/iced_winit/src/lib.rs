@@ -85,7 +85,7 @@ where
 pub fn run_android<P>(
     program: P,
     app: winit::platform::android::activity::AndroidApp,
-    show_keyboard: fn(Option<core::input_method::Purpose>),
+    show_keyboard: fn(Option<(core::input_method::Purpose, i32)>),
 ) -> Result<(), Error>
 where
     P: Program + 'static,
@@ -125,7 +125,7 @@ pub fn android_input(event: core::Event) {
 
 #[cfg(target_os = "android")]
 std::thread_local! {
-    static ANDROID_KEYBOARD: std::cell::Cell<fn(Option<core::input_method::Purpose>)> = const { std::cell::Cell::new(|_| {}) };
+    static ANDROID_KEYBOARD: std::cell::Cell<fn(Option<(core::input_method::Purpose, i32)>)> = const { std::cell::Cell::new(|_| {}) };
 }
 
 fn run_with_loop<P>(

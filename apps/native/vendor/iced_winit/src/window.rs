@@ -285,9 +285,10 @@ where
     ) {
         #[cfg(target_os = "android")]
         if std::mem::take(&mut self.ime_tapped)
-            || self.ime_state.is_none_or(|(_, previous)| previous != purpose)
+            || self.ime_state.is_some_and(|(_, previous)| previous != purpose)
         {
-            crate::ANDROID_KEYBOARD.get()(Some(purpose));
+            let baseline = (cursor.y + cursor.height) * self.state.scale_factor();
+            crate::ANDROID_KEYBOARD.get()(Some((purpose, baseline.round() as i32)));
         }
         #[cfg(not(target_os = "android"))]
         if self.ime_state.is_none() {

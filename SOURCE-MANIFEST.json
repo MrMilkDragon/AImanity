@@ -193,8 +193,8 @@
     },
     {
       "path": "apps/android-client/AndroidManifest.xml",
-      "size": 1692,
-      "sha256": "47ccc15ac4c0624c0dac63e8bbf002f71449396bca0cab14408082d01474a72e"
+      "size": 1762,
+      "sha256": "0e2a4a86f4d8c404ce4538ae1a0f6585169c4102417b71abbe9d36ae1eb715b7"
     },
     {
       "path": "apps/android-client/res/drawable/aimanity.xml",
@@ -423,8 +423,8 @@
     },
     {
       "path": "apps/native/src/android_keyboard.rs",
-      "size": 12506,
-      "sha256": "c88b583647e01b68bdd7f2677523d123cbf71f1f1a1008d078a4dd05a1f6d80a"
+      "size": 12864,
+      "sha256": "56beb9b499ededaad8dc88caa64478456c531b6323e4dce7e3ccd17a08e8354a"
     },
     {
       "path": "apps/native/src/android_os.rs",
@@ -883,8 +883,8 @@
     },
     {
       "path": "apps/native/vendor/iced_winit/src/lib.rs",
-      "size": 79800,
-      "sha256": "887dfaad6ed645c74ecd73db97358336f9ba8dfeaa986fa1346bc78e057f279a"
+      "size": 79814,
+      "sha256": "23282bbc979d7475123635c476acb5b4071a80428114b075e926c4215e716487"
     },
     {
       "path": "apps/native/vendor/iced_winit/src/proxy.rs",
@@ -898,8 +898,8 @@
     },
     {
       "path": "apps/native/vendor/iced_winit/src/window.rs",
-      "size": 13749,
-      "sha256": "2ddf8e9e0d7798a712be01c2383f97c259a6ecdc44a4daf8719a9c012a8e0841"
+      "size": 13860,
+      "sha256": "f6faa8b0f458f392bc068fc2fee8a545462036929fc9dabbbdb516b22fe429e8"
     },
     {
       "path": "apps/native/vendor/winit/Cargo.toml",
@@ -5028,8 +5028,8 @@
     },
     {
       "path": "scripts/mobile-smoke.sh",
-      "size": 7540,
-      "sha256": "2a425869f39ce87b9c90975b9277c6bde13bd145d9c3c0bd587a9a554b34859a"
+      "size": 7957,
+      "sha256": "227bcb98af6ec9b6e160e55cb4db2834cb3877180de9224371f54e5a10590c4c"
     },
     {
       "path": "scripts/native-host",

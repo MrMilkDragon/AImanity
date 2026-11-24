@@ -132,11 +132,12 @@ for attempt in {1..12}; do
   fi
   capture keyboard
   symbols=$(key_location keyboard '123')
-  if [[ -n $symbols ]]; then break; fi
+  if [[ -n $symbols ]] && awk -F '\t' -v top="$keyboard_top" '$1 == 5 && tolower($12) ~ /^orbit/ && $8 + $10 <= top { visible=1 } END { exit !visible }' evidence/keyboard.tsv; then break; fi
+  symbols=''
 done
 # Start with the symbols layout where a tap on the numeral commits it.
 # A numeral printed as a secondary hint on a letter needs a long press.
-[[ -n $symbols ]] || { echo "System IME did not expose its symbols key" >&2; exit 1; }
+[[ -n $symbols ]] || { echo "Composer text and the keyboard must be visible together" >&2; exit 1; }
 for attempt in {1..8}; do
   if [[ -n $symbols ]]; then
     read -r sx sy <<< "$symbols"
@@ -170,6 +171,11 @@ wait_word composed Orbit2
 adb shell input keyevent KEYCODE_HOME
 adb shell am start -W -n "$activity" > evidence/resume.txt
 wait_word resumed Orbit2
+adb shell dumpsys input_method > evidence/resumed-input-method.txt
+if grep -qE 'mInputShown=true|inputShown=true' evidence/resumed-input-method.txt; then
+  echo "Returning to the workspace reopened the dismissed keyboard" >&2
+  exit 1
+fi
 adb shell am force-stop "$PACKAGE"
 adb shell am start -W -n "$activity" > evidence/reopen.txt
 wait_word reopened Message
