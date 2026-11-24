@@ -3258,8 +3258,8 @@
     },
     {
       "path": "crates/host-runtime/src/linux_vm/host.rs",
-      "size": 21429,
-      "sha256": "66edc47d4d342586ab64e623a43b1076aa85788d6db651aed8cfd25a0dadfe86"
+      "size": 21359,
+      "sha256": "ffdd160372eeb81d8bc5c17aaec1696ded00cb178f4eb7157b7eb9cabda1b4da"
     },
     {
       "path": "crates/host-runtime/src/linux_vm.rs",
@@ -3308,8 +3308,8 @@
     },
     {
       "path": "crates/host-runtime/src/qemu_native.rs",
-      "size": 5170,
-      "sha256": "9ba4071fb9dff0d4f2894a05b6110cbc620d7ba0d195a1d2b4410409115c50f1"
+      "size": 5146,
+      "sha256": "67201f08beb117f9f93c5eb9c6af09409d9c0ba6c09e5f7a40a6c2ddc4a32c62"
     },
     {
       "path": "crates/host-runtime/src/runtime_environment.rs",
@@ -3383,8 +3383,8 @@
     },
     {
       "path": "crates/host-runtime/src/virtual_device.rs",
-      "size": 5367,
-      "sha256": "d9db2f3633c876d9729302a0c3f5a7b67ba12849d52045fabe9fca585a4b704c"
+      "size": 5343,
+      "sha256": "2d2f42cd673a4e212c5c4ac7acfdd4f2a56c89794f057619c3f336b9ab66b300"
     },
     {
       "path": "crates/host-runtime/src/vm_control/guest.rs",

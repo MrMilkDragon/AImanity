@@ -485,7 +485,6 @@ pub async fn ensure(
     control_port: u16,
     profile: &[u8],
     cancel: &dyn Fn() -> bool,
-    activity: impl Fn(bool),
 ) -> Result<()> {
     let manifest: VmManifest = serde_json::from_reader(File::open(bundle.join("manifest.json"))?)
         .map_err(|_| Error::Invalid("vm_bundle_invalid"))?;
@@ -555,7 +554,6 @@ pub async fn ensure(
         stop_running(config.home, config.control_port).await?;
     }
     let mut child = config.worker_command()?.spawn()?;
-    activity(true);
     let mut input = child.stdin.take().ok_or(Error::Invalid("vm_owner_pipe"))?;
     let mut output = child.stdout.take().ok_or(Error::Invalid("vm_owner_pipe"))?;
     native_ipc::write_bounded(
@@ -588,7 +586,6 @@ pub async fn ensure(
         eprintln!("QEMU backend startup: {}", reply.error);
         return Err(Error::Invalid("vm_owner_start_failed"));
     }
-    activity(false);
     Ok(())
 }
 

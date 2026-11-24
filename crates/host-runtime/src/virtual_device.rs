@@ -96,7 +96,6 @@ impl Instance {
                 port,
                 &profile,
                 &|| *stop.borrow(),
-                |_| {},
             )
             .await;
             if result.is_ok() {

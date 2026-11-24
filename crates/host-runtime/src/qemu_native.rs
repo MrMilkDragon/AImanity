@@ -106,7 +106,6 @@ impl Deployment<'_> {
                 vm_control::GUEST_PORT,
                 &guest_profile,
                 &cancel_start,
-                |_| {},
             )
             .await;
             if result.is_ok() {
