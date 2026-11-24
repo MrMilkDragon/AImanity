@@ -798,8 +798,8 @@
     },
     {
       "path": "apps/native/tests/installed/window.rs",
-      "size": 12482,
-      "sha256": "9b50647d43110ff4954894dd6a6f2deedcf1230c5c0149d9647bb3fb9d28261b"
+      "size": 13469,
+      "sha256": "f548603961821ba33affa6fdf4ec2dad4761b9f508467d58e10998d917e0febc"
     },
     {
       "path": "apps/native/tests/installed/windows.rs",
@@ -808,8 +808,8 @@
     },
     {
       "path": "apps/native/tests/installed_macos.rs",
-      "size": 1645,
-      "sha256": "8f756e118982079a9ffd4d292a5a2e19ec41cd94368b18196b06c5f907405fe1"
+      "size": 1621,
+      "sha256": "364a9ebeccf7fc746f961c5093b24e8cf8e8deff07ae7b89d5d939ebd5c564a2"
     },
     {
       "path": "apps/native/vendor/cryoglyph/Cargo.toml",
@@ -4648,8 +4648,8 @@
     },
     {
       "path": "docs/public/release-status.md",
-      "size": 5883,
-      "sha256": "40a2bf96408f08863fce9d6ff5dea604d6ad5677ae9c7ccbc40bd4c2f997bc49"
+      "size": 7031,
+      "sha256": "67e2175bceb579c35c68c0ab0e38da722ca57d09a99e949416b3b7956cac2a61"
     },
     {
       "path": "docs/public/runtime-bundles.md",

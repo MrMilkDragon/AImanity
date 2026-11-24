@@ -10,7 +10,7 @@ Fluorine 首次打开为空工作区。可以按需创建虚拟设备，配对�
 
 | Platform | Verified on | Further hardware coverage |
 | --- | --- | --- |
-| Apple Silicon macOS | Signed DMG on an Apple Silicon Mac. The offline workbench opened from a fresh profile, saved English and reopened the same database in 1.402 s. Local and paired TextEdit input was checked on disk. | Pairing between two separate physical computers |
+| Apple Silicon macOS | Signed DMG on an Apple Silicon Mac. The offline workbench opened from a fresh profile, saved English and reopened the same database. Time to the visible conversation controls was 1.624 s. Local and paired TextEdit input was checked on disk. | Pairing across two physical Macs, guest audio on hardware, and optional guest creation from this specific DMG |
 | Windows 11 x64 target | Notepad and zero-device reopen on a hosted Windows Server desktop | A physical Windows 11 machine and its audio devices |
 | Linux x86_64 (DEB and RPM) | Embedded workspace, device lifecycle and offline tools on a hosted Linux runner | Physical desktop audio and GPU configurations |
 | Android phones and tablets | One candidate APK on two Android 15 emulators, landscape input, draft on resume and cold reopen | ARM64 AVF guest creation, simultaneous recordings and playback on a physical phone or tablet |
@@ -18,6 +18,18 @@ Fluorine 首次打开为空工作区。可以按需创建虚拟设备，配对�
 **Workspace features under development.** The Skills window can enable or disable bundled skills. Importing a custom SKILL.md from a file or URL still lacks a native workspace handler. The external messaging channel list, binding, pairing and removal also await their native handlers. Computer and Android device pairing use a separate, working connection.
 
 **工作区功能进度。** 内置 Skill 的启停和重开保存已经验证。自定义 SKILL.md 的文件和网址导入，以及外部聊天渠道的列表、绑定、配对和解绑，仍需接入原生工作区。电脑和 Android 设备的配对使用独立通道，已有实际连接回执。
+
+### Response measurements / 响应实测
+
+| Action | Environment and scope | Time |
+| --- | --- | ---: |
+| Write Chinese text and read it back | TextEdit on Apple Silicon, same five ordinary inputs before and after | median 40.920 → 0.879 ms |
+| Write with an active Pinyin composition | Same Mac, five saved files per version. Correct complete text rose from 0/5 to 5/5. | median 4.558 ms after the fix |
+| Reopen the signed client | Offline Apple Silicon Mac, from launch through a screenshot of the visible workbench input controls | 1.624 s |
+| First device action, first visible reply, whole task | Nov 23 native workspace, local Qwen3-VL-2B, same AOSP Settings → Home task, three runs | medians 1.947 / 2.225 / 2.398 s |
+| Device dispatch to real input receipt | Same three Android runs | 17 ms each |
+
+The model's decision and final reply accounted for 91.0–94.0% of those Android task times. The TextEdit timings measure the local input path. Windows, Linux and Android entries above identify the machines used for acceptance.
 
 iPhone and iPad are scheduled for 0.0.7. Installer acceptance uses the signed artifacts listed on the release page as they are published.
 

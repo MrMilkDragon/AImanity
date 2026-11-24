@@ -123,6 +123,30 @@ impl Client {
         )?;
         Ok((pixels, left, top))
     }
+    #[cfg(target_os = "macos")]
+    pub async fn capture_workbench(&self, name: &str) -> Result<()> {
+        timeout(Duration::from_secs(60), async {
+            loop {
+                if self.window.title()? == "AImanity" {
+                    let (frame, _, _) = self.pixels()?;
+                    let (w, h) = frame.dimensions();
+                    let composer_visible = w > h
+                        && (h * 88 / 100..h * 96 / 100).any(|y| {
+                            (w * 80 / 100..w * 94 / 100)
+                                .step_by(2)
+                                .any(|x| frame.get_pixel(x, y)[0] < 150)
+                        });
+                    if composer_visible {
+                        frame.save(self.evidence.join(name))?;
+                        return Result::Ok(());
+                    }
+                }
+                sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await?
+    }
+    #[cfg(windows)]
     pub fn capture(&self, name: &str) -> Result<()> {
         self.pixels()?.0.save(self.evidence.join(name))?;
         Ok(())
@@ -196,6 +220,7 @@ impl Client {
         }
         Ok(())
     }
+    #[cfg(windows)]
     pub async fn workspace(&mut self) -> Result<()> {
         timeout(Duration::from_secs(60), async {
             while self.window.title()? != "AImanity" {

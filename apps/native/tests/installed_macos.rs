@@ -22,8 +22,7 @@ async fn signed_mac_opens_offline_and_reopens_the_same_workspace() -> Result<()>
     .await?;
     assert!(!home.join("user/native-locale").exists());
     app.choose_english().await?;
-    app.workspace().await?;
-    app.capture("first-workbench.png")?;
+    app.capture_workbench("first-workbench.png").await?;
     assert_eq!(fs::read_to_string(home.join("user/native-locale"))?, "en");
     let store = home.join("workspace.redb");
     let identity = fs::metadata(&store)?.ino();
@@ -36,12 +35,11 @@ async fn signed_mac_opens_offline_and_reopens_the_same_workspace() -> Result<()>
         &evidence.join("reopen.log"),
     )
     .await?;
-    app.workspace().await?;
+    app.capture_workbench("reopened-workbench.png").await?;
     println!(
         "Installed Mac workspace reopened offline in {} ms",
         started.elapsed().as_millis()
     );
-    app.capture("reopened-workbench.png")?;
     assert_eq!(fs::metadata(store)?.ino(), identity);
     app.close().await
 }
