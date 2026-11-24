@@ -12,6 +12,10 @@ on:
     branches: [build/android-mobile, 'build/android-mobile-release/*']
   workflow_dispatch:
     inputs:
+      source_ref:
+        description: Release source to compile and sign with the current acceptance tools
+        required: false
+        type: string
       signing:
         description: Preview uses a disposable certificate. Release uses the retained Android certificate.
         type: choice
@@ -54,6 +58,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          ref: ${{ inputs.source_ref || github.sha }}
       - name: Reuse qualified native code from this exact commit
         id: previous
         if: startsWith(github.ref, 'refs/heads/build/android-mobile-release/') || inputs.signing == 'release'
@@ -62,9 +67,10 @@ jobs:
           ABI: ${{ matrix.abi }}
         run: |
           set -euo pipefail
+          commit=$(git rev-parse HEAD)
           run=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs" -f branch=build/android-mobile \
-            -f head_sha="$GITHUB_SHA" -f status=success -f event=push -f per_page=30 | \
-            jq -r --arg sha "$GITHUB_SHA" --arg repo "$GITHUB_REPOSITORY" \
+            -f head_sha="$commit" -f status=success -f event=push -f per_page=30 | \
+            jq -r --arg sha "$commit" --arg repo "$GITHUB_REPOSITORY" \
             'first(.workflow_runs[] | select(.path == ".github/workflows/android-mobile.yml" and .head_sha == $sha and .head_repository.full_name == $repo) | .id) // empty')
           if [[ -n $run ]]; then
             items=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts")
@@ -102,7 +108,7 @@ jobs:
         if: steps.previous.outputs.run == ''
         with:
           path: apps/native/target
-          key: android-native-ndk28-rust196-${{ matrix.abi }}-${{ hashFiles('apps/native/Cargo.lock') }}-${{ github.sha }}
+          key: android-native-ndk28-rust196-${{ matrix.abi }}-${{ hashFiles('apps/native/Cargo.lock') }}-${{ inputs.source_ref || github.sha }}
           restore-keys: |
             android-native-ndk28-rust196-${{ matrix.abi }}-${{ hashFiles('apps/native/Cargo.lock') }}-
             android-native-ndk28-rust196-${{ matrix.abi }}-
@@ -160,6 +166,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ inputs.source_ref || github.sha }}
           fetch-depth: ${{ (inputs.assets_run != '' || startsWith(github.ref, 'refs/heads/build/android-mobile-release/')) && '0' || '1' }}
           persist-credentials: false
       - name: Select the requested signing mode and source assets

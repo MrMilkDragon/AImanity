@@ -53,8 +53,8 @@
     },
     {
       "path": ".github/workflows/android-mobile.yml",
-      "size": 17961,
-      "sha256": "cc5ae99c950aef9e74c0e9967bd2f387617cbf296daff31a3e1007ede7b93066"
+      "size": 18274,
+      "sha256": "7499107330c5e69686be2f2cad15589cedbf754c35a3fbabf1edc08b8f0dfe9a"
     },
     {
       "path": ".github/workflows/client-factory.yml",
@@ -5038,8 +5038,8 @@
     },
     {
       "path": "scripts/mobile-smoke.sh",
-      "size": 8535,
-      "sha256": "62a418785bf33cea986e98be7a6f1a867720a071ebf94206105ef5af56c78158"
+      "size": 8429,
+      "sha256": "ae22dd7dacd3d23840b8fb09ea9812497c0b3fb0e835a30c150001a91c8c99ad"
     },
     {
       "path": "scripts/native-host",

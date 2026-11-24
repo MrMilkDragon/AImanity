@@ -160,16 +160,14 @@ for attempt in {1..8}; do
   [[ -n $(key_location symbols '^ABC$') ]] || continue
   digit=$(awk -F '\t' -v top="$keyboard_top" -v width="$width" '
     $1 == 5 && $8 > top && $12 ~ /^[1-9]$/ {
-      y=$8+$10/2
-      if (!row || y < row-8) {delete x; row=y}
-      if (y <= row+8) x[$12]=$7+$9/2
-    }
-    END {
-      if (2 in x) {print int(x[2]),int(row); exit}
-      for (a=1;a<9;a++) for (b=a+1;b<=9;b++) if (a in x && b in x) {
-        pitch=(x[b]-x[a])/(b-a)
-        if (pitch>width/16 && pitch<width/8) {print int(x[a]+(2-a)*pitch),int(row); exit}
+      n=$12+0; x=$7+$9/2; y=$8+$10/2
+      for (a in cx) if (a!=n && cy[a]-y<8 && y-cy[a]<8) {
+        pitch=(x-cx[a])/(n-a)
+        if (pitch>width/16 && pitch<width/8) {
+          print int(x+(2-n)*pitch),int(y); exit
+        }
       }
+      cx[n]=x; cy[n]=y
     }' evidence/symbols.tsv)
   if [[ -n $digit ]]; then break; fi
 done
