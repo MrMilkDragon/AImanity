@@ -9,6 +9,7 @@ mod control;
 pub mod desktop_bridge;
 pub mod device_bridge;
 mod filesystem;
+pub mod guest_channel;
 mod links;
 mod linux_vm;
 #[cfg(unix)]
@@ -44,6 +45,12 @@ pub use unix_initializer::{shutdown as stop_macos_installation, stop_mac_phone};
 pub mod qemu_native;
 #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 pub use vm_control::desktop_location;
+#[cfg(any(
+    target_os = "macos",
+    windows,
+    all(target_os = "linux", target_arch = "x86_64")
+))]
+pub mod virtual_device;
 pub mod vm_control;
 pub mod wsl;
 

@@ -12,7 +12,19 @@ mod files;
 mod lifecycle;
 mod location;
 mod modes;
+#[cfg(any(
+    target_os = "macos",
+    windows,
+    all(target_os = "linux", target_arch = "x86_64")
+))]
+mod owned;
 mod peers;
+#[cfg(any(
+    target_os = "macos",
+    windows,
+    all(target_os = "linux", target_arch = "x86_64")
+))]
+mod power;
 mod records;
 mod scheduling;
 mod skills;
@@ -31,6 +43,12 @@ pub(crate) struct Workspace {
     pub(crate) host: std::sync::Mutex<Option<(String, Arc<crate::host_desktop::Grant>)>>,
     db: Database,
     peers: Arc<peers::Peers>,
+    #[cfg(any(
+        target_os = "macos",
+        windows,
+        all(target_os = "linux", target_arch = "x86_64")
+    ))]
+    power: std::sync::Mutex<std::collections::BTreeMap<String, power::Owner>>,
     files: std::path::PathBuf,
     changes: watch::Sender<u64>,
     live: std::sync::Mutex<Option<conversation::LiveReply>>,
@@ -111,6 +129,12 @@ impl Workspace {
         let this = Arc::new(Self {
             db,
             peers: peers::Peers::new(shutdown.clone()),
+            #[cfg(any(
+                target_os = "macos",
+                windows,
+                all(target_os = "linux", target_arch = "x86_64")
+            ))]
+            power: Default::default(),
             files,
             host: Default::default(),
             changes: watch::channel(0).0,
@@ -138,9 +162,25 @@ impl Workspace {
             self.location_changed.clone(),
             self.registry_changes(),
         ));
+        #[cfg(any(
+            target_os = "macos",
+            windows,
+            all(target_os = "linux", target_arch = "x86_64")
+        ))]
+        let watch_owned = tokio::spawn(owned::watch(
+            weak.clone(),
+            self.registry_changes(),
+            stop.clone(),
+        ));
         let worker = tokio::spawn(async move {
             if let Some(workspace) = weak.upgrade() {
                 workspace.finish_device_changes().await;
+                #[cfg(any(
+                    target_os = "macos",
+                    windows,
+                    all(target_os = "linux", target_arch = "x86_64")
+                ))]
+                workspace.resume_devices();
             }
             let mut tasks = tokio::task::JoinSet::new();
             loop {
@@ -184,12 +224,24 @@ impl Workspace {
             }
             while tasks.join_next().await.is_some() {}
             let _ = watch_location.await;
+            #[cfg(any(
+                target_os = "macos",
+                windows,
+                all(target_os = "linux", target_arch = "x86_64")
+            ))]
+            let _ = watch_owned.await;
         });
         *self.worker.lock().unwrap() = Some(worker);
     }
 
     pub(crate) async fn stop(&self) {
         self.shutdown.cancel();
+        #[cfg(any(
+            target_os = "macos",
+            windows,
+            all(target_os = "linux", target_arch = "x86_64")
+        ))]
+        self.stop_power(None).await;
         self.peers.close().await;
         let worker = self.worker.lock().unwrap().take();
         if let Some(worker) = worker {
@@ -199,7 +251,10 @@ impl Workspace {
     pub(crate) fn disconnect_reason(&self, id: &str) -> Option<String> {
         self.peers.disconnect_reason(id)
     }
-    pub(crate) fn frame_updates(&self, id: &str) -> Option<watch::Receiver<()>> {
+    pub(crate) fn frame_updates(
+        &self,
+        id: &str,
+    ) -> Option<watch::Receiver<Option<Arc<wire::DeviceCursor>>>> {
         self.peers.frames(id)
     }
     pub(crate) async fn manual_input(
@@ -324,6 +379,20 @@ impl Workspace {
                 .host_action(action)
                 .await
                 .map(|reply| reply.encode_to_vec())
+                .map_err(|e| e.to_string());
+        }
+        #[cfg(any(
+            target_os = "macos",
+            windows,
+            all(target_os = "linux", target_arch = "x86_64")
+        ))]
+        if name == "registry/device-start" {
+            let q =
+                wire::DeviceStartRequest::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
+            return self
+                .start_device(q)
+                .await
+                .map(|s| s.encode_to_vec())
                 .map_err(|e| e.to_string());
         }
         if name == "registry/device-invite" {

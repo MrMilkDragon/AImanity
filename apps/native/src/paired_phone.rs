@@ -18,10 +18,15 @@ impl Phone {
             .into_iter()
             .find(|device| device.serial == serial)
             .ok_or("请在手机上授权 ADB 并重新选择设备")?;
-        Ok(Self {
-            client: Client::attached(ADB_PORT, device).map_err(|e| e.to_string())?,
+        Ok(Self::attached(
+            Client::attached(ADB_PORT, device).map_err(|e| e.to_string())?,
+        ))
+    }
+    pub fn attached(client: Client) -> Self {
+        Self {
+            client,
             observations: Default::default(),
-        })
+        }
     }
     pub async fn perform(
         &mut self,
@@ -122,10 +127,23 @@ impl Phone {
                 point(x, y)?;
                 format!("input swipe {x} {y} {x} {y} 650")
             }
-            "swipe" => {
+            "swipe" | "drag" => {
                 point(x, y)?;
                 point(action.to_x, action.to_y)?;
-                format!("input swipe {x} {y} {} {} 240", action.to_x, action.to_y)
+                let gesture = if action.kind == "drag" {
+                    "draganddrop"
+                } else {
+                    "swipe"
+                };
+                let duration = if action.duration_ms == 0 {
+                    240
+                } else {
+                    action.duration_ms
+                };
+                format!(
+                    "input {gesture} {x} {y} {} {} {duration}",
+                    action.to_x, action.to_y
+                )
             }
             "scroll" => {
                 point(x, y)?;

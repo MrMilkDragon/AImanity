@@ -154,7 +154,8 @@ pub(super) fn run(args: &[OsString]) -> Result<Value> {
         #[cfg(not(unix))]
         return Err("The Windows backend already carries native services".into());
     }
-    if phone {
+    if phone || android.is_some() {
+        phone_apps::run(&["build".into(), root.as_os_str().into()])?;
         runtime.extend(phone_apps::component(&root)?);
         components.push("phone-apps");
     }

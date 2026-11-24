@@ -40,6 +40,9 @@ pub enum Action {
         #[serde(default)]
         to_y: i32,
     },
+    Stroke {
+        strokes: Vec<Vec<[i32; 2]>>,
+    },
     Scroll {
         #[serde(default)]
         x: i32,
@@ -135,6 +138,20 @@ fn text(value: &str) -> Result<()> {
 impl Action {
     pub fn validate(&self, settings: &Settings) -> Result<()> {
         match self {
+            Self::Stroke { strokes } => {
+                if strokes.is_empty() || strokes.len() > 32 {
+                    return Err("无效笔画".into());
+                }
+                for path in strokes {
+                    if !(2..=128).contains(&path.len()) {
+                        return Err("无效笔画".into());
+                    }
+                    for &[x, y] in path {
+                        point(x, y, settings)?;
+                    }
+                }
+                Ok(())
+            }
             Self::Click { x, y, button, .. } => click_point(*x, *y, *button, settings),
             Self::Drag { x, y, to_x, to_y } => {
                 point(*x, *y, settings)?;
@@ -353,6 +370,19 @@ async fn perform(
         } => click(screen, trace, (x, y), button, clicks).await,
         Action::Drag { x, y, to_x, to_y } => drag(screen, trace, (x, y), (to_x, to_y)).await,
         Action::Scroll { x, y, amount } => scroll(screen, trace, (x, y), amount).await,
+        Action::Stroke { strokes } => {
+            for path in strokes {
+                let [x, y] = path[0];
+                screen.move_to(x as i16, y as i16)?;
+                let mut held = HeldButton::press(screen, 1)?;
+                for [x, y] in path.into_iter().skip(1) {
+                    screen.move_to(x as i16, y as i16)?;
+                    trace.acknowledge(screen)?;
+                }
+                held.release()?;
+            }
+            Ok(())
+        }
         Action::Key { key } => send_keys(runner, settings, &[&key]).await,
         Action::Text {
             text,

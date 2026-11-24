@@ -36,6 +36,10 @@ impl Device {
         }
     }
     pub fn receive(&mut self, frame: Frame) {
+        self.trace = frame
+            .cursor
+            .as_deref()
+            .and_then(|cursor| crate::scene::AgentTrace::from_cursor(cursor, &self.info));
         self.frame = Some(Arc::new(frame));
     }
     pub fn phone(&self) -> bool {

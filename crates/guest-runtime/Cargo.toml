@@ -11,13 +11,14 @@ name = "desktop-bridge"
 path = "src/main.rs"
 
 [dependencies]
+aimanity-device-io = { path = "../device-io" }
 ai-phone-api = { path = "../api" }
 atspi = { version = "=0.30.0", default-features = false, features = ["proxies", "tokio", "zbus"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio"] }
 base64 = "=0.22.1"
 fs2 = "0.4"
 futures-util = { version = "=0.3.34", features = ["sink"] }
-image = { version = "=0.25.10", default-features = false, features = ["png"] }
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg"] }
 prost = "=0.14.4"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 rustix = { version = "1", features = ["process", "event"] }

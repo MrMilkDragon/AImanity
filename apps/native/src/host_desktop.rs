@@ -66,42 +66,7 @@ impl Permission {
     }
 }
 
-pub(super) struct Views<T>(Vec<(String, Option<String>, T)>);
-impl<T> Default for Views<T> {
-    fn default() -> Self {
-        Self(Vec::new())
-    }
-}
-impl<T> Views<T> {
-    pub fn remember(&mut self, request: &DesktopActionRequest, id: String, value: T) {
-        // Manual previews can advance one frame while a click is in flight.
-        if request.epoch == 2 {
-            if self
-                .0
-                .iter()
-                .filter(|(_, owner, _)| owner.is_none())
-                .count()
-                == 2
-                && let Some(oldest) = self.0.iter().position(|(_, owner, _)| owner.is_none())
-            {
-                self.0.remove(oldest);
-            }
-        } else {
-            self.0.retain(|(_, owner, _)| owner.is_none());
-        }
-        let owner = (request.epoch != 2).then(|| request.control_session.clone());
-        self.0.push((id, owner, value));
-    }
-    pub fn take(&mut self, request: &DesktopActionRequest) -> Option<T> {
-        let owner = (request.epoch != 2).then_some(request.control_session.as_str());
-        let i = self.0.iter().position(|(id, source, _)| {
-            *id == request.observation_id && source.as_deref() == owner
-        })?;
-        let (_, _, value) = self.0.swap_remove(i);
-        self.0.clear();
-        Some(value)
-    }
-}
+pub(super) use ai_phone_api::observations::Views;
 
 struct View {
     id: String,
@@ -621,10 +586,14 @@ pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
     let mut views = Views::default();
     let mut streams = tokio::task::JoinSet::new();
     let (send_notice, mut notices) = tokio::sync::mpsc::channel(16);
-    streams.spawn(crate::device_notices::watch(
-        phone.as_ref().map(|p| p.client.clone()),
-        send_notice,
-    ));
+    if services.notices {
+        streams.spawn(crate::device_notices::watch(
+            phone.as_ref().map(|p| p.client.clone()),
+            send_notice,
+        ));
+    } else {
+        drop(send_notice);
+    }
     let mut notices_open = true;
     let mut session_location = None;
     #[cfg(target_os = "linux")]
@@ -841,8 +810,15 @@ mod tests {
         let (ready, connected) = oneshot::channel();
         let (revoke_share, share_stop) = watch::channel(());
         let peer = tokio::spawn(async move {
-            peer_connection::share(&port.to_string(), &invitation.code, None, ready, share_stop)
-                .await
+            peer_connection::share(
+                &port.to_string(),
+                &invitation.code,
+                None,
+                false,
+                ready,
+                share_stop,
+            )
+            .await
         });
         connected.await?;
         let device = workspace.registry()?.devices.remove(0);

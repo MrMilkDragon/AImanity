@@ -3,7 +3,6 @@ use iced::{
     Element, Length,
     widget::{button, column, container, image, row, space, stack, text},
 };
-use serde::{Deserialize, Serialize};
 #[cfg(not(target_os = "android"))]
 use std::io::Read;
 use std::{
@@ -59,67 +58,6 @@ pub fn glass_background<'a, M: 'a>(content: Element<'a, M>) -> Element<'a, M> {
     .into()
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub(crate) struct Guest {
-    cpus: u8,
-    memory_mb: u16,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    storage_gb: Option<u8>,
-}
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Request {
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub(crate) reconfigure: bool,
-    locale: String,
-    phone: Guest,
-    desktop: Guest,
-}
-impl Default for Request {
-    fn default() -> Self {
-        Self {
-            reconfigure: false,
-            locale: "zh-CN".into(),
-            phone: Guest {
-                cpus: 2,
-                memory_mb: 2048,
-                storage_gb: Some(16),
-            },
-            desktop: Guest {
-                cpus: 2,
-                memory_mb: 2560,
-                storage_gb: Some(32),
-            },
-        }
-    }
-}
-
-impl Guest {
-    pub(crate) fn storage(self, desktop: bool) -> u16 {
-        self.storage_gb
-            .map(u16::from)
-            .unwrap_or(if desktop { 64 } else { 16 })
-    }
-}
-
-impl Request {
-    pub(crate) fn guest(&self, desktop: bool) -> Guest {
-        if desktop { self.desktop } else { self.phone }
-    }
-
-    pub(crate) fn set(&mut self, desktop: bool, field: Field, value: u16) {
-        let guest = if desktop {
-            &mut self.desktop
-        } else {
-            &mut self.phone
-        };
-        match field {
-            Field::Cpu => guest.cpus = value as u8,
-            Field::Memory => guest.memory_mb = value,
-            Field::Storage => guest.storage_gb = Some(value as u8),
-        }
-    }
-}
-
 #[cfg(target_os = "android")]
 pub fn data_home() -> Result<PathBuf, String> {
     android_assets::home()
@@ -151,10 +89,13 @@ pub fn data_home() -> Result<PathBuf, String> {
 }
 
 #[cfg(not(target_os = "android"))]
+pub fn component_versions() -> Result<BTreeMap<String, String>, String> {
+    serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/integrity.json")))
+        .map_err(|e| e.to_string())
+}
+#[cfg(not(target_os = "android"))]
 pub fn bundle_inventory(resource: &Path) -> Result<BTreeMap<String, String>, String> {
-    let inventory: BTreeMap<String, String> =
-        serde_json::from_str(include_str!(concat!(env!("OUT_DIR"), "/integrity.json")))
-            .map_err(|e| e.to_string())?;
+    let inventory = component_versions()?;
     let platform = if cfg!(any(windows, target_os = "linux")) {
         "qemu/manifest.json"
     } else {
@@ -386,20 +327,20 @@ impl Setup {
     }
 }
 
-const CPU_CHOICES: &[u16] = &[1, 2, 4];
+const CPU_CHOICES: &[u32] = &[1, 2, 4];
 
 pub(crate) fn resource_controls<M: Clone + 'static>(
     desktop: bool,
-    guest: Guest,
-    existing: Option<u16>,
+    guest: &ai_phone_api::wire::VirtualDeviceProfile,
+    existing: Option<u32>,
     locale: Locale,
     reduced_motion: bool,
     #[cfg(target_os = "android")] mut cpu_input: Option<Element<'static, M>>,
-    change: impl Fn(Field, u16) -> M + Copy + 'static,
+    change: impl Fn(Field, u32) -> M + Copy + 'static,
 ) -> Element<'static, M> {
     let tr = |key: &'static str| locale.tr(key);
-    let specs: [(&str, Field, &'static [u16], u16); 3] = [
-        (tr("处理器"), Field::Cpu, CPU_CHOICES, guest.cpus.into()),
+    let specs: [(&str, Field, &'static [u32], u32); 3] = [
+        (tr("处理器"), Field::Cpu, CPU_CHOICES, guest.cpus),
         (
             tr("内存"),
             Field::Memory,
@@ -418,13 +359,13 @@ pub(crate) fn resource_controls<M: Clone + 'static>(
             } else {
                 &[16, 24, 32]
             },
-            guest.storage(desktop),
+            guest.storage_gb,
         ),
     ];
     row(specs.into_iter().map(|(label, field, values, current)| {
         let value = match field {
             Field::Cpu => current.to_string(),
-            Field::Memory => format!("{} GB", f32::from(current) / 1024.),
+            Field::Memory => format!("{} GB", f64::from(current) / 1024.),
             Field::Storage => format!("{current} GB"),
         };
         let values = match (field, existing) {

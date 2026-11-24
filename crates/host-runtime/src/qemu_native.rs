@@ -51,10 +51,11 @@ impl Deployment<'_> {
         } else {
             None
         };
+        let phone = request.phone.as_ref().ok_or("host_phone_missing")?;
         let resources = android::Resources {
-            cpus: request.phone.cpus,
-            memory_mb: request.phone.memory_mb,
-            storage_gb: request.phone.storage_gb,
+            cpus: phone.cpus,
+            memory_mb: phone.memory_mb,
+            storage_gb: phone.storage_gb,
         };
         let phone = match cached {
             Some(prepared) => {
@@ -102,6 +103,7 @@ impl Deployment<'_> {
                 &vm,
                 cpus,
                 desktop_host_memory_mib(request.desktop.memory_mb),
+                vm_control::GUEST_PORT,
                 &guest_profile,
                 &cancel_start,
                 |_| {},

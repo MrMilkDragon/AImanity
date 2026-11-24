@@ -79,6 +79,41 @@ pub(super) fn add_desktop_actions(tool: &mut Value) {
     props["strokes"] = json!({"type":"array","description":"On a computer, draw each path with the active brush held down, in observed screenshot pixels. Lift between paths.","minItems":1,"maxItems":32,"items":{"type":"array","minItems":2,"maxItems":128,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"integer"}}}});
 }
 
+fn pointer(
+    action: &wire::DesktopActionRequest,
+    width: u32,
+    height: u32,
+) -> Option<wire::DeviceCursor> {
+    let (x, y) = match action.kind.as_str() {
+        "click" | "double_click" | "right_click" | "long_press" | "scroll" => (action.x, action.y),
+        "swipe" | "drag" => (action.to_x, action.to_y),
+        "stroke" => {
+            let end = action.strokes.last()?.points.last()?;
+            (end.x, end.y)
+        }
+        _ => return None,
+    };
+    Some(wire::DeviceCursor {
+        device_id: action.device_id.clone(),
+        action_id: action.action_id.clone(),
+        kind: action.kind.clone(),
+        actor: "agent".into(),
+        status: "completed".into(),
+        width,
+        height,
+        input_confirmed: true,
+        paths: vec![wire::FingerPath {
+            pointer_id: 0,
+            points: vec![wire::GesturePoint {
+                x: x.try_into().ok()?,
+                y: y.try_into().ok()?,
+                at_ms: 0,
+            }],
+        }],
+        ..Default::default()
+    })
+}
+
 pub(super) fn device_info(device: &wire::RegisteredDevice) -> Value {
     json!({"id":device.id,"name":device.name,"kind":device.kind,"system":device.system_name(),"source":if device.paired {"remote"}else{"virtual"},"connected":crate::connection::reachable(device)})
 }
@@ -160,6 +195,7 @@ impl DeviceRun {
         let mut action = data.request(&event.id, run);
         let input = !matches!(action.kind.as_str(), "observe" | "foreground");
         let mut info = json!({"device_id":id,"kind":action.kind,"action_id":event.id});
+        let mut cursor = None;
         if input {
             if self.uncertain.contains(&id) {
                 return Err(
@@ -192,6 +228,7 @@ impl DeviceRun {
                     event.content = info.to_string();
                     return Ok(Value::String(event.content.clone()));
                 }
+                cursor = pointer(&action, *width, *height);
                 action.observation_id = view.clone();
                 self.observations.remove(&id);
                 if action.kind == "key" {
@@ -209,7 +246,16 @@ impl DeviceRun {
                 info["kind"] = json!("observe");
             }
         }
+        let dispatched = event.status == "dispatched";
         let reply = workspace.peers.perform(action, Some(&session)).await?;
+        if dispatched {
+            if let Some(pointer) = &mut cursor {
+                let now = crate::connection::epoch_ms() as u64;
+                pointer.started_at_ms = now;
+                pointer.reported_at_ms = now;
+            }
+            workspace.peers.input_receipt(&id, &session, cursor);
+        }
         if !reply.observation_id.is_empty() {
             info["observation_id"] = json!(reply.observation_id);
             info["width"] = json!(reply.width);

@@ -101,6 +101,20 @@ impl<E: Execute> Backend<'_, E> {
             .await?;
         serde_json::from_slice(&bytes).map_err(|_| Error::Invalid("service_receipt"))
     }
+    pub(crate) async fn start_desktop(&mut self) -> Result<()> {
+        let lima = self.env.get("AI_PHONE_LIMA_COMMAND").cloned();
+        let lima = lima.as_deref();
+        if let Some(command) = crate::desktop_bridge::desktop_arguments(
+            self.root,
+            lima,
+            self.env
+                .get("AI_PHONE_CONTAINER_PROXY")
+                .map_or("", String::as_str),
+        )? {
+            self.unit("desktop", "start", command, &[]).await?;
+        }
+        Ok(())
+    }
     pub(crate) async fn start(&mut self, user: &Path) -> Result<()> {
         phase("environment");
         self.env
@@ -110,15 +124,7 @@ impl<E: Execute> Backend<'_, E> {
         for name in ["assistant", "phone-runner"] {
             token(self.root, name)?;
         }
-        let lima = self.env.get("AI_PHONE_LIMA_COMMAND").cloned();
-        let lima = lima.as_deref();
-        if let Some(command) = crate::desktop_bridge::desktop_arguments(
-            self.root,
-            lima,
-            &self.env["AI_PHONE_CONTAINER_PROXY"],
-        )? {
-            self.unit("desktop", "start", command, &[]).await?;
-        }
+        self.start_desktop().await?;
         phase("services_start");
         let ocr = text(&self.root.join("runtime/services/bin/vision"))?;
         self.unit(
@@ -254,6 +260,7 @@ async fn initialize<E: Execute>(
             .env
             .insert("AI_PHONE_ANDROID_QEMU".into(), "1".into());
     }
+    let desktop_only = request.phone.is_none();
     profile::prepare_request(
         &root,
         Path::new("/opt/aiphone/native-phone-bridge"),
@@ -269,7 +276,11 @@ async fn initialize<E: Execute>(
         let load_tun = backend.command("/sbin/modprobe", ["tun"]);
         backend.checked(load_tun, Vec::new()).await?;
     }
-    backend.start(Path::new("/root")).await
+    if desktop_only {
+        backend.start_desktop().await
+    } else {
+        backend.start(Path::new("/root")).await
+    }
 }
 
 #[cfg(test)]

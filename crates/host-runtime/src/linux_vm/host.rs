@@ -258,6 +258,7 @@ impl<'a> QemuVm<'a> {
     async fn start(
         config: QemuVmConfig<'a>,
         profile: Vec<u8>,
+        desktop_only: bool,
         storage_gb: Option<u32>,
         lease: filesystem::Lease,
     ) -> Result<Self> {
@@ -298,11 +299,14 @@ impl<'a> QemuVm<'a> {
                 "file": {"driver": "file", "filename": base}
             }
         });
-        let network = format!(
-            "user,id=network,hostfwd=tcp:127.0.0.1:{}-10.0.2.15:{},hostfwd=tcp:127.0.0.1:17906-10.0.2.15:17906",
+        let mut network = format!(
+            "user,id=network,hostfwd=tcp:127.0.0.1:{}-10.0.2.15:{}",
             config.control_port,
             vm_control::GUEST_PORT,
         );
+        if !desktop_only {
+            network.push_str(",hostfwd=tcp:127.0.0.1:17906-10.0.2.15:17906");
+        }
         // The key filename is relative to QEMU's working directory, so paths
         // with commas cannot become extra -fw_cfg options.
         command
@@ -478,6 +482,7 @@ pub async fn ensure(
     home: &Path,
     cpu: u16,
     memory_mib: u32,
+    control_port: u16,
     profile: &[u8],
     cancel: &dyn Fn() -> bool,
     activity: impl Fn(bool),
@@ -510,7 +515,7 @@ pub async fn ensure(
         home,
         cpu,
         memory_mib,
-        control_port: vm_control::GUEST_PORT,
+        control_port,
         base_sha256,
         release_sha256: &manifest.release_sha256,
     };
@@ -594,9 +599,15 @@ pub async fn worker(arguments: &[OsString]) -> Result<()> {
         let config = QemuVmConfig::parse(arguments)?;
         let request: LinuxVmBootstrapRequest =
             native_ipc::read_bounded(&mut input, PROFILE_FRAME).await?;
-        let storage = config.validate(&request.profile)?.desktop.storage_gb;
+        let resources = config.validate(&request.profile)?;
         let lease = config.lease()?.ok_or(Error::Busy)?;
-        Ok::<_, Error>((config, request.profile, storage, lease))
+        Ok::<_, Error>((
+            config,
+            request.profile,
+            resources.phone.is_none(),
+            resources.desktop.storage_gb,
+            lease,
+        ))
     }
     .await;
     let cancel = async {
@@ -607,9 +618,9 @@ pub async fn worker(arguments: &[OsString]) -> Result<()> {
     };
     tokio::pin!(cancel);
     let start = match admission {
-        Ok((config, profile, storage, lease)) => tokio::select! { biased;
+        Ok((config, profile, desktop_only, storage, lease)) => tokio::select! { biased;
             _ = &mut cancel => Err(Error::Cancelled),
-            result = QemuVm::start(config, profile, storage, lease) => result,
+            result = QemuVm::start(config, profile, desktop_only, storage, lease) => result,
         },
         Err(error) => Err(error),
     };

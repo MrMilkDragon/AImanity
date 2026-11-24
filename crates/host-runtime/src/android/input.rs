@@ -48,18 +48,26 @@ pub async fn run(arguments: &[OsString]) -> Result<()> {
     Ok(())
 }
 pub async fn setup(request: NativeAndroidInputSetup, stop: watch::Receiver<bool>) -> Result<bool> {
+    setup_at(15037, request, stop).await
+}
+pub(super) async fn setup_at(
+    port: u16,
+    request: NativeAndroidInputSetup,
+    stop: watch::Receiver<bool>,
+) -> Result<bool> {
     if request.version != 1 {
         return Err(Error::Invalid("phone_input_request"));
     }
     if *stop.borrow() {
         return Err(Error::Cancelled);
     }
-    let client = ai_phone_adb::Client::new(15037, request.serial.clone())
+    let client = ai_phone_adb::Client::new(port, request.serial.clone())
         .map_err(|_| Error::Invalid("phone_input_serial"))?;
     let state = State::lock(Path::new(&request.project_root), &request.serial)?;
     let pending = state.load()?;
     let mut adb = device::Adb {
         program: request.adb_program.into(),
+        port,
         client,
         serial: request.serial,
         stop,

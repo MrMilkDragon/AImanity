@@ -46,7 +46,7 @@ impl Workspace {
         let mut device_run = DeviceRun::for_devices(
             &self.peers,
             registry.devices.into_iter().filter(|d| {
-                !workspace_only && d.paired && d.connected && (target.is_empty() || d.id == target)
+                !workspace_only && d.connected && (target.is_empty() || d.id == target)
             }),
         );
         let previous: wire::HarnessEventList = self.get(&format!("events/{id}"))?;

@@ -75,6 +75,7 @@ name = "ai-phone-guest-runtime"
 version = "0.1.0"
 dependencies = [
  "ai-phone-api",
+ "aimanity-device-io",
  "atspi",
  "axum",
  "base64 0.22.1",
@@ -187,6 +188,25 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "aimanity-device-io"
+version = "0.0.6"
+dependencies = [
+ "ai-phone-adb",
+ "ai-phone-api",
+ "bytes",
+ "futures-util",
+ "prost",
+ "rustix",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

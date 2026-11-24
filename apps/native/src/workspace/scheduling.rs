@@ -245,7 +245,7 @@ impl Workspace {
                 if !registry
                     .devices
                     .iter()
-                    .any(|d| d.id == *device && d.paired && d.connected)
+                    .any(|d| d.id == *device && d.connected)
                 {
                     return Err("设备未连接".into());
                 }

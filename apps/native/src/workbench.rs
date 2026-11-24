@@ -10,7 +10,7 @@ mod chat;
 mod connection;
 mod controls;
 mod deployment;
-mod device_files;
+use aimanity_device_io::files as device_files;
 mod device_io;
 mod device_notices;
 mod devices;
@@ -72,8 +72,6 @@ enum Message {
     Setup(deployment::Message),
     Connected(Result<Box<connection::Session>, String>),
     Frame(String, connection::LatestFrame),
-    PollAgentPointers,
-    AgentPointers(Vec<wire::DeviceCursor>),
     Chat(Result<wire::ChatState, String>),
     Conversation(chat::Message),
     Agents(agents::Message),
@@ -182,7 +180,6 @@ struct App {
     closing: bool,
     connection: Option<Connection>,
     devices: Vec<stage::Device>,
-    pointer_polling: bool,
     chat_connection_error: String,
     chat: chat::Chat,
     agents: agents::Agents,
@@ -241,7 +238,6 @@ impl App {
             closing: false,
             connection: None,
             devices: Vec::new(),
-            pointer_polling: false,
             chat_connection_error: String::new(),
             chat: chat::Chat::new(),
             agents: agents::Agents::new(),
@@ -390,8 +386,14 @@ impl App {
             let mut device = previous
                 .remove(&info.id)
                 .unwrap_or_else(|| stage::Device::new(info.clone()));
-            if info.paired
-                && !info.connected
+            if !info.start_error.is_empty() {
+                self.device_admin.start_failed(info);
+            } else if matches!(
+                info.runtime_state.as_str(),
+                "starting" | "stopping" | "stopped"
+            ) {
+                self.device_admin.issues.remove(&info.id);
+            } else if !info.connected
                 && let Some(cause) = client.workspace.disconnect_reason(&info.id)
             {
                 self.device_admin.connection_failed(&info.id, cause);
@@ -738,38 +740,6 @@ impl App {
                     None => {}
                 }
             }
-            Message::PollAgentPointers if !self.pointer_polling && !self.closing => {
-                if let Some(client) = self.connection.clone() {
-                    self.pointer_polling = true;
-                    let devices = self
-                        .devices
-                        .iter()
-                        .filter(|d| d.stream.is_some() && !d.info.paired)
-                        .map(|d| d.info.clone())
-                        .collect::<Vec<_>>();
-                    return Task::perform(
-                        async move {
-                            futures_util::future::join_all(
-                                devices.into_iter().map(|d| client.cursor(d)),
-                            )
-                            .await
-                            .into_iter()
-                            .flatten()
-                            .collect()
-                        },
-                        Message::AgentPointers,
-                    );
-                }
-            }
-            Message::AgentPointers(cursors) => {
-                self.pointer_polling = false;
-                for cursor in cursors {
-                    if let Some(index) = self.device_index(&cursor.device_id) {
-                        let d = &mut self.devices[index];
-                        d.trace = scene::AgentTrace::from_cursor(&cursor, &d.info);
-                    }
-                }
-            }
             Message::Chat(result) => {
                 if let Some(client) = &self.connection {
                     let state = match result {
@@ -789,7 +759,6 @@ impl App {
                     } else {
                         Task::none()
                     };
-                    let was_active = self.agent_pointer_active();
                     let task = self
                         .chat
                         .update(chat::Message::History(Ok(state)), client, "")
@@ -798,13 +767,7 @@ impl App {
                         .modes
                         .observe_chat(&self.chat.state)
                         .map(Message::Modes);
-                    let active = self.agent_pointer_active();
-                    let sample = if was_active != active {
-                        self.update(Message::PollAgentPointers)
-                    } else {
-                        Task::none()
-                    };
-                    return Task::batch([task, speech, sample, todos]);
+                    return Task::batch([task, speech, todos]);
                 }
             }
             Message::Conversation(chat::Message::Todos(click)) => {
@@ -1052,16 +1015,11 @@ impl App {
                     self.error = error.to_string();
                 }
             }
-            Message::Devices(devices::Message::Restart) => {
-                self.error = "运行设备的配置尚未接入本地工作区".into();
-            }
             Message::Devices(message) => {
                 if let Some(client) = self.connection.clone() {
                     let status_change = matches!(
                         &message,
-                        devices::Message::Installed(..)
-                            | devices::Message::Invitation(..)
-                            | devices::Message::Jobs(..)
+                        devices::Message::Installed(..) | devices::Message::Invitation(..)
                     );
                     let task = self
                         .device_admin
@@ -1181,12 +1139,8 @@ impl App {
                 if let Err(error) = result {
                     self.error = error;
                     self.devices[index].queue.clear();
-                } else if self.devices[index].info.paired {
-                    self.devices[index].waiting = true;
-                    self.error.clear();
-                } else if let Some(next) = self.devices[index].queue.pop_front() {
-                    return self.input(index, next);
                 } else {
+                    self.devices[index].waiting = true;
                     self.error.clear();
                 }
             }
@@ -1466,12 +1420,6 @@ impl App {
         }
         Task::none()
     }
-    fn agent_pointer_active(&self) -> bool {
-        let chat = &self.chat.state;
-        chat.run_status == "running"
-            || (chat.run_status == "queued"
-                && chat.next_wake_at_ms <= connection::epoch_ms() as i64)
-    }
     fn subscription(&self) -> Subscription<Message> {
         if self.closing {
             return Subscription::none();
@@ -1519,12 +1467,6 @@ impl App {
             subscriptions.push(window::frames().map(Message::Tick));
         }
         subscriptions.push(self.chat.subscription().map(Message::Conversation));
-        if !self.closing && self.connection.is_some() && self.agent_pointer_active() {
-            subscriptions.push(
-                iced::time::every(std::time::Duration::from_millis(100))
-                    .map(|_| Message::PollAgentPointers),
-            );
-        }
         subscriptions.push(
             self.agents
                 .subscription(self.popup && self.panel == Panel::Agent)
@@ -1538,9 +1480,6 @@ impl App {
         }
         if self.popup && self.panel == Panel::Location {
             subscriptions.push(self.location.subscription().map(Message::Location));
-        }
-        if self.popup && self.panel == Panel::Devices {
-            subscriptions.push(self.device_admin.subscription().map(Message::Devices));
         }
         Subscription::batch(subscriptions)
     }

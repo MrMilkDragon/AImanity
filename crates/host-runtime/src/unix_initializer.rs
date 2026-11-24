@@ -27,6 +27,82 @@ use tokio::{process::Command, sync::watch};
 pub(crate) const CONTRACT: &str = "ai-phone-unix-host-initializer-v1";
 
 #[cfg(target_os = "macos")]
+pub(crate) async fn workspace_desktop(
+    spec: &crate::virtual_device::Instance,
+    mut stop: watch::Receiver<bool>,
+    ready: tokio::sync::oneshot::Sender<()>,
+) -> Result<()> {
+    let mut install = Installation::lock(&spec.home)?;
+    let id = spec.identity("source.payload")?;
+    let cancel = || *stop.borrow();
+    let staged = match install.resume_source(id, &cancel)? {
+        Some(s) => s,
+        None => install.stage_source(
+            &spec.bundle.join("source.payload"),
+            id,
+            &|p| fs2::available_space(p).unwrap_or(0),
+            &cancel,
+        )?,
+    };
+    let root = staged.directory;
+    crate::desktop_bridge::require_rootfs(&root, Some(spec.identity("images.payload")?))?;
+    let folder = root.join("data/deployment");
+    filesystem::directory(&folder, true)?;
+    filesystem::publish_private(
+        &folder,
+        "profile.json",
+        &serde_json::to_vec(&spec.desktop_profile()).map_err(|_| Error::Invalid("host_profile"))?,
+        false,
+    )?;
+    let user = PathBuf::from(std::env::var_os("HOME").ok_or(Error::Invalid("unix_host_home"))?);
+    let exe = std::env::current_exe()?;
+    let mut backend = Backend {
+        root: &root,
+        program: exe.as_os_str(),
+        env: std::env::vars()
+            .filter(|(k, _)| matches!(k.as_str(), "HOME" | "USER" | "TMPDIR" | "LANG" | "PATH"))
+            .collect(),
+        execute: Process(stop.clone()),
+    };
+    let result = async {
+        let managed = engine::ensure(&mut backend, &spec.home, &user, &spec.bundle, true).await?;
+        backend.env.extend(managed);
+        let lima = backend
+            .env
+            .get("AI_PHONE_LIMA_COMMAND")
+            .ok_or(Error::Invalid("managed_engine_path"))?
+            .clone();
+        let stage = crate::desktop_bridge::native_arguments(&root, "stage", Some(&lima))?;
+        backend
+            .checked(backend.command(&stage[0], &stage[1..]), Vec::new())
+            .await?;
+        let args = crate::desktop_bridge::desktop_arguments(&root, Some(&lima), "")?
+            .ok_or(Error::Invalid("desktop_resources"))?;
+        let mut desktop = backend
+            .command(&args[0], &args[1..])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()?;
+        drop(install);
+        let _ = ready.send(());
+        tokio::select! {
+            _ = stop.wait_for(|end| *end) => {
+                let _ = desktop.kill().await;
+                Ok(())
+            }
+            status = desktop.wait() => {
+                if status?.success() { Ok(()) } else { Err(Error::Invalid("guest_desktop_exited")) }
+            }
+        }
+    }
+    .await;
+    crate::managed_engine::shutdown(&spec.home, &user)
+        .await
+        .and(result)
+}
+
+#[cfg(target_os = "macos")]
 pub async fn shutdown(home: &Path) -> Result<()> {
     let user = std::env::var_os("HOME")
         .map(PathBuf::from)

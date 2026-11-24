@@ -47,11 +47,18 @@ impl Workspace {
                     return Err("设备正在删除".into());
                 }
                 d.runtime_state = change.pending().into();
+                d.start_error.clear();
                 d.connected = false;
                 d.guest_audio = false;
                 Ok(())
             })
         })?;
+        #[cfg(any(
+            target_os = "macos",
+            windows,
+            all(target_os = "linux", target_arch = "x86_64")
+        ))]
+        self.stop_power(Some(id)).await;
         if let Some(closed) = closed {
             closed.cancelled().await;
         }

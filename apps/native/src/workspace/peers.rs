@@ -37,7 +37,7 @@ enum Peer {
         closed: CancellationToken,
         tx: mpsc::Sender<Call>,
         stop: CancellationToken,
-        frames: watch::Sender<()>,
+        frames: watch::Sender<Option<Arc<wire::DeviceCursor>>>,
     },
 }
 struct Listener {
@@ -113,17 +113,15 @@ impl Peers {
     pub(super) fn available(&self, mut registry: wire::RegistryState) -> wire::RegistryState {
         let entries = self.entries.lock().unwrap();
         for device in &mut registry.devices {
-            if device.paired {
-                let route = entries.get(&device.id);
-                device.connected = matches!(route, Some(Peer::Connected { .. }));
-                device.guest_audio = matches!(
-                    route,
-                    Some(Peer::Connected {
-                        guest_audio: true,
-                        ..
-                    })
-                );
-            }
+            let route = entries.get(&device.id);
+            device.connected = matches!(route, Some(Peer::Connected { .. }));
+            device.guest_audio = matches!(
+                route,
+                Some(Peer::Connected {
+                    guest_audio: true,
+                    ..
+                })
+            );
         }
         registry
     }
@@ -144,6 +142,67 @@ impl Peers {
         drop(entries);
         self.signal();
         Ok((result, closed))
+    }
+    #[cfg(any(
+        target_os = "macos",
+        windows,
+        all(target_os = "linux", target_arch = "x86_64")
+    ))]
+    pub(super) fn owned_ticket(&self, w: &Workspace, id: &str) -> Result<Uuid> {
+        let mut entries = self.entries.lock().unwrap();
+        let device = w
+            .get::<wire::RegistryState>("registry")?
+            .devices
+            .into_iter()
+            .find(|d| {
+                d.id == id
+                    && !d.paired
+                    && matches!(
+                        d.runtime_state.as_str(),
+                        "configured" | "managed" | "booted"
+                    )
+            })
+            .ok_or("设备已断开")?;
+        if matches!(entries.get(id), Some(Peer::Connected { .. })) {
+            return Err("设备已经连接".into());
+        }
+        let code = Uuid::new_v4();
+        entries.insert(
+            id.to_owned(),
+            Peer::Invitation {
+                code,
+                kind: device.kind,
+                issued: Instant::now(),
+            },
+        );
+        Ok(code)
+    }
+    #[cfg(any(
+        target_os = "macos",
+        windows,
+        all(target_os = "linux", target_arch = "x86_64")
+    ))]
+    pub(super) fn owned_failure(&self, w: &Workspace, id: &str, reason: String) {
+        let mut entries = self.entries.lock().unwrap();
+        if self.stop.is_cancelled()
+            || matches!(entries.get(id), Some(Peer::Connected { .. }))
+            || matches!(entries.get(id),Some(Peer::Offline(old)) if old==&reason)
+        {
+            return;
+        }
+        if w.get::<wire::RegistryState>("registry").is_ok_and(|s| {
+            s.devices.iter().any(|d| {
+                d.id == id
+                    && !d.paired
+                    && !matches!(
+                        d.runtime_state.as_str(),
+                        "stopped" | "stopping" | "deleting"
+                    )
+            })
+        }) {
+            entries.insert(id.into(), Peer::Offline(reason));
+            self.signal();
+        }
     }
     pub(super) fn invite(
         &self,
@@ -221,10 +280,25 @@ impl Peers {
             _ => Err("设备已断开".into()),
         }
     }
-    pub(super) fn frames(&self, id: &str) -> Option<watch::Receiver<()>> {
+    pub(super) fn frames(
+        &self,
+        id: &str,
+    ) -> Option<watch::Receiver<Option<Arc<wire::DeviceCursor>>>> {
         match self.entries.lock().unwrap().get(id) {
             Some(Peer::Connected { frames, .. }) => Some(frames.subscribe()),
             _ => None,
+        }
+    }
+    pub(super) fn input_receipt(
+        &self,
+        id: &str,
+        session: &CancellationToken,
+        cursor: Option<wire::DeviceCursor>,
+    ) {
+        if let Some(Peer::Connected { frames, stop, .. }) = self.entries.lock().unwrap().get(id)
+            && session == stop
+        {
+            frames.send_replace(cursor.map(Arc::new));
         }
     }
     pub(super) async fn io(
@@ -278,7 +352,8 @@ impl Peers {
         };
         let expected = action.action_id.clone();
         let observe = action.kind == "observe";
-        let input = !observe
+        let input = action.epoch != 1
+            && !observe
             && action.kind != "foreground"
             && action.io.is_none()
             && action.location.is_none();
@@ -296,7 +371,7 @@ impl Peers {
                 if observe && (reply.observation_id.is_empty() || reply.width == 0 || reply.height == 0 || !reply.jpeg.starts_with(&[0xff,0xd8])) {
                     return Err("设备未返回完整画面".into());
                 }
-                if input { frames.send_replace(()); }
+                if input { frames.send_replace(None); }
                 Ok(reply)
             }
         }
@@ -408,6 +483,9 @@ async fn accept(
                 .iter_mut()
                 .find(|device| device.id == *id)
                 .ok_or("设备不存在")?;
+            if !device.paired {
+                device.runtime_state = "managed".into();
+            }
             device.system = system.into();
             Ok(())
         }) {
@@ -421,7 +499,7 @@ async fn accept(
             lanes: Default::default(),
             tx,
             stop: stop.clone(),
-            frames: watch::channel(()).0,
+            frames: watch::channel(None).0,
         };
         id.clone()
     };
@@ -760,6 +838,7 @@ mod tests {
                 target,
                 files: Endpoint::Directory(dir),
                 guest_audio: false,
+                notices: false,
                 pulse_server: None,
             };
             let (ready, opened) = oneshot::channel();

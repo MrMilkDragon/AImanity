@@ -8,6 +8,7 @@ pub(super) trait Device {
 }
 pub(super) struct Adb {
     pub program: PathBuf,
+    pub port: u16,
     pub client: ai_phone_adb::Client,
     pub serial: String,
     pub stop: watch::Receiver<bool>,
@@ -39,7 +40,7 @@ impl Device for Adb {
             output.stdout
         } else {
             let mut child = Command::new(&self.program)
-                .args(["-P", "15037", "-s", &self.serial])
+                .args(["-P", &self.port.to_string(), "-s", &self.serial])
                 .args(args)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())

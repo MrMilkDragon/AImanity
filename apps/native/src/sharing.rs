@@ -15,6 +15,7 @@ enum Msg {
     Code(String),
     Select(String),
     Scan,
+    Notices(bool),
     Found(std::result::Result<Vec<(String, String)>, String>),
     Start,
     Ready(u64),
@@ -26,6 +27,7 @@ struct Sharing {
     target: String,
     code: String,
     serial: Option<String>,
+    notices: bool,
     phones: Vec<(String, String)>,
     stop: Option<watch::Sender<()>>,
     generation: u64,
@@ -41,6 +43,7 @@ pub(super) fn window(locale: Locale) -> iced::Result {
                     target: String::new(),
                     code: String::new(),
                     serial: None,
+                    notices: false,
                     phones: vec![],
                     stop: None,
                     generation: 0,
@@ -62,6 +65,7 @@ pub(super) fn window(locale: Locale) -> iced::Result {
 impl Sharing {
     fn update(&mut self, message: Msg) -> Task<Msg> {
         match message {
+            Msg::Notices(on) => self.notices = on,
             Msg::Target(s) => self.target = s,
             Msg::Code(s) => self.code = s,
             Msg::Select(label) => {
@@ -116,10 +120,11 @@ impl Sharing {
                     self.code.trim().to_owned(),
                     self.serial.clone(),
                 );
+                let notices = serial.is_some() || cfg!(target_os = "linux") || self.notices;
                 return Task::batch([
                     Task::perform(
                         async move {
-                            share(&target, &code, serial.as_deref(), ready, rx)
+                            share(&target, &code, serial.as_deref(), notices, ready, rx)
                                 .await
                                 .map_err(|e| e.to_string())
                         },
@@ -149,7 +154,11 @@ impl Sharing {
         let tr = |s: &'static str| self.locale.tr(s);
         let idle = self.stop.is_none();
         let os = std::env::consts::OS;
-        let local = format!("{} · {}", tr("这台电脑"), ai_phone_api::platform_name(os).unwrap_or(os));
+        let local = format!(
+            "{} · {}",
+            tr("这台电脑"),
+            ai_phone_api::platform_name(os).unwrap_or(os)
+        );
         let choices = std::iter::once(local.clone())
             .chain(self.phones.iter().map(|(_, l)| l.clone()))
             .collect::<Vec<_>>();
@@ -192,6 +201,13 @@ impl Sharing {
             .spacing(5)
         ]
         .spacing(12);
+        if cfg!(any(windows, target_os = "macos")) && self.serial.is_none() {
+            form = form.push(
+                iced::widget::checkbox(self.notices)
+                    .label(tr("共享可见通知"))
+                    .on_toggle_maybe(idle.then_some(Msg::Notices)),
+            );
+        }
         if !self.error.is_empty() {
             form = form.push(text(&self.error).size(13).color(crate::style::ERROR));
         }

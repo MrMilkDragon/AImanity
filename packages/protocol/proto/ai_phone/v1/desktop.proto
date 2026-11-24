@@ -67,6 +67,7 @@ message DesktopActionRequest {
   repeated BrushStroke strokes = 18;
   DeviceIoRequest io = 19;
   LocationFix location = 20;
+  uint32 duration_ms = 21;
 }
 enum DeviceIoOperation {
   DEVICE_IO_OPERATION_UNSPECIFIED = 0;

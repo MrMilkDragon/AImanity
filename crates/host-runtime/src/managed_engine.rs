@@ -214,10 +214,7 @@ pub(crate) fn environment(root: &Path, user: &Path) -> Result<BTreeMap<String, S
 }
 
 #[cfg(target_os = "macos")]
-pub async fn desktop_location(
-    home: &Path,
-    fix: &ai_phone_api::wire::LocationFix,
-) -> Result<Option<ai_phone_api::wire::LocationDevice>> {
+pub(crate) fn desktop_command(home: &Path) -> Result<Option<tokio::process::Command>> {
     let root = home.join("user");
     let user = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -225,8 +222,14 @@ pub async fn desktop_location(
     let Some(engine) = selection(&root, &user)? else {
         return Ok(None);
     };
+    let releases = engine.home.join("releases");
+    let release = engine
+        .command
+        .ancestors()
+        .find(|dir| dir.parent() == Some(releases.as_path()))
+        .ok_or(Error::Invalid("managed_engine_path"))?;
     let args = crate::desktop_bridge::native_arguments(
-        &root,
+        release,
         "exec",
         Some(
             engine
@@ -237,6 +240,16 @@ pub async fn desktop_location(
     )?;
     let mut command = tokio::process::Command::new(&args[0]);
     command.args(&args[1..]).env("LIMA_HOME", engine.state);
+    Ok(Some(command))
+}
+#[cfg(target_os = "macos")]
+pub async fn desktop_location(
+    home: &Path,
+    fix: &ai_phone_api::wire::LocationFix,
+) -> Result<Option<ai_phone_api::wire::LocationDevice>> {
+    let Some(command) = desktop_command(home)? else {
+        return Ok(None);
+    };
     crate::desktop_bridge::apply_location(command, fix)
         .await
         .map(Some)

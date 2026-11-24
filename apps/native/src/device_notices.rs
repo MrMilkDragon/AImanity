@@ -5,6 +5,48 @@ use tokio::{
     sync::mpsc,
 };
 
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(windows)]
+mod windows;
+
+#[cfg(any(windows, target_os = "macos"))]
+struct Banner {
+    key: String,
+    notice: PhoneNotification,
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+async fn desktop(send: mpsc::Sender<PhoneNotification>) {
+    #[cfg(target_os = "macos")]
+    use macos::visible;
+    #[cfg(windows)]
+    use windows::visible;
+    let mut previous = None::<std::collections::HashSet<String>>;
+    let mut timer = tokio::time::interval(Duration::from_secs(1));
+    timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! { _ = send.closed() => break, _ = timer.tick() => {} }
+        let result = tokio::task::spawn_blocking(visible).await;
+        let Ok(Ok(banners)) = result else { continue };
+        let mut current = std::collections::HashSet::new();
+        for mut banner in banners {
+            if current.insert(banner.key.clone())
+                && previous.as_ref().is_some_and(|p| !p.contains(&banner.key))
+            {
+                if banner.notice.event_id.is_empty() {
+                    banner.notice.event_id = uuid::Uuid::now_v7().to_string();
+                }
+                banner.notice.posted_at_ms = crate::connection::epoch_ms() as u64;
+                if send.send(banner.notice).await.is_err() {
+                    return;
+                }
+            }
+        }
+        previous = Some(current);
+    }
+}
+
 pub(super) async fn watch(
     phone: Option<ai_phone_adb::Client>,
     send: mpsc::Sender<PhoneNotification>,
@@ -46,52 +88,15 @@ pub(super) async fn watch(
             }
         }
     } else {
+        #[cfg(any(windows, target_os = "macos"))]
+        desktop(send).await;
         #[cfg(target_os = "linux")]
         if let Some(home) = std::env::var_os("HOME") {
-            let path = std::path::PathBuf::from(home).join(".aiphone/notifications.json");
-            let mut seen = std::collections::HashSet::<String>::new();
-            let mut last = None;
-            let mut timer = tokio::time::interval(Duration::from_secs(1));
-            loop {
-                timer.tick().await;
-                let stamp = tokio::fs::metadata(&path)
-                    .await
-                    .ok()
-                    .and_then(|m| m.modified().ok());
-                if stamp == last {
-                    continue;
-                }
-                let Ok(bytes) = tokio::fs::read(&path).await else {
-                    continue;
-                };
-                let Ok(events) = serde_json::from_slice::<Vec<serde_json::Value>>(&bytes) else {
-                    continue;
-                };
-                let mut current = std::collections::HashSet::new();
-                for event in events {
-                    let text = |key: &str| event[key].as_str().unwrap_or("").to_owned();
-                    let id = text("event_id");
-                    if id.is_empty() {
-                        continue;
-                    }
-                    if !seen.contains(&id) {
-                        let msg = PhoneNotification {
-                            event_id: id.clone(),
-                            app_name: text("app_name"),
-                            title: text("title"),
-                            text: text("text"),
-                            posted_at_ms: event["posted_at_ms"].as_u64().unwrap_or_default(),
-                            ..Default::default()
-                        };
-                        if send.send(msg).await.is_err() {
-                            return;
-                        }
-                    }
-                    current.insert(id);
-                }
-                seen = current;
-                last = stamp;
-            }
+            aimanity_device_io::notices::watch(
+                std::path::PathBuf::from(home).join(".aiphone/notifications.json"),
+                send,
+            )
+            .await;
         }
     }
 }

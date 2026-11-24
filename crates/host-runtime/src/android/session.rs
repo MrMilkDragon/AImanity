@@ -13,6 +13,64 @@ mod readiness;
 pub use avo::runtime as avo_runtime;
 pub use cli::run;
 use std::time::Duration;
+#[cfg(any(
+    target_os = "macos",
+    windows,
+    all(target_os = "linux", target_arch = "x86_64")
+))]
+pub(crate) async fn workspace(
+    phone: super::Prepared,
+    root: &std::path::Path,
+    slot: u16,
+    mut stop: tokio::sync::watch::Receiver<bool>,
+    ready: tokio::sync::oneshot::Sender<()>,
+) -> crate::Result<()> {
+    use ai_phone_api::wire::NativeAndroidInputSetup;
+    let ports = plan::Ports {
+        adb: 16037 + slot,
+        console: 5554 + 2 * slot,
+        grpc: 18558 + slot,
+    };
+    let plan = plan::Plan::from_prepared(phone, ports)?;
+    let setup = NativeAndroidInputSetup {
+        version: 1,
+        project_root: root.to_string_lossy().into_owned(),
+        adb_program: plan
+            .sdk
+            .join("platform-tools")
+            .join(format!("adb{}", plan.suffix))
+            .to_string_lossy()
+            .into_owned(),
+        serial: plan.serial(),
+        apk_path: root
+            .join("runtime/phone-apps/input.apk")
+            .to_string_lossy()
+            .into_owned(),
+        offline_apps: true,
+        ..Default::default()
+    };
+    let started = process::start(plan, &mut stop, async |_, _| Ok(())).await?;
+    let provision = async |stop: tokio::sync::watch::Receiver<bool>| -> crate::Result<()> {
+        super::input::setup_at(ports.adb, setup, stop).await?;
+        let _ = ready.send(());
+        Ok(())
+    };
+    match started {
+        process::Started::Owned(mut phone) => {
+            let result = async {
+                provision(stop.clone()).await?;
+                phone.wait(&mut stop).await
+            }
+            .await;
+            phone.shutdown().await.and(result)
+        }
+        process::Started::Existing(_) => {
+            provision(stop.clone()).await?;
+            let _ = stop.wait_for(|end| *end).await;
+            Ok(())
+        }
+    }
+}
 pub const CONTRACT: &str = "ai-phone-native-android-session-v1";
 
 pub fn attached_client(home: &std::path::Path) -> crate::Result<Option<ai_phone_adb::Client>> {

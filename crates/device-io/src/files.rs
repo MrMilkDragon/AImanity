@@ -1,4 +1,4 @@
-use crate::device_io::Result;
+use crate::Result;
 use ai_phone_api::wire::{FileEntry, FileListing};
 use std::{
     path::{Component, Path, PathBuf},
@@ -10,13 +10,13 @@ use tokio::{
 };
 
 #[derive(Clone)]
-pub(crate) enum Endpoint {
+pub enum Endpoint {
     Directory(PathBuf),
     Desktop,
     Android(ai_phone_adb::Client),
 }
 
-pub(crate) fn absolute(path: &str) -> Result<&str> {
+pub fn absolute(path: &str) -> Result<&str> {
     if !path.starts_with('/')
         || path.contains(['\0', '\\'])
         || path.split('/').any(|p| p == ".." || p == ".")
@@ -25,7 +25,7 @@ pub(crate) fn absolute(path: &str) -> Result<&str> {
     }
     Ok(path)
 }
-pub(crate) fn child(parent: &str, name: &str) -> Result<String> {
+pub fn child(parent: &str, name: &str) -> Result<String> {
     if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']) {
         return Err("文件名无效".into());
     }
@@ -83,6 +83,7 @@ fn rename_new(src: &Path, dst: &Path) -> Result<()> {
         renameat_with(CWD, src, CWD, dst, RenameFlags::NOREPLACE)?;
     }
     #[cfg(windows)]
+    #[allow(unsafe_code)]
     {
         use std::os::windows::ffi::OsStrExt;
         use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
@@ -118,7 +119,7 @@ impl Drop for AndroidUpload<'_> {
 }
 
 impl Endpoint {
-    pub(crate) fn local_path(&self, path: &str) -> Result<PathBuf> {
+    pub fn local_path(&self, path: &str) -> Result<PathBuf> {
         match self {
             Self::Directory(root) => root_path(root, path),
             #[cfg(not(windows))]
@@ -138,7 +139,7 @@ impl Endpoint {
             Self::Android(_) => Err("设备远端路径".into()),
         }
     }
-    pub(crate) async fn list(&self, path: &str) -> Result<FileListing> {
+    pub async fn list(&self, path: &str) -> Result<FileListing> {
         let mut entries = Vec::new();
         #[cfg(windows)]
         if matches!(self, Self::Desktop) && absolute(path)?.trim_matches('/').is_empty() {
@@ -206,7 +207,7 @@ impl Endpoint {
             location: None,
         })
     }
-    pub(crate) async fn read(&self, path: &str, out: &mut (impl AsyncWrite + Unpin)) -> Result<()> {
+    pub async fn read(&self, path: &str, out: &mut (impl AsyncWrite + Unpin)) -> Result<()> {
         match self {
             Self::Desktop | Self::Directory(_) => {
                 let mut f = fs::File::open(self.local_path(path)?).await?;
@@ -218,11 +219,7 @@ impl Endpoint {
         }
         Ok(())
     }
-    pub(crate) async fn write(
-        &self,
-        path: &str,
-        input: &mut (impl AsyncRead + Unpin),
-    ) -> Result<()> {
+    pub async fn write(&self, path: &str, input: &mut (impl AsyncRead + Unpin)) -> Result<()> {
         match self {
             Self::Desktop | Self::Directory(_) => {
                 let dst = self.local_path(path)?;
@@ -256,7 +253,7 @@ impl Endpoint {
         }
         Ok(())
     }
-    pub(crate) async fn change(
+    pub async fn change(
         &self,
         op: ai_phone_api::wire::DeviceIoOperation,
         path: &str,

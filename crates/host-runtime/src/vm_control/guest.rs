@@ -218,6 +218,27 @@ async fn handle(mut stream: TcpStream, key: &hmac::Key) -> Result<()> {
             .await;
             return reply(&mut stream, key, &nonce, result).await;
         }
+        LinuxVmOperation::DesktopSession | LinuxVmOperation::DesktopIo => {
+            let service = if operation == LinuxVmOperation::DesktopSession {
+                crate::guest_channel::Service::Control
+            } else {
+                crate::guest_channel::Service::FilesAndAudio
+            };
+            let channel = async {
+                crate::guest_channel::command(
+                    crate::desktop_bridge::native_command(&installation().await?, "exec")?,
+                    service,
+                )
+            }
+            .await;
+            let (mut pipe, _child) = match channel {
+                Ok(c) => c,
+                Err(e) => return reply(&mut stream, key, &nonce, Err(e)).await,
+            };
+            reply(&mut stream, key, &nonce, Ok(Vec::new())).await?;
+            tokio::io::copy_bidirectional(&mut stream, &mut pipe).await?;
+            return Ok(());
+        }
         LinuxVmOperation::NativeCredentials => {
             return reply(&mut stream, key, &nonce, native_credentials().await).await;
         }

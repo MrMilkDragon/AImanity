@@ -43,12 +43,7 @@ impl AgentTrace {
         cursor: &wire::DeviceCursor,
         device: &wire::RegisteredDevice,
     ) -> Option<Self> {
-        let agent = if device.kind == "phone" {
-            cursor.actor == "agent"
-        } else {
-            uuid::Uuid::parse_str(&cursor.actor).is_ok()
-        };
-        if !agent
+        if cursor.actor != "agent"
             || !cursor.input_confirmed
             || cursor.device_id != device.id
             || cursor.action_id.is_empty()
@@ -63,8 +58,7 @@ impl AgentTrace {
             .iter_mut()
             .zip(cursor.paths.iter().filter_map(|p| p.points.last()))
         {
-            let age = cursor
-                .reported_at_ms
+            let age = (crate::connection::epoch_ms() as u64)
                 .saturating_sub(cursor.started_at_ms.saturating_add(u64::from(point.at_ms)));
             *slot = [
                 (point.x as f32 + 0.5) / cursor.width as f32,
@@ -575,6 +569,7 @@ mod tests {
     #[test]
     fn blank_canvas_gestures_and_device_input_are_disjoint() {
         let frame = Frame {
+            cursor: None,
             width: 20,
             height: 40,
             pixels: Arc::new(vec![0; 3200]),

@@ -95,6 +95,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "aimanity-device-io"
+version = "0.0.6"
+dependencies = [
+ "ai-phone-adb",
+ "ai-phone-api",
+ "bytes",
+ "futures-util",
+ "prost",
+ "rustix 1.1.6",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "uuid",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "aimanity-model"
 version = "0.0.6"
 dependencies = [
@@ -116,6 +135,7 @@ dependencies = [
  "ai-phone-api",
  "ai-phone-host-runtime",
  "ai-phone-local-speech",
+ "aimanity-device-io",
  "aimanity-model",
  "android-activity",
  "arboard",
@@ -125,6 +145,7 @@ dependencies = [
  "bytemuck",
  "bytes",
  "chrono",
+ "core-foundation 0.10.1",
  "core-graphics 0.25.0",
  "cpal",
  "dispatch2",
@@ -3104,6 +3125,7 @@ checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
 dependencies = [
  "bitflags 2.13.2",
  "block2 0.6.2",
+ "libc",
  "objc2 0.6.5",
  "objc2-core-graphics",
  "objc2-foundation 0.3.2",

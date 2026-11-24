@@ -1,4 +1,7 @@
 {
+  "启动设备": "Gerät starten",
+  "应用并重启": "Anwenden und neu starten",
+  "共享可见通知": "Sichtbare Mitteilungen teilen",
   "启动失败": "Start fehlgeschlagen",
   "点击重试": "Zum Wiederholen klicken",
   "共享端已关闭连接": "Das freigebende Gerät hat die Verbindung geschlossen",
@@ -16,7 +19,6 @@
   "远程电脑": "Entfernter Computer",
   "移除设备": "Gerät entfernen",
   "请启用 KVM 并授予当前账号 /dev/kvm 读写权限。加入 kvm 组后请重新登录。": "Aktiviere KVM und erteile deinem Konto Lese- und Schreibzugriff auf /dev/kvm. Melde dich nach dem Beitritt zur Gruppe kvm erneut an.",
-  "应用并重启两台设备": "Beide Geräte neu starten und Änderungen anwenden",
   "允许本机协作": "Steuerung des Host-Desktops erlauben",
   "卸载 AImanity": "AImanity deinstallieren",
   "两台虚拟设备、聊天、工作文件和设置将永久删除。": "Beide virtuellen Geräte, Chats, Arbeitsdateien und Einstellungen werden dauerhaft gelöscht.",
