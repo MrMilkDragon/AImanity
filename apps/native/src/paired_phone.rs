@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 pub(super) const ADB_PORT: u16 = 5037;
 pub(super) const DEADLINE: Duration = Duration::from_secs(8);
 pub(super) struct Phone {
-    client: Client,
+    pub(super) client: Client,
     observations: crate::host_desktop::Views<(u32, u32, Instant)>,
 }
 impl Phone {

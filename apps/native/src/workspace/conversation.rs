@@ -96,6 +96,7 @@ impl Workspace {
         if q.request_id.is_empty() || (q.text.trim().is_empty() && q.attachment_ids.is_empty()) {
             return Err("请输入消息或添加附件".into());
         }
+        let online = q.device_id.is_empty() || self.peers.frames(&q.device_id).is_some();
         let tx = self.db.begin_write()?;
         let records = tx.open_table(RECORDS)?;
         let mut head: wire::ChatState = read(&records, "chat")?;
@@ -121,11 +122,16 @@ impl Workspace {
             .ok_or("请先配置模型")?;
         let model: wire::ModelDraft =
             read(&records, &format!("model/{}", agent.model_connection_id))?;
-        if !q.device_id.is_empty()
-            && !registry
-                .devices
-                .iter()
-                .any(|device| device.id == q.device_id && device.paired)
+        if !online
+            || (!q.device_id.is_empty()
+                && !registry.devices.iter().any(|device| {
+                    device.id == q.device_id
+                        && device.paired
+                        && !matches!(
+                            device.runtime_state.as_str(),
+                            "stopping" | "stopped" | "deleting"
+                        )
+                }))
         {
             return Err("当前工作区未授权这台设备".into());
         }
@@ -277,7 +283,17 @@ impl Workspace {
             *running = Some((id.clone(), token.clone()));
         }
         let started = crate::connection::epoch_ms() as u64;
-        let output = self.answer(n, &id, &job, &token).await;
+        let output = if q.device_id.is_empty() {
+            self.answer(n, &id, &job, &token).await
+        } else {
+            match self.peers.active_session(&q.device_id) {
+                Ok(session) => tokio::select! {biased;
+                    _=session.cancelled()=>Err("设备已断开".into()),
+                    result=self.answer(n,&id,&job,&token)=>result,
+                },
+                Err(e) => Err(e),
+            }
+        };
         if token.is_cancelled() {
             self.live.lock().unwrap().take();
             return Ok(());

@@ -32,16 +32,24 @@ enum Peer {
     },
     Connected {
         session: Uuid,
+        lanes: Arc<Mutex<HashMap<Uuid, oneshot::Sender<WebSocket>>>>,
+        guest_audio: bool,
+        closed: CancellationToken,
         tx: mpsc::Sender<Call>,
         stop: CancellationToken,
         frames: watch::Sender<()>,
     },
 }
+struct Listener {
+    address: SocketAddr,
+    stop: CancellationToken,
+    task: tokio::task::JoinHandle<()>,
+}
 pub(super) struct Peers {
     id: Uuid,
     entries: Mutex<HashMap<String, Peer>>,
     pub changes: watch::Sender<u64>,
-    listener: tokio::sync::Mutex<Option<(SocketAddr, tokio::task::JoinHandle<()>)>>,
+    listener: tokio::sync::Mutex<Option<Listener>>,
     stop: CancellationToken,
 }
 impl Peers {
@@ -57,18 +65,20 @@ impl Peers {
 
     pub(super) async fn listen(self: &Arc<Self>, port: u16) -> Result<SocketAddr> {
         let mut listener = self.listener.lock().await;
-        if let Some((addr, _)) = listener.as_ref() {
-            return Ok(*addr);
+        if let Some(server) = listener.as_ref() {
+            return Ok(server.address);
         }
         let socket = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
         let addr = socket.local_addr()?;
         let app = Router::new()
             .route("/v1/peer/share", get(accept).head(identity))
+            .route("/v1/peer/io", get(accept_io))
             .with_state(Arc::downgrade(self));
-        let stop = self.stop.clone();
-        *listener = Some((
-            addr,
-            tokio::spawn(async move {
+        let stop = self.stop.child_token();
+        *listener = Some(Listener {
+            address: addr,
+            stop: stop.clone(),
+            task: tokio::spawn(async move {
                 if let Err(e) = axum::serve(socket, app)
                     .with_graceful_shutdown(stop.cancelled_owned())
                     .await
@@ -76,14 +86,25 @@ impl Peers {
                     eprintln!("Device sharing: {e}");
                 }
             }),
-        ));
+        });
         Ok(addr)
     }
     pub(super) async fn close(&self) {
         self.entries.lock().unwrap().clear();
         self.signal();
-        if let Some((_, task)) = self.listener.lock().await.take() {
-            let _ = task.await;
+        self.release_idle_listener().await;
+    }
+    pub(super) async fn release_idle_listener(&self) {
+        let mut listener = self.listener.lock().await;
+        let idle = self
+            .entries
+            .lock()
+            .unwrap()
+            .values()
+            .all(|p| matches!(p, Peer::Offline(_)));
+        if idle && let Some(server) = listener.take() {
+            server.stop.cancel();
+            let _ = server.task.await;
         }
     }
     pub(super) fn signal(&self) {
@@ -93,20 +114,36 @@ impl Peers {
         let entries = self.entries.lock().unwrap();
         for device in &mut registry.devices {
             if device.paired {
-                device.connected = matches!(entries.get(&device.id), Some(Peer::Connected { .. }));
+                let route = entries.get(&device.id);
+                device.connected = matches!(route, Some(Peer::Connected { .. }));
+                device.guest_audio = matches!(
+                    route,
+                    Some(Peer::Connected {
+                        guest_audio: true,
+                        ..
+                    })
+                );
             }
         }
         registry
     }
-    pub(super) fn remove<T>(&self, id: &str, change: impl FnOnce() -> Result<T>) -> Result<T> {
+    pub(super) fn remove<T>(
+        &self,
+        id: &str,
+        change: impl FnOnce() -> Result<T>,
+    ) -> Result<(T, Option<CancellationToken>)> {
         let mut entries = self.entries.lock().unwrap();
         let result = change()?;
-        if let Some(Peer::Connected { stop, .. }) = entries.remove(id) {
-            stop.cancel();
-        }
+        let closed = match entries.remove(id) {
+            Some(Peer::Connected { stop, closed, .. }) => {
+                stop.cancel();
+                Some(closed)
+            }
+            _ => None,
+        };
         drop(entries);
         self.signal();
-        Ok(result)
+        Ok((result, closed))
     }
     pub(super) fn invite(
         &self,
@@ -124,8 +161,14 @@ impl Peers {
             return Err("设备已经连接".into());
         }
         workspace.write_registry(|registry, _| {
-            match registry.devices.iter().find(|d| d.id == q.id) {
-                Some(d) if d.paired && d.kind == q.kind => {}
+            match registry.devices.iter_mut().find(|d| d.id == q.id) {
+                Some(d)
+                    if d.paired
+                        && d.kind == q.kind
+                        && !matches!(d.runtime_state.as_str(), "stopping" | "deleting") =>
+                {
+                    d.runtime_state = "registered".into();
+                }
                 Some(_) => return Err("该设备不能重新配对为另一种设备".into()),
                 None => registry.devices.push(wire::RegisteredDevice {
                     id: q.id.clone(),
@@ -164,8 +207,18 @@ impl Peers {
         let mut map = self.entries.lock().unwrap();
         if matches!(map.get(id), Some(Peer::Connected { session: active, .. }) if *active == session)
         {
-            map.insert(id.to_owned(), Peer::Offline(reason));
+            if let Some(Peer::Connected { stop, .. }) =
+                map.insert(id.to_owned(), Peer::Offline(reason))
+            {
+                stop.cancel();
+            }
             self.signal();
+        }
+    }
+    pub(super) fn active_session(&self, id: &str) -> Result<CancellationToken> {
+        match self.entries.lock().unwrap().get(id) {
+            Some(Peer::Connected { stop, .. }) => Ok(stop.clone()),
+            _ => Err("设备已断开".into()),
         }
     }
     pub(super) fn frames(&self, id: &str) -> Option<watch::Receiver<()>> {
@@ -174,20 +227,58 @@ impl Peers {
             _ => None,
         }
     }
+    pub(super) async fn io(
+        &self,
+        id: &str,
+        request: wire::DeviceIoRequest,
+        expected: Option<&CancellationToken>,
+    ) -> Result<crate::device_io::Lane> {
+        let (lanes, stop) = match self.entries.lock().unwrap().get(id) {
+            Some(Peer::Connected { lanes, stop, .. }) if expected.is_none_or(|s| s == stop) => {
+                (lanes.clone(), stop.clone())
+            }
+            _ => return Err("设备已断开".into()),
+        };
+        let key = Uuid::new_v4();
+        let (give, take) = oneshot::channel();
+        lanes.lock().unwrap().insert(key, give);
+        let _pending = PendingLane { lanes: &lanes, key };
+        let open = async {
+            self.perform(
+                wire::DesktopActionRequest {
+                    device_id: id.into(),
+                    action_id: key.to_string(),
+                    io: Some(request),
+                    ..Default::default()
+                },
+                Some(&stop),
+            )
+            .await?;
+            Ok::<_, Box<dyn std::error::Error + Send + Sync>>(take.await?)
+        };
+        let socket = tokio::select! { biased;
+            _ = stop.cancelled() => return Err("设备已断开".into()),
+            result = tokio::time::timeout(Duration::from_secs(10), open) => result??,
+        };
+        Ok(crate::device_io::Lane { socket, stop })
+    }
     pub(super) async fn perform(
         &self,
         mut action: wire::DesktopActionRequest,
+        expected_session: Option<&CancellationToken>,
     ) -> Result<wire::HostDesktopReply> {
         let id = std::mem::take(&mut action.device_id);
         let (tx, stop, frames) = match self.entries.lock().unwrap().get(&id) {
             Some(Peer::Connected {
                 tx, stop, frames, ..
-            }) => (tx.clone(), stop.clone(), frames.clone()),
+            }) if expected_session.is_none_or(|expected| expected == stop) => {
+                (tx.clone(), stop.clone(), frames.clone())
+            }
             _ => return Err("设备已断开".into()),
         };
         let expected = action.action_id.clone();
         let observe = action.kind == "observe";
-        let input = !observe && action.kind != "foreground";
+        let input = !observe && action.kind != "foreground" && action.io.is_none();
         let (sender, receiver) = oneshot::channel();
         tokio::select! {
             biased;
@@ -206,6 +297,49 @@ impl Peers {
                 Ok(reply)
             }
         }
+    }
+}
+struct PendingLane<'a> {
+    lanes: &'a Mutex<HashMap<Uuid, oneshot::Sender<WebSocket>>>,
+    key: Uuid,
+}
+impl Drop for PendingLane<'_> {
+    fn drop(&mut self) {
+        self.lanes.lock().unwrap().remove(&self.key);
+    }
+}
+async fn accept_io(
+    State(state): State<Weak<Peers>>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
+    let key = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .and_then(|v| Uuid::parse_str(v).ok());
+    if headers.contains_key("origin") {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let Some((peers, key)) = state.upgrade().zip(key) else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let grant = peers
+        .entries
+        .lock()
+        .unwrap()
+        .values()
+        .find_map(|peer| match peer {
+            Peer::Connected { lanes, .. } => lanes.lock().unwrap().remove(&key),
+            _ => None,
+        });
+    match grant {
+        Some(give) => ws
+            .max_message_size(4 * 1024 * 1024)
+            .on_upgrade(move |socket| async move {
+                let _ = give.send(socket);
+            }),
+        None => StatusCode::FORBIDDEN.into_response(),
     }
 }
 async fn identity(State(state): State<Weak<Peers>>) -> Response {
@@ -243,6 +377,7 @@ async fn accept(
     let (tx, rx) = mpsc::channel(1);
     let stop = peers.stop.child_token();
     let session = Uuid::new_v4();
+    let closed = CancellationToken::new();
     let id = {
         let mut entries = peers.entries.lock().unwrap();
         if peers.stop.is_cancelled() {
@@ -252,6 +387,9 @@ async fn accept(
             if *expected == code && kind == Some(k.as_str()) && issued.elapsed() < Duration::from_secs(300))) else { return StatusCode::FORBIDDEN.into_response(); };
         *slot = Peer::Connected {
             session,
+            closed: closed.clone(),
+            guest_audio: kind == Some("desktop") && header("x-aimanity-audio") == Some("guest-pcm"),
+            lanes: Default::default(),
             tx,
             stop: stop.clone(),
             frames: watch::channel(()).0,
@@ -260,14 +398,28 @@ async fn accept(
     };
     let failed = peers.clone();
     let reserved = id.clone();
+    let done = closed.drop_guard();
     ws.max_message_size(5 * 1024 * 1024)
         .on_failed_upgrade(move |e: axum::Error| failed.finished(&reserved, session, e.to_string()))
         .on_upgrade(move |socket| async move {
+            let _done = done;
             peers.signal();
             if let Err(error) = exchange(socket, rx, stop).await {
                 peers.finished(&id, session, error.to_string());
             }
         })
+}
+async fn close_session(socket: &mut WebSocket) -> Result<()> {
+    socket.send(Frame::Close(None)).await?;
+    let _ = tokio::time::timeout(Duration::from_secs(2), async {
+        while let Some(Ok(msg)) = socket.recv().await {
+            if matches!(msg, Frame::Close(_)) {
+                break;
+            }
+        }
+    })
+    .await;
+    Ok(())
 }
 async fn exchange(
     mut socket: WebSocket,
@@ -278,7 +430,7 @@ async fn exchange(
     loop {
         let call = tokio::select! {
             biased;
-            _ = stop.cancelled() => return Ok(()),
+            _ = stop.cancelled() => return close_session(&mut socket).await,
             inbound = socket.recv() => match inbound.transpose()? {
                 Some(Frame::Ping(_) | Frame::Pong(_)) => continue,
                 Some(Frame::Close(Some(close))) if !close.reason.is_empty() => return Err(close.reason.to_string().into()),
@@ -296,7 +448,7 @@ async fn exchange(
             .send(Frame::Binary(request.encode_to_vec().into()))
             .await?;
         let reply = tokio::select! { biased;
-            _ = stop.cancelled() => return Ok(()),
+            _ = stop.cancelled() => return close_session(&mut socket).await,
             received = tokio::time::timeout(Duration::from_secs(20), async {
                 loop {
                     match socket.recv().await.transpose()? {
@@ -463,40 +615,251 @@ mod tests {
             for target in ids.into_iter().filter(|t| *t != source) {
                 let token = format!("{source} to {target}");
                 work.peers
-                    .perform(action(source, "type", token.clone()))
+                    .perform(action(source, "type", token.clone()), None)
                     .await?;
                 let got = work
                     .peers
-                    .perform(action(source, "foreground", String::new()))
+                    .perform(action(source, "foreground", String::new()), None)
                     .await?
                     .foreground;
-                work.peers.perform(action(target, "type", got)).await?;
+                work.peers
+                    .perform(action(target, "type", got), None)
+                    .await?;
                 assert_eq!(
                     work.peers
-                        .perform(action(target, "foreground", String::new()))
+                        .perform(action(target, "foreground", String::new()), None)
                         .await?
                         .foreground,
                     token
                 );
             }
         }
-        work.dispatch(
+        work.rpc(
             "registry/device-disconnect",
-            &wire::DesktopRequest {
+            wire::DesktopRequest {
                 device_id: "phone-b".into(),
             }
             .encode_to_vec(),
-        )?;
+        )
+        .await?;
         assert_eq!(state()?.links.len(), 1);
         assert!(
             work.peers
-                .perform(action("phone-b", "type", String::new()))
+                .perform(action("phone-b", "type", String::new()), None)
                 .await
                 .is_err()
         );
         work.stop().await;
         for client in clients {
             client.await?;
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "android"))]
+    #[tokio::test]
+    async fn file_transfers_use_selected_peers_and_lifecycle_preserves_the_other_devices()
+    -> Result<()> {
+        use crate::{device_files::Endpoint, device_io::Services, host_desktop, peer_connection};
+        let root = tempfile::tempdir()?;
+        let work = Workspace::open(root.path())?;
+        let address = work.peers.listen(0).await?;
+        let mut shares = Vec::new();
+        let share = async |id: &str| {
+            let dir = root.path().join(id);
+            let invite = work.peers.invite(
+                &work,
+                wire::DevicePairRequest {
+                    id: id.into(),
+                    name: "Studio".into(),
+                    kind: "desktop".into(),
+                },
+            )?;
+            let mut req = format!("ws://{address}/v1/peer/share").into_client_request()?;
+            req.headers_mut()
+                .insert("authorization", format!("Bearer {}", invite.code).parse()?);
+            req.headers_mut()
+                .insert("x-aimanity-device", "desktop".parse()?);
+            let target = address.port().to_string();
+            let (ws, _) = peer_connection::dial(&target, req).await?;
+            let services = Services {
+                target,
+                files: Endpoint::Directory(dir),
+                guest_audio: false,
+                pulse_server: None,
+            };
+            let (ready, opened) = oneshot::channel();
+            let (keep, stop) = watch::channel(());
+            let task = tokio::spawn(host_desktop::serve_socket(ws, None, services, ready, stop));
+            opened.await?;
+            Result::Ok((keep, task))
+        };
+        for id in ["a", "b", "c"] {
+            let dir = root.path().join(id);
+            std::fs::create_dir(&dir)?;
+            std::fs::write(dir.join("origin"), id)?;
+            shares.push(share(id).await?);
+        }
+        let loc = |device: &str, path: &str| wire::FileLocation {
+            device_id: device.into(),
+            path: path.into(),
+        };
+        let manage = async |op: wire::FileOperation,
+                            src: wire::FileLocation,
+                            to: wire::FileLocation,
+                            name: &str| {
+            let result = work
+                .rpc(
+                    "files/manage",
+                    wire::FileManageRequest {
+                        operation: op.into(),
+                        sources: vec![src],
+                        target: Some(to),
+                        name: name.into(),
+                    }
+                    .encode_to_vec(),
+                )
+                .await?;
+            Result::Ok(
+                wire::FileManageResult::decode(result.as_slice())?
+                    .results
+                    .remove(0),
+            )
+        };
+        let data: Vec<u8> = (0..670_313).map(|i| (i % 227) as u8).collect();
+        std::fs::write(root.path().join("a/blob"), &data)?;
+        for (src, to, path, new_name) in [
+            ("a", "c", "/blob", "result"),
+            ("c", "b", "/result", "same"),
+            ("b", "", "/same", "receipt"),
+        ] {
+            assert!(
+                manage(
+                    wire::FileOperation::Copy,
+                    loc(src, path),
+                    loc(to, "/"),
+                    new_name
+                )
+                .await?
+                .error
+                .is_empty()
+            );
+        }
+        assert_eq!(std::fs::read(work.files.join("receipt"))?, data);
+        std::fs::create_dir(root.path().join("a/folder"))?;
+        std::fs::write(root.path().join("a/folder/note"), "图纸")?;
+        assert!(
+            manage(
+                wire::FileOperation::Move,
+                loc("a", "/folder"),
+                loc("b", "/"),
+                "folder"
+            )
+            .await?
+            .error
+            .is_empty()
+        );
+        assert!(!root.path().join("a/folder").exists());
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("b/folder/note"))?,
+            "图纸"
+        );
+        assert!(
+            !manage(
+                wire::FileOperation::Move,
+                loc("a", "/origin"),
+                loc("b", "/"),
+                "origin"
+            )
+            .await?
+            .error
+            .is_empty()
+        );
+        assert_eq!(std::fs::read(root.path().join("a/origin"))?, b"a");
+        assert_eq!(std::fs::read(root.path().join("b/origin"))?, b"b");
+        let original_session = work.peers.active_session("a")?;
+        work.end_device("a", super::super::lifecycle::Change::Disconnect)
+            .await?;
+        assert!(work.file_list(loc("a", "/")).await.is_err());
+        assert!(
+            work.registry()?
+                .devices
+                .iter()
+                .any(|d| d.id == "a" && !d.connected && d.runtime_state == "stopped")
+        );
+        let (a, task) = shares.remove(0);
+        task.await??;
+        drop(a);
+        shares.push(share("a").await?);
+        assert!(original_session.is_cancelled());
+        let stale = work
+            .peers
+            .perform(
+                wire::DesktopActionRequest {
+                    device_id: "a".into(),
+                    kind: "foreground".into(),
+                    ..Default::default()
+                },
+                Some(&original_session),
+            )
+            .await;
+        assert_eq!(stale.unwrap_err().to_string(), "设备已断开");
+        assert!(
+            work.peers
+                .io(
+                    "a",
+                    wire::DeviceIoRequest::default(),
+                    Some(&original_session)
+                )
+                .await
+                .is_err()
+        );
+        assert!(
+            work.file_list(loc("a", "/"))
+                .await?
+                .entries
+                .iter()
+                .any(|e| e.name == "origin")
+        );
+        assert!(
+            work.file_list(loc("b", "/"))
+                .await?
+                .entries
+                .iter()
+                .any(|e| e.name == "same")
+        );
+        work.end_device("c", super::super::lifecycle::Change::Delete)
+            .await?;
+        assert!(work.registry()?.devices.iter().all(|d| d.id != "c"));
+        assert_eq!(std::fs::read(root.path().join("c/result"))?, data);
+        let guest = "owned";
+        work.dispatch(
+            "registry/device-save",
+            &wire::DeviceSaveRequest {
+                id: guest.into(),
+                name: "Linux".into(),
+                kind: "desktop".into(),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+        )?;
+        let disk = work.device_home(guest).join("disk");
+        std::fs::write(&disk, b"guest data")?;
+        work.end_device(guest, super::super::lifecycle::Change::Disconnect)
+            .await?;
+        assert_eq!(std::fs::read(&disk)?, b"guest data");
+        work.end_device(guest, super::super::lifecycle::Change::Delete)
+            .await?;
+        assert!(!work.device_home(guest).exists());
+        assert_eq!(std::fs::read(work.files.join("receipt"))?, data);
+        for id in ["a", "b"] {
+            work.end_device(id, super::super::lifecycle::Change::Disconnect)
+                .await?;
+        }
+        assert!(work.peers.listener.lock().await.is_none());
+        work.stop().await;
+        for (sender, task) in shares {
+            drop(sender);
+            let _ = task.await?;
         }
         Ok(())
     }

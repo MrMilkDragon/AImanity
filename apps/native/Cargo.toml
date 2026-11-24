@@ -26,7 +26,7 @@ cpal = "=0.16.0"
 rodio = { version = "=0.21.1", default-features = false, features = ["playback"] }
 prost = "=0.14.4"
 aimanity-model = { path = "../../crates/model" }
-tokio-util = "0.7"
+tokio-util = { version = "0.7", features = ["io"] }
 redb = "=5.0.0"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "multipart"] }
 bytes = "1"
@@ -68,6 +68,9 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["NSAcce
 objc2-av-foundation = { version = "0.3", default-features = false, features = ["AVCaptureDevice", "AVMediaFormat", "block2"] }
 objc2-avf-audio = { version = "0.3", default-features = false, features = ["AVSpeechSynthesis"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSGeometry", "NSString", "NSThread"] }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "=0.61.3", features = ["Win32_Media_Speech", "Win32_System_Com", "Win32_System_Variant"] }

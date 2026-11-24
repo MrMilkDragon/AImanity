@@ -1,6 +1,6 @@
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button, form_input, icon_button, sized_icon_button},
+    controls::{Icon, action_button, form_input, form_select, icon_button, sized_icon_button},
     style,
 };
 use ai_phone_api::wire::{self, FileLocation, FileOperation};
@@ -50,6 +50,7 @@ fn table_cell(label: text::Text<'_>, width: Length) -> container::Container<'_, 
 #[derive(Clone, Debug)]
 pub enum Message {
     Load,
+    Choose(usize, String),
     Go(usize, String),
     Address(usize, String),
     Listed(usize, u64, Result<wire::FileListing, String>),
@@ -68,6 +69,18 @@ pub enum Message {
     Upload(FileLocation, Vec<PathBuf>),
     Download(Vec<FileLocation>),
     Finished(Option<FileOperation>, Result<Vec<wire::FileResult>, String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DeviceChoice {
+    id: String,
+    label: String,
+    phone: bool,
+}
+impl std::fmt::Display for DeviceChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
 }
 
 struct Pane {
@@ -117,6 +130,7 @@ struct Edit {
 }
 pub struct Files {
     panes: [Pane; 3],
+    devices: Vec<DeviceChoice>,
     clipboard: Option<(FileOperation, Vec<FileLocation>)>,
     drag: Option<(usize, Vec<FileLocation>)>,
     edit: Option<Edit>,
@@ -127,10 +141,11 @@ pub struct Files {
 impl Default for Files {
     fn default() -> Self {
         Self {
+            devices: Vec::new(),
             panes: [
                 Pane::new("工作文件", Some(String::new())),
-                Pane::new("手机", None),
-                Pane::new("电脑", None),
+                Pane::new("", None),
+                Pane::new("", None),
             ],
             clipboard: None,
             drag: None,
@@ -142,21 +157,79 @@ impl Default for Files {
     }
 }
 impl Files {
-    pub fn set_devices(&mut self, devices: &[wire::RegisteredDevice]) {
-        let mut guests = devices
+    pub fn set_devices(&mut self, devices: &[wire::RegisteredDevice]) -> Vec<usize> {
+        let mut names = std::collections::HashMap::<&str, usize>::new();
+        self.devices = devices
             .iter()
-            .filter(|d| !d.paired && crate::connection::reachable(d));
-        for (index, pane) in self.panes[1..].iter_mut().enumerate() {
-            if let Some(device) = guests.next() {
-                if pane.device.as_deref() != Some(device.id.as_str()) {
-                    *pane = Pane::new(&device.name, Some(device.id.clone()));
+            .filter(|d| crate::connection::reachable(d))
+            .map(|d| {
+                let ordinal = names.entry(&d.name).or_default();
+                *ordinal += 1;
+                let label = if *ordinal > 1 {
+                    format!("{} · {ordinal}", d.name)
+                } else {
+                    d.name.clone()
+                };
+                DeviceChoice {
+                    id: d.id.clone(),
+                    label,
+                    phone: d.kind == "phone",
                 }
-            } else if pane.device.is_some() {
-                *pane = Pane::new(if index == 0 { "手机" } else { "电脑" }, None);
-            }
+            })
+            .collect();
+        let current = |i: usize| {
+            self.devices
+                .iter()
+                .find(|d| Some(&d.id) == self.panes[i].device.as_ref())
+                .map(|d| d.id.clone())
+        };
+        let mut left = current(1);
+        let mut right = current(2);
+        if left.is_none() {
+            left = self
+                .devices
+                .iter()
+                .find(|d| Some(&d.id) != right.as_ref())
+                .map(|d| d.id.clone())
+                .or_else(|| right.take());
         }
+        if right.is_none() {
+            right = self
+                .devices
+                .iter()
+                .find(|d| Some(&d.id) != left.as_ref())
+                .map(|d| d.id.clone());
+        }
+        [(1, left), (2, right)]
+            .into_iter()
+            .filter_map(|(i, id)| self.bind(i, id).then_some(i))
+            .collect()
     }
-    fn list(&mut self, i: usize, client: &Connection) -> Task<Message> {
+    fn bind(&mut self, i: usize, id: Option<String>) -> bool {
+        let name = self
+            .devices
+            .iter()
+            .find(|d| Some(&d.id) == id.as_ref())
+            .map_or("", |d| &d.label);
+        let pane = &mut self.panes[i];
+        if pane.device == id {
+            pane.name = name.into();
+            return false;
+        }
+        let revision = pane.revision + 1;
+        *pane = Pane {
+            revision,
+            ..Pane::new(name, id)
+        };
+        if self.edit.as_ref().is_some_and(|e| e.index == i) {
+            self.edit = None;
+        }
+        if self.drag.as_ref().is_some_and(|(from, _)| *from == i) {
+            self.drag = None;
+        }
+        true
+    }
+    pub(super) fn list(&mut self, i: usize, client: &Connection) -> Task<Message> {
         let pane = &mut self.panes[i];
         if pane.device.is_none() {
             return Task::none();
@@ -213,16 +286,29 @@ impl Files {
         } else {
             0.
         };
-        let available = (body.height - notice - footer - DEVICE_GAP).max(0.);
+        let count = self.panes[1..]
+            .iter()
+            .filter(|p| p.device.is_some())
+            .count();
+        let gap = if count == 0 { 0. } else { DEVICE_GAP };
+        let available = (body.height - notice - footer - gap).max(0.);
         let workspace = Rectangle {
             y: body.y + notice,
-            height: (available * 0.36).round(),
+            height: if count == 0 {
+                available
+            } else {
+                (available * 0.36).round()
+            },
             ..body
         };
         let device = Rectangle {
             x: body.x,
             y: workspace.y + workspace.height + DEVICE_GAP,
-            width: (body.width - DEVICE_GAP) / 2.,
+            width: if count == 2 {
+                (body.width - DEVICE_GAP) / 2.
+            } else {
+                body.width
+            },
             height: available - workspace.height,
         };
         [
@@ -254,6 +340,25 @@ impl Files {
     pub fn update(&mut self, message: Message, client: &Connection) -> Task<Message> {
         match message {
             Message::Load => return Task::batch((0..3).map(|i| self.list(i, client))),
+            Message::Choose(i, id) => {
+                if !(1..=2).contains(&i) || !self.devices.iter().any(|d| d.id == id) || self.busy {
+                    return Task::none();
+                }
+                let other = 3 - i;
+                if self.panes[other].device.as_ref() == Some(&id) {
+                    let revision = self.panes[i].revision.max(self.panes[other].revision);
+                    self.panes.swap(i, other);
+                    for slot in [i, other] {
+                        self.panes[slot].revision = revision;
+                    }
+                    self.edit = None;
+                    self.drag = None;
+                    return Task::batch([self.list(i, client), self.list(other, client)]);
+                }
+                if self.bind(i, Some(id)) {
+                    return self.list(i, client);
+                }
+            }
             Message::Go(i, path) => {
                 self.panes[i].address = path.clone();
                 self.panes[i].path = path;
@@ -534,14 +639,15 @@ impl Files {
                 }),
             );
         }
-        let [workspace, phone, desktop] = self.pane_regions(bounds);
-        body = body.push(self.pane(0, workspace.height, locale)).push(
-            row![
-                self.pane(1, phone.height, locale),
-                self.pane(2, desktop.height, locale)
-            ]
-            .spacing(DEVICE_GAP),
-        );
+        let regions = self.pane_regions(bounds);
+        body = body.push(self.pane(0, regions[0].height, locale));
+        if self.panes[1].device.is_some() {
+            let mut devices = row![self.pane(1, regions[1].height, locale)].spacing(DEVICE_GAP);
+            if self.panes[2].device.is_some() {
+                devices = devices.push(self.pane(2, regions[2].height, locale));
+            }
+            body = body.push(devices);
+        }
         if let Some(edit) = &self.edit {
             let title = match edit.operation {
                 FileOperation::Mkdir => locale.tr("新建文件夹"),
@@ -581,12 +687,35 @@ impl Files {
             )
         };
         let op = |icon, message| control(icon, enabled.then_some(message));
-        let device_icon = [Icon::Folder, Icon::PhonePortrait, Icon::Screen][i];
+        let selected_device = self
+            .devices
+            .iter()
+            .find(|d| Some(&d.id) == pane.device.as_ref());
+        let icon = match selected_device {
+            Some(d) if d.phone => Icon::PhonePortrait,
+            Some(_) => Icon::Screen,
+            None => Icon::Folder,
+        };
+        let title: Element<'_, Message> = if i != 0 && self.devices.len() >= 3 && !self.busy {
+            form_select(
+                self.devices.as_slice(),
+                selected_device,
+                move |d: DeviceChoice| Message::Choose(i, d.id),
+            )
+            .width(Length::Fill)
+            .into()
+        } else {
+            style::section_title(if i == 0 {
+                locale.tr("工作文件")
+            } else {
+                &pane.name
+            })
+            .wrapping(text::Wrapping::None)
+            .into()
+        };
         let header = row![
-            device_icon.view().width(16).height(16),
-            container(style::section_title(locale.tr(&pane.name)).wrapping(text::Wrapping::None))
-                .clip(true),
-            space::horizontal(),
+            icon.view().width(16).height(16),
+            container(title).width(Length::Fill).clip(true),
             op(Icon::Refresh, Message::Go(i, pane.path.clone())),
             op(Icon::Upload, Message::Pick(i)),
             op(Icon::Plus, Message::Edit(i, FileOperation::Mkdir))
@@ -854,10 +983,54 @@ mod tests {
     use super::*;
     use iced::Point;
 
+    #[tokio::test]
+    async fn selecting_a_device_keeps_panes_distinct_and_discards_its_previous_listing() {
+        let root = tempfile::tempdir().unwrap();
+        let client = Connection::connect(root.path().to_str().unwrap().to_owned())
+            .await
+            .unwrap()
+            .client;
+        let mut files = Files::default();
+        let devices = ["a", "b", "c"].map(|id| wire::RegisteredDevice {
+            id: id.into(),
+            name: "Studio".into(),
+            paired: true,
+            connected: true,
+            ..Default::default()
+        });
+        let ids = |f: &Files| [1, 2].map(|i| f.panes[i].device.clone());
+        assert_eq!(ids(&files), [None, None]);
+        files.set_devices(&devices[..1]);
+        assert_eq!(ids(&files), [Some("a".into()), None]);
+        files.set_devices(&devices[..2]);
+        assert_eq!(ids(&files), [Some("a".into()), Some("b".into())]);
+        files.set_devices(&devices);
+        assert_eq!(files.devices[2].to_string(), "Studio · 3");
+        let old = files.panes[1].revision;
+        let _ = files.update(Message::Choose(1, "c".into()), &client);
+        let _ = files.update(Message::Listed(1, old, Err("stale".into())), &client);
+        assert!(files.panes[1].error.is_empty());
+        assert_eq!(ids(&files), [Some("c".into()), Some("b".into())]);
+        files.panes[1].path = "/Projects".into();
+        let _ = files.update(Message::Choose(2, "c".into()), &client);
+        assert_eq!(files.panes[2].path, "/Projects");
+        assert_eq!(ids(&files), [Some("b".into()), Some("c".into())]);
+        assert!(
+            files
+                .set_devices(&[devices[1].clone(), devices[2].clone()])
+                .is_empty()
+        );
+        files.set_devices(&[]);
+        assert_eq!(ids(&files), [None, None]);
+        assert_eq!(files.panes[0].device.as_deref(), Some(""));
+        client.workspace.stop().await;
+    }
+
     #[test]
     fn editing_reserves_the_footer_and_keeps_drops_in_the_displayed_pane() {
         let mut files = Files::default();
         files.panes[1].device = Some("phone".into());
+        files.panes[2].device = Some("desktop".into());
         files.edit = Some(Edit {
             index: 0,
             operation: FileOperation::Mkdir,
@@ -888,7 +1061,9 @@ mod tests {
             };
             assert_eq!(target.device_id, device);
         }
-        assert!(drop_at(computer.center()).is_none());
+        assert!(
+            matches!(drop_at(computer.center()), Some(Message::Upload(loc,_)) if loc.device_id=="desktop")
+        );
         assert!(
             drop_at(Point::new(
                 phone.x + phone.width + DEVICE_GAP / 2.,

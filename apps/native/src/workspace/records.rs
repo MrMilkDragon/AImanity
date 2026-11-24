@@ -94,7 +94,6 @@ impl Workspace {
             };
         }
         let result = match name {
-            "files/list" => self.listing(req!(FileLocation))?.encode_to_vec(),
             "registry/state" => self.registry()?.encode_to_vec(),
             "desktop/state" => linked_devices(&self.registry()?).encode_to_vec(),
             "registry/device-save" => self
@@ -117,36 +116,21 @@ impl Workspace {
                             d.revision += 1;
                         }
                         Some(_) => return Err("设备类型已确定".into()),
-                        None => state.devices.push(wire::RegisteredDevice {
-                            id: q.id,
-                            revision: 1,
-                            name: q.name,
-                            kind: q.kind,
-                            runtime_state: "configured".into(),
-                            ..Default::default()
-                        }),
+                        None => {
+                            fs::create_dir_all(self.device_home(&q.id))?;
+                            state.devices.push(wire::RegisteredDevice {
+                                id: q.id,
+                                revision: 1,
+                                name: q.name,
+                                kind: q.kind,
+                                runtime_state: "configured".into(),
+                                ..Default::default()
+                            });
+                        }
                     }
                     Ok(())
                 })?
                 .encode_to_vec(),
-            "registry/device-forget" | "registry/device-disconnect" => {
-                let id = req!(DesktopRequest).device_id;
-                let state = self.peers.remove(&id, || {
-                    if name == "registry/device-disconnect" {
-                        return self.get::<wire::RegistryState>("registry");
-                    }
-                    self.write_registry(|s, _| {
-                        let i = s
-                            .devices
-                            .iter()
-                            .position(|d| d.id == id)
-                            .ok_or("设备不存在")?;
-                        s.devices.remove(i);
-                        Ok(())
-                    })
-                })?;
-                self.peers.available(state).encode_to_vec()
-            }
             "registry/agent-config-save" => self
                 .save_agent(req!(AgentConfigurationSaveRequest))?
                 .encode_to_vec(),

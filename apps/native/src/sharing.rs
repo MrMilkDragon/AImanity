@@ -196,7 +196,7 @@ impl Sharing {
         }
         let submit = if idle {
             action_button(
-                tr("开始共享"),
+                tr("共享屏幕与文件"),
                 (!self.target.trim().is_empty() && uuid::Uuid::parse_str(self.code.trim()).is_ok())
                     .then_some(Msg::Start),
             )

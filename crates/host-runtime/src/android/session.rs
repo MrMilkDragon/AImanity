@@ -15,6 +15,44 @@ pub use cli::run;
 use std::time::Duration;
 pub const CONTRACT: &str = "ai-phone-native-android-session-v1";
 
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+pub async fn stop_owned(home: &std::path::Path) -> crate::Result<()> {
+    use crate::{Error, filesystem};
+    let dir = home.join("user/data/android");
+    let native = dir.join("native");
+    let lock = native.join("session.lock");
+    if !lock.try_exists()? || filesystem::lease(&lock)?.is_some() {
+        return Ok(());
+    }
+    let owner = process::session_record(&native.join("session.pb"))?
+        .ok_or(Error::Invalid("android_session_owner"))?;
+    let sdk = std::path::Path::new(&owner.sdk_root);
+    let engine = super::Engine::installed(sdk);
+    if owner.version != 1
+        || !sdk.starts_with(home.join("components/android"))
+        || std::path::Path::new(&owner.avd_home) != dir.join(engine.avd_directory())
+    {
+        return Err(Error::Invalid("android_session_owner"));
+    }
+    let port =
+        u16::try_from(owner.adb_port).map_err(|_| Error::Invalid("android_session_ports"))?;
+    let console =
+        u16::try_from(owner.console_port).map_err(|_| Error::Invalid("android_session_ports"))?;
+    let adb = ai_phone_adb::Client::new(port, engine.serial(console))
+        .map_err(|_| Error::Invalid("android_session_ports"))?;
+    let _shutdown = adb
+        .open_stream("shell:sync && reboot -p", Duration::from_secs(5))
+        .await
+        .map_err(|_| Error::Invalid("android_poweroff_request"))?;
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while filesystem::lease(&lock)?.is_none() {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| Error::Invalid("android_emulator_stop_unknown"))?
+}
 #[cfg(any(
     target_os = "macos",
     windows,

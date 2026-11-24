@@ -10,6 +10,8 @@ mod chat;
 mod connection;
 mod controls;
 mod deployment;
+mod device_files;
+mod device_io;
 mod devices;
 mod documents;
 mod files;
@@ -365,6 +367,7 @@ impl App {
         self.streams = None;
         for device in &mut self.devices {
             device.stream = None;
+            device.audio.disconnect();
         }
     }
     fn display_devices(
@@ -395,12 +398,12 @@ impl App {
             device.info = info.clone();
             if connection::reachable(info) {
                 if device.stream.is_none() {
-                    if !info.paired {
+                    if info.guest_audio {
                         let id = info.id.clone();
                         tasks.push(
                             device
                                 .audio
-                                .restore(&self.root, &id)
+                                .restore(client, info)
                                 .map(move |m| Message::Audio(id.clone(), m)),
                         );
                     }
@@ -416,7 +419,7 @@ impl App {
                     tasks.push(task);
                 }
             } else if device.stream.take().is_some() {
-                device.audio.stop();
+                device.audio.disconnect();
                 device.frame = None;
                 device.trace = None;
                 device.busy = false;
@@ -427,7 +430,7 @@ impl App {
             self.devices.push(device);
         }
         for device in previous.values_mut() {
-            device.audio.stop();
+            device.audio.disconnect();
         }
         self.focus = focused.and_then(|id| self.device_index(&id)).unwrap_or(0);
         self.keyboard_target = keyboard
@@ -437,7 +440,16 @@ impl App {
             .issues
             .retain(|id, _| registry.devices.iter().any(|d| d.id == *id));
         self.agents.registry = registry;
-        self.files.set_devices(&self.agents.registry.devices);
+        let changed = self.files.set_devices(&self.agents.registry.devices);
+        if self.panel == Panel::Files {
+            for i in changed {
+                tasks.push(
+                    self.files
+                        .list(i, client)
+                        .map(|m| Message::Files(Box::new(m))),
+                );
+            }
+        }
         self.rearrange(true);
         if self
             .capture
@@ -876,10 +888,12 @@ impl App {
                 if matches!(message, audio::Message::Toggle | audio::Message::Volume(_)) {
                     self.keyboard_target = None;
                 }
-                let kind = usize::from(!self.devices[i].phone());
+                if !self.devices[i].info.guest_audio {
+                    return Task::none();
+                }
                 return self.devices[i]
                     .audio
-                    .update(message, self.connection.as_ref(), kind)
+                    .update(message, self.connection.as_ref(), &id)
                     .map(move |m| Message::Audio(id.clone(), m));
             }
             Message::Files(message) => {
@@ -1267,7 +1281,7 @@ impl App {
                 self.closing = true;
                 self.disconnect_streams();
                 for device in &mut self.devices {
-                    device.audio.stop();
+                    device.audio.disconnect();
                 }
                 self.modes.stop_capture();
                 if let Some(client) = self.connection.take() {
@@ -1620,7 +1634,7 @@ impl App {
         let id = &device.info.id;
         let ready = device.frame.is_some();
         let key = |name| ready.then(|| Message::MediaKey(id.clone(), name));
-        let volume: Element<'_, Message> = if device.info.paired {
+        let volume: Element<'_, Message> = if !device.info.guest_audio {
             row![
                 surface::tool_action(controls::Icon::Minus, key("volumedown")),
                 surface::tool_action(controls::Icon::Volume, key("volumemute")),

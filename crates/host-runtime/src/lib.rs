@@ -33,9 +33,11 @@ pub mod supervision;
 #[cfg(unix)]
 mod unix_initializer;
 #[cfg(target_os = "macos")]
-pub use unix_initializer::shutdown as stop_macos_installation;
+pub use managed_engine::{remove_state as remove_mac_guest, shutdown as stop_mac_guest};
 #[cfg(target_os = "macos")]
 pub use unix_initializer::uninstall as remove_macos_devices;
+#[cfg(target_os = "macos")]
+pub use unix_initializer::{shutdown as stop_macos_installation, stop_mac_phone};
 #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 pub mod qemu_native;
 pub mod vm_control;

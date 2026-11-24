@@ -1,6 +1,8 @@
 //! Complete bundled Unix first-run. The controller calls native owners directly.
 mod engine;
 mod phone;
+#[cfg(target_os = "macos")]
+pub use phone::shutdown as stop_mac_phone;
 mod readiness;
 use crate::wsl::backend::{
     Backend,

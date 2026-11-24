@@ -214,7 +214,7 @@ pub(crate) fn environment(root: &Path, user: &Path) -> Result<BTreeMap<String, S
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn remove_state(home: &Path, user: &Path) -> Result<()> {
+pub fn remove_state(home: &Path, user: &Path) -> Result<()> {
     let data = home.join("user/data");
     if !data.try_exists()? {
         return Ok(());
@@ -229,7 +229,7 @@ pub(crate) fn remove_state(home: &Path, user: &Path) -> Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) async fn shutdown(home: &Path, user: &Path) -> Result<()> {
+pub async fn shutdown(home: &Path, user: &Path) -> Result<()> {
     let Some(engine) = selection(&home.join("user"), user)? else {
         return Ok(());
     };

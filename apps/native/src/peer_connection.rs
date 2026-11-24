@@ -45,43 +45,78 @@ pub(super) async fn share(
         "x-aimanity-device",
         HeaderValue::from_static(if phone.is_some() { "phone" } else { "desktop" }),
     );
-    // A forwarded port is local to this computer. An SSH alias uses its known host key.
-    if let Ok(port) = target.parse::<u16>() {
+    let guest_audio = phone.is_none() && crate::device_io::has_guest_audio().await;
+    if guest_audio {
+        req.headers_mut()
+            .insert("x-aimanity-audio", HeaderValue::from_static("guest-pcm"));
+    }
+    let (ws, _tunnel) =
+        tokio::select! {biased; _=stop.changed()=>return Ok(()), result=dial(target,req)=>result?};
+    let files = match &phone {
+        Some(p) => crate::device_files::Endpoint::Android(p.client.clone()),
+        None => crate::device_files::Endpoint::Directory(
+            std::path::PathBuf::from(std::path::MAIN_SEPARATOR_STR).canonicalize()?,
+        ),
+    };
+    let services = crate::device_io::Services {
+        target: target.to_owned(),
+        files,
+        guest_audio,
+        pulse_server: std::env::var("PULSE_SERVER").ok(),
+    };
+    host_desktop::serve_socket(ws, phone, services, ready, stop).await
+}
+pub(super) trait Transport:
+    tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send
+{
+}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> Transport for T {}
+pub(super) type Socket = tokio_tungstenite::WebSocketStream<Box<dyn Transport>>;
+pub(super) async fn dial(
+    target: &str,
+    req: tokio_tungstenite::tungstenite::http::Request<()>,
+) -> Result<(Socket, Option<tokio::process::Child>)> {
+    let (transport, child): (Box<dyn Transport>, _) = if let Ok(port) = target.parse::<u16>() {
         let socket = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await?;
         socket.set_nodelay(true)?;
-        let (ws, _) = tokio::select! {biased; _=stop.changed()=>return Ok(()), ws=tokio::time::timeout(std::time::Duration::from_secs(8),tokio_tungstenite::client_async(req,socket))=>ws??};
-        return host_desktop::serve_socket(ws, phone, ready, stop).await;
-    }
-    if target.is_empty()
-        || target.starts_with('-')
-        || !target
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b".-_@:[]".contains(&b))
-    {
-        return Err("SSH 主机无效".into());
-    }
-    let mut child = Command::new("ssh")
-        .args([
-            "-T",
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "StrictHostKeyChecking=yes",
-            "-o",
-            "ConnectTimeout=6",
-            "-W",
-            "127.0.0.1:17863",
-            "--",
-            target,
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .kill_on_drop(true)
-        .spawn()?;
-    let io = tokio::io::join(child.stdout.take().unwrap(), child.stdin.take().unwrap());
-    let (ws, _) = tokio::select! {biased; _=stop.changed()=>return Ok(()), ws=tokio::time::timeout(std::time::Duration::from_secs(8),tokio_tungstenite::client_async(req,io))=>ws??};
-    host_desktop::serve_socket(ws, phone, ready, stop).await
+        (Box::new(socket), None)
+    } else {
+        if target.is_empty()
+            || target.starts_with('-')
+            || !target
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b".-_@:[]".contains(&b))
+        {
+            return Err("SSH 主机无效".into());
+        }
+        let mut child = Command::new("ssh")
+            .args([
+                "-T",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=yes",
+                "-o",
+                "ConnectTimeout=6",
+                "-W",
+                "127.0.0.1:17863",
+                "--",
+                target,
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .kill_on_drop(true)
+            .spawn()?;
+        let io = tokio::io::join(child.stdout.take().unwrap(), child.stdin.take().unwrap());
+        (Box::new(io), Some(child))
+    };
+    let (ws, _) = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
+        tokio_tungstenite::client_async(req, transport),
+    )
+    .await??;
+    Ok((ws, child))
 }
 
 pub(super) fn android_cli(target: &str, serial: &str) -> i32 {

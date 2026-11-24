@@ -149,6 +149,7 @@ dependencies = [
  "rfd",
  "ring",
  "rodio",
+ "rustix 1.1.6",
  "serde",
  "serde_json",
  "sha2",

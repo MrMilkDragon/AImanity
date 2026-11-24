@@ -23,6 +23,8 @@ message RegisteredDevice {
   reserved "default_agent_id";
   bool paired = 8;
   bool connected = 9;
+  bool guest_audio = 10;
+  optional uint32 playback_volume = 11;
 }
 message RegisteredAgent {
   string id = 1;

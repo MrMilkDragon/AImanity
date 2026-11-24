@@ -79,6 +79,12 @@ pub enum DeviceInput {
     Rotate(u32),
 }
 pub(crate) fn reachable(device: &wire::RegisteredDevice) -> bool {
+    if matches!(
+        device.runtime_state.as_str(),
+        "stopping" | "deleting" | "stopped"
+    ) {
+        return false;
+    }
     if device.paired {
         device.connected
     } else {
@@ -139,18 +145,6 @@ impl Connection {
         })
         .await
         .map_err(|e| e.to_string())?
-    }
-    pub async fn audio_stream(&self, index: usize) -> Result<reqwest::Response, String> {
-        let route = if index == 0 { "audio" } else { "desktop/audio" };
-        self.http
-            .get(format!("http://127.0.0.1:17865/{route}"))
-            .header(
-                "authorization",
-                self.phone.as_ref().ok_or("媒体服务未接入")?,
-            )
-            .send()
-            .await
-            .map_err(|error| error.to_string())
     }
     pub async fn upload(&self, path: &std::path::Path) -> Result<wire::ChatAttachment, String> {
         let name = path

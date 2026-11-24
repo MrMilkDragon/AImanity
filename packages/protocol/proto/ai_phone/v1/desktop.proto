@@ -63,6 +63,27 @@ message DesktopActionRequest {
   bool replace = 16;
   string control_session = 17;
   repeated BrushStroke strokes = 18;
+  DeviceIoRequest io = 19;
+}
+enum DeviceIoOperation {
+  DEVICE_IO_OPERATION_UNSPECIFIED = 0;
+  DEVICE_IO_OPERATION_LIST = 1;
+  DEVICE_IO_OPERATION_READ = 2;
+  DEVICE_IO_OPERATION_WRITE = 3;
+  DEVICE_IO_OPERATION_MKDIR = 4;
+  DEVICE_IO_OPERATION_RENAME = 5;
+  DEVICE_IO_OPERATION_REMOVE = 6;
+  DEVICE_IO_OPERATION_AUDIO_OUTPUT = 7;
+  DEVICE_IO_OPERATION_AUDIO_INPUT = 8;
+}
+message DeviceIoRequest {
+  DeviceIoOperation operation = 1;
+  string path = 2;
+  string destination = 3;
+  bool wav_input = 4;
+}
+message DeviceIoPacket {
+  oneof body { bytes data = 1; bool end = 2; string error = 3; }
 }
 message DeviceFilesRequest { string device_id = 1; string path = 2; }
 message DeviceFile { string name = 1; string path = 2; bool directory = 3; uint64 bytes = 4; }

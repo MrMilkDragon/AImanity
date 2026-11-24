@@ -90,17 +90,34 @@ pub(super) fn device_output(info: &Value, reply: wire::HostDesktopReply) -> Valu
 #[derive(Default)]
 pub(super) struct DeviceRun {
     pub(super) devices: Vec<wire::RegisteredDevice>,
+    sessions: HashMap<String, CancellationToken>,
     observations: HashMap<String, (String, u32, u32)>,
     pub(super) images: HashMap<String, usize>,
     pub(super) uncertain: Vec<String>,
 }
 
 impl DeviceRun {
-    pub(super) fn for_devices(devices: Vec<wire::RegisteredDevice>) -> Self {
+    pub(super) fn for_devices(
+        peers: &super::peers::Peers,
+        devices: impl Iterator<Item = wire::RegisteredDevice>,
+    ) -> Self {
+        let (sessions, devices) = devices
+            .filter_map(|device| {
+                let stop = peers.active_session(&device.id).ok()?;
+                Some(((device.id.clone(), stop), device))
+            })
+            .unzip();
         Self {
             devices,
+            sessions,
             ..Default::default()
         }
+    }
+    pub(super) fn session(&self, id: &str) -> Result<CancellationToken> {
+        self.sessions
+            .get(id)
+            .cloned()
+            .ok_or_else(|| "这台设备不在当前任务的授权范围".into())
     }
     pub(super) fn tool(&self) -> Value {
         let ids: Vec<_> = self.devices.iter().map(|d| &d.id).collect();
@@ -122,8 +139,9 @@ impl DeviceRun {
         events: &mut Vec<wire::HarnessEvent>,
     ) -> Result<Value> {
         let id = data.device_id.clone();
-        if !self.devices.iter().any(|d| d.id == id) {
-            return Err("这台设备不在当前任务的授权范围".into());
+        let session = self.session(&id)?;
+        if session.is_cancelled() {
+            return Err("设备已断开".into());
         }
         let mut action = data.request(&event.id, run);
         let input = !matches!(action.kind.as_str(), "observe" | "foreground");
@@ -170,7 +188,7 @@ impl DeviceRun {
                 info["kind"] = json!("observe");
             }
         }
-        let reply = workspace.peers.perform(action).await?;
+        let reply = workspace.peers.perform(action, Some(&session)).await?;
         if !reply.observation_id.is_empty() {
             info["observation_id"] = json!(reply.observation_id);
             info["width"] = json!(reply.width);

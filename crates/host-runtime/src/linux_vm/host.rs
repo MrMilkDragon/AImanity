@@ -419,10 +419,7 @@ pub async fn stop_installed(home: &Path) -> Result<()> {
     }
     let home = home.canonicalize()?;
     let flush = crate::android::session::flush_attached(&home).await;
-    let qemu = home.join("user/qemu");
-    if qemu.try_exists()? {
-        stop_running(&qemu, vm_control::GUEST_PORT).await?;
-    }
+    stop_desktop(&home).await?;
     let android = home.join("user/data/android/native/session.lock");
     if android.try_exists()? {
         wait_for_stop(&android).await?;
@@ -430,6 +427,13 @@ pub async fn stop_installed(home: &Path) -> Result<()> {
     flush
 }
 
+pub async fn stop_desktop(home: &Path) -> Result<()> {
+    let vm = home.join("user/qemu");
+    if vm.try_exists()? {
+        stop_running(&vm, vm_control::GUEST_PORT).await?;
+    }
+    Ok(())
+}
 async fn stop_running(home: &Path, port: u16) -> Result<()> {
     let lock = home.join("owner.lock");
     if filesystem::lease(&lock)?.is_some() {

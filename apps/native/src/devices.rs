@@ -25,7 +25,10 @@ pub enum Message {
     ),
     Repair(String),
     ExpireInvitation(std::time::Instant),
-    Disconnect(String, bool),
+    Disconnect(String),
+    AskDelete(String),
+    Delete(String),
+    CancelDelete,
     CopyCode,
     #[cfg(not(target_os = "android"))]
     Share(String),
@@ -73,6 +76,7 @@ pub struct Devices {
     pub(super) invitation: Option<(wire::DeviceInvitation, std::time::Instant)>,
     draft: Option<wire::DeviceSaveRequest>,
     busy: bool,
+    delete: Option<String>,
     error: String,
     cpus: u32,
     memory: u32,
@@ -90,6 +94,7 @@ impl Default for Devices {
             invitation: None,
             draft: None,
             busy: false,
+            delete: None,
             error: String::new(),
             cpus: 2,
             memory: 2560,
@@ -149,6 +154,30 @@ impl Devices {
                 )
             }
         }
+    }
+    fn end_device(
+        &mut self,
+        id: String,
+        route: &'static str,
+        client: &Connection,
+    ) -> Task<Message> {
+        self.busy = true;
+        if self
+            .invitation
+            .as_ref()
+            .is_some_and(|(invite, _)| invite.device_id == id)
+        {
+            self.invitation = None;
+        }
+        let client = client.clone();
+        Task::perform(
+            async move {
+                client
+                    .rpc(route, wire::DesktopRequest { device_id: id })
+                    .await
+            },
+            Message::Saved,
+        )
     }
     fn available(&self, registry: &wire::RegistryState) -> Vec<&'static str> {
         [
@@ -239,25 +268,14 @@ impl Devices {
                     self.invitation = None;
                 }
             }
-            Message::Disconnect(id, forget) => {
-                self.busy = true;
-                self.invitation = None;
-                let client = client.clone();
-                return Task::perform(
-                    async move {
-                        client
-                            .rpc(
-                                if forget {
-                                    "registry/device-forget"
-                                } else {
-                                    "registry/device-disconnect"
-                                },
-                                wire::DesktopRequest { device_id: id },
-                            )
-                            .await
-                    },
-                    Message::Saved,
-                );
+            Message::AskDelete(id) => self.delete = Some(id),
+            Message::CancelDelete => self.delete = None,
+            Message::Disconnect(id) => {
+                return self.end_device(id, "registry/device-disconnect", client);
+            }
+            Message::Delete(id) => {
+                self.delete = None;
+                return self.end_device(id, "registry/device-delete", client);
             }
             Message::CopyCode => {
                 if let Some((i, _)) = &self.invitation {
@@ -276,6 +294,7 @@ impl Devices {
                 }
             }
             Message::Open => {
+                self.delete = None;
                 self.draft = None;
                 self.error.clear();
             }
@@ -657,6 +676,26 @@ impl Devices {
                             .into(),
                     ));
                 }
+                if crate::connection::reachable(device)
+                    || self
+                        .invitation
+                        .as_ref()
+                        .is_some_and(|(inv, _)| inv.device_id == device.id)
+                    || device.runtime_state == "stopping"
+                {
+                    line = line.push(admin(
+                        iced::widget::tooltip(
+                            icon_button(
+                                Icon::Stop,
+                                (!self.busy).then(|| Message::Disconnect(device.id.clone())),
+                            ),
+                            text(tr("断开")).size(12),
+                            iced::widget::tooltip::Position::Bottom,
+                        )
+                        .style(container::rounded_box)
+                        .into(),
+                    ));
+                }
                 line = line
                     .push(admin(icon_button(
                         Icon::Edit,
@@ -664,10 +703,37 @@ impl Devices {
                     )))
                     .push(admin(icon_button(
                         Icon::Trash,
-                        (!self.busy).then(|| Message::Disconnect(device.id.clone(), true)),
+                        (!self.busy).then(|| Message::AskDelete(device.id.clone())),
                     )));
             }
-            list = list.push(container(line).padding(4).height(52).align_y(iced::Center).width(Length::Fill));
+            list = list.push(
+                container(line)
+                    .padding(4)
+                    .height(52)
+                    .align_y(iced::Center)
+                    .width(Length::Fill),
+            );
+            if self.delete.as_deref() == Some(&device.id) {
+                let confirm = row![
+                    text(tr(if device.paired {
+                        "移除设备共享？"
+                    } else {
+                        "删除设备及其数据？"
+                    }))
+                    .size(13),
+                    space::horizontal(),
+                    text_button(tr("取消")).on_press(Message::CancelDelete),
+                    text_button(tr("删除")).on_press(Message::Delete(device.id.clone()))
+                ]
+                .spacing(8)
+                .align_y(iced::Center);
+                list = list.push(admin(
+                    container(confirm)
+                        .padding([2, 8])
+                        .width(Length::Fill)
+                        .into(),
+                ));
+            }
             let invitation = self
                 .invitation
                 .as_ref()
@@ -685,15 +751,6 @@ impl Devices {
                             .spacing(6)
                             .align_y(iced::Center)
                             .into(),
-                        );
-                    } else if device.connected {
-                        details.push(
-                            text_button(tr("断开"))
-                                .on_press_maybe(
-                                    (!self.busy)
-                                        .then(|| Message::Disconnect(device.id.clone(), false)),
-                                )
-                                .into(),
                         );
                     }
                 } else if device.runtime_state == "managed"

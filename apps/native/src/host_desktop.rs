@@ -573,6 +573,7 @@ impl Grant {
 pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
     mut socket: tokio_tungstenite::WebSocketStream<S>,
     mut phone: Option<crate::paired_phone::Phone>,
+    services: crate::device_io::Services,
     ready: oneshot::Sender<()>,
     mut stop: watch::Receiver<()>,
 ) -> Result<()> {
@@ -584,11 +585,14 @@ pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
     if ready.send(()).is_err() {
         return Ok(());
     }
+    let (authority, live) = watch::channel(());
     let mut views = Views::default();
+    let mut streams = tokio::task::JoinSet::new();
     loop {
         let received = tokio::select! {
             biased;
             _ = stop.changed() => break,
+            _ = streams.join_next(), if !streams.is_empty() => continue,
             received = socket.next() => received,
         };
         let Some(msg) = received else {
@@ -601,23 +605,48 @@ pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
         };
         let action = DesktopActionRequest::decode(bytes)?;
         let id = action.action_id.clone();
-        let result = if let Some(phone) = phone.as_mut() {
-            tokio::select! {biased; _=stop.changed()=>break, reply=phone.perform(&action)=>reply}
+        let result = if let Some(io) = action.io {
+            let services = services.clone();
+            let token = id.clone();
+            streams.spawn(async move {
+                if let Err(e) = services.serve(&token, io).await {
+                    eprintln!("Device stream: {e}");
+                }
+            });
+            Ok(HostDesktopReply::default())
         } else {
-            let live = stop.clone();
-            let mut view = if action.kind == "observe" {
-                None
-            } else {
-                views.take(&action)
+            let execute_input = async {
+                if let Some(phone) = phone.as_mut() {
+                    Ok(phone.perform(&action).await)
+                } else {
+                    let live = live.clone();
+                    let mut view = if action.kind == "observe" {
+                        None
+                    } else {
+                        views.take(&action)
+                    };
+                    let (action, next, result) = tokio::task::spawn_blocking(move || {
+                        let result = execute(&mut view, &action, &live).map_err(|e| e.to_string());
+                        (action, view, result)
+                    })
+                    .await?;
+                    if let Some(next) = next {
+                        views.remember(&action, next.id.clone(), next);
+                    }
+                    Result::Ok(result)
+                }
             };
-            let (action, next, result) = tokio::task::spawn_blocking(move || {
-                let result = execute(&mut view, &action, &live).map_err(|e| e.to_string());
-                (action, view, result)
-            })
-            .await?;
-            if let Some(next) = next {
-                views.remember(&action, next.id.clone(), next);
-            }
+            tokio::pin!(execute_input);
+            let receipt = loop {
+                tokio::select! {biased;
+                    _=stop.changed()=>break None,
+                    incoming=socket.next()=>match incoming.transpose()?{Some(Frame::Ping(_) | Frame::Pong(_))=>continue,_=>break None},
+                    result=&mut execute_input=>break Some(result?),
+                }
+            };
+            let Some(result) = receipt else {
+                break;
+            };
             result
         };
         let mut reply = result.unwrap_or_else(|error| HostDesktopReply {
@@ -632,6 +661,9 @@ pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
             .send(Frame::Binary(reply.encode_to_vec().into()))
             .await?;
     }
+    drop(authority);
+    streams.shutdown().await;
+    let _ = socket.flush().await;
     let _ = socket.close(None).await;
     Ok(())
 }

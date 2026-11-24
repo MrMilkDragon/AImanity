@@ -9,6 +9,7 @@ mod conversation;
 mod device_run;
 mod documents;
 mod files;
+mod lifecycle;
 mod peers;
 mod records;
 mod skills;
@@ -123,6 +124,9 @@ impl Workspace {
         let ready = self.ready.clone();
         ready.notify_one();
         let worker = tokio::spawn(async move {
+            if let Some(workspace) = weak.upgrade() {
+                workspace.finish_device_changes().await;
+            }
             loop {
                 tokio::select! {biased; _=stop.cancelled()=>break,_=ready.notified()=>{}}
                 while let Some(workspace) = weak.upgrade() {
@@ -169,7 +173,7 @@ impl Workspace {
     ) -> std::result::Result<wire::HostDesktopReply, String> {
         q.epoch = 2;
         q.control_session.clear();
-        self.peers.perform(q).await.map_err(|e| e.to_string())
+        self.peers.perform(q, None).await.map_err(|e| e.to_string())
     }
     pub(super) async fn host_action(
         &self,
@@ -187,6 +191,26 @@ impl Workspace {
             .map(|(_, grant)| grant.clone())
             .ok_or("本任务未授权使用宿主机")?;
         Ok(tokio::task::spawn_blocking(move || grant.perform(&action)).await??)
+    }
+    pub(crate) async fn device_io(
+        &self,
+        id: &str,
+        op: wire::DeviceIoOperation,
+        path: &str,
+        destination: &str,
+    ) -> Result<crate::device_io::Lane> {
+        self.peers
+            .io(
+                id,
+                wire::DeviceIoRequest {
+                    operation: op.into(),
+                    path: path.into(),
+                    destination: destination.into(),
+                    ..Default::default()
+                },
+                None,
+            )
+            .await
     }
     pub(crate) fn registry_changes(&self) -> watch::Receiver<u64> {
         self.peers.changes.subscribe()
@@ -226,6 +250,30 @@ impl Workspace {
         bytes: Vec<u8>,
     ) -> std::result::Result<Vec<u8>, String> {
         let name = route.strip_prefix("assistant/").unwrap_or(route);
+        if let Some(change) = lifecycle::Change::route(name) {
+            let q = wire::DesktopRequest::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
+            return self
+                .end_device(&q.device_id, change)
+                .await
+                .map(|r| r.encode_to_vec())
+                .map_err(|e| e.to_string());
+        }
+        if name == "files/list" || name == "files/manage" {
+            let result: Result<Vec<u8>> = async {
+                if name == "files/list" {
+                    return Ok(self
+                        .file_list(wire::FileLocation::decode(bytes.as_slice())?)
+                        .await?
+                        .encode_to_vec());
+                }
+                Ok(self
+                    .file_manage(wire::FileManageRequest::decode(bytes.as_slice())?)
+                    .await?
+                    .encode_to_vec())
+            }
+            .await;
+            return result.map_err(|e| e.to_string());
+        }
         if name == "host-desktop/action" {
             let action =
                 wire::DesktopActionRequest::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
@@ -350,8 +398,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn devices_of_the_same_kind_keep_their_own_identity_after_reopen() -> Result<()> {
+    #[tokio::test]
+    async fn devices_of_the_same_kind_keep_their_own_identity_after_reopen() -> Result<()> {
         let dir = tempfile::tempdir()?;
         let workspace = Workspace::open(dir.path())?;
         for (id, kind) in [
@@ -371,7 +419,9 @@ mod tests {
         let remove = wire::DesktopRequest {
             device_id: "b".into(),
         };
-        workspace.dispatch("registry/device-forget", &remove.encode_to_vec())?;
+        workspace
+            .rpc("registry/device-delete", remove.encode_to_vec())
+            .await?;
         drop(workspace);
         let workspace = Workspace::open(dir.path())?;
         let state = workspace.dispatch("registry/state", &[])?;

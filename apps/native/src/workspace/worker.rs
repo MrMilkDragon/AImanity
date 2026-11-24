@@ -38,11 +38,11 @@ impl Workspace {
             );
         }
         let mut device_run = DeviceRun::for_devices(
+            &self.peers,
             registry
                 .devices
                 .into_iter()
-                .filter(|d| d.paired && d.connected && (target.is_empty() || d.id == target))
-                .collect(),
+                .filter(|d| d.paired && d.connected && (target.is_empty() || d.id == target)),
         );
         let previous: wire::HarnessEventList = self.get(&format!("events/{id}"))?;
         if previous
@@ -78,6 +78,15 @@ impl Workspace {
         let mut host_image = None;
         if !device_run.devices.is_empty() {
             tools.push(device_run.tool());
+            let microphones: Vec<_> = device_run
+                .devices
+                .iter()
+                .filter(|d| d.guest_audio)
+                .map(|d| &d.id)
+                .collect();
+            if !microphones.is_empty() {
+                tools.push(json!({"type":"function","name":"device_audio_input","description":"Feed a WAV work file into the selected device microphone.","parameters":{"type":"object","properties":{"device_id":{"type":"string","enum":microphones},"path":{"type":"string"}},"required":["device_id","path"]}}));
+            }
         }
         let first_device = if !target.is_empty() {
             Some(target.to_owned())
@@ -119,7 +128,12 @@ impl Workspace {
                     .filter(|t| {
                         matches!(
                             t["name"].as_str(),
-                            Some("device_interact" | "skill_read" | "host_desktop")
+                            Some(
+                                "device_interact"
+                                    | "device_audio_input"
+                                    | "skill_read"
+                                    | "host_desktop"
+                            )
                         )
                     })
                     .cloned()
@@ -219,6 +233,33 @@ impl Workspace {
                                 .map(|d| json!({"id":d.id,"title":d.title,"excerpt":d.content}))
                                 .collect::<Vec<_>>(),
                         )?)
+                    }
+                    "device_audio_input" => {
+                        #[derive(Deserialize)]
+                        struct Feed {
+                            device_id: String,
+                            path: String,
+                        }
+                        let feed: Feed = serde_json::from_str(args)?;
+                        if !device_run
+                            .devices
+                            .iter()
+                            .any(|d| d.id == feed.device_id && d.guest_audio)
+                        {
+                            return Err("设备麦克风未授权".into());
+                        }
+                        let session = device_run.session(&feed.device_id)?;
+                        tokio::select! {
+                            biased;
+                            _ = token.cancelled() => return Err("任务已停止".into()),
+                            result = self.send_audio(&feed.device_id, &feed.path,Some(&session)) => result?,
+                        }
+                        event.content =
+                            json!({"device_id":feed.device_id,"file":feed.path}).to_string();
+                        event.kind = "device_input".into();
+                        event.status = "succeeded".into();
+                        input_pending = false;
+                        Value::String(event.content.clone())
                     }
                     "device_interact" => {
                         let data: DesktopInput = serde_json::from_str(args)?;
