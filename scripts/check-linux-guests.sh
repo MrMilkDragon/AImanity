@@ -26,10 +26,8 @@ reopen() {
     identity=$(stat -c '%d:%i' "$database")
     start_ms=$(date +%s%3N)
     start_client
-    timeout 60 xdotool search --sync --onlyvisible --pid "$app" --name '^AImanity$' >/dev/null
-    word Message
+    capture_workbench reopened-workbench
     echo "$(( $(date +%s%3N) - start_ms ))" > "$work/reopen-ms.txt"
-    import -window "$window" "$work/reopened-workbench.png"
     test "$(stat -c '%d:%i' "$database")" = "$identity"
     close_client
 }
@@ -54,15 +52,38 @@ word() {
 }
 click_word() { word "$1"; xdotool mousemove --window "$window" "$x" "$y" sleep 0.1 mousedown 1 sleep 0.1 mouseup 1; }
 qemu_pids() { ps -u "$(id -u)" -o pid=,comm= | awk '$2 ~ /qemu-system-x86/ {print $1}'; }
-click_word English
-word Choose
-import -window "$window" "$work/language.png"
-read -r width height < <(identify -format '%w %h\n' "$work/language.png")
-button_y=$(convert "$work/language.png" -colorspace Gray -threshold '25%' -depth 8 gray:- | /action-row "$width" "$height")
-xdotool mousemove --window "$window" "$((width / 2))" "$button_y" mousedown 1 sleep 0.1 mouseup 1
-timeout 60 xdotool search --sync --onlyvisible --pid "$app" --name '^AImanity$' >/dev/null
-word Message
-import -window "$window" "$work/first-workbench.png"
+capture_workbench() {
+    local output=$1 w h ink
+    window=$(timeout 60 xdotool search --sync --onlyvisible --pid "$app" --name '^AImanity$' | head -1)
+    for _ in {1..100}; do
+        import -window "$window" "$work/current.png"
+        read -r w h < <(identify -format '%w %h\n' "$work/current.png")
+        if (( w > h )); then
+            ink=$(convert "$work/current.png" -crop "$((w*14/100))x$((h*8/100))+$((w*80/100))+$((h*88/100))" +repage -colorspace Gray -format '%[fx:minima<0.58]' info:)
+            if [[ "$ink" == 1 ]]; then
+                test "$(cat "$XDG_DATA_HOME/dev.aimanity.workspace/host/user/native-locale")" = en
+                cp "$work/current.png" "$work/$output.png"
+                return
+            fi
+        fi
+        sleep 0.15
+    done
+    echo "Conversation controls did not appear on the installed workbench" >&2
+    return 1
+}
+
+button_y=""
+for _ in {1..80}; do
+    import -window "$window" "$work/current.png"
+    read -r width height < <(identify -format '%w %h\n' "$work/current.png")
+    if button_y=$(convert "$work/current.png" -colorspace Gray -threshold '25%' -depth 8 gray:- | /action-row "$width" "$height" 2>/dev/null); then break; fi
+    sleep 0.15
+done
+test -n "$button_y"
+cp "$work/current.png" "$work/language.png"
+xdotool mousemove --window "$window" "$((width * 60 / 100))" "$((height * 32 / 100))" sleep 0.1 click 1
+xdotool mousemove --window "$window" "$((width / 2))" "$button_y" sleep 0.1 click 1
+capture_workbench first-workbench
 test -z "$(qemu_pids)"
 test -f "$XDG_DATA_HOME/dev.aimanity.workspace/host/workspace.redb"
 if [[ $1 == workbench ]]; then

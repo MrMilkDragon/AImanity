@@ -96,7 +96,7 @@ jobs:
           fi
           docker network disconnect bridge distro
           if [[ "$PACKAGE" == deb ]]; then
-            docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc 'apt-get --no-download install -y /candidate.deb && dpkg-query -W aimanity-workspace'
+            docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc 'dpkg --install /candidate.deb && dpkg-query -W aimanity-workspace'
           else
             docker exec distro bash -euc 'dnf --disablerepo="*" --setopt=localpkg_gpgcheck=1 install -y /candidate.rpm && rpm -V aimanity-workspace'
           fi
