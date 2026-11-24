@@ -13,6 +13,10 @@ Fluorine 首次打开为空工作区。可以按需创建虚拟设备，配对�
 | Linux x86_64 (DEB and RPM) | Embedded workspace, device lifecycle and offline tools on a hosted Linux runner | Physical desktop audio and GPU configurations |
 | Android phones and tablets | One candidate APK on two Android 15 emulators, landscape input, draft on resume and cold reopen | ARM64 AVF guest creation, simultaneous recordings and playback on a physical phone or tablet |
 
+**Workspace features under development.** The Skills window can enable or disable bundled skills. Importing a custom SKILL.md from a file or URL still lacks a native workspace handler. The external messaging channel list, binding, pairing and removal also await their native handlers. Computer and Android device pairing use a separate, working connection.
+
+**工作区功能进度。** 内置 Skill 的启停和重开保存已经验证。自定义 SKILL.md 的文件和网址导入，以及外部聊天渠道的列表、绑定、配对和解绑，仍需接入原生工作区。电脑和 Android 设备的配对使用独立通道，已有实际连接回执。
+
 iPhone and iPad are scheduled for 0.0.7. Installer acceptance uses the signed artifacts listed on the release page as they are published.
 
 ## 0.0.5 Europium downloads

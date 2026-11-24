@@ -204,7 +204,8 @@ jobs:
             git diff --exit-code --name-only "$guest_commit" HEAD -- . \
               ':(exclude)apps/native/src' ':(exclude)apps/native/tests' ':(exclude)crates/host-runtime/tests' ':(exclude)apps/native/vendor/iced_winit/src' \
               ':(exclude).github/workflows/client.yml' ':(exclude).github/workflows/android-mobile.yml' \
-              ':(exclude)scripts/mobile-smoke.sh' ':(exclude)docs/public/native-client.*.md' ':(exclude)SOURCE-MANIFEST.json'
+              ':(exclude)scripts/mobile-smoke.sh' ':(exclude)docs/public' ':(exclude)CHANGELOG.md' ':(exclude)SOURCE-MANIFEST.json' \
+              ':(exclude).github/workflows/client-factory.yml' ':(exclude)config/container-host-runtime.json'
           done
       - if: steps.mode.outputs.assets_run != ''
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333

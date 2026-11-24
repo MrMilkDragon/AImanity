@@ -10,6 +10,9 @@ on:
       candidate_run:
         description: Mac factory run for installation and reopen
         type: string
+      guest_run:
+        description: Previous Mac factory with a completed ARM64 Linux guest
+        type: string
 permissions:
   contents: read
   actions: read
@@ -104,7 +107,7 @@ jobs:
           retention-days: 2
 
   native-arm-rootfs:
-    if: inputs.platform == 'macos'
+    if: inputs.platform == 'macos' && inputs.guest_run == ''
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     outputs:
@@ -149,7 +152,9 @@ jobs:
           retention-days: 2
 
   full-macos-arm64:
-    if: inputs.platform == 'macos'
+    if: >-
+      !cancelled() && inputs.platform == 'macos' &&
+      (needs.native-arm-rootfs.result == 'success' || (inputs.guest_run != '' && needs.native-arm-rootfs.result == 'skipped'))
     needs: native-arm-rootfs
     runs-on: macos-26
     timeout-minutes: 165
@@ -165,6 +170,17 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Match the previous guest to its build inputs
+        if: inputs.guest_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUEST_RUN: ${{ inputs.guest_run }}
+        run: |
+          set -euo pipefail
+          source=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GUEST_RUN" --jq 'select(.path==".github/workflows/client-factory.yml")|.head_sha')
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GUEST_RUN/jobs" --jq '.jobs[]|select(.name=="native-arm-rootfs" and .conclusion=="success")|.id' | grep -Eq '^[0-9]+$'
+          git fetch --no-tags --depth=1 "https://github.com/$GITHUB_REPOSITORY.git" "$source"
+          git diff --exit-code "$source" HEAD -- Cargo.lock Cargo.toml infra/desktop crates/guest-runtime crates/adb-client crates/device-io crates/api crates/release-tools scripts/stage-debian-keyring.sh
       - name: Disposable Mac factory toolchain
         run: |
           set -euo pipefail
@@ -187,7 +203,9 @@ jobs:
           df -h .
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          artifact-ids: ${{ needs.native-arm-rootfs.outputs.artifact }}
+          name: macos-linux-runtime
+          run-id: ${{ inputs.guest_run || github.run_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/mac-linux
       - name: Reuse the published Avo and AOSP runtime
         run: |
