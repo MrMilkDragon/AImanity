@@ -52,6 +52,32 @@ pub fn native_arguments(root: &Path, operation: &str, lima: Option<&str>) -> Res
     Ok(command)
 }
 
+pub(crate) async fn apply_location(
+    mut command: Command,
+    fix: &ai_phone_api::wire::LocationFix,
+) -> Result<ai_phone_api::wire::LocationDevice> {
+    use prost::Message;
+    use std::{process::Stdio, time::Duration};
+    use tokio::io::AsyncWriteExt;
+    let mut child = command
+        .arg("location")
+        .kill_on_drop(true)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut input = child.stdin.take().ok_or(Error::Invalid("location_input"))?;
+    input.write_all(&fix.encode_to_vec()).await?;
+    drop(input);
+    let output = tokio::time::timeout(Duration::from_secs(12), child.wait_with_output())
+        .await
+        .map_err(|_| Error::Invalid("location_timeout"))??;
+    if !output.status.success() {
+        return Err(Error::Invalid("location_guest_failed"));
+    }
+    ai_phone_api::wire::LocationDevice::decode(output.stdout.as_slice())
+        .map_err(|_| Error::Invalid("location_receipt"))
+}
+
 pub fn native_command(root: &Path, operation: &str) -> Result<Command> {
     let lima = std::env::var("AI_PHONE_LIMA_COMMAND").ok();
     let args = native_arguments(root, operation, lima.as_deref())?;

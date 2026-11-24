@@ -56,7 +56,7 @@ impl Workspace {
         if interrupt
             && !old.is_empty()
             && self
-                .queued()?
+                .queued(false)?
                 .iter()
                 .any(|(_, j)| j.request.as_ref().is_some_and(|q| q.request_id == old))
         {

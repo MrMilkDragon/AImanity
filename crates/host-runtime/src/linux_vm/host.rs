@@ -262,6 +262,12 @@ impl<'a> QemuVm<'a> {
         lease: filesystem::Lease,
     ) -> Result<Self> {
         let control = TcpListener::bind((Ipv4Addr::LOCALHOST, config.control_port)).await?;
+        filesystem::publish_private(
+            config.home,
+            "control.port",
+            &config.control_port.to_be_bytes(),
+            false,
+        )?;
         let bootstrap = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let bootstrap_port = bootstrap.local_addr()?.port();
         let mut command = tool(config.runtime, "qemu-system-x86_64")?;
@@ -427,10 +433,23 @@ pub async fn stop_installed(home: &Path) -> Result<()> {
     flush
 }
 
+pub(crate) fn running_control(vm: &Path) -> Result<Option<u16>> {
+    let lock = vm.join("owner.lock");
+    if !lock.try_exists()? || filesystem::lease(&lock)?.is_some() {
+        return Ok(None);
+    }
+    let bytes = filesystem::bounded_file_with_limit(&vm.join("control.port"), 2)?;
+    let port = u16::from_be_bytes(
+        bytes
+            .try_into()
+            .map_err(|_| Error::Invalid("vm_control_port"))?,
+    );
+    Ok(Some(port))
+}
 pub async fn stop_desktop(home: &Path) -> Result<()> {
     let vm = home.join("user/qemu");
-    if vm.try_exists()? {
-        stop_running(&vm, vm_control::GUEST_PORT).await?;
+    if let Some(port) = running_control(&vm)? {
+        stop_running(&vm, port).await?;
     }
     Ok(())
 }

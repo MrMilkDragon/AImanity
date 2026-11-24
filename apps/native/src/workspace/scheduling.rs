@@ -48,6 +48,7 @@ impl Workspace {
         table.insert(id.as_str(), q.encode_to_vec().as_slice())?;
         drop(table);
         tx.commit()?;
+        self.changed();
         self.ready.notify_one();
         Ok(())
     }
@@ -82,7 +83,7 @@ impl Workspace {
         }
         Ok(())
     }
-    pub(super) fn queued(&self) -> Result<Vec<(u64, Job)>> {
+    pub(super) fn queued(&self, include_inbox: bool) -> Result<Vec<(u64, Job)>> {
         let tx = self.db.begin_read()?;
         let mut jobs = tx
             .open_table(JOBS)?
@@ -92,6 +93,19 @@ impl Workspace {
                 Ok((n.value(), Job::decode(bytes.value())?))
             })
             .collect::<Result<Vec<_>>>()?;
+        if include_inbox {
+            for row in tx.open_table(INBOX)?.iter()? {
+                let (_, bytes) = row?;
+                jobs.push((
+                    u64::MAX,
+                    Job {
+                        request: Some(wire::ChatSendRequest::decode(bytes.value())?),
+                        source: "notification".into(),
+                        ..Default::default()
+                    },
+                ));
+            }
+        }
         let order: wire::TodoList = read(&tx.open_table(RECORDS)?, "todo-order")?;
         let positions: std::collections::HashMap<_, _> = order
             .items
@@ -115,7 +129,7 @@ impl Workspace {
         Ok(jobs)
     }
     pub(super) fn claim_jobs(&self) -> Result<Vec<Work>> {
-        let jobs = self.queued()?;
+        let jobs = self.queued(false)?;
         if jobs.is_empty() {
             return Ok(vec![]);
         }
@@ -184,22 +198,32 @@ impl Workspace {
         }
         Ok(selected)
     }
-    pub(super) fn claim_device(&self, run: &str, id: &str, step: &str) -> Result<()> {
-        let mut active = self.run.lock().unwrap();
-        if active
-            .iter()
-            .any(|(owner, a)| owner != run && a.devices.contains(id))
-        {
-            return Err("设备正在执行另一项任务".into());
+    pub(super) async fn claim_device(&self, run: &str, id: &str, step: &str) -> Result<()> {
+        let mut changes = self.subscribe();
+        loop {
+            let stop = {
+                let mut active = self.run.lock().unwrap();
+                let busy = active
+                    .iter()
+                    .any(|(owner, a)| owner != run && a.devices.contains(id));
+                let Some(a) = active.get_mut(run) else {
+                    return Err("任务已停止".into());
+                };
+                if a.token.is_cancelled() {
+                    return Err("任务已停止".into());
+                }
+                if !busy {
+                    a.devices.insert(id.to_owned());
+                    if a.child && a.detail.step != step {
+                        a.detail.step = step.into();
+                        self.changed();
+                    }
+                    return Ok(());
+                }
+                a.token.clone()
+            };
+            tokio::select! {biased; _=stop.cancelled()=>return Err("任务已停止".into()), update=changes.changed()=>update?}
         }
-        if let Some(a) = active.get_mut(run) {
-            a.devices.insert(id.to_owned());
-            if a.detail.step != step && a.child {
-                a.detail.step = step.into();
-                self.changed();
-            }
-        }
-        Ok(())
     }
     pub(super) async fn delegate(
         &self,
@@ -278,7 +302,7 @@ impl Workspace {
     }
     pub(super) fn todos(&self) -> Result<wire::TodoList> {
         let registry = self.registry()?;
-        let jobs = self.queued()?;
+        let jobs = self.queued(true)?;
         let running = self.run.lock().unwrap();
         Ok(wire::TodoList {
             items: jobs

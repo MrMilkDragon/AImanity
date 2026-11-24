@@ -214,6 +214,35 @@ pub(crate) fn environment(root: &Path, user: &Path) -> Result<BTreeMap<String, S
 }
 
 #[cfg(target_os = "macos")]
+pub async fn desktop_location(
+    home: &Path,
+    fix: &ai_phone_api::wire::LocationFix,
+) -> Result<Option<ai_phone_api::wire::LocationDevice>> {
+    let root = home.join("user");
+    let user = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or(Error::Invalid("managed_engine_home"))?;
+    let Some(engine) = selection(&root, &user)? else {
+        return Ok(None);
+    };
+    let args = crate::desktop_bridge::native_arguments(
+        &root,
+        "exec",
+        Some(
+            engine
+                .command
+                .to_str()
+                .ok_or(Error::Invalid("managed_engine_path"))?,
+        ),
+    )?;
+    let mut command = tokio::process::Command::new(&args[0]);
+    command.args(&args[1..]).env("LIMA_HOME", engine.state);
+    crate::desktop_bridge::apply_location(command, fix)
+        .await
+        .map(Some)
+}
+
+#[cfg(target_os = "macos")]
 pub fn remove_state(home: &Path, user: &Path) -> Result<()> {
     let data = home.join("user/data");
     if !data.try_exists()? {

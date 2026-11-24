@@ -205,6 +205,19 @@ async fn handle(mut stream: TcpStream, key: &hmac::Key) -> Result<()> {
                 .then_some(())
                 .ok_or(Error::Invalid("vm_guest_shutdown"));
         }
+        LinuxVmOperation::SetLocation => {
+            let result = async {
+                let fix = ai_phone_api::wire::LocationFix::decode(request.payload.as_slice())
+                    .map_err(|_| Error::Invalid("location_request"))?;
+                let command =
+                    crate::desktop_bridge::native_command(&installation().await?, "exec")?;
+                Ok(crate::desktop_bridge::apply_location(command, &fix)
+                    .await?
+                    .encode_to_vec())
+            }
+            .await;
+            return reply(&mut stream, key, &nonce, result).await;
+        }
         LinuxVmOperation::NativeCredentials => {
             return reply(&mut stream, key, &nonce, native_credentials().await).await;
         }

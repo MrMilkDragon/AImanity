@@ -15,14 +15,13 @@ pub use cli::run;
 use std::time::Duration;
 pub const CONTRACT: &str = "ai-phone-native-android-session-v1";
 
-#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
-pub async fn stop_owned(home: &std::path::Path) -> crate::Result<()> {
+pub fn attached_client(home: &std::path::Path) -> crate::Result<Option<ai_phone_adb::Client>> {
     use crate::{Error, filesystem};
     let dir = home.join("user/data/android");
     let native = dir.join("native");
     let lock = native.join("session.lock");
     if !lock.try_exists()? || filesystem::lease(&lock)?.is_some() {
-        return Ok(());
+        return Ok(None);
     }
     let owner = process::session_record(&native.join("session.pb"))?
         .ok_or(Error::Invalid("android_session_owner"))?;
@@ -38,12 +37,21 @@ pub async fn stop_owned(home: &std::path::Path) -> crate::Result<()> {
         u16::try_from(owner.adb_port).map_err(|_| Error::Invalid("android_session_ports"))?;
     let console =
         u16::try_from(owner.console_port).map_err(|_| Error::Invalid("android_session_ports"))?;
-    let adb = ai_phone_adb::Client::new(port, engine.serial(console))
-        .map_err(|_| Error::Invalid("android_session_ports"))?;
+    ai_phone_adb::Client::new(port, engine.serial(console))
+        .map(Some)
+        .map_err(|_| Error::Invalid("android_session_ports"))
+}
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+pub async fn stop_owned(home: &std::path::Path) -> crate::Result<()> {
+    use crate::{Error, filesystem};
+    let Some(adb) = attached_client(home)? else {
+        return Ok(());
+    };
     let _shutdown = adb
         .open_stream("shell:sync && reboot -p", Duration::from_secs(5))
         .await
         .map_err(|_| Error::Invalid("android_poweroff_request"))?;
+    let lock = home.join("user/data/android/native/session.lock");
     tokio::time::timeout(Duration::from_secs(30), async {
         while filesystem::lease(&lock)?.is_none() {
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -59,34 +67,10 @@ pub async fn stop_owned(home: &std::path::Path) -> crate::Result<()> {
     all(target_os = "linux", target_arch = "x86_64")
 ))]
 pub(crate) async fn flush_attached(home: &std::path::Path) -> crate::Result<()> {
-    use crate::{Error, filesystem};
-    let dir = home.join("user/data/android");
-    let native = dir.join("native");
-    let Some(owner) = process::session_record(&native.join("session.pb"))? else {
-        return Ok(());
-    };
-    if filesystem::lease(&native.join("session.lock"))?.is_some() {
-        return Ok(());
+    if let Some(adb) = attached_client(home)? {
+        adb::sync(&adb).await?;
     }
-    use std::path::Path;
-    let sdk = Path::new(&owner.sdk_root);
-    let engine = super::Engine::installed(sdk);
-    if owner.version != 1
-        || !sdk.starts_with(home.join("components/android"))
-        || Path::new(&owner.avd_home) != dir.join(engine.avd_directory())
-    {
-        return Err(Error::Invalid("android_session_owner"));
-    }
-    let port =
-        u16::try_from(owner.adb_port).map_err(|_| Error::Invalid("android_session_ports"))?;
-    let console =
-        u16::try_from(owner.console_port).map_err(|_| Error::Invalid("android_session_ports"))?;
-    adb::Adb {
-        port,
-        serial: engine.serial(console),
-    }
-    .sync()
-    .await
+    Ok(())
 }
 pub(crate) async fn wait_serial(
     serial: String,

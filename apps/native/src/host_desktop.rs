@@ -627,6 +627,11 @@ pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
     ));
     let mut notices_open = true;
     let mut session_location = None;
+    #[cfg(target_os = "linux")]
+    let location_http = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()?;
     loop {
         let received = tokio::select! {
             biased;
@@ -666,8 +671,9 @@ pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
                     #[cfg(target_os = "linux")]
                     {
                         let result = async {
-                            let response = reqwest::Client::new()
+                            let response = location_http
                                 .post("http://127.0.0.1:17867/fix")
+                                .header(reqwest::header::CONTENT_TYPE, "application/x-protobuf")
                                 .body(fix.encode_to_vec())
                                 .send()
                                 .await?

@@ -28,31 +28,7 @@ impl Phone {
         action: &DesktopActionRequest,
     ) -> Result<HostDesktopReply, String> {
         if let Some(fix) = &action.location {
-            let script =
-                ai_phone_host_runtime::android::location::shell(fix).ok_or("定位坐标无效")?;
-            let receipt = self
-                .client
-                .shell(
-                    &script,
-                    Limits {
-                        stdout: 256,
-                        stderr: 1024,
-                    },
-                    DEADLINE,
-                )
-                .await
-                .map_err(|e| e.to_string())?;
-            let expected = if fix.enabled {
-                b"location-applied".as_slice()
-            } else {
-                b"location-disabled".as_slice()
-            };
-            if receipt.code != 0 {
-                return Err(String::from_utf8_lossy(&receipt.stderr).trim().to_string());
-            }
-            if !receipt.stdout.trim_ascii_end().ends_with(expected) {
-                return Err("安卓未确认定位".into());
-            }
+            ai_phone_host_runtime::android::location::apply(&self.client, fix).await?;
             return Ok(HostDesktopReply {
                 location: Some(*fix),
                 location_scope: "system".into(),

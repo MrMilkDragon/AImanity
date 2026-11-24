@@ -156,6 +156,31 @@ pub(crate) async fn version(port: u16, key: &Path) -> Result<Vec<u8>> {
     Ok(payload)
 }
 
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+pub async fn desktop_location(
+    home: &Path,
+    fix: &ai_phone_api::wire::LocationFix,
+) -> Result<Option<ai_phone_api::wire::LocationDevice>> {
+    let vm = home.join("user/qemu");
+    let Some(port) = crate::qemu_host::running_control(&vm)? else {
+        return Ok(None);
+    };
+    let key = crate::qemu_host::key_path(&vm);
+    let (_, reply) = tokio::time::timeout(
+        Duration::from_secs(14),
+        open(
+            port,
+            &key,
+            LinuxVmOperation::SetLocation,
+            fix.encode_to_vec(),
+        ),
+    )
+    .await
+    .map_err(|_| Error::Invalid("location_timeout"))??;
+    ai_phone_api::wire::LocationDevice::decode(reply.as_slice())
+        .map(Some)
+        .map_err(|_| Error::Invalid("location_receipt"))
+}
 pub async fn shutdown(port: u16, key: &Path) -> Result<()> {
     empty(port, key, LinuxVmOperation::Shutdown).await
 }

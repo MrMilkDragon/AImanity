@@ -498,8 +498,8 @@
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 33723,
-      "sha256": "36cb374aff8dd738542d2bcb6396509a8d0ccb5addf1a8e123f762190fd85d46"
+      "size": 33985,
+      "sha256": "9559de50673451a7ab3628033d81e41f40aaa6e53e74e0c110298edaf5edacbd"
     },
     {
       "path": "apps/native/src/host_desktop_mobile.rs",
@@ -583,8 +583,8 @@
     },
     {
       "path": "apps/native/src/paired_phone.rs",
-      "size": 8643,
-      "sha256": "e57572158416325283cbb31584e78a290dd385bc00fe5903d5e3cbb262e04569"
+      "size": 7797,
+      "sha256": "0a59887c5e53707b4c262bb8e7ec37cc0b2a807e4010d59932e83b6c4577a1b2"
     },
     {
       "path": "apps/native/src/peer_connection.rs",
@@ -688,8 +688,8 @@
     },
     {
       "path": "apps/native/src/workspace/device_run.rs",
-      "size": 10033,
-      "sha256": "572ebce4c7ef06e6d0c292a5ec9859224eeab234841f2e28544d4a5fe512a431"
+      "size": 10039,
+      "sha256": "0f782d6f4ea62032c519e66ba9b3efe6003891825ba2764be436c2223486d17c"
     },
     {
       "path": "apps/native/src/workspace/documents.rs",
@@ -703,18 +703,18 @@
     },
     {
       "path": "apps/native/src/workspace/lifecycle.rs",
-      "size": 5269,
-      "sha256": "01f473427f784d08cf791bcefc86c50ea32129c9ae56002f82e5d0a49d00e85f"
+      "size": 5467,
+      "sha256": "eab6d99fc558841acdd343003077df1b4864873e8888903c62150d5cf98edba6"
     },
     {
       "path": "apps/native/src/workspace/location.rs",
-      "size": 8613,
-      "sha256": "405da23af8fcb7e149b5028d311c3eff4d31ccc3a7b746a92b9ac351402875aa"
+      "size": 10676,
+      "sha256": "b640f0f901607ed60d82cfd69c954cc1363361029b41387402aeec1ca0c9062c"
     },
     {
       "path": "apps/native/src/workspace/modes.rs",
-      "size": 5774,
-      "sha256": "30547537737f307f2a10405bfedb4daed7876df35264f67f9176319a8584deb5"
+      "size": 5779,
+      "sha256": "64d690a60c8ef6d7754e50ba7a07b8ddb48b88e35f81a3e8d06f7533f3d628c9"
     },
     {
       "path": "apps/native/src/workspace/peers.rs",
@@ -728,8 +728,8 @@
     },
     {
       "path": "apps/native/src/workspace/scheduling.rs",
-      "size": 24884,
-      "sha256": "664d5e77d84ed9d2f74cfe1c9e39470351f4a41fec3e2ded9409b371de31bc05"
+      "size": 25927,
+      "sha256": "b93ba1f91ad490cb668416f8ce2a05a1a3f870f81190174d6be307d082918778"
     },
     {
       "path": "apps/native/src/workspace/skills.rs",
@@ -738,8 +738,8 @@
     },
     {
       "path": "apps/native/src/workspace/worker.rs",
-      "size": 25611,
-      "sha256": "c9490a52eddec278d9376ae578217e0e2af297aca797165363dddfdeeab086b1"
+      "size": 25646,
+      "sha256": "75209f12a9c5f8824019ff7d87176419aa21dc8ed6e573e3bc5a9f328b968a8e"
     },
     {
       "path": "apps/native/src/workspace.rs",
@@ -2983,8 +2983,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/location.rs",
-      "size": 2290,
-      "sha256": "21d16189e72907f8fc6652f0f6662ebf1c0d0031406b996abae11e579ef36a5b"
+      "size": 3090,
+      "sha256": "ae7b3950af3ec6ff468e0362d8827ee6811bd27055a77dbdd222f8f03ae63ad9"
     },
     {
       "path": "crates/host-runtime/src/android/maintenance.rs",
@@ -3003,8 +3003,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/session/adb.rs",
-      "size": 4778,
-      "sha256": "da3fdf11eeca6ddb4919fc099084bbc315b4c69015f76d07a7f0b434af61a866"
+      "size": 4701,
+      "sha256": "70a81ab05d33547d75557383bd8f043e68df6bb0159ee08adc7ad38c761de96d"
     },
     {
       "path": "crates/host-runtime/src/android/session/avo.rs",
@@ -3048,8 +3048,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/session.rs",
-      "size": 4602,
-      "sha256": "994d19a3679209a292a0398c86d64560694ffe4ab23237e431f327837241ee64"
+      "size": 3991,
+      "sha256": "0aa4434e58f635d359d8aeefe1754f614d0ff7fa85757137ea34ef72abb3a69e"
     },
     {
       "path": "crates/host-runtime/src/android/tests.rs",
@@ -3098,8 +3098,8 @@
     },
     {
       "path": "crates/host-runtime/src/desktop_bridge.rs",
-      "size": 3908,
-      "sha256": "aab68d92e43d32aa9ecac9cc7fda4616783de10b1dcdee8fc509cd03ad4e1342"
+      "size": 4877,
+      "sha256": "b8a6c0a298b0aa26ecbfa9513d7224fa0c93b66c2be730f27a67aad686973495"
     },
     {
       "path": "crates/host-runtime/src/device_bridge/cli.rs",
@@ -3158,8 +3158,8 @@
     },
     {
       "path": "crates/host-runtime/src/lib.rs",
-      "size": 4596,
-      "sha256": "505ccd237790d5e8e9b38a23c2978459cd39fe5e2026597aa8f910d8e351e235"
+      "size": 4730,
+      "sha256": "47c8558770f9520491d4dff75a1b20b6f5c4380304bf6a2a5fdb95c266db8a63"
     },
     {
       "path": "crates/host-runtime/src/links.rs",
@@ -3168,8 +3168,8 @@
     },
     {
       "path": "crates/host-runtime/src/linux_vm/host.rs",
-      "size": 20575,
-      "sha256": "e0ccd8725e6a8ce44a68c54530cf0a7aacf91a0d2fcdb0ab9ebf2983138410cb"
+      "size": 21197,
+      "sha256": "b5503525ad4221d190d6f8eadb1c0f325fb2152bb75cb4bbfbfc69546acd275b"
     },
     {
       "path": "crates/host-runtime/src/linux_vm.rs",
@@ -3178,8 +3178,8 @@
     },
     {
       "path": "crates/host-runtime/src/managed_engine.rs",
-      "size": 11331,
-      "sha256": "bebb13968f1a579dce2d1403cd57c1d6e79bb0f0bb20acc54c0959d3bffd8212"
+      "size": 12223,
+      "sha256": "d0001348e5d676e4d103a27d3668435fb8f3f73fa899ff8dd64083fee26b0577"
     },
     {
       "path": "crates/host-runtime/src/manifest.rs",
@@ -3293,13 +3293,13 @@
     },
     {
       "path": "crates/host-runtime/src/vm_control/guest.rs",
-      "size": 10774,
-      "sha256": "8518f96bb2ae465b1e0e9b7bc5875a57adc5ef4745936649aabcc193848a7413"
+      "size": 11385,
+      "sha256": "3ebe345f8d6bda9240c72bdb5c19bf6e4d0dd4d15f561c27ef04d8a328688215"
     },
     {
       "path": "crates/host-runtime/src/vm_control.rs",
-      "size": 7467,
-      "sha256": "3e904a1ff5683f9d657095ff90a04d195b6efaaedfafd8d3def584f1d90c34bb"
+      "size": 8300,
+      "sha256": "f1d488a9316fba99f82c4a9840721e66ed501781d4f9596fa45cd243e4e10d4a"
     },
     {
       "path": "crates/host-runtime/src/wsl/backend/process.rs",
@@ -4738,8 +4738,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/host_bridge.proto",
-      "size": 2816,
-      "sha256": "8536e998bd8bdde8b234faf57919f193dca2bf50122120739d92053a32ffdd89"
+      "size": 2855,
+      "sha256": "a7ce0ba4904765dc9bf5944eae08c80c576b07e6a5093b8f6d083efb516685ba"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/location.proto",

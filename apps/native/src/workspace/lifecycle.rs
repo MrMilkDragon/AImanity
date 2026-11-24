@@ -103,7 +103,7 @@ impl Workspace {
                 Err(e) => return Err(e.into()),
             }
         }
-        let result = self.write_registry(|s, _| {
+        let result = self.write_registry(|s, tx| {
             let Some(i) = s.devices.iter().position(|d| d.id == id) else {
                 return Ok(());
             };
@@ -111,6 +111,9 @@ impl Workspace {
                 match change {
                     Change::Disconnect => s.devices[i].runtime_state = "stopped".into(),
                     Change::Delete => {
+                        let prefix = format!("notice/{}/{}/", id.len(), id);
+                        tx.open_table(INBOX)?
+                            .retain(|key, _| !key.starts_with(&prefix))?;
                         s.devices.remove(i);
                     }
                 }

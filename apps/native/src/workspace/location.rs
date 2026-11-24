@@ -121,16 +121,29 @@ impl Workspace {
                     status: "pending".into(),
                     ..Default::default()
                 };
-                if let Some(session) = session {
+                let result = if let Some(session) = session {
                     let req = wire::DesktopActionRequest {
-                        device_id: device.id,
+                        device_id: device.id.clone(),
                         action_id: uuid::Uuid::now_v7().to_string(),
                         kind: "location".into(),
                         location: Some(fix),
                         ..Default::default()
                     };
-                    match self.peers.perform(req, Some(&session)).await {
-                        Ok(reply)
+                    self.peers.perform(req, Some(&session)).await.map(Some)
+                } else if !device.paired
+                    && !matches!(
+                        device.runtime_state.as_str(),
+                        "stopped" | "stopping" | "deleting"
+                    )
+                {
+                    self.owned_location(&device, &fix).await
+                } else {
+                    Ok(None)
+                };
+                {
+                    match result {
+                        Ok(None) => {}
+                        Ok(Some(reply))
                             if reply.location == Some(fix)
                                 && matches!(
                                     reply.location_scope.as_str(),
@@ -168,6 +181,50 @@ impl Workspace {
         state.devices = receipts.into_iter().map(|v| v.1).collect();
         self.store_location(&state)?;
         Ok(state)
+    }
+    async fn owned_location(
+        &self,
+        device: &wire::RegisteredDevice,
+        fix: &wire::LocationFix,
+    ) -> Result<Option<wire::HostDesktopReply>> {
+        let home = self.device_home(&device.id);
+        let scope = if device.kind == "phone" {
+            let Some(client) = ai_phone_host_runtime::android::session::attached_client(&home)?
+            else {
+                return Ok(None);
+            };
+            ai_phone_host_runtime::android::location::apply(&client, fix).await?;
+            "system"
+        } else {
+            #[cfg(any(
+                target_os = "macos",
+                windows,
+                all(target_os = "linux", target_arch = "x86_64")
+            ))]
+            {
+                let Some(ack) = ai_phone_host_runtime::desktop_location(&home, fix).await? else {
+                    return Ok(None);
+                };
+                if !ack.error.is_empty() {
+                    return Err(ack.error.into());
+                }
+                if ack.status != if fix.enabled { "applied" } else { "disabled" } {
+                    return Err("设备未确认定位".into());
+                }
+                "browser"
+            }
+            #[cfg(not(any(
+                target_os = "macos",
+                windows,
+                all(target_os = "linux", target_arch = "x86_64")
+            )))]
+            return Ok(None);
+        };
+        Ok(Some(wire::HostDesktopReply {
+            location: Some(*fix),
+            location_scope: scope.into(),
+            ..Default::default()
+        }))
     }
     pub(super) async fn watch_location(
         weak: std::sync::Weak<Self>,

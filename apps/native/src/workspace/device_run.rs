@@ -153,7 +153,7 @@ impl DeviceRun {
     ) -> Result<Value> {
         let id = data.device_id.clone();
         let session = self.session(&id)?;
-        workspace.claim_device(run, &id, &data.kind)?;
+        workspace.claim_device(run, &id, &data.kind).await?;
         if session.is_cancelled() {
             return Err("设备已断开".into());
         }

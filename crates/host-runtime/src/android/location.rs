@@ -1,5 +1,31 @@
 //! Mock providers are owned by this feature and removed when it is disabled.
 use ai_phone_api::wire;
+pub async fn apply(client: &ai_phone_adb::Client, fix: &wire::LocationFix) -> Result<(), String> {
+    let script = shell(fix).ok_or("定位坐标无效")?;
+    let result = client
+        .shell(
+            &script,
+            ai_phone_adb::Limits {
+                stdout: 256,
+                stderr: 1024,
+            },
+            std::time::Duration::from_secs(8),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    if result.code != 0 {
+        return Err(String::from_utf8_lossy(&result.stderr).trim().to_owned());
+    }
+    let expected: &[u8] = if fix.enabled {
+        b"location-applied"
+    } else {
+        b"location-disabled"
+    };
+    if !result.stdout.trim_ascii_end().ends_with(expected) {
+        return Err("安卓未确认定位".into());
+    }
+    Ok(())
+}
 pub fn shell(fix: &wire::LocationFix) -> Option<String> {
     let body = if fix.enabled {
         let p = fix.point.as_ref()?;

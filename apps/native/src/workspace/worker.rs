@@ -365,7 +365,8 @@ impl Workspace {
                         {
                             return Err("设备麦克风未授权".into());
                         }
-                        self.claim_device(id, &feed.device_id, "device_audio_input")?;
+                        self.claim_device(id, &feed.device_id, "device_audio_input")
+                            .await?;
                         let session = device_run.session(&feed.device_id)?;
                         tokio::select! {
                             biased;
