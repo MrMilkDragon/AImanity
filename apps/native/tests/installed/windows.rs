@@ -16,9 +16,8 @@ use window::Client;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 async fn onboarding(client: &mut Client, home: &Path) -> Result<()> {
-    client.word("English", true).await?;
-    client.word("Continue", true).await?;
-    client.word("Message", false).await?;
+    client.choose_english().await?;
+    client.workspace().await?;
     assert_eq!(fs::read_to_string(home.join("user/native-locale"))?, "en");
     assert!(home.join("workspace.redb").is_file());
     let devices = home.join("devices");
@@ -41,7 +40,7 @@ async fn windows_empty_workbench() -> Result<()> {
     onboarding(&mut client, &home).await?;
     client.close().await?;
     let mut reopened = Client::launch(&exe, dir, &evidence, &evidence.join("reopened.log")).await?;
-    reopened.word("Message", false).await?;
+    reopened.workspace().await?;
     reopened.close().await?;
     Ok(())
 }
@@ -98,7 +97,7 @@ async fn windows_installed_guests() -> Result<()> {
     let log = root.join("reopen.log");
     let mut app = Client::launch(&exe, &profile, &root, &log).await?;
     let resumed = tokio::time::timeout(Duration::from_secs(1500), async {
-        app.word("Message", false).await?;
+        app.workspace().await?;
         app.frame("phone", &log).await?;
         app.frame("desktop", &log).await
     })

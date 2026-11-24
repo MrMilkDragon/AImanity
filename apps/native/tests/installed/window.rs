@@ -82,6 +82,42 @@ impl Client {
         self.pixels()?.0.save(self.evidence.join(name))?;
         Ok(())
     }
+    pub async fn choose_english(&mut self) -> Result<()> {
+        let (left, top, width, height, button_y) = timeout(Duration::from_secs(60), async {
+            loop {
+                let (frame, left, top) = self.pixels()?;
+                let (w, h) = frame.dimensions();
+                let button = (h * 78 / 100..h * 96 / 100).find(|&y| {
+                    [44, 56].iter().all(|x| frame.get_pixel(w * x / 100, y)[0] < 64)
+                        && frame.get_pixel(w / 3, y)[0] > 190
+                });
+                if let Some(y) = button {
+                    frame.save(self.evidence.join("language.png"))?;
+                    return Result::Ok((left, top, w as i32, h as i32, y as i32));
+                }
+                sleep(Duration::from_millis(150)).await;
+            }
+        }).await??;
+        for (x, y) in [(width * 64 / 100, height * 36 / 100), (width / 2, button_y + 4)] {
+            if !self.window.is_focused()? {
+                return Err("The language window lost focus".into());
+            }
+            self.input.move_mouse(left + x, top + y, Coordinate::Abs)?;
+            self.input.button(Button::Left, Direction::Click)?;
+        }
+        Ok(())
+    }
+    pub async fn workspace(&mut self) -> Result<()> {
+        timeout(Duration::from_secs(60), async {
+            while self.window.title()? != "AImanity" {
+                if let Some(status) = self.child.try_wait()? {
+                    return Err(format!("Client exited: {status}").into());
+                }
+                sleep(Duration::from_millis(150)).await;
+            }
+            Result::Ok(())
+        }).await?
+    }
     pub async fn word(&mut self, word: &str, click: bool) -> Result<()> {
         let until = Instant::now() + Duration::from_secs(35);
         let image = self.evidence.join("window.png");
@@ -91,11 +127,15 @@ impl Client {
                 return Err(format!("Client exited: {status}").into());
             }
             let (pixels, left, top) = self.pixels()?;
+            let mut ink = image::imageops::grayscale(&pixels);
+            for shade in ink.as_mut() {
+                *shade = if *shade < 185 { 0 } else { 255 };
+            }
             image::imageops::resize(
-                &pixels,
-                pixels.width() * 2,
-                pixels.height() * 2,
-                image::imageops::FilterType::Triangle,
+                &ink,
+                ink.width() * 2,
+                ink.height() * 2,
+                image::imageops::FilterType::Nearest,
             )
             .save(&image)?;
             let output = Command::new(&ocr)

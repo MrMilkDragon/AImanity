@@ -82,6 +82,8 @@ where
                 redraw_at: None,
                 preedit: None,
                 ime_state: None,
+                #[cfg(target_os = "android")]
+                ime_dismissed: false,
             },
         );
 
@@ -173,6 +175,8 @@ where
     pub redraw_at: Option<Instant>,
     preedit: Option<Preedit<P::Renderer>>,
     ime_state: Option<(Rectangle, input_method::Purpose)>,
+    #[cfg(target_os = "android")]
+    pub(crate) ime_dismissed: bool,
 }
 
 impl<P, C> Window<P, C>
@@ -303,6 +307,10 @@ where
     }
 
     pub(crate) fn disable_ime(&mut self) {
+        #[cfg(target_os = "android")]
+        {
+            self.ime_dismissed = false;
+        }
         if self.ime_state.is_some() {
             #[cfg(target_os = "android")]
             crate::ANDROID_KEYBOARD.get()(None);

@@ -212,7 +212,7 @@ extern "system" fn Java_dev_aimanity_mobile_KeyboardView_onKeyPreIme(
             .ok()
             == Some(1)
     {
-        named(keyboard::key::Named::Escape);
+        iced_winit::android_input(Event::InputMethod(input_method::Event::Closed));
     }
     0
 }

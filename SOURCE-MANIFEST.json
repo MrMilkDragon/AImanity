@@ -53,8 +53,8 @@
     },
     {
       "path": ".github/workflows/android-mobile.yml",
-      "size": 16357,
-      "sha256": "ca3692892ef0eabff60ff2441e38fc9054c3e9563e32105f2397b7d81f468a25"
+      "size": 16975,
+      "sha256": "3590b411c054ca5ea3d7db968e5bb5d9768397e9ba8d679672631ad91bc0511f"
     },
     {
       "path": ".github/workflows/client-factory.yml",
@@ -63,8 +63,8 @@
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 5396,
-      "sha256": "05ac0d58f64a781755184db73c46b258b60816d21c3af6f1f526e970ea1835f6"
+      "size": 5664,
+      "sha256": "d8e88eaf36206c8c293b097269900bf7a943689d62765204c17a02355a1c702a"
     },
     {
       "path": ".github/workflows/linux-backend.yml",
@@ -423,8 +423,8 @@
     },
     {
       "path": "apps/native/src/android_keyboard.rs",
-      "size": 12280,
-      "sha256": "9a5a2f0e65edae45ccaa67d2cabbc26bc8c3014c1e20125ebd0370ed2619f2c9"
+      "size": 12475,
+      "sha256": "c40588fcb7d2d4d599041224e799a9a86726cd651f0b3e1568abe609b430f129"
     },
     {
       "path": "apps/native/src/android_os.rs",
@@ -788,13 +788,13 @@
     },
     {
       "path": "apps/native/tests/installed/window.rs",
-      "size": 7004,
-      "sha256": "e4e4eb863ba9299b579449f20adb9751221fe75c3eae8acfa24d1e84e79ae72f"
+      "size": 9022,
+      "sha256": "dc5af0b5409c438c68d8d168f6d43845bec285f2170c9fcffa0227672392162f"
     },
     {
       "path": "apps/native/tests/installed/windows.rs",
-      "size": 3847,
-      "sha256": "145a0a715f73bb073afd1c26dcd49f566b81f80b2782f87b96cdee6da50112b3"
+      "size": 3890,
+      "sha256": "f09cb6bde31455ca5a7c8daa7837108f4b3922abc2d1ac5809ba64cf20bbd1a4"
     },
     {
       "path": "apps/native/vendor/cryoglyph/Cargo.toml",
@@ -878,8 +878,8 @@
     },
     {
       "path": "apps/native/vendor/iced_winit/src/lib.rs",
-      "size": 79465,
-      "sha256": "c832a531150191d343c0d373f0b5f55240a190e35b6bfd2de7869225f1247f4f"
+      "size": 80124,
+      "sha256": "0087d40f81e96360a56488a685512300437cfae0588281a502d0a4008900f4c7"
     },
     {
       "path": "apps/native/vendor/iced_winit/src/proxy.rs",
@@ -893,8 +893,8 @@
     },
     {
       "path": "apps/native/vendor/iced_winit/src/window.rs",
-      "size": 13480,
-      "sha256": "8a354f64f2fdc37316b2165635c7676db97d7f3b8c1c00e6031692406f35f83b"
+      "size": 13732,
+      "sha256": "9f6740e21dbba5f7dfcea8ab1e4a9909c02d9849c3f273a5fb2bbb7243ddaa07"
     },
     {
       "path": "apps/native/vendor/winit/Cargo.toml",
@@ -4538,13 +4538,13 @@
     },
     {
       "path": "docs/public/native-client.en.md",
-      "size": 5547,
-      "sha256": "b9378cff5e89b5e13cb321a84252f34e9e725175e06978b66b854c43a730057c"
+      "size": 5668,
+      "sha256": "5b2ac0869f2554d09c240e5809792cd725006cadda1f04fa75f4338e176dae98"
     },
     {
       "path": "docs/public/native-client.zh-CN.md",
-      "size": 5066,
-      "sha256": "b3b57a085d8255258262ff3fba87e301b19ad9dd5117f1264dc4348f2a6de300"
+      "size": 5174,
+      "sha256": "9f55370efd05856301368fa42080a12e587743f58d136bba9473e65559dacf5c"
     },
     {
       "path": "docs/public/native-services-license-inventory.json",
@@ -5013,8 +5013,8 @@
     },
     {
       "path": "scripts/mobile-smoke.sh",
-      "size": 7618,
-      "sha256": "0decf487bb2c609c87edd76146d58d500c427ea912db73063ae9f364bf6ded59"
+      "size": 7630,
+      "sha256": "c109dbbcceb25a82b76ff315d858e2213c1386a31d564f00c301471d60f8f867"
     },
     {
       "path": "scripts/native-host",
