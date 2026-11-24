@@ -2,24 +2,25 @@
 
 English · [简体中文](README.md#简体中文) · [繁體中文](docs/public/readme.zh-TW.md) · [日本語](docs/public/readme.ja.md) · [한국어](docs/public/readme.ko.md) · [Deutsch](docs/public/readme.de.md) · [Français](docs/public/readme.fr.md) · [Español](docs/public/readme.es.md) · [Русский](docs/public/readme.ru.md) · [العربية](docs/public/readme.ar.md)
 
-An agent that listens while it works, explores on its own, and learns across Android and Linux.
+An agent that listens while it works, explores on its own, and learns from using your phone and computer.
 
 ## Downloads
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
+[Download 0.0.6 Fluorine](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) · [Platform acceptance and hardware coverage](docs/public/release-status.md)
 
 [Installation guide](docs/public/release-status.md) · [Uninstall](docs/public/release-status.md#uninstall)
 
-## Europium features
+## Fluorine features
 
 - **Use a phone.** An Agent reads the Android screen, operates installed apps such as WeChat and handles notifications.
-- **Use a computer.** An Agent controls the Linux desktop and works in apps such as LibreOffice. Connect the devices to move files between them.
-- **Keep working.** Add instructions or interrupt a response in the shared conversation. Both devices keep working while you switch views.
-- **Reuse skills.** Agents share Skills, linked knowledge and work files. Model settings, memory and channel connections belong to each Agent.
+- **Use a computer.** An Agent controls the Linux desktop and works in apps such as LibreOffice. Choose two devices in Files to copy work between them.
+- **Keep working.** Add instructions or interrupt a response in the same conversation. One conversation follows the task across devices.
+- **Choose a mode.** Copilot takes live voice instructions. Liberty explores freely. Task & Goal works toward a goal you can revise as it runs.
+- **Reuse skills.** Skills, linked knowledge and work files are shared. Save model profiles and switch the active Agent in Configuration.
 
 See [model and channel setup](docs/public/model-and-channel-setup.md), [notification workflows](docs/public/notification-workflows.md) and [Liberty](docs/public/autonomous-exploration.md).
 
-## Fluorine development architecture
+## Architecture
 
 | Layer | Technology | Directory |
 | --- | --- | --- |

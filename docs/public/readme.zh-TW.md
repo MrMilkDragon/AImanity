@@ -1,31 +1,22 @@
-# AImanity 0.0.5 Europium
+# AImanity 0.0.6 Fluorine
 
 [English](../../README.md) · [全部語言](../../README.md) · Apache-2.0
 
 ## 下載與現況
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
+[下載 0.0.6 Fluorine](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) · [安裝驗收與實機覆蓋](release-status.md)
 
-支援 Apple Silicon macOS 15.0 以上與 Windows 11 x64。安裝包內建 Android、Linux、模擬器及本機服務。
-
-Linux x86_64 需啟用 KVM 並使用 glibc 2.36 以上。Debian／Ubuntu 請選 DEB，Fedora／Enterprise Linux 10 請選 RPM。更新時安裝同格式的新版套件，即可保留裝置與聊天。 [安裝指令](release-status.md#linux)
+0.0.6 採全新安裝。工作區第一次開啟時沒有裝置。可按需建立 Android 或 Linux 客體，配對遠端裝置，或授權當前任務使用本機桌面。
 
 ## 功能與情境
 
-AImanity 將 Android 手機與 Linux 桌面放在同一個工作台，兩台裝置共用一條對話和目前選用的 Agent。可在設定中儲存並切換模型設定。
+Agent 可依任務選擇已授權的裝置。多台裝置共用一段對話、待辦和工作檔案。分開的任務可交給子 Agent 平行處理。
 
-- 操作微信等應用：觀察真實畫面、檢視通知，依使用者指示回覆；帳號及應用限制仍然有效。
-- 跨裝置工作：手機收件，傳到 Linux 處理、核對試算表，再交回手機。裝置間傳輸成功與交付聯絡人是不同結果，需分別驗證。
-- 持續任務：可持續補充指示和中斷生成，先前訊息與操作紀錄保持；通知可喚醒 Agent，Liberty 可跨裝置運作。
-- Skill、關聯知識文件、工作檔案全域共享；模型/API、記憶、外部連接屬於 Agent。裝置預設直接連線，可在工作台設定網路代理。
-
-有副作用的動作綁定觀察、裝置、任務、控制 epoch 及唯一 action ID；結果未知時先觀察再決定是否重試。
+Copilot 接收語音修正，Liberty 自由探索，Task & Goal 持續執行指定目標。
 
 ## 架構與資料
 
-`apps/native`：Rust（Iced/wgpu）；`crates`：Rust/Axum/Tokio；`packages/protocol`：protobuf。資料透過 SQLx 存入 PostgreSQL，專案使用 Cargo 建置。
-
-程式碼與使用者狀態分離。裝置磁碟、帳號、聊天、附件、金鑰及私有證據不進入公開儲存庫。更新應使用版本化產物、備份、遷移與回復，不直接在使用者資料上執行 `git pull`。
+原生介面使用 Rust、Iced 和 wgpu，協定使用 protobuf。裝置、聊天與任務由內嵌 redb 儲存在本機。
 
 ## 後續方向、責任與授權
 
