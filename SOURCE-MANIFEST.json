@@ -5028,8 +5028,8 @@
     },
     {
       "path": "scripts/mobile-smoke.sh",
-      "size": 7957,
-      "sha256": "227bcb98af6ec9b6e160e55cb4db2834cb3877180de9224371f54e5a10590c4c"
+      "size": 8128,
+      "sha256": "d38ecc3c8033cfda303092b9d826b258bc54d0735fe765dd480e89a8b2b2ff96"
     },
     {
       "path": "scripts/native-host",
