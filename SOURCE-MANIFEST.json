@@ -798,13 +798,13 @@
     },
     {
       "path": "apps/native/tests/installed/window.rs",
-      "size": 13542,
-      "sha256": "7df9fe84df17e5b9bad096f205679a37cb9daa45f6f16e3aca3a95d9d1f2d42f"
+      "size": 13780,
+      "sha256": "a2b50c2dd92751e141c84b83337a596706ecd8c5a3934adcefdf28f960fcae89"
     },
     {
       "path": "apps/native/tests/installed/windows.rs",
-      "size": 4157,
-      "sha256": "45da56c12c952e8735090f9ba4f8a27430a42a7ab4087638c398781c272ef98e"
+      "size": 4198,
+      "sha256": "370509bdcadca103abf3fe2857197766bdfe061af1ad125a2dea81fff71ae392"
     },
     {
       "path": "apps/native/tests/installed_macos.rs",
@@ -4998,8 +4998,8 @@
     },
     {
       "path": "scripts/check-linux-guests.sh",
-      "size": 3619,
-      "sha256": "969d0f14b4f7688aee66b0e1f2dbd07b0d2000aec566b34a26bdad848843c260"
+      "size": 3461,
+      "sha256": "3a0b1b8fec70488cec97464bc775835e12e26949901261000dd8a61784b741f2"
     },
     {
       "path": "scripts/check-native-workspace.sh",

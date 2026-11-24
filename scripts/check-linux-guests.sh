@@ -25,6 +25,7 @@ reopen() {
     identity=$(stat -c '%d:%i' "$database")
     start_client
     timeout 60 xdotool search --sync --onlyvisible --pid "$app" --name '^AImanity$' >/dev/null
+    word Message
     import -window "$window" "$work/reopened-workbench.png"
     test "$(stat -c '%d:%i' "$database")" = "$identity"
     close_client
@@ -33,7 +34,7 @@ start_client
 trap 'code=$?; if ((code)); then tail -50 "$work/client.log"; fi; kill "$app" "$wm" 2>/dev/null || true' EXIT
 
 word() {
-    local wanted=$1 where attempt
+    local wanted=$1 where attempt previous=""
     for attempt in {1..20}; do
         kill -0 "$app"
         import -window "$window" -resize '200%' "$work/current.png"
@@ -41,7 +42,8 @@ word() {
             awk -F '\t' -v w="$wanted" '$1==5 && tolower($12)==tolower(w) && (!seen || $8<best) {
                 seen=1;best=$8;x=int(($7+$9/2)/2);y=int(($8+$10/2)/2)
             } END {if (seen) print x,y}')
-        if [[ -n $where ]]; then read -r x y <<< "$where"; return; fi
+        if [[ -n $where && $where == "$previous" ]]; then read -r x y <<< "$where"; return; fi
+        previous=$where
         sleep 0.5
     done
     echo "Missing $wanted on the installed client" >&2
@@ -52,6 +54,7 @@ qemu_pids() { ps -u "$(id -u)" -o pid=,comm= | awk '$2 ~ /qemu-system-x86/ {prin
 click_word English
 click_word Continue
 timeout 60 xdotool search --sync --onlyvisible --pid "$app" --name '^AImanity$' >/dev/null
+word Message
 import -window "$window" "$work/first-workbench.png"
 test -z "$(qemu_pids)"
 test -f "$XDG_DATA_HOME/dev.aimanity.workspace/host/workspace.redb"
@@ -61,9 +64,8 @@ if [[ $1 == workbench ]]; then
     exit 0
 fi
 [[ -r /dev/kvm && -w /dev/kvm ]]
-# Device Manager is the first icon of the top toolbar on the 1440 x 900 canvas.
-read -r width height < <(xwininfo -id "$window" | awk '/Width:/ {w=$2} /Height:/ {h=$2} END {print w,h}')
-xdotool mousemove --window "$window" "$((width*1065/1440))" "$((height*30/900))" click 1
+click_word Add
+word Share
 
 for kind in phone desktop; do
     click_word Add

@@ -235,6 +235,7 @@ impl Client {
     pub async fn word(&mut self, word: &str, click: bool) -> Result<()> {
         let until = Instant::now() + Duration::from_secs(35);
         let image = self.evidence.join("window.png");
+        let mut previous = None;
         let ocr = std::env::var_os("AIMANITY_QA_OCR").ok_or("Windows OCR tool missing")?;
         while Instant::now() < until {
             if let Some(status) = self.child.try_wait()? {
@@ -279,14 +280,19 @@ impl Client {
                     Some((n(6)? + n(8)? / 2, n(7)? + n(9)? / 2))
                 })
                 .min_by_key(|&(_, y)| y);
-            if let Some((x, y)) = target {
-                if click {
-                    self.click(left + x / 2, top + y / 2)?;
+            let position = target.map(|(x, y)| (left + x / 2, top + y / 2));
+            if let Some((x, y)) = position {
+                if !click {
+                    return Ok(());
                 }
-                return Ok(());
+                if position == previous {
+                    return self.click(x, y);
+                }
             }
+            previous = position;
             sleep(Duration::from_millis(250)).await;
         }
+        self.capture("last-visible.png")?;
         Err(format!("The installed client did not display {word}").into())
     }
     #[cfg(windows)]
