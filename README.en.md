@@ -29,7 +29,9 @@ See [model and channel setup](docs/public/model-and-channel-setup.md), [notifica
 | Device runtimes | AOSP on Avo or QEMU (WHPX/KVM), Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
 | Built-in capabilities | Skills and device profiles | `skills`, `config` |
 
-Fluorine starts with a fresh workspace. Chat, model profiles, knowledge and working files are available with zero devices.
+Fluorine starts with zero devices. Add Android or Linux guests, pair a remote computer or phone, or grant a task access to the computer running the workspace. The Agent chooses among authorized devices and shares one conversation, task queue and set of working files across them.
+
+[Use this computer for one task](docs/public/native-client.en.md#use-this-computer-for-one-task) · [Pair a remote computer](docs/public/native-client.en.md#pair-a-remote-computer)
 
 Agents plan from current device observations and record their actions and results. Cargo builds the project. Device disks, accounts and attachments stay in the local installation.
 

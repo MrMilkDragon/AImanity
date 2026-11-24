@@ -9,4 +9,6 @@ Fluorine 0.0.6 is in development. It starts with a fresh profile. For an install
 3. Send a message in the shared conversation. You can use the workspace with zero devices.
 4. Import a working file or create a knowledge document. Reopen the client to return to the same conversation and files.
 
+[Use this computer for one task](native-client.en.md#use-this-computer-for-one-task) · [Pair a remote computer](native-client.en.md#pair-a-remote-computer)
+
 [Workspace location](distribution.en.md) · [Backup](backup-restore.en.md)

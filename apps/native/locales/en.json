@@ -23,7 +23,7 @@
   "请启用 KVM 并授予当前账号 /dev/kvm 读写权限。加入 kvm 组后请重新登录。": "Enable KVM and grant your account read/write access to /dev/kvm. After joining the kvm group, sign out and back in.",
   "允许本机协作": "Allow host desktop control",
   "卸载 AImanity": "Uninstall AImanity",
-  "两台虚拟设备、聊天、工作文件和设置将永久删除。": "Both virtual devices, conversations, work files and settings will be permanently deleted.",
+  "此工作区的虚拟设备、聊天、工作文件和设置将永久删除。": "This workspace’s virtual devices, chats, work files and settings will be permanently deleted.",
   "待办": "To-do",
   "暂无待办": "No pending tasks",
   "主线任务": "Main task",

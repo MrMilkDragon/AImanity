@@ -9,4 +9,6 @@
 3. 在共享对话中发送消息。零台设备也可以开始对话。
 4. 导入工作文件或创建知识文档。重开客户端可继续查看原会话和文件。
 
+[在本机执行一次任务](native-client.zh-CN.md#在本机执行一次任务) · [配对远程电脑](native-client.zh-CN.md#配对远程电脑)
+
 [工作区位置](distribution.zh-CN.md) · [备份](backup-restore.zh-CN.md)

@@ -1,11 +1,11 @@
 use crate::{
     controls::{action_button, field, form_input, form_select, text_button},
     locale::Locale,
-    paired_phone,
+    paired_phone, style,
     peer_connection::share,
 };
 use iced::{
-    Element, Length, Task,
+    Element, Length, Padding, Task,
     widget::{column, container, row, text},
 };
 use tokio::sync::{oneshot, watch};
@@ -57,9 +57,10 @@ pub(super) fn window(locale: Locale) -> iced::Result {
         Sharing::view,
     )
     .title(move |_s: &Sharing| locale.tr("共享设备").to_owned())
-    .window_size((510., 370.))
+    .window_size((510., 330.))
+    .default_font(style::CJK_FONT)
     .centered()
-    .theme(|_: &Sharing| iced::Theme::Light)
+    .theme(|_: &Sharing| style::theme())
     .run()
 }
 impl Sharing {
@@ -179,7 +180,6 @@ impl Sharing {
                 .into()
         };
         let mut form = column![
-            text(tr("共享设备")).size(22),
             row![
                 source,
                 text_button(tr("查找手机")).on_press_maybe(idle.then_some(Msg::Scan))
@@ -193,12 +193,12 @@ impl Sharing {
                 idle
             ),
             column![
-                text(tr("配对码")).size(12),
+                text(tr("配对码")).size(12).style(style::muted_text),
                 form_input("", &self.code)
                     .secure(true)
                     .on_input_maybe(idle.then_some(Msg::Code))
             ]
-            .spacing(5)
+            .spacing(6)
         ]
         .spacing(12);
         if cfg!(any(windows, target_os = "macos")) && self.serial.is_none() {
@@ -227,8 +227,16 @@ impl Sharing {
                 Some(Msg::Stop),
             )
         };
-        iced::widget::scrollable(container(form.push(submit)).padding(24).width(Length::Fill))
-            .width(Length::Fill)
-            .into()
+        column![
+            iced::widget::scrollable(
+                container(form)
+                    .padding(Padding::new(24.).bottom(0))
+                    .width(Length::Fill)
+            )
+            .height(Length::Fill),
+            container(submit).padding(Padding::new(24.).top(10).bottom(18))
+        ]
+        .height(Length::Fill)
+        .into()
     }
 }

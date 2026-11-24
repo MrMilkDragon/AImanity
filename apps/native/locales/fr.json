@@ -23,7 +23,7 @@
   "请启用 KVM 并授予当前账号 /dev/kvm 读写权限。加入 kvm 组后请重新登录。": "Activez KVM et accordez à votre compte un accès en lecture et en écriture à /dev/kvm. Après avoir rejoint le groupe kvm, reconnectez-vous.",
   "允许本机协作": "Autoriser le contrôle du bureau hôte",
   "卸载 AImanity": "Désinstaller AImanity",
-  "两台虚拟设备、聊天、工作文件和设置将永久删除。": "Les deux appareils virtuels, les conversations, les fichiers de travail et les réglages seront supprimés définitivement.",
+  "此工作区的虚拟设备、聊天、工作文件和设置将永久删除。": "Les appareils virtuels, les conversations, les fichiers de travail et les réglages de cet espace de travail seront supprimés définitivement.",
   "待办": "À faire",
   "暂无待办": "Aucune tâche en attente",
   "主线任务": "Tâche principale",

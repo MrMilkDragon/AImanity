@@ -110,7 +110,8 @@ fn observe(display: &str) -> Result<(View, HostDesktopReply)> {
         frame.thumbnail(1440, 1200)
     } else {
         frame
-    };
+    }
+    .into_rgba8();
     let mut jpeg = Vec::new();
     JpegEncoder::new_with_quality(&mut jpeg, 79).encode_image(&pixels)?;
     let view = View {

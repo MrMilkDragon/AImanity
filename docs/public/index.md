@@ -4,6 +4,7 @@
 
 - [Downloads and platform status](release-status.md)
 - [Setup · English](getting-started.en.md) / [简体中文](getting-started.zh-CN.md)
+- [Control a local or remote computer · English](native-client.en.md) / [简体中文](native-client.zh-CN.md)
 - [Model and application connections](model-and-channel-setup.md)
 - [Languages](languages.md)
 - [Backup and recovery · English](backup-restore.en.md) / [简体中文](backup-restore.zh-CN.md)
@@ -29,7 +30,6 @@
 - [Business protocol](protocol-boundaries.md)
 - [UI system](ui-system.md)
 - [Source builds · English](source-release.en.md) / [简体中文](source-release.zh-CN.md)
-- [Native client development · English](native-client.en.md) / [简体中文](native-client.zh-CN.md)
 - [Contributing](../../CONTRIBUTING.md)
 
 ## Roadmap

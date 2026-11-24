@@ -30,7 +30,9 @@ See [model and channel setup](docs/public/model-and-channel-setup.md), [notifica
 | Device runtimes | AOSP on Avo or QEMU (WHPX/KVM), Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
 | Built-in capabilities | Skills and device profiles | `skills`, `config` |
 
-Fluorine starts with a fresh workspace. Chat, model profiles, knowledge and working files are available with zero devices.
+Fluorine starts with zero devices. Add Android or Linux guests, pair a remote computer or phone, or grant a task access to the computer running the workspace. The Agent chooses among authorized devices and shares one conversation, task queue and set of working files across them.
+
+[Use this computer for one task](docs/public/native-client.en.md#use-this-computer-for-one-task) · [Pair a remote computer](docs/public/native-client.en.md#pair-a-remote-computer)
 
 Agents plan from current device observations and record their actions and results. Cargo builds the project. Device disks, accounts and attachments stay in the local installation.
 
@@ -72,7 +74,9 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 客户端与工作台采用 Rust、Iced 和 wgpu。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，Rust 客户端直接读写内嵌 redb 数据库。Cargo 负责构建。macOS 通过 Avo 运行 Android，Windows 和 Linux 通过 QEMU 配合 WHPX 或 KVM 运行 Android 和 Debian/Openbox 桌面。
 
-0.0.6 将独立安装，首次打开即创建新工作区。零台设备可使用对话、模型配置、知识和工作文件。
+0.0.6 从零设备工作区启动。可以创建 Android 或 Linux 虚拟设备，配对远程电脑或手机，也可以逐任务授权使用本机。Agent 可在已授权设备中选择，同一对话、待办队列和工作文件随任务使用。
+
+[在本机执行一次任务](docs/public/native-client.zh-CN.md#在本机执行一次任务) · [配对远程电脑](docs/public/native-client.zh-CN.md#配对远程电脑)
 
 Agent 根据当前设备画面操作，动作账本保留执行过程和结果。设备盘、账号、聊天和附件保存在本地安装目录或数据库中。
 

@@ -128,8 +128,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 3942,
-      "sha256": "70d34734226801a7b8721f3f2c43e927c0cdef96a4c8b1ccb9b0a3f6f814f826"
+      "size": 4267,
+      "sha256": "8820eebc01c508c5ccd81623821009202ccea8abb1b885a38ec6b9fdd07ed270"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -168,13 +168,13 @@
     },
     {
       "path": "README.en.md",
-      "size": 3365,
-      "sha256": "8b71f32a7268e013dc2da7facd656ee8dbb144f1a9d1fe66ba09e50d3989deeb"
+      "size": 3704,
+      "sha256": "209d9c759b4dd3b3d19d4d736814f3c8c9825ff1752e6ded295d8f950bb236b3"
     },
     {
       "path": "README.md",
-      "size": 6259,
-      "sha256": "817f889149c2074aeb86f0a45c119470cce2fb2567264cb67e0a9ef56b6b4493"
+      "size": 6893,
+      "sha256": "849fbd7cc25548249ddc336ad0d9522782cb9485fb6034e1bf46e6fe7457b9b1"
     },
     {
       "path": "SECURITY.md",
@@ -353,48 +353,48 @@
     },
     {
       "path": "apps/native/locales/ar.json",
-      "size": 30697,
-      "sha256": "248b7335fafa1bb3db8f1293a260915c034ee3a63f83e4d176adace872c4a719"
+      "size": 30746,
+      "sha256": "74c1bdcb0190876ac73f2509e1efbb76cba6be00c4386050837ad0bd0dd3a4ec"
     },
     {
       "path": "apps/native/locales/de.json",
-      "size": 25967,
-      "sha256": "858ab1c7a794931718a4751abbb212ebf27dd64463b699360abb33a2d1728499"
+      "size": 25992,
+      "sha256": "460839ce5aa8ce0c65ec4dc58da1425fb67f5c6e52be3517ac97b2c43c052d30"
     },
     {
       "path": "apps/native/locales/en.json",
-      "size": 25004,
-      "sha256": "0204f3f3827688fe48a826642bdca2e99feb0d19d4ff3af45ff75c240c109151"
+      "size": 25019,
+      "sha256": "8e822bae2b410cc0f1ebd5f3dfaddba5a15ed5d59cd7beb7a753aed8ef7a1f28"
     },
     {
       "path": "apps/native/locales/es.json",
-      "size": 26092,
-      "sha256": "78433ac350c9d9bc6f847e2bd69d9ee3d9abe8db0226ab720706eb3e7c3c713a"
+      "size": 26113,
+      "sha256": "096fbf5f709e50d3193f6571e2b19c89788a2fd87eb9ca47469386e983d515fa"
     },
     {
       "path": "apps/native/locales/fr.json",
-      "size": 26879,
-      "sha256": "e7582035390665ffac3e3b4fabd0243c4888f498c186f48f73a288b623d5c39a"
+      "size": 26908,
+      "sha256": "2d5e53186b5d87cf4fbf72432bf89cc172e96938f865b7d788190b61903dcda7"
     },
     {
       "path": "apps/native/locales/ja.json",
-      "size": 28887,
-      "sha256": "35ff3aa86a26ac466175188c4627273bc6ce278ab756151929fb2960bad55fbf"
+      "size": 28917,
+      "sha256": "1b6a3d19aea179fde88a1bab31f62fa04309437c053912ac651d210052dc4e59"
     },
     {
       "path": "apps/native/locales/ko.json",
-      "size": 26170,
-      "sha256": "dcad1da97af976349386e36b33918c8422f8490589337e954cd69ee5e6c41240"
+      "size": 26194,
+      "sha256": "3bc5322359936a02d681d887ef88665dcdd5550efd516a8938e723119928ae23"
     },
     {
       "path": "apps/native/locales/ru.json",
-      "size": 35021,
-      "sha256": "6d43b68f818b2664411c85234f772e495918d16b697e095ca96dcc0bbc44cf0d"
+      "size": 35076,
+      "sha256": "44c9ae7488bf76cd23b9e22d59df3332e51c3755a5395597b659e4885da5bf11"
     },
     {
       "path": "apps/native/locales/zh-TW.json",
-      "size": 22954,
-      "sha256": "bafd61cd4dbdf8e12b02787bcb62cd0fd25da7a7d273b8c80b9a0585d06fe17a"
+      "size": 22972,
+      "sha256": "b0711368b729bd53546cb9a2b5a8477e6ca5519559b212f5e08a5140643c8cfb"
     },
     {
       "path": "apps/native/src/agent_details.rs",
@@ -443,8 +443,8 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 61117,
-      "sha256": "5627771e48fcdedc38c0a1720334dc24c0494dc9b9bbf69ee415efc893f16ec8"
+      "size": 60946,
+      "sha256": "a14c8c7a47795befc1e4d7d952db7e25e8498d78ee417d0237aa627d63df4ab1"
     },
     {
       "path": "apps/native/src/connection.rs",
@@ -508,8 +508,8 @@
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 26164,
-      "sha256": "0967effeddbf0934df16de0c204d9e42a20035fce4aa769a8fc67cee2b9b03f5"
+      "size": 26182,
+      "sha256": "ebccb2cdc6b5fb39d83c4ca3e2f5a2c3ad09fcd7cb966fab78380a4a8351b561"
     },
     {
       "path": "apps/native/src/host_desktop_mobile.rs",
@@ -638,8 +638,8 @@
     },
     {
       "path": "apps/native/src/sharing.rs",
-      "size": 7953,
-      "sha256": "e226a7edb2e0db4c919eeca88ee3577d8f61e8e65d8da06eaf4c918dd74db64a"
+      "size": 8197,
+      "sha256": "592051b21cece99146f625b8e0f01b080d6902759a5e357e06b5c9bd9859cd13"
     },
     {
       "path": "apps/native/src/skills.rs",
@@ -693,8 +693,8 @@
     },
     {
       "path": "apps/native/src/uninstall.rs",
-      "size": 1857,
-      "sha256": "51cab2f9a588d93f461e679a4ee23888cbd24affcee6502ab9019f7e671d7fea"
+      "size": 1866,
+      "sha256": "dd484e6ead029a31a4ee5559f9cb7664056daa52ac1ceedf2bc20ebfcea91c3e"
     },
     {
       "path": "apps/native/src/windows-lifecycle.rs",
@@ -4028,18 +4028,18 @@
     },
     {
       "path": "docs/public/getting-started.en.md",
-      "size": 770,
-      "sha256": "23b04be00fb692ab7aa347dcb337ae0e2e8172d905691ad2cdc293e9966b70c2"
+      "size": 928,
+      "sha256": "b05316baca2b9105b5ab89c75571a4eb363c7c59997a8ecdfce518365c6733b6"
     },
     {
       "path": "docs/public/getting-started.zh-CN.md",
-      "size": 703,
-      "sha256": "f9deccd4442a9df551d5ed642242ac2a86c70158ab054c84d2ef0aa9c4f2e8a0"
+      "size": 853,
+      "sha256": "508c7c0a9a67d128680699ed620dca4c6f57d30bf22053ad48ba3a662cc802d0"
     },
     {
       "path": "docs/public/index.md",
-      "size": 2024,
-      "sha256": "b633a08eb010cd7cd7c611fe71c4818ba9a79b75fe2b45e02917dfdbd481cde4"
+      "size": 2033,
+      "sha256": "e97eb919083d5df1d3611bc752549f4ebc6d8225045c7b5bee9e7cd034d81ada"
     },
     {
       "path": "docs/public/integrated-hosts.md",
@@ -4538,13 +4538,13 @@
     },
     {
       "path": "docs/public/native-client.en.md",
-      "size": 5668,
-      "sha256": "5b2ac0869f2554d09c240e5809792cd725006cadda1f04fa75f4338e176dae98"
+      "size": 3922,
+      "sha256": "358f2f7092a7705b73cac83fce3f02d971d3426347d69a11d95a13d6ec2bfa1e"
     },
     {
       "path": "docs/public/native-client.zh-CN.md",
-      "size": 5174,
-      "sha256": "9f55370efd05856301368fa42080a12e587743f58d136bba9473e65559dacf5c"
+      "size": 3683,
+      "sha256": "8ba28a568b15d2d765cb59ca65790d8c9c2179407eeae20c9dde24c1a57e93fa"
     },
     {
       "path": "docs/public/native-services-license-inventory.json",

@@ -28,7 +28,7 @@ pub async fn prepare(locale: crate::locale::Locale) -> Result<Option<Plan>, Stri
         .map_err(|e| e.to_string())??;
     let response = rfd::AsyncMessageDialog::new()
         .set_title(locale.tr("卸载 AImanity"))
-        .set_description(locale.tr("两台虚拟设备、聊天、工作文件和设置将永久删除。"))
+        .set_description(locale.tr("此工作区的虚拟设备、聊天、工作文件和设置将永久删除。"))
         .set_level(rfd::MessageLevel::Error)
         .set_buttons(rfd::MessageButtons::OkCancelCustom(
             locale.tr("取消").into(),

@@ -23,7 +23,7 @@
   "请启用 KVM 并授予当前账号 /dev/kvm 读写权限。加入 kvm 组后请重新登录。": "Aktiviere KVM und erteile deinem Konto Lese- und Schreibzugriff auf /dev/kvm. Melde dich nach dem Beitritt zur Gruppe kvm erneut an.",
   "允许本机协作": "Steuerung des Host-Desktops erlauben",
   "卸载 AImanity": "AImanity deinstallieren",
-  "两台虚拟设备、聊天、工作文件和设置将永久删除。": "Beide virtuellen Geräte, Chats, Arbeitsdateien und Einstellungen werden dauerhaft gelöscht.",
+  "此工作区的虚拟设备、聊天、工作文件和设置将永久删除。": "Virtuelle Geräte, Chats, Arbeitsdateien und Einstellungen dieses Arbeitsbereichs werden dauerhaft gelöscht.",
   "待办": "Aufgaben",
   "暂无待办": "Keine offenen Aufgaben",
   "主线任务": "Hauptaufgabe",
