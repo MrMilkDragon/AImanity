@@ -78,8 +78,8 @@
     },
     {
       "path": ".github/workflows/linux-install-check.yml",
-      "size": 4976,
-      "sha256": "617577376fa1acb606b7d362761cebf16d88053957d3bc55c6f3f2da743a8b66"
+      "size": 5539,
+      "sha256": "c96f9b0fa5d3e9b912c8b046387457884a5d377487e4be88998e0129fc39b0a3"
     },
     {
       "path": ".github/workflows/linux-packages.yml",
@@ -4998,8 +4998,8 @@
     },
     {
       "path": "scripts/check-linux-guests.sh",
-      "size": 3506,
-      "sha256": "a27c8c30a6fc5db89a0e12bf2094971e457c5dbab64df17bb94009defd1f25f4"
+      "size": 3619,
+      "sha256": "969d0f14b4f7688aee66b0e1f2dbd07b0d2000aec566b34a26bdad848843c260"
     },
     {
       "path": "scripts/check-native-workspace.sh",

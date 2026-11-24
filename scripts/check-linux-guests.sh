@@ -25,6 +25,7 @@ reopen() {
     identity=$(stat -c '%d:%i' "$database")
     start_client
     timeout 60 xdotool search --sync --onlyvisible --pid "$app" --name '^AImanity$' >/dev/null
+    import -window "$window" "$work/reopened-workbench.png"
     test "$(stat -c '%d:%i' "$database")" = "$identity"
     close_client
 }
@@ -51,6 +52,7 @@ qemu_pids() { ps -u "$(id -u)" -o pid=,comm= | awk '$2 ~ /qemu-system-x86/ {prin
 click_word English
 click_word Continue
 timeout 60 xdotool search --sync --onlyvisible --pid "$app" --name '^AImanity$' >/dev/null
+import -window "$window" "$work/first-workbench.png"
 test -z "$(qemu_pids)"
 test -f "$XDG_DATA_HOME/dev.aimanity.workspace/host/workspace.redb"
 if [[ $1 == workbench ]]; then

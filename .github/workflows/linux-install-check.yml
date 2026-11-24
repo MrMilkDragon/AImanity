@@ -68,8 +68,8 @@ jobs:
               gpgv --keyring "$RUNNER_TEMP/package-key.gpg" "$RUNNER_TEMP/deb-origin.sig" -
             docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc '
               apt-get update -qq
+              apt-get install -y task-gnome-desktop
               apt-get install -y --no-install-recommends xvfb xauth openbox wmctrl xdotool x11-utils imagemagick tesseract-ocr-eng tesseract-ocr mesa-vulkan-drivers libgl1-mesa-dri procps
-              apt-get satisfy -y --no-install-recommends "$(dpkg-deb -f /candidate.deb Depends)"
               gid=$(stat -c %g /dev/kvm)
               group=$(getent group "$gid" | cut -d: -f1)
               if [ -z "$group" ]; then group=runner-kvm; groupadd -g "$gid" "$group"; fi
@@ -78,8 +78,8 @@ jobs:
           else
             docker exec distro bash -euc '
               rpm --import /package-key.asc
-              mapfile -t deps < <(rpm -qpR /candidate.rpm | grep -v "^rpmlib(")
-              dnf install -y "${deps[@]}" xorg-x11-server-Xvfb openbox wmctrl xdotool xwininfo ImageMagick tesseract tesseract-langpack-eng mesa-vulkan-drivers mesa-dri-drivers procps-ng
+              dnf install -y @workstation-product-environment
+              dnf install -y xorg-x11-server-Xvfb openbox wmctrl xdotool xwininfo ImageMagick tesseract tesseract-langpack-eng mesa-vulkan-drivers mesa-dri-drivers procps-ng
               useradd -m tester
             '
           fi
@@ -99,6 +99,20 @@ jobs:
             bash /check-linux-guests.sh "$QA_MODE"
           '
           echo "- $DISTRO: installed the signed $PACKAGE offline, opened an empty workspace, closed it, then reopened the same database. Coverage: $mode." >> "$GITHUB_STEP_SUMMARY"
+      - name: Collect workbench screens and lifecycle log
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/linux-evidence"
+          for file in client.log first-workbench.png reopened-workbench.png; do
+            docker cp "distro:/home/tester/cold-install/$file" "$RUNNER_TEMP/linux-evidence/" 2>/dev/null || continue
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: offline-${{ matrix.package }}-evidence
+          path: ${{ runner.temp }}/linux-evidence
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Remove the disposable installation
         if: always()
         run: if docker inspect distro >/dev/null 2>&1; then docker rm -f distro; fi
