@@ -13,6 +13,8 @@ pub const LATIN_FONT: iced::Font = iced::Font::with_name(if cfg!(target_os = "ma
     "Helvetica Neue"
 } else if cfg!(windows) {
     "Segoe UI"
+} else if cfg!(target_os = "android") {
+    "Roboto"
 } else {
     "Noto Sans"
 });
@@ -37,7 +39,7 @@ pub const CONTROL_HEIGHT: f32 = 40.;
 pub const COMPACT_CONTROL: f32 = 36.;
 pub const TOOL_CONTROL: f32 = 32.;
 pub const FIELD_LINE: iced::Pixels = iced::Pixels(20.);
-pub const MOTION_DEVICE: f32 = 0.56;
+pub const MOTION_DEVICE: f32 = 0.24;
 pub const WINDOW_ENTER: f32 = 0.46;
 pub const WINDOW_EXIT: f32 = 0.24;
 pub const NAV_ICON_WIDTH: f32 = 36.;

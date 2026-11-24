@@ -1,5 +1,7 @@
 syntax = "proto3";
 package ai_phone.v1;
+import "ai_phone/v1/phone_runtime.proto";
+import "ai_phone/v1/location.proto";
 message DesktopRequest { string device_id = 1; }
 // Length-delimited prefix before the final frame when an Agent requests input progress.
 message DesktopInputReceipt { string action_id = 1; }
@@ -39,6 +41,8 @@ message DesktopObservation {
   uint64 window_id = 12;
   uint32 process_id = 13;
 }
+message ScreenPoint { sint32 x = 1; sint32 y = 2; }
+message BrushStroke { repeated ScreenPoint points = 1; }
 message DesktopActionRequest {
   string device_id = 1;
   string action_id = 2;
@@ -59,6 +63,31 @@ message DesktopActionRequest {
   // Replace the current editable field through real select-all/paste input.
   // Rejected when the observed foreground window or editable focus is unavailable.
   bool replace = 16;
+  string control_session = 17;
+  repeated BrushStroke strokes = 18;
+  DeviceIoRequest io = 19;
+  LocationFix location = 20;
+  uint32 duration_ms = 21;
+}
+enum DeviceIoOperation {
+  DEVICE_IO_OPERATION_UNSPECIFIED = 0;
+  DEVICE_IO_OPERATION_LIST = 1;
+  DEVICE_IO_OPERATION_READ = 2;
+  DEVICE_IO_OPERATION_WRITE = 3;
+  DEVICE_IO_OPERATION_MKDIR = 4;
+  DEVICE_IO_OPERATION_RENAME = 5;
+  DEVICE_IO_OPERATION_REMOVE = 6;
+  DEVICE_IO_OPERATION_AUDIO_OUTPUT = 7;
+  DEVICE_IO_OPERATION_AUDIO_INPUT = 8;
+}
+message DeviceIoRequest {
+  DeviceIoOperation operation = 1;
+  string path = 2;
+  string destination = 3;
+  bool wav_input = 4;
+}
+message DeviceIoPacket {
+  oneof body { bytes data = 1; bool end = 2; string error = 3; }
 }
 message DeviceFilesRequest { string device_id = 1; string path = 2; }
 message DeviceFile { string name = 1; string path = 2; bool directory = 3; uint64 bytes = 4; }
@@ -100,4 +129,8 @@ message HostDesktopReply {
   string error = 6;
   repeated string displays = 7;
   string display = 8;
+  string foreground = 9;
+  PhoneNotification notification = 10;
+  LocationFix location = 11;
+  string location_scope = 12;
 }

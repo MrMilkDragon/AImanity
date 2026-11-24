@@ -308,7 +308,7 @@ impl Location {
                 }
             }
             Message::Attribution => {
-                let _ = open::that_detached("https://www.openstreetmap.org/copyright");
+                let _ = crate::platform::open_link("https://www.openstreetmap.org/copyright");
             }
         }
         Task::none()
@@ -319,7 +319,11 @@ impl Location {
             .into()
     }
 
-    pub fn view(&self, locale: crate::locale::Locale) -> Element<'_, Message> {
+    pub fn view<'a>(
+        &'a self,
+        locale: crate::locale::Locale,
+        devices: &'a [wire::RegisteredDevice],
+    ) -> Element<'a, Message> {
         let enabled = self.enabled();
         let moving = self.state.as_ref().is_some_and(|s| s.moving);
         let editable = !self.saving && !moving;
@@ -462,14 +466,14 @@ impl Location {
         }
         if let Some(state) = &self.state {
             body = body.push(
-                row(state.devices.iter().map(|d| {
-                    let name = if d.kind == "phone" {
-                        locale.tr("手机")
-                    } else {
-                        locale.tr("电脑")
-                    };
+                column(state.devices.iter().map(|d| {
+                    let name = devices
+                        .iter()
+                        .find(|device| device.id == d.device_id)
+                        .map_or(d.device_id.as_str(), |device| device.name.as_str());
                     let status = match d.status.as_str() {
-                        "applied" if d.kind == "desktop" => locale.tr("浏览器已同步"),
+                        "browser" => locale.tr("浏览器已同步"),
+                        "workspace" => locale.tr("工作区已同步"),
                         "applied" => locale.tr("已同步"),
                         "disabled" => locale.tr("已关闭"),
                         _ => locale.tr("未同步"),

@@ -42,10 +42,11 @@ pub(crate) async fn claim(
             FOR UPDATE OF r SKIP LOCKED LIMIT 1
         ), claimed AS (
             INSERT INTO device_execution_leases(device_id,run_id)
-            SELECT device_id,id FROM due ON CONFLICT DO NOTHING RETURNING run_id
+            SELECT device_id,id FROM due WHERE device_id IS NOT NULL ON CONFLICT DO NOTHING RETURNING run_id
         ), started AS (
             UPDATE runs r SET status='running',heartbeat_at=now(),next_wake_at=NULL,error=''
-            FROM claimed WHERE r.id=claimed.run_id RETURNING r.id,r.assistant_message_id
+            FROM due WHERE r.id=due.id AND (due.device_id IS NULL OR due.id IN (SELECT run_id FROM claimed))
+            RETURNING r.id,r.assistant_message_id
         ), recorded AS (
             INSERT INTO harness_events(id,run_id,message_id,kind,title)
             SELECT id,id,assistant_message_id,'task','任务' FROM started

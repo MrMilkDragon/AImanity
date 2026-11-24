@@ -7,7 +7,6 @@ type Proto = (Name, Types);
 type Method = (Name, Name, Proto);
 
 const VOID: Proto = ("V", &[]);
-const CONTEXT_CTOR: Proto = ("V", &["Landroid/content/Context;"]);
 const STRING: Name = "Ljava/lang/String;";
 const SYSTEM: Name = "Ljava/lang/System;";
 const RECEIVER: Name = "Landroid/content/BroadcastReceiver;";
@@ -22,26 +21,32 @@ pub(super) struct Class {
     pub name: Name,
     pub parent: Name,
     pub interfaces: Types,
-    pub with_context: bool,
+    pub constructor_args: Types,
     pub fields: &'static [(Name, Name, u32)],
     pub natives: &'static [(Name, Proto, u32)],
 }
 
 impl Class {
     fn constructor(&self) -> Proto {
-        if self.with_context {
-            CONTEXT_CTOR
-        } else {
-            VOID
-        }
+        ("V", self.constructor_args)
     }
 }
 
+const AUDIO: Name = "Ldev/aiphone/input/VirtualAudio;";
+const AUDIO_LIB: Name = "aimanity.audio.library";
 const CLASSES: &[Class] = &[
+    Class {
+        name: AUDIO,
+        parent: "Ljava/lang/Object;",
+        constructor_args: &[],
+        interfaces: &[],
+        fields: &[],
+        natives: &[("main", ("V", &["[Ljava/lang/String;"]), 9)],
+    },
     Class {
         name: "Ldev/aiphone/input/PhoneNotifications;",
         parent: "Landroid/service/notification/NotificationListenerService;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &["Ljava/lang/Runnable;"],
         fields: &[
             ("file", "Landroid/util/AtomicFile;", 2),
@@ -64,7 +69,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: "Ldev/aiphone/input/UiTreeReceiver;",
         parent: RECEIVER,
-        with_context: false,
+        constructor_args: &[],
         interfaces: &[],
         fields: &[("imeOwner", IME, 2)],
         natives: &[(
@@ -79,7 +84,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: IME,
         parent: "Landroid/inputmethodservice/InputMethodService;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &[],
         fields: &[("inputReceiver", RECEIVER, 2)],
         natives: &[
@@ -91,7 +96,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: ATTENTION,
         parent: "Landroid/accessibilityservice/AccessibilityService;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &[],
         fields: &[
             ("active", ATTENTION, 10),
@@ -126,7 +131,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: TIMER,
         parent: "Ljava/lang/Object;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &["Ljava/lang/Runnable;"],
         fields: &[("owner", ATTENTION, 2), ("heartbeat", "Z", 2)],
         natives: &[("run", VOID, 1)],
@@ -134,7 +139,7 @@ const CLASSES: &[Class] = &[
     Class {
         name: SCREENSHOT,
         parent: "Ljava/lang/Object;",
-        with_context: false,
+        constructor_args: &[],
         interfaces: &["Landroid/accessibilityservice/AccessibilityService$TakeScreenshotCallback;"],
         fields: &[
             ("owner", ATTENTION, 2),
@@ -200,6 +205,12 @@ pub(super) fn emit_for(schema: &[Class], library: Name) -> Vec<u8> {
     let mut classes: Vec<_> = schema.iter().collect();
     classes.sort_unstable_by_key(|class| class.name);
     let mut methods = BTreeSet::from([load]);
+    let absolute: Method = (SYSTEM, "load", ("V", &[STRING]));
+    let property: Method = (SYSTEM, "getProperty", (STRING, &[STRING]));
+    let audio = classes.iter().any(|c| c.name == AUDIO);
+    if audio {
+        methods.extend([absolute, property]);
+    }
     let mut fields = BTreeSet::new();
     let mut types = BTreeSet::new();
     let mut lists = BTreeSet::new();
@@ -241,6 +252,9 @@ pub(super) fn emit_for(schema: &[Class], library: Name) -> Vec<u8> {
         })
         .collect();
     let mut strings = BTreeSet::from([library]);
+    if audio {
+        strings.insert(AUDIO_LIB);
+    }
     for &(class, name, (result, params)) in &methods {
         types.extend([class, result]);
         types.extend(params.iter().copied());
@@ -338,26 +352,55 @@ pub(super) fn emit_for(schema: &[Class], library: Name) -> Vec<u8> {
         .iter()
         .map(|class| {
             // <clinit> loads our JNI library. <init> calls the framework constructor.
-            let load = code(
-                &mut dex,
-                0,
-                &[
-                    0x001a,
-                    string(library) as u16,
-                    0x1071,
-                    method(load) as u16,
+            let load = if class.name == AUDIO {
+                code(
+                    &mut dex,
                     0,
-                    0x000e,
-                ],
-            );
-            let registers = 1 + u32::from(class.with_context);
+                    &[
+                        0x001a,
+                        string(AUDIO_LIB) as u16,
+                        0x1071,
+                        method(property) as u16,
+                        0,
+                        0x000c,
+                        0x1071,
+                        method(absolute) as u16,
+                        0,
+                        0x000e,
+                    ],
+                )
+            } else {
+                code(
+                    &mut dex,
+                    0,
+                    &[
+                        0x001a,
+                        string(library) as u16,
+                        0x1071,
+                        method(load) as u16,
+                        0,
+                        0x000e,
+                    ],
+                )
+            };
+            let registers = 1 + class.constructor_args.len() as u32;
+            // Retain the original bytecode of the existing Home and Unicode IME APKs.
+            // A range invokes the keyboard connection's three-register superclass constructor.
+            let (invoke, operands) = match class.constructor_args {
+                [] => (0x1070, 0),
+                [_] => (0x2070, 0x10),
+                args => {
+                    assert!(args.iter().all(|ty| !matches!(*ty, "J" | "D")));
+                    (0x76 | ((registers as u16) << 8), 0)
+                }
+            };
             let init = code(
                 &mut dex,
                 registers,
                 &[
-                    0x70 | ((registers as u16) << 12),
+                    invoke,
                     method((class.parent, "<init>", class.constructor())) as u16,
-                    if registers == 2 { 0x10 } else { 0 },
+                    operands,
                     0x000e,
                 ],
             );

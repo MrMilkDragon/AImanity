@@ -27,29 +27,6 @@ impl Adb {
             .await
             .map_err(error)
     }
-    #[cfg(any(
-        target_os = "macos",
-        windows,
-        all(target_os = "linux", target_arch = "x86_64")
-    ))]
-    pub async fn sync(&self) -> Result<()> {
-        let receipt = self
-            .client()?
-            .shell(
-                "sync",
-                ai_phone_adb::Limits {
-                    stdout: 1024,
-                    stderr: 1024,
-                },
-                Duration::from_secs(4),
-            )
-            .await
-            .map_err(error)?;
-        if receipt.code != 0 {
-            return Err(Error::Invalid("android_sync_failed"));
-        }
-        Ok(())
-    }
     pub async fn boot_identity(&self) -> Result<Option<u32>> {
         let bytes = self.request(BOOT_IDENTITY, 128).await?;
         let text =
@@ -95,6 +72,29 @@ impl Adb {
             .map_err(error)?;
         Ok(reply.starts_with(b"connected to ") || reply.starts_with(b"already connected to "))
     }
+}
+
+#[cfg(any(
+    target_os = "macos",
+    windows,
+    all(target_os = "linux", target_arch = "x86_64")
+))]
+pub(super) async fn sync(client: &ai_phone_adb::Client) -> Result<()> {
+    let receipt = client
+        .shell(
+            "sync",
+            ai_phone_adb::Limits {
+                stdout: 1024,
+                stderr: 1024,
+            },
+            Duration::from_secs(4),
+        )
+        .await
+        .map_err(error)?;
+    if receipt.code != 0 {
+        return Err(Error::Invalid("android_sync_failed"));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -205,7 +205,7 @@ async fn quota_failure_does_not_retry_or_leak_credentials() {
 async fn browser_stream_checks_session_origin_binding_and_voice_revision() {
     crate::worker::steering_regressions::database_case(|app| async move {
         use sha2::{Digest, Sha256};
-        registry::initialize(&app.db, &app.settings).await.unwrap();
+        registry::initialize(&app).await.unwrap();
         let token = "a".repeat(64);
         sqlx::query("INSERT INTO admin_sessions(token_hash) VALUES($1)")
             .bind(format!("{:x}", Sha256::digest(token.as_bytes())))

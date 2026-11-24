@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Copilot uses the microphone while enabled to receive your spoken instructions.</string>
+  <string>Use the microphone for Copilot or send your voice to the virtual device you select.</string>
 </dict>
 </plist>

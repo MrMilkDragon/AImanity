@@ -258,7 +258,7 @@ mod database_tests {
             db: db.clone(),
             root: root.clone(),
             token: "test".into(),
-            phone_token: "unused".into(),
+            phone_token: Some("unused".into()),
             settings: settings::SettingsStore::test_configured(&root),
             local: reqwest::Client::new(),
             remote: reqwest::Client::new(),
@@ -270,13 +270,13 @@ mod database_tests {
             network_mutation: Mutex::new(()),
         });
         let result=AssertUnwindSafe(async{
- sqlx::migrate!("./migrations").run(&db).await.unwrap();registry::initialize(&db,&app.settings).await.unwrap();
+ sqlx::migrate!("./migrations").run(&db).await.unwrap();registry::initialize(&app).await.unwrap();
  let conversation:Uuid=sqlx::query_scalar("SELECT id FROM conversations WHERE owner_id='local-user'").fetch_one(&db).await.unwrap();
  let mut runs=vec![];let mut message=Uuid::nil();
  for n in 0..3{
   let run=Uuid::now_v7();message=Uuid::now_v7();runs.push(run);
   sqlx::query("INSERT INTO messages(id,conversation_id,role) VALUES($1,$2,'assistant')").bind(message).bind(conversation).execute(&db).await.unwrap();
-  sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status,origin) VALUES($1,$2,$3,$1,'test',$4,'exploration')").bind(run).bind(conversation).bind(message).bind(if n<2{"succeeded"}else{"running"}).execute(&db).await.unwrap();
+  sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status,origin,device_id) VALUES($1,$2,$3,$1,'test',$4,'exploration',$5)").bind(run).bind(conversation).bind(message).bind(if n<2{"succeeded"}else{"running"}).bind(registry::PHONE).execute(&db).await.unwrap();
   for (i, title) in ["观察手机", "查看操作结果"].into_iter().enumerate(){
    let event=Uuid::now_v7();
    let output=json!([{"type":"input_text","text":json!({"observation_id":format!("{run}-{i}"),"foreground_app":"com.example.reader/.Home"}).to_string()}]);

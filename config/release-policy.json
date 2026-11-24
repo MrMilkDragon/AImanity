@@ -1,7 +1,7 @@
 {
-  "version": "0.0.5",
-  "release_name": "Europium",
-  "release_notes": "Grant one task access to your desktop, edit across local applications and share documents with Android and Linux. Europium also updates the Linux desktop and office apps, refines device frames and shortens Copilot speech startup.",
+  "version": "0.0.6",
+  "release_name": "Fluorine",
+  "release_notes": "Install Fluorine as a new client. Its workspace uses an embedded Rust database.",
   "source_preview": {
     "license": "Apache-2.0",
     "remote_publication_authorized": true,

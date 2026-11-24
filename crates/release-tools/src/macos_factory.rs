@@ -207,7 +207,7 @@ fn stage_host(root: &Path, work: &Path) -> Result<Value> {
     Ok(manifest)
 }
 
-fn staged_android(assistant: &Path, stage: &Path) -> Result<(PathBuf, Value)> {
+fn staged_android(host: &Path, stage: &Path) -> Result<(PathBuf, Value)> {
     let (path, digest) = match (
         std::env::var_os("AIMANITY_ANDROID_SDK_INPUT"),
         std::env::var_os("AIMANITY_ANDROID_PAYLOAD"),
@@ -223,7 +223,7 @@ fn staged_android(assistant: &Path, stage: &Path) -> Result<(PathBuf, Value)> {
     };
     let scratch = tempfile::tempdir_in(stage)?;
     let receipt: Value = serde_json::from_str(&output(
-        Command::new(assistant)
+        Command::new(host)
             .arg("--prepare-android")
             .arg(scratch.path())
             .arg(&path)
@@ -295,7 +295,7 @@ pub(super) fn run(args: &[OsString]) -> Result<Value> {
     };
     native_services::run(&["build".into()])?;
     let (android_file, android) =
-        staged_android(&root.join("target/release/ai-phone-assistant"), work.path())?;
+        staged_android(&root.join("target/release/host-resources"), work.path())?;
     let bytes = images.metadata()?.len();
     client_payload::run(&[
         "--with-phone-apps".into(),

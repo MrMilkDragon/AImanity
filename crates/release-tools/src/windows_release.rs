@@ -12,12 +12,7 @@ use std::{
 
 pub(super) mod assets;
 
-const BASE_FILES: [&str; 4] = [
-    "guest.qcow2",
-    "bzImage",
-    "kernel.config",
-    "KERNEL-LICENSE.txt",
-];
+const KERNEL_FILES: [&str; 3] = ["bzImage", "kernel.config", "KERNEL-LICENSE.txt"];
 const LAYER_FILES: [&str; 2] = ["release-init.cpio.gz", "release.ext4"];
 
 #[derive(Deserialize)]
@@ -82,15 +77,16 @@ pub(super) fn prepare(args: &[OsString]) -> Result<Value> {
     runtime.extend(phone_apps::component(&root)?);
     source::payload(&root, work, runtime, vec!["native-services", "phone-apps"])?;
     fs::copy(
-        root.join("target/release/ai-phone-assistant"),
+        root.join("target/release/host-resources"),
         work.join("bootstrap.program"),
     )?;
     execute(
         Command::new("cp")
             .arg("-a")
-            .args(["redis", "postgres", "linux"].map(|subdir| assets.join(subdir)))
+            .arg(assets.join("linux"))
             .arg(work),
     )?;
+    fs::copy(assets.join("guest.qcow2"), work.join("guest.qcow2"))?;
     fs::rename(work, &destination)?;
     Ok(json!({"directory":destination}))
 }
@@ -105,7 +101,7 @@ fn identity(path: &Path) -> Result<String> {
 pub(super) fn seal(args: &[OsString]) -> Result<Value> {
     let [baseline, compiled, destination] = args else {
         return Err(
-            "windows-release requires the Calcium baseline, compiled context and output".into(),
+            "windows-release requires kernel resources, compiled context and output".into(),
         );
     };
     let baseline = Path::new(baseline).canonicalize()?;
@@ -116,7 +112,7 @@ pub(super) fn seal(args: &[OsString]) -> Result<Value> {
     let policy: Policy = serde_json::from_slice(&fs::read("config/windows-qemu.json")?)?;
     let manifest = fs::read(manifest_path)?;
     if format!("{:x}", Sha256::digest(&manifest)) != policy.bundled_manifest_sha256 {
-        return Err("Windows guest must use the released Calcium backing disk".into());
+        return Err("Guest kernel inventory differs from its pinned source".into());
     }
     let base: Base = serde_json::from_slice(&manifest)?;
     let parent = destination
@@ -126,15 +122,15 @@ pub(super) fn seal(args: &[OsString]) -> Result<Value> {
     let workspace = tempfile::tempdir_in(parent)?;
     let guest = qemu.join("guest");
     let mut members = Vec::new();
-    for name in BASE_FILES {
+    for name in KERNEL_FILES {
         let path = guest.join(name);
         let record = base
             .files
             .iter()
             .find(|row| row.path == format!("guest/{name}"))
-            .ok_or("Missing Calcium guest record")?;
+            .ok_or("Missing kernel record")?;
         if fs::metadata(&path)?.len() != record.size || identity(&path)? != record.sha256 {
-            return Err(format!("Calcium guest bytes changed: {name}").into());
+            return Err(format!("Pinned kernel changed: {name}").into());
         }
         members.push((name, path));
     }
@@ -143,7 +139,9 @@ pub(super) fn seal(args: &[OsString]) -> Result<Value> {
         return Err("Unable to identify Windows source revision".into());
     }
     let commit = String::from_utf8(commit.stdout)?;
-    let mut metadata = base.guest;
+    let disk = compiled.join("guest.qcow2");
+    let mut metadata = json!({"format":1,"host":"windows-x64","kernel":base.guest["kernel"],"kernel_source":base.guest["kernel_source"],"base_distribution":"Debian trixie","disk":{"path":"guest.qcow2","sha256":identity(&disk)?,"size":fs::metadata(&disk)?.len()}});
+    members.push(("guest.qcow2", disk));
     metadata["source_commit"] = json!(commit.trim());
     metadata["source_manifest_sha256"] = json!(identity(Path::new("SOURCE-MANIFEST.json"))?);
     metadata["source_components"] = json!(["native-services", "phone-apps"]);

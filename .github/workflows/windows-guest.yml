@@ -2,13 +2,15 @@ name: Windows Linux guest
 on:
   workflow_call:
     inputs:
-      baseline_artifact:
-        description: Verified Calcium backing disk and kernel artifact
+      source_ref:
+        type: string
+      kernel_artifact:
+        description: Pinned guest kernel and its license
         required: true
         type: string
     outputs:
       artifact:
-        description: Private Windows Linux guest artifact ID
+        description: Windows Linux guest artifact ID
         value: ${{ jobs.linux.outputs.artifact }}
       identity:
         description: SHA-256 of windows-guest.payload
@@ -28,14 +30,10 @@ jobs:
       CARGO_INCREMENTAL: '0'
       AI_PHONE_TEST_TESSERACT: /usr/bin/tesseract
     steps:
-      - name: Require a private build repository
-        if: ${{ !github.event.repository.private }}
-        run: |
-          echo "::error::Run the Windows guest factory in a private repository."
-          exit 1
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          ref: ${{ inputs.source_ref || github.sha }}
       - name: Set up the disposable Linux x64 builder
         run: |
           test "$RUNNER_ENVIRONMENT" = github-hosted
@@ -43,7 +41,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "$ANDROID_HOME/ndk"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libssl-dev cpio \
+            build-essential pkg-config libssl-dev cpio busybox-static \
             ca-certificates unzip e2fsprogs qemu-utils debootstrap zstd \
             tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
           rustup toolchain install 1.96.0 --profile minimal
@@ -51,8 +49,8 @@ jobs:
           rustup target add aarch64-linux-android x86_64-linux-android
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          artifact-ids: ${{ inputs.baseline_artifact }}
-          path: ${{ runner.temp }}/windows-calcium-baseline
+          artifact-ids: ${{ inputs.kernel_artifact }}
+          path: ${{ runner.temp }}/windows-guest-kernel
       - name: Build the amd64 filesystem and native offline assets
         run: |
           cargo build --quiet --locked -p ai-phone-release-tools --bin release-tools
@@ -72,20 +70,23 @@ jobs:
           AI_PHONE_RELEASE_DESKTOP_BRIDGE="$PWD/target/release/desktop-bridge" \
             target/debug/release-tools windows-release-context "$RUNNER_TEMP/windows-release-context" \
               --linux-rootfs "$RUNNER_TEMP/linux-rootfs.tar.zst" --guest-assets "$RUNNER_TEMP/windows-guest-assets"
-      - name: Assemble the offline layer on the immutable Calcium guest disk
+      - name: Assemble the new Debian guest and offline device tools
         id: disk
         run: |
           guest=dist/windows-guest/windows-guest.payload
           target/debug/release-tools windows-release \
-            "$RUNNER_TEMP/windows-calcium-baseline" "$RUNNER_TEMP/windows-release-context" "$guest"
+            "$RUNNER_TEMP/windows-guest-kernel" "$RUNNER_TEMP/windows-release-context" "$guest"
           guest_hash=$(sha256sum "$guest")
+          printf '%s\n' "${guest_hash%% *}" > dist/windows-guest/identity.txt
           printf 'sha256=%s\n' "${guest_hash%% *}" >> "$GITHUB_OUTPUT"
       - name: Transfer the sealed guest to the Windows builder
         id: handoff
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-guest
-          path: dist/windows-guest/windows-guest.payload
+          path: |
+            dist/windows-guest/windows-guest.payload
+            dist/windows-guest/identity.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 2

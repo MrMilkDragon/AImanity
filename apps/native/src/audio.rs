@@ -3,7 +3,6 @@ use iced::{Element, Task, widget::row};
 use rodio::{OutputStreamBuilder, Source};
 use std::{
     collections::VecDeque,
-    path::Path,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU8, Ordering::Relaxed},
@@ -23,6 +22,8 @@ const QUEUE_LIMIT: usize = 350 * SAMPLES_PER_MS;
 #[derive(Clone, Debug)]
 pub enum Message {
     Toggle,
+    Microphone,
+    MicrophoneEnded(u64, String),
     Volume(u8),
     Stream(u64, StreamState),
     PreferenceFailed(String),
@@ -31,7 +32,6 @@ pub enum Message {
 #[derive(Clone, Debug)]
 pub enum StreamState {
     Playing,
-    Reconnecting(String),
     Stopped(String),
 }
 
@@ -41,6 +41,8 @@ pub struct Playback {
     preference: Option<watch::Sender<u8>>,
     active: Option<Active>,
     generation: u64,
+    microphone: Option<iced::task::Handle>,
+    mic_generation: u64,
     error: String,
 }
 
@@ -57,38 +59,52 @@ impl Playback {
             preference: None,
             active: None,
             generation: 0,
+            microphone: None,
+            mic_generation: 0,
             error: String::new(),
         }
     }
 
-    pub fn restore(&mut self, root: &str, device_id: &str) -> Task<Message> {
+    pub fn restore(
+        &mut self,
+        client: &Connection,
+        device: &ai_phone_api::wire::RegisteredDevice,
+    ) -> Task<Message> {
         self.stop();
-        let directory = Path::new(root).join("data/native/audio");
-        let path = directory.join(device_id);
-        self.volume = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|value| value.parse::<u8>().ok())
-            .unwrap_or(100)
-            .min(100);
+        self.volume = device.playback_volume.unwrap_or(100).min(100) as u8;
         self.audible = if self.volume > 0 { self.volume } else { 100 };
         let (preference, mut updates) = watch::channel(self.volume);
         self.preference = Some(preference);
-        Task::future(async move {
-            tokio::fs::create_dir_all(directory).await?;
-            let temporary = path.with_extension("tmp");
+        let workspace = client.workspace.clone();
+        let id = device.id.clone();
+        let persist = Task::future(async move {
             while updates.changed().await.is_ok() {
-                let value = updates.borrow_and_update().to_string();
-                tokio::fs::write(&temporary, value).await?;
-                tokio::fs::rename(&temporary, &path).await?;
+                let volume = *updates.borrow_and_update();
+                let store = workspace.clone();
+                let id = id.clone();
+                tokio::task::spawn_blocking(move || store.save_volume(&id, volume)).await??;
             }
-            Ok::<_, std::io::Error>(())
+            crate::device_io::Result::Ok(())
         })
         .then(|result| match result {
             Ok(()) => Task::none(),
-            Err(error) => Task::done(Message::PreferenceFailed(error.to_string())),
-        })
+            Err(e) => Task::done(Message::PreferenceFailed(e.to_string())),
+        });
+        Task::batch([persist, self.start(Some(client), &device.id)])
     }
-
+    pub fn mic_active(&self) -> bool {
+        self.microphone.is_some()
+    }
+    pub fn stop_mic(&mut self) {
+        if let Some(job) = self.microphone.take() {
+            job.abort();
+        }
+    }
+    pub fn disconnect(&mut self) {
+        self.stop_mic();
+        self.stop();
+        self.preference = None;
+    }
     pub fn error(&self) -> &str {
         &self.error
     }
@@ -118,11 +134,42 @@ impl Playback {
         &mut self,
         message: Message,
         client: Option<&Connection>,
-        index: usize,
+        device_id: &str,
     ) -> Task<Message> {
         match message {
+            Message::Microphone => {
+                if self.mic_active() {
+                    self.stop_mic();
+                    return Task::none();
+                }
+                let Some(client) = client else {
+                    return Task::none();
+                };
+                self.error.clear();
+                self.mic_generation += 1;
+                let generation = self.mic_generation;
+                let (task, handle) = Task::perform(
+                    crate::physical_mic::route(client.workspace.clone(), device_id.to_owned()),
+                    move |r| {
+                        Message::MicrophoneEnded(
+                            generation,
+                            r.err().map_or_else(String::new, |e| e.to_string()),
+                        )
+                    },
+                )
+                .abortable();
+                self.microphone = Some(handle);
+                return task;
+            }
+            Message::MicrophoneEnded(generation, error) => {
+                if generation == self.mic_generation && self.microphone.take().is_some() {
+                    self.error = error;
+                }
+                return Task::none();
+            }
             Message::Toggle => {
                 if self.active.is_some() && self.volume > 0 {
+                    self.change_volume(0);
                     self.stop();
                     return Task::none();
                 }
@@ -130,12 +177,17 @@ impl Playback {
                     self.change_volume(self.audible);
                 }
             }
-            Message::Volume(volume) => self.change_volume(volume),
+            Message::Volume(volume) => {
+                self.change_volume(volume);
+                if volume == 0 {
+                    self.stop();
+                    return Task::none();
+                }
+            }
             Message::Stream(generation, state) => {
                 if generation == self.generation && self.active.is_some() {
                     match state {
                         StreamState::Playing => self.error.clear(),
-                        StreamState::Reconnecting(error) => self.error = error,
                         StreamState::Stopped(error) => {
                             self.stop();
                             self.error = error;
@@ -149,6 +201,9 @@ impl Playback {
                 return Task::none();
             }
         }
+        self.start(client, device_id)
+    }
+    fn start(&mut self, client: Option<&Connection>, device_id: &str) -> Task<Message> {
         let Some(client) = client.filter(|_| self.volume > 0 && self.active.is_none()) else {
             return Task::none();
         };
@@ -157,8 +212,9 @@ impl Playback {
         let client = client.clone();
         let buffer = Arc::new(Buffer::new(self.volume));
         let playback = buffer.clone();
+        let device_id = device_id.to_owned();
         let (task, job) = Task::run(
-            iced::stream::channel(4, move |output| play(client, index, playback, output)),
+            iced::stream::channel(4, move |output| play(client, device_id, playback, output)),
             move |state| Message::Stream(generation, state),
         )
         .abortable();
@@ -308,7 +364,7 @@ impl Source for LiveSource {
 
 async fn play(
     client: Connection,
-    index: usize,
+    device_id: String,
     buffer: Arc<Buffer>,
     mut output: iced::futures::channel::mpsc::Sender<StreamState>,
 ) {
@@ -345,7 +401,7 @@ async fn play(
     }
     let error = tokio::select! {
         error = device_error.recv() => error.map(|error| format!("声音播放已暂停：{error}")),
-        error = stream_audio(&client, index, &buffer, &mut output, started) => error,
+        error = stream_audio(&client, &device_id, &buffer, &mut output, started) => error,
     };
     drop(stop);
     if let Some(error) = error {
@@ -355,55 +411,46 @@ async fn play(
 
 async fn stream_audio(
     client: &Connection,
-    index: usize,
+    device_id: &str,
     buffer: &Buffer,
     output: &mut iced::futures::channel::mpsc::Sender<StreamState>,
     started: Instant,
 ) -> Option<String> {
-    use iced::futures::{SinkExt, StreamExt};
-    let mut reported_signal = false;
-    loop {
-        let attempt = async {
-            let response = client.audio_stream(index).await?;
-            if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-                return Ok(Some("请重新登录".into()));
+    use iced::futures::SinkExt;
+    let result = async {
+        let mut lane = client
+            .workspace
+            .device_io(
+                device_id,
+                ai_phone_api::wire::DeviceIoOperation::AudioOutput,
+                "",
+                "",
+            )
+            .await?;
+        let mut pcm = Pcm::default();
+        let mut ready = false;
+        let mut signal = false;
+        while let Some(part) = lane.next().await? {
+            if pcm.push(&part, buffer) && !ready {
+                output.send(StreamState::Playing).await?;
+                ready = true;
             }
-            let mut stream = response
-                .error_for_status()
-                .map_err(|error| error.to_string())?
-                .bytes_stream();
-            let mut pcm = Pcm::default();
-            let mut ready = false;
-            while let Some(part) = stream.next().await {
-                if pcm.push(&part.map_err(|error| error.to_string())?, buffer) && !ready {
-                    output
-                        .send(StreamState::Playing)
-                        .await
-                        .map_err(|error| error.to_string())?;
-                    ready = true;
-                }
-                if !reported_signal && buffer.played_signal.load(Relaxed) {
-                    reported_signal = true;
-                    eprintln!(
-                        "native_metric audio_playback device={index} first_signal_ms={:.3}",
-                        started.elapsed().as_secs_f64() * 1000.
-                    );
-                }
-            }
-            Err("声音连接已断开".to_string())
-        }
-        .await;
-        match attempt {
-            Ok(terminal) => return terminal,
-            Err(error) => {
-                buffer.samples.lock().expect("audio buffer").clear();
-                if output.send(StreamState::Reconnecting(error)).await.is_err() {
-                    return None;
-                }
-                tokio::time::sleep(Duration::from_secs(1)).await;
+            if !signal && buffer.played_signal.load(Relaxed) {
+                signal = true;
+                eprintln!(
+                    "native_metric audio_playback device={device_id} first_signal_ms={:.3}",
+                    started.elapsed().as_secs_f64() * 1000.
+                );
             }
         }
+        crate::device_io::Result::Ok(())
     }
+    .await;
+    Some(
+        result
+            .err()
+            .map_or_else(|| "声音连接已结束".into(), |e| e.to_string()),
+    )
 }
 
 #[cfg(test)]

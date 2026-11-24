@@ -51,7 +51,10 @@ pub fn phrase_len(value: &str, complete: bool) -> Option<usize> {
     complete.then_some(value.len())
 }
 
-#[cfg(unix)]
+#[cfg(target_os="android")]
+pub(crate) use crate::android_os::speak;
+
+#[cfg(any(target_os="macos",target_os="linux"))]
 pub async fn speak(
     text: String,
     language: String,
@@ -74,7 +77,10 @@ pub async fn speak(
     };
     #[cfg(target_os = "linux")]
     let mut command = {
-        let mut command = Command::new("espeak-ng");
+        let tools = crate::deployment::Setup::resource_dir()?.join("tools");
+        let mut command = Command::new(tools.join("bin/espeak-ng"));
+        command.env("LD_LIBRARY_PATH", tools.join("lib"));
+        command.arg("--path").arg(tools.join("share"));
         let voice = match language.as_str() {
             "zh-CN" | "zh-TW" => "cmn",
             other => other,

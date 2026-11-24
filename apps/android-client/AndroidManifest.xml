@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="dev.aimanity.workspace" android:versionCode="6" android:versionName="0.0.6">
+    <uses-sdk android:minSdkVersion="35" android:targetSdkVersion="35"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.MANAGE_VIRTUAL_MACHINE"/>
+    <uses-permission android:name="android.permission.USE_CUSTOM_VIRTUAL_MACHINE"/>
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>
+    <queries><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>
+    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
+    <application android:label="AImanity" android:icon="@drawable/aimanity"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar.Fullscreen"
+        android:allowBackup="false" android:extractNativeLibs="true">
+        <activity android:name="dev.aimanity.mobile.WorkbenchActivity" android:exported="true"
+            android:launchMode="singleTask" android:screenOrientation="sensorLandscape"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustNothing"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density">
+            <meta-data android:name="android.app.lib_name" android:value="aimanity_native"/>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

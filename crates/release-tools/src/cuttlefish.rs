@@ -6,6 +6,17 @@ mod disk;
 
 const MIB: u64 = 1 << 20;
 
+pub(super) fn android_avf_boot(arguments: &[OsString]) -> Result<()> {
+    let [images, output] = arguments else {
+        return Err("android-avf-boot requires IMAGES OUTPUT".into());
+    };
+    boot::stage(
+        &absolute(images)?,
+        &absolute(output)?,
+        boot::Target::Arm64Avf,
+    )
+}
+
 pub(super) fn run(arguments: &[OsString]) -> Result<()> {
     let [images, output, qemu] = arguments else {
         return Err("windows-cuttlefish requires IMAGES OUTPUT QEMU_IMG".into());
@@ -19,7 +30,7 @@ pub(super) fn run(arguments: &[OsString]) -> Result<()> {
     fs::create_dir_all(parent)?;
     fs::create_dir(&output)?;
     let work = tempfile::tempdir_in(parent)?;
-    boot::stage(&images, &output)?;
+    boot::stage(&images, &output, boot::Target::X86Qemu)?;
     let mut os = Vec::new();
     for name in [
         "boot",

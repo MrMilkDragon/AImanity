@@ -7,6 +7,8 @@ use std::borrow::Borrow;
 
 #[derive(Clone, Copy)]
 pub enum Icon {
+    Devices,
+    Warning,
     Network,
     Pin,
     Book,
@@ -15,7 +17,7 @@ pub enum Icon {
     Target,
     Screen,
     PhonePortrait,
-    PhoneLandscape,
+    RotatePhone,
     Camera,
     Copy,
     Cut,
@@ -23,7 +25,6 @@ pub enum Icon {
     Grip,
     Plus,
     Minus,
-    Back,
     Edit,
     Trash,
     Eye,
@@ -45,7 +46,6 @@ pub enum Icon {
     Image,
     Check,
     Settings,
-    Cable,
     Refresh,
     Volume,
     Muted,
@@ -122,6 +122,12 @@ pub const ICON_SIZE: f32 = 18.;
 impl Icon {
     pub fn view<'a>(self) -> svg::Svg<'a> {
         let path = match self {
+            Self::Warning => {
+                "<path d='m10.3 4-8 14a1.8 1.8 0 0 0 1.6 2.7h16.2a1.8 1.8 0 0 0 1.6-2.7l-8-14a2 2 0 0 0-3.4 0Z'/><path d='M12 9v4m0 3v.2'/>"
+            }
+            Self::Devices => {
+                "<path d='M13 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v2M6 21h6m-3-4v4'/><rect x='15' y='9' width='7' height='12' rx='1.6'/>"
+            }
             Self::Network => {
                 "<rect x='9' y='2' width='6' height='6'/><rect x='2' y='16' width='6' height='6'/><rect x='16' y='16' width='6' height='6'/><path d='M12 8v4M5 16v-4h14v4'/>"
             }
@@ -149,8 +155,8 @@ impl Icon {
             Self::PhonePortrait => {
                 "<rect x='5' y='2' width='14' height='20' rx='2'/><path d='M12 18h.01'/>"
             }
-            Self::PhoneLandscape => {
-                "<rect x='2' y='5' width='20' height='14' rx='2'/><path d='M6 12h.01'/>"
+            Self::RotatePhone => {
+                "<rect x='8' y='5' width='8' height='14' rx='1.5'/><path d='M2.5 11a9.5 9.5 0 0 1 4-7M2 6v5h5m14.5 2a9.5 9.5 0 0 1-4 7m4.5-2v-5h-5'/>"
             }
             Self::Camera => "<path d='M4 9V5h4m8 0h4v4m0 6v4h-4m-8 0H4v-4M3 12h18'/>",
             Self::Copy => {
@@ -165,7 +171,6 @@ impl Icon {
             }
             Self::Plus => "<path d='M12 5v14M5 12h14'/>",
             Self::Minus => "<path d='M5 12h14'/>",
-            Self::Back => "<path d='m12 19-7-7 7-7M5 12h14'/>",
             Self::Edit => "<path d='m16 3 5 5L8 21H3v-5ZM14 5l5 5'/>",
             Self::Trash => "<path d='M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7'/>",
             Self::Eye => {
@@ -198,9 +203,6 @@ impl Icon {
             Self::Check => "<path d='m5 12 4 4L19 6'/>",
             Self::Settings => {
                 "<path d='m10 2-.7 3-2 .9L4.5 5 2 9.3l2.2 2.1v2L2 15.5 4.5 20l2.8-.9 2 .9.7 3h5l.7-3 2-.9 2.8.9 2.5-4.5-2.2-2.1v-2L23 9.3 20.5 5l-2.8.9-2-.9L15 2Z'/><circle cx='12.5' cy='12.5' r='3'/>"
-            }
-            Self::Cable => {
-                "<path d='M7 2v4M11 2v4M5 6h8v4a4 4 0 0 1-8 0ZM9 14v3a4 4 0 0 0 8 0v-3M15 10h4v4h-4Z'/>"
             }
             Self::Refresh => {
                 "<path d='M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M18 18a8 8 0 0 1-13-3'/>"

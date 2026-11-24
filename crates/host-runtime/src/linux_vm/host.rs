@@ -258,10 +258,17 @@ impl<'a> QemuVm<'a> {
     async fn start(
         config: QemuVmConfig<'a>,
         profile: Vec<u8>,
+        desktop_only: bool,
         storage_gb: Option<u32>,
         lease: filesystem::Lease,
     ) -> Result<Self> {
         let control = TcpListener::bind((Ipv4Addr::LOCALHOST, config.control_port)).await?;
+        filesystem::publish_private(
+            config.home,
+            "control.port",
+            &config.control_port.to_be_bytes(),
+            false,
+        )?;
         let bootstrap = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let bootstrap_port = bootstrap.local_addr()?.port();
         let mut command = tool(config.runtime, "qemu-system-x86_64")?;
@@ -292,11 +299,14 @@ impl<'a> QemuVm<'a> {
                 "file": {"driver": "file", "filename": base}
             }
         });
-        let network = format!(
-            "user,id=network,hostfwd=tcp:127.0.0.1:{}-10.0.2.15:{},hostfwd=tcp:127.0.0.1:17906-10.0.2.15:17906",
+        let mut network = format!(
+            "user,id=network,hostfwd=tcp:127.0.0.1:{}-10.0.2.15:{}",
             config.control_port,
             vm_control::GUEST_PORT,
         );
+        if !desktop_only {
+            network.push_str(",hostfwd=tcp:127.0.0.1:17906-10.0.2.15:17906");
+        }
         // The key filename is relative to QEMU's working directory, so paths
         // with commas cannot become extra -fw_cfg options.
         command
@@ -419,10 +429,7 @@ pub async fn stop_installed(home: &Path) -> Result<()> {
     }
     let home = home.canonicalize()?;
     let flush = crate::android::session::flush_attached(&home).await;
-    let qemu = home.join("user/qemu");
-    if qemu.try_exists()? {
-        stop_running(&qemu, vm_control::GUEST_PORT).await?;
-    }
+    stop_desktop(&home).await?;
     let android = home.join("user/data/android/native/session.lock");
     if android.try_exists()? {
         wait_for_stop(&android).await?;
@@ -430,6 +437,26 @@ pub async fn stop_installed(home: &Path) -> Result<()> {
     flush
 }
 
+pub(crate) fn running_control(vm: &Path) -> Result<Option<u16>> {
+    let lock = vm.join("owner.lock");
+    if !lock.try_exists()? || filesystem::lease(&lock)?.is_some() {
+        return Ok(None);
+    }
+    let bytes = filesystem::bounded_file_with_limit(&vm.join("control.port"), 2)?;
+    let port = u16::from_be_bytes(
+        bytes
+            .try_into()
+            .map_err(|_| Error::Invalid("vm_control_port"))?,
+    );
+    Ok(Some(port))
+}
+pub async fn stop_desktop(home: &Path) -> Result<()> {
+    let vm = home.join("user/qemu");
+    if let Some(port) = running_control(&vm)? {
+        stop_running(&vm, port).await?;
+    }
+    Ok(())
+}
 async fn stop_running(home: &Path, port: u16) -> Result<()> {
     let lock = home.join("owner.lock");
     if filesystem::lease(&lock)?.is_some() {
@@ -455,9 +482,9 @@ pub async fn ensure(
     home: &Path,
     cpu: u16,
     memory_mib: u32,
+    control_port: u16,
     profile: &[u8],
     cancel: &dyn Fn() -> bool,
-    activity: impl Fn(bool),
 ) -> Result<()> {
     let manifest: VmManifest = serde_json::from_reader(File::open(bundle.join("manifest.json"))?)
         .map_err(|_| Error::Invalid("vm_bundle_invalid"))?;
@@ -487,7 +514,7 @@ pub async fn ensure(
         home,
         cpu,
         memory_mib,
-        control_port: vm_control::GUEST_PORT,
+        control_port,
         base_sha256,
         release_sha256: &manifest.release_sha256,
     };
@@ -527,7 +554,6 @@ pub async fn ensure(
         stop_running(config.home, config.control_port).await?;
     }
     let mut child = config.worker_command()?.spawn()?;
-    activity(true);
     let mut input = child.stdin.take().ok_or(Error::Invalid("vm_owner_pipe"))?;
     let mut output = child.stdout.take().ok_or(Error::Invalid("vm_owner_pipe"))?;
     native_ipc::write_bounded(
@@ -560,7 +586,6 @@ pub async fn ensure(
         eprintln!("QEMU backend startup: {}", reply.error);
         return Err(Error::Invalid("vm_owner_start_failed"));
     }
-    activity(false);
     Ok(())
 }
 
@@ -571,9 +596,15 @@ pub async fn worker(arguments: &[OsString]) -> Result<()> {
         let config = QemuVmConfig::parse(arguments)?;
         let request: LinuxVmBootstrapRequest =
             native_ipc::read_bounded(&mut input, PROFILE_FRAME).await?;
-        let storage = config.validate(&request.profile)?.desktop.storage_gb;
+        let resources = config.validate(&request.profile)?;
         let lease = config.lease()?.ok_or(Error::Busy)?;
-        Ok::<_, Error>((config, request.profile, storage, lease))
+        Ok::<_, Error>((
+            config,
+            request.profile,
+            resources.phone.is_none(),
+            resources.desktop.storage_gb,
+            lease,
+        ))
     }
     .await;
     let cancel = async {
@@ -584,9 +615,9 @@ pub async fn worker(arguments: &[OsString]) -> Result<()> {
     };
     tokio::pin!(cancel);
     let start = match admission {
-        Ok((config, profile, storage, lease)) => tokio::select! { biased;
+        Ok((config, profile, desktop_only, storage, lease)) => tokio::select! { biased;
             _ = &mut cancel => Err(Error::Cancelled),
-            result = QemuVm::start(config, profile, storage, lease) => result,
+            result = QemuVm::start(config, profile, desktop_only, storage, lease) => result,
         },
         Err(error) => Err(error),
     };

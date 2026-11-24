@@ -67,7 +67,7 @@ async fn chat(
 #[ignore = "real disposable PostgreSQL; no model or device calls"]
 async fn goal_steers_one_run_and_blocks_liberty_until_stopped_or_completed() {
     database_case(|app| async move {
-        registry::initialize(&app.db, &app.settings).await.unwrap();
+        registry::initialize(&app).await.unwrap();
         sqlx::query(
             "INSERT INTO devices(id,name,kind,system,runtime_state)
              VALUES($1,'Computer','desktop','fixture','managed')",

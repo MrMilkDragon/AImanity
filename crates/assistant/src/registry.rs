@@ -81,10 +81,6 @@ async fn bootstrap(
             .bind(MODEL)
             .execute(&mut **tx)
             .await?;
-        sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state) VALUES($1,'我的手机','phone','Android 15 · ARM64','managed')")
-            .bind(PHONE)
-            .execute(&mut **tx)
-            .await?;
         sqlx::query("INSERT INTO registry_meta(owner_id,legacy_revision) VALUES($1,$2)")
             .bind(OWNER)
             .bind(settings.current() as i64)
@@ -104,12 +100,24 @@ async fn bootstrap(
     }
     Ok(())
 }
-pub async fn initialize(
-    db: &PgPool,
-    settings: &settings::SettingsStore,
-) -> std::result::Result<(), sqlx::Error> {
-    let mut tx = db.begin().await?;
-    bootstrap(&mut tx, settings).await?;
+pub async fn initialize(app: &App) -> sqlx::Result<()> {
+    let mut tx = app.db.begin().await?;
+    bootstrap(&mut tx, &app.settings).await?;
+    if app.phone_token.is_some() {
+        sqlx::query(
+            "WITH installed AS (
+            INSERT INTO devices(id,name,kind,system,runtime_state,default_agent_id)
+            SELECT $1,'我的手机','phone','Android 15 · ARM64','managed',active_agent_id
+            FROM registry_meta WHERE owner_id=$2 ON CONFLICT(id) DO NOTHING
+            RETURNING id,default_agent_id
+        ) INSERT INTO agent_device_bindings(agent_id,device_id)
+          SELECT default_agent_id,id FROM installed WHERE default_agent_id IS NOT NULL",
+        )
+        .bind(PHONE)
+        .bind(OWNER)
+        .execute(&mut *tx)
+        .await?;
+    }
     // Only annotate legacy tasks. Their original model revision and context stay intact.
     sqlx::query("UPDATE runs SET agent_id=$1,agent_revision=1,agent_name='默认助手',model_connection_id=$2 WHERE agent_id IS NULL")
         .bind(AGENT).bind(MODEL).execute(&mut *tx).await?;
@@ -120,8 +128,10 @@ pub async fn initialize(
     tx.commit().await
 }
 pub async fn configured(app: &App) -> bool {
-    sqlx::query_scalar::<_,bool>("SELECT CASE WHEN EXISTS(SELECT 1 FROM registry_meta WHERE owner_id=$2) THEN EXISTS(SELECT 1 FROM devices d JOIN agents a ON a.id=d.default_agent_id JOIN model_connections m ON m.id=a.model_connection_id WHERE d.id=$1 AND d.owner_id=$2 AND m.model_revision>0) ELSE $3::bigint>0 END")
-        .bind(PHONE).bind(OWNER).bind(app.settings.current() as i64).fetch_one(&app.db).await.unwrap_or(false)
+    sqlx::query_scalar::<_,bool>("SELECT COALESCE((SELECT COALESCE(m.model_revision,0)>0
+        FROM registry_meta w LEFT JOIN agents a ON a.id=w.active_agent_id
+        LEFT JOIN model_connections m ON m.id=a.model_connection_id WHERE w.owner_id=$1),$2::bigint>0)")
+        .bind(OWNER).bind(app.settings.current() as i64).fetch_one(&app.db).await.unwrap_or(false)
 }
 pub async fn pin_run(
     tx: &mut Transaction<'_, Postgres>,
@@ -137,23 +147,35 @@ pub async fn pin_run_for(
     agent: &str,
 ) -> std::result::Result<(), sqlx::Error> {
     bootstrap(tx, settings).await?;
-    let device: String = sqlx::query_scalar("SELECT device_id FROM runs WHERE id=$1")
-        .bind(run)
-        .fetch_one(&mut **tx)
-        .await?;
-    if device != PHONE && !sqlx::query_scalar::<_,bool>("SELECT EXISTS(SELECT 1 FROM device_runtimes r JOIN devices d ON d.id=r.device_id WHERE d.id=$1 AND d.runtime_state='managed')").bind(&device).fetch_one(&mut **tx).await? {
-        return Err(sqlx::Error::Protocol("device_unavailable".into()));
-    }
     let selected = if agent.is_empty() {
         None
     } else {
         Some(Uuid::parse_str(agent).map_err(|_| sqlx::Error::Protocol("invalid_agent".into()))?)
     };
-    let row = sqlx::query("SELECT a.id,a.revision,a.name,a.instructions,a.model_connection_id,m.model_revision
-        FROM devices d JOIN agents a ON a.id=d.default_agent_id JOIN model_connections m ON m.id=a.model_connection_id
-        WHERE d.id=$1 AND d.owner_id=$2 AND a.owner_id=$2 AND m.owner_id=$2 AND a.retired_at IS NULL AND m.retired_at IS NULL")
-        .bind(&device).bind(OWNER).fetch_optional(&mut **tx).await?
+    let row = sqlx::query("SELECT a.id,a.revision,a.name,a.instructions,a.model_connection_id,m.model_revision,r.device_id,COALESCE(d.paired,false) paired,
+        r.device_id IS NULL OR ((d.runtime_state='managed' OR (d.paired AND d.runtime_state='registered')) AND d.default_agent_id=a.id) IS TRUE AS available
+        FROM runs r JOIN registry_meta w ON w.owner_id=$2
+        LEFT JOIN devices d ON d.id=r.device_id AND d.owner_id=w.owner_id
+        JOIN agents a ON a.id=CASE WHEN r.device_id IS NULL OR r.origin='user' THEN w.active_agent_id ELSE d.default_agent_id END
+        JOIN model_connections m ON m.id=a.model_connection_id
+        WHERE r.id=$1 AND a.owner_id=w.owner_id AND m.owner_id=w.owner_id AND a.retired_at IS NULL AND m.retired_at IS NULL")
+        .bind(run).bind(OWNER).fetch_optional(&mut **tx).await?
         .ok_or_else(|| sqlx::Error::Protocol("model_missing".into()))?;
+    if !row.get::<bool, _>("available") {
+        return Err(sqlx::Error::Protocol("device_unavailable".into()));
+    }
+    if let Some(device) = row.get::<Option<&str>, _>("device_id")
+        && device != PHONE
+        && !row.get::<bool, _>("paired")
+        && !sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM device_runtimes WHERE device_id=$1)",
+        )
+        .bind(device)
+        .fetch_one(&mut **tx)
+        .await?
+    {
+        return Err(sqlx::Error::Protocol("device_unavailable".into()));
+    }
     if selected.is_some_and(|id| id != row.get::<Uuid, _>("id")) {
         return Err(sqlx::Error::Protocol("agent_not_selected".into()));
     }
@@ -161,9 +183,9 @@ pub async fn pin_run_for(
     if revision == 0 || settings.get(revision as u64).is_err() {
         return Err(sqlx::Error::Protocol("model_missing".into()));
     }
-    sqlx::query("UPDATE runs SET agent_id=$2,agent_revision=$3,agent_name=$4,agent_instructions=$5,model_connection_id=$6,model_revision=$7,device_id=$8 WHERE id=$1")
+    sqlx::query("UPDATE runs SET agent_id=$2,agent_revision=$3,agent_name=$4,agent_instructions=$5,model_connection_id=$6,model_revision=$7 WHERE id=$1")
         .bind(run).bind(row.get::<Uuid,_>("id")).bind(row.get::<i64,_>("revision")).bind(row.get::<String,_>("name")).bind(row.get::<String,_>("instructions"))
-        .bind(row.get::<Uuid,_>("model_connection_id")).bind(revision).bind(&device).execute(&mut **tx).await?;
+        .bind(row.get::<Uuid,_>("model_connection_id")).bind(revision).execute(&mut **tx).await?;
     sqlx::query("INSERT INTO run_device_bindings(run_id,device_id)
         SELECT $1,id FROM devices WHERE owner_id=$2 AND default_agent_id=$3 AND runtime_state<>'archived'
         ON CONFLICT DO NOTHING")
@@ -192,9 +214,12 @@ pub(crate) async fn refresh_paused_model(
         .execute(&mut **tx)
         .await?;
     let current = sqlx::query("SELECT m.id,m.model_revision FROM runs r
-        JOIN devices d ON d.id=r.device_id AND d.default_agent_id=r.agent_id
+        JOIN registry_meta w ON w.owner_id=$2
+        LEFT JOIN devices d ON d.id=r.device_id AND d.owner_id=w.owner_id
         JOIN agents a ON a.id=r.agent_id JOIN model_connections m ON m.id=a.model_connection_id
-        WHERE r.id=$1 AND d.owner_id=$2 AND a.owner_id=$2 AND m.owner_id=$2 AND a.retired_at IS NULL AND m.retired_at IS NULL")
+        WHERE r.id=$1 AND a.owner_id=$2 AND m.owner_id=$2 AND a.retired_at IS NULL AND m.retired_at IS NULL
+        AND (r.device_id IS NULL OR d.default_agent_id=a.id)
+        AND (r.origin<>'user' AND r.device_id IS NOT NULL OR w.active_agent_id=a.id)")
         .bind(run).bind(OWNER).fetch_optional(&mut **tx).await?
         .ok_or_else(|| sqlx::Error::Protocol("model_missing".into()))?;
     let revision: i64 = current.get("model_revision");
@@ -239,8 +264,7 @@ fn device_limit(kind: &str) -> u32 {
     presets["limits"][kind].as_u64().unwrap_or(1).clamp(1, 8) as u32
 }
 async fn active_agent(tx: &mut Transaction<'_, Postgres>) -> sqlx::Result<Option<Uuid>> {
-    sqlx::query_scalar("SELECT default_agent_id FROM devices WHERE id=$1 AND owner_id=$2")
-        .bind(PHONE)
+    sqlx::query_scalar("SELECT active_agent_id FROM registry_meta WHERE owner_id=$1")
         .bind(OWNER)
         .fetch_one(&mut **tx)
         .await
@@ -249,6 +273,11 @@ async fn set_active_agent(
     tx: &mut Transaction<'_, Postgres>,
     id: Option<Uuid>,
 ) -> sqlx::Result<()> {
+    sqlx::query("UPDATE registry_meta SET active_agent_id=$1 WHERE owner_id=$2")
+        .bind(id)
+        .bind(OWNER)
+        .execute(&mut **tx)
+        .await?;
     sqlx::query(
         "INSERT INTO agent_device_bindings(agent_id,device_id)
         SELECT $1,id FROM devices WHERE owner_id=$2 AND runtime_state<>'archived' AND $1 IS NOT NULL
@@ -301,9 +330,28 @@ async fn select_first_if_missing(tx: &mut Transaction<'_, Postgres>) -> sqlx::Re
 }
 
 async fn state(app: &App) -> Result<wire::RegistryState> {
-    let mut tx = app.db.begin().await.map_err(storage)?;
-    bootstrap(&mut tx, &app.settings).await.map_err(storage)?;
-    let devices = sqlx::query("SELECT id,revision,name,kind,system,runtime_state,default_agent_id FROM devices WHERE owner_id=$1 AND runtime_state<>'archived' ORDER BY created_at,id").bind(OWNER).fetch_all(&mut *tx).await.map_err(storage)?;
+    let mut tx = app
+        .db
+        .begin_with("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        .await
+        .map_err(storage)?;
+    let metadata: Option<(i64, Option<Uuid>)> = sqlx::query_as(
+        "SELECT legacy_revision,active_agent_id FROM registry_meta WHERE owner_id=$1",
+    )
+    .bind(OWNER)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(storage)?;
+    let active_agent_id = match metadata {
+        Some((revision, active)) if revision == app.settings.current() as i64 => active,
+        _ => {
+            tx.rollback().await.map_err(storage)?;
+            tx = app.db.begin().await.map_err(storage)?;
+            bootstrap(&mut tx, &app.settings).await.map_err(storage)?;
+            active_agent(&mut tx).await.map_err(storage)?
+        }
+    };
+    let devices = sqlx::query("SELECT id,revision,name,kind,system,runtime_state,paired FROM devices WHERE owner_id=$1 AND runtime_state<>'archived' ORDER BY created_at,id").bind(OWNER).fetch_all(&mut *tx).await.map_err(storage)?;
     let agents = sqlx::query("SELECT a.id,a.revision,a.name,a.model_connection_id,a.instructions FROM agents a
         JOIN model_connections m ON m.id=a.model_connection_id
         WHERE a.owner_id=$1 AND a.retired_at IS NULL AND m.model_revision>0 ORDER BY a.created_at,a.id")
@@ -330,13 +378,13 @@ async fn state(app: &App) -> Result<wire::RegistryState> {
             ),
         });
     }
-    let active_agent_id = devices
-        .iter()
-        .find(|r| r.get::<String, _>("id") == PHONE)
-        .and_then(|r| r.get::<Option<Uuid>, _>("default_agent_id"));
     tx.commit().await.map_err(storage)?;
     Ok(wire::RegistryState {
-        active_device_id: PHONE.into(),
+        active_device_id: devices
+            .iter()
+            .find(|r| r.get::<&str, _>("runtime_state") == "managed")
+            .map(|r| r.get("id"))
+            .unwrap_or_default(),
         active_agent_id: active_agent_id.map(|id| id.to_string()).unwrap_or_default(),
         phone_limit: device_limit("phone"),
         desktop_limit: device_limit("desktop"),
@@ -350,6 +398,9 @@ async fn state(app: &App) -> Result<wire::RegistryState> {
                 kind: r.get("kind"),
                 system: r.get("system"),
                 runtime_state: r.get("runtime_state"),
+                paired: r.get("paired"),
+                connected: app.run_signals.peers.connected(r.get("id")),
+                ..Default::default()
             })
             .collect(),
         agents: agents
@@ -366,6 +417,49 @@ async fn state(app: &App) -> Result<wire::RegistryState> {
             })
             .collect(),
     })
+}
+async fn invite_peer(
+    app: &App,
+    request: wire::DevicePairRequest,
+) -> Result<wire::DeviceInvitation> {
+    uuid(&request.id)?;
+    let label = name(&request.name)?;
+    let system = match request.kind.as_str() {
+        "phone" => "Android",
+        "desktop" => "Desktop",
+        _ => return Err(invalid("设备类型无效")),
+    };
+    let mut tx = app.db.begin().await.map_err(storage)?;
+    bootstrap(&mut tx, &app.settings).await.map_err(storage)?;
+    let saved: Option<(String, bool, String)> =
+        sqlx::query_as("SELECT kind,paired,runtime_state FROM devices WHERE id=$1 AND owner_id=$2")
+            .bind(&request.id)
+            .bind(OWNER)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(storage)?;
+    match saved {
+        Some((kind, true, state)) if kind == request.kind && state != "archived" => {}
+        Some(_) => return Err(conflict("设备编号已占用")),
+        None => {
+            let agent = active_agent(&mut tx).await.map_err(storage)?;
+            sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state,default_agent_id,paired) VALUES($1,$2,$3,$4,'registered',$5,true)")
+                .bind(&request.id).bind(label).bind(&request.kind).bind(system).bind(agent).execute(&mut *tx).await.map_err(storage)?;
+            if let Some(agent) = agent {
+                sqlx::query("INSERT INTO agent_device_bindings(agent_id,device_id) VALUES($1,$2)")
+                    .bind(agent)
+                    .bind(&request.id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(storage)?;
+            }
+        }
+    }
+    tx.commit().await.map_err(storage)?;
+    app.run_signals
+        .peers
+        .invite(&request.id, &request.kind)
+        .map_err(|e| conflict(&e))
 }
 async fn save_device(app: &App, r: wire::DeviceSaveRequest) -> Result<()> {
     if r.id != PHONE {
@@ -392,7 +486,7 @@ async fn save_device(app: &App, r: wire::DeviceSaveRequest) -> Result<()> {
     }
     if old.is_none() {
         let count: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM devices WHERE owner_id=$1 AND kind=$2 AND runtime_state<>'archived'")
+            sqlx::query_scalar("SELECT count(*) FROM devices WHERE owner_id=$1 AND kind=$2 AND NOT paired AND runtime_state<>'archived'")
                 .bind(OWNER)
                 .bind(&r.kind)
                 .fetch_one(&mut *tx)
@@ -716,9 +810,8 @@ async fn delete_profile(tx: &mut Transaction<'_, Postgres>, id: Uuid, model: Uui
 pub async fn memory_agent(app: &App, id: &str) -> std::result::Result<Uuid, String> {
     let id = if id.is_empty() {
         sqlx::query_scalar::<_, Option<Uuid>>(
-            "SELECT default_agent_id FROM devices WHERE id=$1 AND owner_id=$2",
+            "SELECT active_agent_id FROM registry_meta WHERE owner_id=$1",
         )
-        .bind(PHONE)
         .bind(OWNER)
         .fetch_optional(&app.db)
         .await
@@ -765,6 +858,15 @@ pub async fn route(
             "state" => {
                 read!(wire::RegistryRequest);
             }
+            "device-invite" => return Ok(pb(StatusCode::OK,invite_peer(&app,read!(wire::DevicePairRequest)).await?)),
+            "device-disconnect" | "device-forget" => {
+                let id=read!(wire::DesktopRequest).device_id;
+                if operation=="device-forget" {
+                    sqlx::query("UPDATE devices SET runtime_state='archived',revision=revision+1 WHERE id=$1 AND owner_id=$2 AND paired AND runtime_state<>'archived'")
+                        .bind(&id).bind(OWNER).execute(&app.db).await.map_err(storage)?;
+                }
+                app.run_signals.peers.disconnect(&id);
+            }
             "device-save" => save_device(&app, read!(wire::DeviceSaveRequest)).await?,
             "agent-config-save" => {
                 save_configuration(&app, read!(wire::AgentConfigurationSaveRequest)).await?
@@ -781,7 +883,7 @@ pub async fn route(
                     .map_err(|m| invalid(&m))?;
                 let result = app
                     .settings
-                    .test_connection(&r.id, r.expected_revision, &config)
+                    .test_connection(&app.db, &r.id, r.expected_revision, &config)
                     .await
                     .map_err(|m| conflict(&m))?;
                 model_version(&app, id, r.expected_revision).await?;
@@ -873,11 +975,12 @@ mod tests {
         assert!(result.ready, "mock provider capability checks must pass");
         result
     }
-    async fn send(app: &Shared, text: &str) -> Uuid {
+    async fn send(app: &Shared, text: &str, device: &str) -> Uuid {
         let mut headers = HeaderMap::new();
         headers.insert("authorization", "Bearer registry-test".parse().unwrap());
         headers.insert("content-type", MEDIA.parse().unwrap());
         let input = wire::ChatSendRequest {
+            device_id: device.into(),
             text: text.into(),
             request_id: Uuid::new_v4().to_string(),
             ..Default::default()
@@ -914,7 +1017,7 @@ mod tests {
             db: db.clone(),
             root: root.clone(),
             token: "registry-test".into(),
-            phone_token: "unused".into(),
+            phone_token: Some("unused".into()),
             settings: settings::SettingsStore::test_configured(&root),
             local: reqwest::Client::new(),
             remote: reqwest::Client::new(),
@@ -950,8 +1053,12 @@ mod tests {
             let legacy_message=Uuid::now_v7();let legacy_run=Uuid::now_v7();
             sqlx::query("INSERT INTO messages(id,conversation_id,role,text) VALUES($1,$2,'assistant','existing conversation stays')").bind(legacy_message).bind(conversation).execute(&db).await.unwrap();
             sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status,model_revision,context) VALUES($1,$2,$3,$1,'legacy','succeeded',1,'[{\"legacy\":true}]')").bind(legacy_run).bind(conversation).bind(legacy_message).execute(&db).await.unwrap();
-            initialize(&db,&app.settings).await.unwrap();initialize(&db,&app.settings).await.unwrap();
-            let initial=state(&app).await.unwrap();assert_eq!(initial.devices.len(),1);assert_eq!(initial.agents.len(),1);assert_eq!(initial.models.len(),1);assert_eq!(initial.models[0].revision,1);
+            initialize(&app).await.unwrap();initialize(&app).await.unwrap();
+            let mut writer = db.begin().await.unwrap();
+            sqlx::query("SELECT pg_advisory_xact_lock($1)").bind(LOCK).execute(&mut *writer).await.unwrap();
+            let initial = tokio::time::timeout(Duration::from_secs(2), state(&app)).await.unwrap().unwrap();
+            writer.rollback().await.unwrap();
+            assert_eq!(initial.devices.len(),1);assert_eq!(initial.agents.len(),1);assert_eq!(initial.models.len(),1);assert_eq!(initial.models[0].revision,1);
             assert_eq!(initial.devices[0].id,PHONE);
             assert_eq!(sqlx::query_scalar::<_,String>("SELECT text FROM messages WHERE id=$1").bind(legacy_message).fetch_one(&db).await.unwrap(),"existing conversation stays");
             assert_eq!(sqlx::query_scalar::<_,Value>("SELECT context FROM runs WHERE id=$1").bind(legacy_run).fetch_one(&db).await.unwrap(),json!([{"legacy":true}]));
@@ -983,7 +1090,7 @@ mod tests {
             let bindings: Vec<(String, Uuid)> = sqlx::query_as("SELECT id,default_agent_id FROM devices WHERE runtime_state<>'archived' ORDER BY kind,id").fetch_all(&db).await.unwrap();
             assert_eq!(bindings, vec![(desktop.clone(),agent),(PHONE.into(),agent)]);
             let before=sqlx::query_scalar::<_,i64>("SELECT count(*) FROM messages").fetch_one(&db).await.unwrap();
-            let run=send(&app,"first task").await;
+            let run=send(&app,"first task",PHONE).await;
             let pinned=sqlx::query("SELECT agent_id,agent_name,agent_instructions,device_id,model_revision FROM runs WHERE id=$1").bind(run).fetch_one(&db).await.unwrap();
             assert_eq!(pinned.get::<Uuid,_>("agent_id"),agent);assert_eq!(pinned.get::<String,_>("device_id"),PHONE);assert_eq!(pinned.get::<i64,_>("model_revision"),version as i64);
             let mut beta=draft.clone();beta.model="beta".into();beta.api_key="key-beta".into();let checked=check_model(&app,model,1,beta.clone()).await;
@@ -991,14 +1098,14 @@ mod tests {
             let mut changed_agent=agent_request;changed_agent.expected_revision=1;changed_agent.name="新版助手".into();changed_agent.instructions="新的工作偏好".into();save_agent(&app,changed_agent.clone()).await.unwrap();
             assert_eq!(settings::for_run(&app,run).await.unwrap().model,"alpha");
             assert_eq!(sqlx::query_scalar::<_,String>("SELECT agent_name FROM runs WHERE id=$1").bind(run).fetch_one(&db).await.unwrap(),"办公助手");
-            let steered=send(&app,"additional instruction").await;assert_eq!(steered,run);assert_eq!(settings::for_run(&app,run).await.unwrap().model,"alpha","steering cannot switch model midway");
+            let steered=send(&app,"additional instruction",PHONE).await;assert_eq!(steered,run);assert_eq!(settings::for_run(&app,run).await.unwrap().model,"alpha","steering cannot switch model midway");
             sqlx::query("UPDATE runs SET status='succeeded' WHERE id=$1").bind(run).execute(&db).await.unwrap();
-            let next=send(&app,"second task").await;let config=settings::for_run(&app,next).await.unwrap();assert_eq!(config.model,"beta");assert_eq!(config.api_key,"key-beta");
+            let next=send(&app,"second task",PHONE).await;let config=settings::for_run(&app,next).await.unwrap();assert_eq!(config.model,"beta");assert_eq!(config.api_key,"key-beta");
             crate::model_adapter::request(&config,json!({"input":[{"role":"user","content":[{"type":"input_text","text":"Reply exactly with this code: runtime-proof"}]}]}),&CancellationToken::new()).await.unwrap();
             assert_eq!(seen.lock().unwrap().last().unwrap(),"beta");
             let edit=wire::DeviceSaveRequest{id:desktop.clone(),expected_revision:2,name:"重命名电脑".into(),kind:"desktop".into()};
             let(a,b)=tokio::join!(save_device(&app,edit.clone()),save_device(&app,edit));assert_ne!(a.is_ok(),b.is_ok(),"one concurrent writer wins");
-            let reloaded=settings::SettingsStore::open(&root).unwrap();initialize(&db,&reloaded).await.unwrap();assert_eq!(reloaded.get(version).unwrap().model,"alpha");
+            let reloaded=settings::SettingsStore::open(&root).unwrap();assert_eq!(reloaded.get(version).unwrap().model,"alpha");
             assert_eq!(state(&app).await.unwrap().models.iter().find(|m|m.id==model.to_string()).unwrap().profile.as_ref().unwrap().model,"beta","legacy startup cannot overwrite new registry config");
             assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM conversations").fetch_one(&db).await.unwrap(),1);
             assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM messages").fetch_one(&db).await.unwrap(),before+5);
@@ -1050,11 +1157,11 @@ mod tests {
             // Its setup status and task execution must still resolve the registered model.
             sqlx::query("TRUNCATE runs,messages,agents,model_connections,devices,agent_device_bindings,registry_meta CASCADE").execute(&db).await.unwrap();
             let fresh_root=root.join("fresh-instance");
-            let fresh = Arc::new(App {
+            let mut fresh = Arc::new(App {
                 db: db.clone(),
                 root: fresh_root.clone(),
                 token: "registry-test".into(),
-                phone_token: "unused".into(),
+                phone_token: None,
                 settings: settings::SettingsStore::open(&fresh_root).unwrap(),
                 local: reqwest::Client::new(),
                 remote: reqwest::Client::new(),
@@ -1065,14 +1172,28 @@ mod tests {
                 location_mutation: Mutex::new(()),
                 network_mutation: Mutex::new(()),
             });
-            initialize(&db,&fresh.settings).await.unwrap();assert!(!configured(&fresh).await);
+            initialize(&fresh).await.unwrap();assert!(!configured(&fresh).await);
             let checked=check_model(&fresh,MODEL,1,draft.clone()).await;
+            assert_eq!(checked.checks.len(), 2);
             save_model(&fresh,wire::ConnectionSaveRequest{id:MODEL.to_string(),expected_revision:1,name:"新实例模型".into(),draft:Some(draft),verification_id:checked.verification_id}).await.unwrap();
             assert_eq!(fresh.settings.current(),0);assert!(configured(&fresh).await);
-            let fresh_run=send(&fresh,"new install task").await;assert_eq!(settings::for_run(&fresh,fresh_run).await.unwrap().model,"alpha");
+            let empty = state(&fresh).await.unwrap();
+            assert!(empty.devices.is_empty() && empty.active_device_id.is_empty());
+            assert_eq!(empty.active_agent_id, AGENT.to_string());
+            let fresh_run=send(&fresh,"new install task","").await;
+            assert_eq!(settings::for_run(&fresh,fresh_run).await.unwrap().model,"alpha");
+            let claimed = crate::worker::claim_due_run(&fresh).await.unwrap().unwrap();
+            assert_eq!(claimed.0, fresh_run);
+            let devices: (Option<String>, i64, i64) = sqlx::query_as(
+                "SELECT device_id,(SELECT count(*) FROM run_device_bindings WHERE run_id=$1),
+                    (SELECT count(*) FROM device_execution_leases) FROM runs WHERE id=$1"
+            ).bind(fresh_run).fetch_one(&db).await.unwrap();
+            assert_eq!(devices, (None, 0, 0));
+            crate::worker::recover_interrupted_runs(&db).await.unwrap();
+            assert_eq!(crate::worker::claim_due_run(&fresh).await.unwrap(), Some(claimed));
             let mut headers=HeaderMap::new();headers.insert("authorization","Bearer registry-test".parse().unwrap());headers.insert("content-type",MEDIA.parse().unwrap());
             let setup:wire::SetupState=response(crate::setup::route(axum::extract::State(fresh.clone()),axum::extract::Path("status".into()),headers,Ok(Bytes::new())).await).await;assert!(setup.model_configured);
-            let reopened=settings::SettingsStore::open(&fresh_root).unwrap();initialize(&db,&reopened).await.unwrap();assert!(configured(&fresh).await);
+            let reopened=settings::SettingsStore::open(&fresh_root).unwrap();Arc::get_mut(&mut fresh).unwrap().settings=reopened;initialize(&fresh).await.unwrap();assert!(configured(&fresh).await);
 
         }).catch_unwind().await;
         server.abort();

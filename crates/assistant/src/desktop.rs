@@ -1216,11 +1216,37 @@ pub async fn tool(app: &App, run: Uuid, call: &Value, args: &Value) -> Result<Va
         ));
     }
     if name == "device_list" {
-        let rows=sqlx::query("SELECT d.id,d.name,d.kind,d.runtime_state,EXISTS(SELECT 1 FROM run_device_bindings b JOIN runs r ON r.id=b.run_id JOIN agent_device_bindings current ON current.agent_id=r.agent_id AND current.device_id=b.device_id WHERE b.run_id=$1 AND b.device_id=d.id) can_control,EXISTS(SELECT 1 FROM agent_device_bindings b WHERE b.device_id=d.id AND b.agent_id=d.default_agent_id) can_handoff FROM devices d WHERE d.owner_id='local-user' AND d.runtime_state='managed' ORDER BY d.kind,d.id").bind(run).fetch_all(&app.db).await.map_err(|e|e.to_string())?;
-        let links = device_links(app).await?;
-        let messages = crate::device_exchange::list(app).await?;
+        let rows=sqlx::query("SELECT d.id,d.name,d.kind,d.system,d.runtime_state,d.paired,EXISTS(SELECT 1 FROM run_device_bindings b JOIN runs r ON r.id=b.run_id JOIN agent_device_bindings current ON current.agent_id=r.agent_id AND current.device_id=b.device_id WHERE b.run_id=$1 AND b.device_id=d.id) can_control,EXISTS(SELECT 1 FROM agent_device_bindings b WHERE b.device_id=d.id AND b.agent_id=d.default_agent_id) can_handoff FROM devices d WHERE d.owner_id='local-user' AND (d.runtime_state='managed' OR (d.paired AND d.runtime_state='registered')) ORDER BY d.kind,d.id").bind(run).fetch_all(&app.db).await.map_err(|e|e.to_string())?;
+        let peer = &app.run_signals.peers;
+        let visible = rows.iter().filter(|r| {
+            !r.get::<bool, _>("paired")
+                || (r.get::<bool, _>("can_control") && peer.connected(r.get("id")))
+        });
+        let devices = futures_util::future::join_all(visible.map(|row| async move {
+            let id: &str = row.get("id");
+            let paired: bool = row.get("paired");
+            let mut device = json!({
+                "device_id": id,
+                "name": row.get::<&str, _>("name"),
+                "kind": row.get::<&str, _>("kind"),
+                "system": row.get::<&str, _>("system"),
+                "runtime_state": row.get::<&str, _>("runtime_state"),
+                "paired": paired,
+                "can_control": row.get::<bool, _>("can_control"),
+                "can_handoff": !paired && row.get::<bool, _>("can_handoff")
+            });
+            if paired && let Some(foreground) = peer.foreground(id).await {
+                device["foreground"] = json!(foreground);
+            }
+            device
+        }));
+        let (devices, records) = tokio::join!(devices, async {
+            tokio::try_join!(device_links(app), crate::device_exchange::list(app))
+        });
+        let (links, messages) = records?;
+
         return Ok(plain(
-            json!({"handoffs":messages.iter().filter(|m|rows.iter().any(|r|r.get::<String,_>("id")==m.source_device_id||r.get::<String,_>("id")==m.target_device_id)).map(|m|json!({"message_id":m.id,"source_device_id":m.source_device_id,"target_device_id":m.target_device_id,"status":m.status,"run_id":m.run_id,"error":m.error})).collect::<Vec<_>>(),"links":links.iter().filter(|l|l.connected).map(|l|json!({"source_device_id":l.source_device_id,"target_device_id":l.target_device_id})).collect::<Vec<_>>(),"devices":rows.iter().map(|r|json!({"device_id":r.get::<String,_>("id"),"name":r.get::<String,_>("name"),"kind":r.get::<String,_>("kind"),"runtime_state":r.get::<String,_>("runtime_state"),"can_control":r.get::<bool,_>("can_control"),"can_handoff":r.get::<bool,_>("can_handoff")})).collect::<Vec<_>>()}),
+            json!({"handoffs":messages.iter().filter(|m|rows.iter().any(|r|r.get::<String,_>("id")==m.source_device_id||r.get::<String,_>("id")==m.target_device_id)).map(|m|json!({"message_id":m.id,"source_device_id":m.source_device_id,"target_device_id":m.target_device_id,"status":m.status,"run_id":m.run_id,"error":m.error})).collect::<Vec<_>>(),"links":links.iter().filter(|l|l.connected).map(|l|json!({"source_device_id":l.source_device_id,"target_device_id":l.target_device_id})).collect::<Vec<_>>(),"devices":devices}),
         ));
     }
     if name == "device_transfer_status" {
@@ -1368,6 +1394,7 @@ async fn tool_action(
         text: text("text"),
         wait_for_paint: true,
         replace: args["replace"].as_bool().unwrap_or(false),
+        ..Default::default()
     };
     let file = if name == "computer_key"
         && let Some(path) = args["reply_file"].as_str()
@@ -1452,7 +1479,7 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "device_message",
-            "向已连接设备交接任务，写明结果要求和实际文件路径。task_wait 可等待回执，交接完成会唤醒原任务。",
+            "给已连接设备上的执行者交接独立工作，写明结果和文件路径。当前任务可直接完成的顺序步骤继续用设备工具。交接回执唤醒原任务。",
             json!({"source_device_id":id,"target_device_id":id,"text":id}),
             vec!["source_device_id", "target_device_id", "text"],
         ),
@@ -1519,7 +1546,7 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "computer_run",
-            "在这台Linux桌面容器执行命令，工作目录/home/ai/Files；提供curl、git和LibreOffice。日常办公优先通过computer-use操作桌面应用。可sudo -n取得客体root配置系统；命令执行必须如实记录，不能假称鼠标操作。不能访问macOS。",
+            "在已授权的 Linux 客体执行命令，工作目录 /home/ai/Files。日常应用操作用 computer-use。系统维护可用 sudo -n，回执记录实际执行的命令。",
             json!({"device_id":id,"script":id}),
             vec!["device_id", "script"],
         ),
@@ -1537,7 +1564,7 @@ pub fn catalog() -> Vec<Value> {
         ),
         function(
             "device_transfer",
-            "沿已连接的数据线传文件，最高64MiB，双端内容校验。返回request_id和实际目标路径；completed仅表示文件到达目标设备，绝不代表微信发送或对方收到。",
+            "沿已连接的数据线传文件，最高 64 MiB。完成时返回 request_id 和经核对的目标文件路径。需要发送给他人时，在目标应用核对送达结果。",
             json!({"source_device_id":id,"target_device_id":id,"source_path":id,"target_name":id}),
             vec!["source_device_id", "target_device_id", "source_path"],
         ),
@@ -1654,7 +1681,7 @@ async fn provision(
     app: Shared,
     r: wire::DesktopProvisionRequest,
 ) -> Result<wire::DesktopProvisionJob> {
-    if r.template_id != "debian13-openbox"
+    if r.template_id != ai_phone_api::LINUX_DESKTOP_TEMPLATE
         || !(1..=4).contains(&r.cpus)
         || !(1536..=4096).contains(&r.memory_mb)
     {
@@ -1663,7 +1690,7 @@ async fn provision(
     let id = uuid(&r.request_id)?;
     let mut tx = app.db.begin().await.map_err(|e| e.to_string())?;
     let d = sqlx::query(
-        "SELECT kind,runtime_state FROM devices WHERE id=$1 AND owner_id='local-user' FOR UPDATE",
+        "SELECT kind,runtime_state FROM devices WHERE id=$1 AND owner_id='local-user' AND NOT paired FOR UPDATE",
     )
     .bind(&r.device_id)
     .fetch_optional(&mut *tx)
@@ -1940,7 +1967,7 @@ mod tests {
         use crate::worker::steering_regressions::database_case;
 
         database_case(|app| async move {
-            crate::registry::initialize(&app.db, &app.settings).await.unwrap();
+            crate::registry::initialize(&app).await.unwrap();
             let device = "desktop-control-rollover";
             let agent = Uuid::from_u128(2);
             sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state) VALUES($1,'Fixture','desktop','fixture','managed')")

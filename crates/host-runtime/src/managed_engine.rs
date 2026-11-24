@@ -214,7 +214,49 @@ pub(crate) fn environment(root: &Path, user: &Path) -> Result<BTreeMap<String, S
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn remove_state(home: &Path, user: &Path) -> Result<()> {
+pub(crate) fn desktop_command(home: &Path) -> Result<Option<tokio::process::Command>> {
+    let root = home.join("user");
+    let user = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or(Error::Invalid("managed_engine_home"))?;
+    let Some(engine) = selection(&root, &user)? else {
+        return Ok(None);
+    };
+    let releases = engine.home.join("releases");
+    let release = engine
+        .command
+        .ancestors()
+        .find(|dir| dir.parent() == Some(releases.as_path()))
+        .ok_or(Error::Invalid("managed_engine_path"))?;
+    let args = crate::desktop_bridge::native_arguments(
+        release,
+        "exec",
+        Some(
+            engine
+                .command
+                .to_str()
+                .ok_or(Error::Invalid("managed_engine_path"))?,
+        ),
+    )?;
+    let mut command = tokio::process::Command::new(&args[0]);
+    command.args(&args[1..]).env("LIMA_HOME", engine.state);
+    Ok(Some(command))
+}
+#[cfg(target_os = "macos")]
+pub async fn desktop_location(
+    home: &Path,
+    fix: &ai_phone_api::wire::LocationFix,
+) -> Result<Option<ai_phone_api::wire::LocationDevice>> {
+    let Some(command) = desktop_command(home)? else {
+        return Ok(None);
+    };
+    crate::desktop_bridge::apply_location(command, fix)
+        .await
+        .map(Some)
+}
+
+#[cfg(target_os = "macos")]
+pub fn remove_state(home: &Path, user: &Path) -> Result<()> {
     let data = home.join("user/data");
     if !data.try_exists()? {
         return Ok(());
@@ -229,7 +271,7 @@ pub(crate) fn remove_state(home: &Path, user: &Path) -> Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) async fn shutdown(home: &Path, user: &Path) -> Result<()> {
+pub async fn shutdown(home: &Path, user: &Path) -> Result<()> {
     let Some(engine) = selection(&home.join("user"), user)? else {
         return Ok(());
     };
@@ -255,26 +297,8 @@ pub(crate) async fn shutdown(home: &Path, user: &Path) -> Result<()> {
         if matches!(observed.stdout.trim_ascii(), b"" | b"Stopped") {
             return Ok(());
         }
-        let database = command(&[
-            "shell",
-            "--tty=false",
-            "--workdir",
-            "/",
-            "ai-phone",
-            "sudo",
-            "-n",
-            "--",
-            "/bin/sh",
-            "-c",
-            crate::wsl::backend::MAC_POSTGRES_SHUTDOWN,
-        ])
-        .status()
-        .await;
         if !command(&["stop", "ai-phone"]).status().await?.success() {
             return Err(Error::Invalid("container_host_stop_failed"));
-        }
-        if !database?.success() {
-            return Err(Error::Invalid("macos_guest_postgres_stop_failed"));
         }
         Ok(())
     };

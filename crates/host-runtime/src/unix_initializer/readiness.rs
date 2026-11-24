@@ -47,7 +47,6 @@ pub(super) async fn wait(root: &Path, mut stop: watch::Receiver<bool>) -> Result
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| Error::Invalid("unix_host_service_not_ready"))?;
-    let token = fs::read_to_string(root.join("data/assistant/token"))?;
     let runner = fs::read_to_string(root.join("data/phone-runner/token"))?;
     let observation = DeviceRequest {
         phone_id: "phone-local-01".into(),
@@ -57,29 +56,23 @@ pub(super) async fn wait(root: &Path, mut stop: watch::Receiver<bool>) -> Result
     }
     .encode_to_vec();
     let deadline = Instant::now() + Duration::from_secs(30);
-    for (port, path, auth, body) in [
-        (17863, "/v1/setup/status", token.trim(), &b""[..]),
-        (17864, "/v1/list", token.trim(), &b""[..]),
-        (17862, "/v1/observe", runner.trim(), observation.as_slice()),
-    ] {
-        loop {
-            if *stop.borrow() {
-                return Err(Error::Cancelled);
-            }
-            let result = tokio::select! {
-                result=tokio::time::timeout_at(deadline,probe(&client,port,path,auth,body))=>result,
-                _=stop.changed()=>return Err(Error::Cancelled),
-            };
-            match result {
-                Ok(Ok(())) => break,
-                Err(_) => return Err(Error::Invalid("unix_host_service_not_ready")),
-                Ok(Err(_)) => {}
-            }
-            if Instant::now() >= deadline {
-                return Err(Error::Invalid("unix_host_service_not_ready"));
-            }
-            tokio::select! {_=stop.changed()=>return Err(Error::Cancelled),_=tokio::time::sleep(Duration::from_millis(250))=>{}}
+    loop {
+        if *stop.borrow() {
+            return Err(Error::Cancelled);
         }
+        let result = tokio::select! {
+            result=tokio::time::timeout_at(deadline,probe(&client,17862,"/v1/observe",runner.trim(),&observation))=>result,
+            _=stop.changed()=>return Err(Error::Cancelled),
+        };
+        match result {
+            Ok(Ok(())) => break,
+            Err(_) => return Err(Error::Invalid("unix_host_service_not_ready")),
+            Ok(Err(_)) => {}
+        }
+        if Instant::now() >= deadline {
+            return Err(Error::Invalid("unix_host_service_not_ready"));
+        }
+        tokio::select! {_=stop.changed()=>return Err(Error::Cancelled),_=tokio::time::sleep(Duration::from_millis(250))=>{}}
     }
     Ok(())
 }

@@ -162,7 +162,7 @@ fn installer_manifest(
         }
     }
     let required: &[&str] = if cfg!(windows) {
-        &["android-runtime", "windows-qemu"]
+        &["phone-apps", "android-runtime", "windows-qemu"]
     } else {
         &[
             "native-services",

@@ -5,10 +5,11 @@ mod archive;
 mod capsule;
 pub mod component;
 mod control;
-#[cfg(unix)]
+#[cfg(any(unix, test))]
 pub mod desktop_bridge;
 pub mod device_bridge;
 mod filesystem;
+pub mod guest_channel;
 mod links;
 mod linux_vm;
 #[cfg(unix)]
@@ -33,11 +34,23 @@ pub mod supervision;
 #[cfg(unix)]
 mod unix_initializer;
 #[cfg(target_os = "macos")]
-pub use unix_initializer::shutdown as stop_macos_installation;
+pub use managed_engine::{
+    desktop_location, remove_state as remove_mac_guest, shutdown as stop_mac_guest,
+};
 #[cfg(target_os = "macos")]
 pub use unix_initializer::uninstall as remove_macos_devices;
+#[cfg(target_os = "macos")]
+pub use unix_initializer::{shutdown as stop_macos_installation, stop_mac_phone};
 #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 pub mod qemu_native;
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+pub use vm_control::desktop_location;
+#[cfg(any(
+    target_os = "macos",
+    windows,
+    all(target_os = "linux", target_arch = "x86_64")
+))]
+pub mod virtual_device;
 pub mod vm_control;
 pub mod wsl;
 

@@ -119,7 +119,7 @@ impl Proxy {
                         text(locale.tr("订阅地址")).size(12).color(style::MUTED),
                         subscription,
                     ]
-                    .spacing(5),
+                    .spacing(6),
                 );
             for group in &state.groups {
                 body = body.push(

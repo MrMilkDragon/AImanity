@@ -120,6 +120,55 @@ where
     Ok(())
 }
 
+pub(super) fn proxy_binary(target: &str, destination: &Path) -> Result<String> {
+    let policy: Value = serde_json::from_reader(File::open("config/mihomo-release.json")?)?;
+    let asset = &policy["assets"][target];
+    let url = asset["url"].as_str().ok_or("Unknown proxy target")?;
+    let digest = asset["binary_sha256"]
+        .as_str()
+        .ok_or("Missing proxy executable identity")?;
+    let cache = Path::new(".tools/mihomo-harness").join(url.rsplit('/').next().unwrap());
+    stage_pin::<Sha256>(
+        url,
+        &cache,
+        None,
+        asset["sha256"]
+            .as_str()
+            .ok_or("Missing proxy archive identity")?,
+    )?;
+    let mut binary =
+        tempfile::NamedTempFile::new_in(destination.parent().ok_or("Missing proxy destination")?)?;
+    let input = File::open(&cache)?;
+    let valid = if target == "windows-x64" {
+        let mut archive = zip::ZipArchive::new(input)?;
+        verify_stream::<Sha256>(
+            archive.by_name("mihomo-windows-amd64-compatible.exe")?,
+            &mut binary,
+            None,
+            digest,
+        )?
+    } else {
+        verify_stream::<Sha256>(
+            flate2::read::GzDecoder::new(input),
+            &mut binary,
+            None,
+            digest,
+        )?
+    };
+    if !valid {
+        return Err("Proxy executable differs from the pinned release".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        binary
+            .as_file()
+            .set_permissions(fs::Permissions::from_mode(0o755))?;
+    }
+    binary.persist(destination)?;
+    Ok(digest.to_owned())
+}
+
 pub(super) fn ocr(arguments: &[OsString]) -> Result<Value> {
     let [flag, destination] = arguments else {
         return Err("prepare-ocr-models requires --destination DIRECTORY".into());
@@ -147,13 +196,29 @@ pub(super) fn speech(arguments: &[OsString]) -> Result<Value> {
     Ok(json!({"resource":format!("speech/{}", model.file),"sha256":model.sha256}))
 }
 
-pub(super) fn windows_aosp(arguments: &[OsString]) -> Result<()> {
-    let [destination] = arguments else {
-        return Err("fetch-windows-aosp requires OUTPUT_ZIP".into());
+pub(super) fn aosp(arguments: &[OsString]) -> Result<()> {
+    let [arch, destination] = arguments else {
+        return Err("fetch-aosp requires arm64 or x86_64 and OUTPUT_ZIP".into());
     };
+    let (arch, build, size, digest) = match arch.to_str() {
+        Some("arm64") => (
+            "arm64",
+            "16644040",
+            1_101_174_958,
+            "21542c7cbc096a76d91b723c17ea391f",
+        ),
+        Some("x86_64") => (
+            "x86_64",
+            "13455678",
+            1_001_184_764,
+            "453044532a2070651c2576dc0343b1b6",
+        ),
+        _ => return Err("Unsupported AOSP guest architecture".into()),
+    };
+    let image = format!("aosp_cf_{arch}_only_phone");
     let viewer = Command::new("curl")
         .args(CURL_FETCH)
-        .arg("https://ci.android.com/builds/submitted/13455678/aosp_cf_x86_64_only_phone-userdebug/latest/view/aosp_cf_x86_64_only_phone-img-13455678.zip")
+        .arg(format!("https://ci.android.com/builds/submitted/{build}/{image}-userdebug/latest/view/{image}-img-{build}.zip"))
         .output()?;
     if !viewer.status.success() {
         return Err("Android CI viewer download failed".into());
@@ -168,12 +233,7 @@ pub(super) fn windows_aosp(arguments: &[OsString]) -> Result<()> {
         .as_str()
         .filter(|url| url.starts_with("https://storage.googleapis.com/"))
         .ok_or("Android CI did not return its image storage URL")?;
-    stage_pin::<md5::Md5>(
-        url,
-        Path::new(destination),
-        1_001_184_764,
-        "453044532a2070651c2576dc0343b1b6",
-    )
+    stage_pin::<md5::Md5>(url, Path::new(destination), size, digest)
 }
 
 pub(super) fn windows_audio(arguments: &[OsString]) -> Result<()> {

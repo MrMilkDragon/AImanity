@@ -1,7 +1,9 @@
 .fail
 load-module module-native-protocol-unix
 load-module module-null-sink sink_name=aiphone rate=48000 channels=2 norewinds=1
-load-module module-stream-restore
+load-module module-null-sink sink_name=aimanity_mic_input rate=48000 channels=1 norewinds=1
+load-module module-remap-source master=aimanity_mic_input.monitor source_name=aimanity_mic
+load-module module-stream-restore restore_device=false
 load-module module-device-restore
 set-default-sink aiphone
-set-default-source aiphone.monitor
+set-default-source aimanity_mic

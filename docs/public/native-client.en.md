@@ -1,44 +1,44 @@
-# Native client development
+# Control a computer in Fluorine
 
-[简体中文](native-client.zh-CN.md)
+[简体中文](native-client.zh-CN.md) · [Set up the workspace](getting-started.en.md)
 
-## 0.0.4 Dysprosium development
+Fluorine 0.0.6 opens with zero devices. One conversation and task queue serve your authorized devices. Add virtual Android or Linux guests when you need them. The Agent can choose a connected device by its foreground app, observe its screen and act on that device. Working files and the knowledge base stay with the workspace.
 
-`apps/native` contains the Iced + wgpu workbench. Its Rust host integration starts the phone, desktop and local services. Device frames upload directly to GPU textures; input and the shared conversation use the existing protobuf services.
+## Use this computer for one task
 
-The macOS development build connects real devices and preserves one conversation across device switches. Its anchored Agent editor uses the shared provider catalogue and the existing model verification/save flow. Saved profiles include connection, memory and voice settings.
+Use this when the work is on the same Mac or Windows PC that runs your workspace.
 
-The conversation supports Markdown, older-message pagination, expandable tool receipts, file selection/drop, image previews, downloads, pause, resume and stop. Pending messages are stored locally as protobuf before submission and retain their request IDs when retried. New drafts remain independent of in-flight messages. Rendering caches parsed Markdown and decoded images; idle conversations do not poll tool history.
+1. Open the settings gear and enable **Allow host desktop control**.
+2. In the conversation composer, select the monitor icon **Use this computer**, then **Allow for this task**. On macOS, grant AImanity Screen Recording and Accessibility access when prompted.
+3. Send the instruction, for example “Type ‘Ready’ into the open test document on this computer and save it.” The grant covers the logged-in desktop across apps. The current model receives its screen observations, which are also kept in the local task record.
+4. Select **End desktop access** to stop early. The grant also ends when the task finishes. A later task requires its own grant.
 
-The native component system shares typography, radii, 40px control heights and glass parameters. Anchored windows measure their content and animate their size; covered device and chat controls receive no pointer input. Device and anchored-window transitions use window frame events. Tool-history polling runs only for the current running task with its process expanded, with one final fetch when it ends.
+## Pair a remote computer
 
-The global toolbar opens the language selector, Skill manager, simulated location, workbench proxy, knowledge graph and document editor, three-pane file manager, and device/Agent settings as anchored panels. Open Task & Goal beside the attachment button in the shared composer. The device toolbars control native playback volume, rotation and screenshots. Each device has an independent audio stream that continues across focus changes until muted.
+Use this when a second Windows PC, Mac or Linux X11 computer will provide its screen, keyboard, pointer and files. Open AImanity on both computers.
 
-Liberty and Task & Goal use the shared assistant's persisted mode state. Copilot captures the default microphone, uses the bundled offline recognizer, and reads replies with the system voice. Partial recognition appears in the composer; final text enters the shared message outbox. Building the native client requires CMake for the bundled recognizer.
+1. **On the workspace computer**, open **Devices → Add device → Remote computer**. Enter a name, select **Create pairing code** and copy it. This single-use code expires in five minutes.
+2. **On the computer to control**, make sure SSH key login to the workspace works. Enable Remote Login on a Mac workspace or OpenSSH Server on a Windows workspace. A trusted SSH host alias or `user@host` works. From the computer to control, run `ssh my-workspace` once, verify the workspace host key and exit the session. For first-time SSH setup, follow [Apple’s Remote Login guide](https://support.apple.com/guide/mac-help/allow-a-remote-computer-to-access-your-mac-mchlp1066/mac) or Microsoft’s guides to [OpenSSH Server](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse) and [key-based login](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement).
+3. **On the computer to control**, open **Devices → Share a device**, select **This computer** and enter the workspace SSH host and pairing code. Choose **Share screen and files**. If you are sharing a Mac, grant AImanity Screen Recording and Accessibility on that Mac when prompted. On Mac or Windows, select **Share visible notifications** if you want the Agent to receive them.
+4. **On the workspace computer**, select the connected device. Try typing a short line in an open text document and saving it. In **Files**, choose the paired device to browse its files or copy a saved document into working files.
+5. Select **Stop sharing** on the remote computer or **Disconnect** in the workspace to end access. Create a new code to reconnect. **Remove device** forgets the pairing in the workspace.
 
-Install Dysprosium from Releases on macOS or Windows. It opens its own data directory and receives later native releases through its updater. The Windows host starts the bundled Android and WHPX desktop and relays local protobuf services over authenticated loopback.
+SSH carries the protobuf WebSocket connection to the workspace listener on `127.0.0.1:17863`. If you maintain your own tunnel, run the following on the computer to control. Leave it open and enter `17869` in **Workspace SSH host or forwarded port**.
 
 ```sh
-cargo build --release --manifest-path apps/native/Cargo.toml
-apps/native/target/release/aimanity-native /absolute/path/native-launch.json
+ssh -N -L 127.0.0.1:17869:127.0.0.1:17863 my-workspace
 ```
 
-The private launch file selects an installation with `home`, `resource`, `request`, `source`, `android` and `images`. It reuses the host runtime's offline component identifiers and device setup request. Credentials and device state stay in that installation. See the [runtime bundle layout](runtime-bundles.md).
+## Pair an Android phone
 
-The platform factory packages the Rust workbench with the complete offline payload. The Windows factory runs on Windows 11 x64.
+Create a **Remote Android** code in the workspace. On the desktop computer sharing the phone, connect it using USB debugging or Android wireless debugging and approve that computer on the phone. In **Share a device → Find phones**, select the authorized phone. Enter the workspace SSH host and pairing code, then select **Share screen and files**. For Chinese text, enable the AImanity input method on the phone and focus an editable field.
 
-## Released client
+## Build the workbench
 
-The Rust client runs setup and opens the workbench when the local services are ready. macOS uses Avo for Android and Lima for Linux. Windows and Linux run the bundled Android and Linux guests under QEMU, with WHPX on Windows and KVM on Linux.
-
-The setup screen supports ten languages, keyboard-accessible selectors, retry and cancellation. Return to setup through **AImanity → Setup**.
-
-## Build
+The client uses Rust, Iced and wgpu. The workspace stores state in embedded redb. Copilot uses the local microphone, bundled speech recognizer and system text-to-speech. Install CMake to build the recognizer.
 
 ```sh
 cargo build --release --locked --manifest-path apps/native/Cargo.toml
 ```
 
-The macOS, Windows and Linux factories add the offline systems and services to the native binary. [macOS factory](engineering/macos-full-runtime.md) · [Windows factory](windows-client-factory.md) · [Linux workflow](../../.github/workflows/linux-packages.yml)
-
-[Downloads and host requirements](release-status.md)
+[Runtime bundle layout](runtime-bundles.md) · [Platform packages](release-status.md) · [0.0.5 native client guide](https://github.com/MrMilkDragon/AImanity/blob/v0.0.5/docs/public/native-client.en.md)

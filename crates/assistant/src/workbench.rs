@@ -257,25 +257,10 @@ pub async fn initialize(db: &PgPool, root: &std::path::Path) -> Result<(), Strin
         descriptions.push(description);
         contents.push(content);
     }
+    let core = include_str!("../../../skills/core.txt");
     let required: Vec<_> = ids
         .iter()
-        .map(|id| {
-            matches!(
-                id.as_str(),
-                "autonomous-learning"
-                    | "browser-android"
-                    | "calc"
-                    | "computer-use"
-                    | "device-transfer"
-                    | "draw"
-                    | "files-android"
-                    | "impress"
-                    | "phone-use"
-                    | "wechat"
-                    | "writer"
-                    | "xiaohongshu"
-            )
-        })
+        .map(|id| core.lines().any(|name| name == id))
         .collect();
     sqlx::query("INSERT INTO runtime_skills AS s (id,name,description,source,content,builtin,enabled)
         SELECT id,id,description,CASE WHEN required THEN 'builtin' ELSE 'catalog' END,content,true,required

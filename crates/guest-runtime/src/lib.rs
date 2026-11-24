@@ -16,6 +16,7 @@ pub mod process;
 pub mod runtime;
 pub mod screen;
 pub mod settings;
+pub mod workspace;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;

@@ -1,31 +1,22 @@
-# AImanity
+# AImanity 0.0.6 Fluorine
 
 [English](../../README.md) · [Alle Sprachen](../../README.md) · Apache-2.0
 
 ## Downloads und Stand
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
+[0.0.6 Fluorine herunterladen](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) · [Installationsprüfung und getestete Hardware](release-status.md)
 
-Voraussetzungen sind macOS 15.0 oder neuer mit Apple Silicon beziehungsweise Windows 11 x64. Jedes Installationspaket enthält Android, Linux, den Emulator und die lokalen Dienste.
-
-Linux auf x86_64 benötigt KVM und glibc ab 2.36. Wähle DEB für Debian/Ubuntu oder RPM für Fedora/Enterprise Linux 10. Installiere das nächste Paket im selben Format, um Geräte und Chats zu behalten. [Installationsbefehle](release-status.md#linux)
+Installiere 0.0.6 neu. Der Arbeitsbereich startet ohne Geräte. Erstelle bei Bedarf Android- oder Linux-Gäste, kopple ein entferntes Gerät oder erteile einem einzelnen Auftrag Zugriff auf den Host-Desktop.
 
 ## Funktionen und Szenarien
 
-Ein echter Android-Gast und ein schlanker Linux-Desktop nutzen denselben aktiven Agenten und dieselbe Unterhaltung. Weitere Modellprofile lassen sich in der Konfiguration speichern und auswählen.
+Der Agent wählt für jeden Auftrag ein freigegebenes Gerät. Gespräch, Aufgabenliste und Arbeitsdateien stehen auf allen Geräten zur Verfügung. Unabhängige Aufgaben können parallel an Unteragenten gehen.
 
-- Apps wie WeChat anhand realer Bildschirme und Benachrichtigungen bedienen und im Auftrag des Nutzers antworten. Konto- und App-Beschränkungen bleiben wirksam.
-- Eine Datei am Telefon empfangen, an Linux übertragen, dort eine Tabelle bearbeiten und prüfen und das Ergebnis zurückgeben. Geräteübertragung und Zustellung an einen Kontakt werden getrennt geprüft.
-- Laufende Aufgaben durch weitere Nachrichten lenken und unterbrechen, ohne frühere Nachrichten oder Aktionen zu verlieren. Benachrichtigungen können den Agenten wecken; Liberty läuft geräteübergreifend.
-- Skills, verknüpfte Wissensdokumente und Arbeitsdateien gemeinsam nutzen. Modelle/APIs, Gedächtnis und externe Verbindungen gehören zum Agenten. Die Geräte verbinden sich standardmäßig direkt. Einen Proxy kannst du im Arbeitsbereich einrichten.
-
-Aktionen sind an Beobachtung, Gerät, Aufgabe, Kontroll-Epoche und eindeutige Aktions-ID gebunden. Unbekannte Ergebnisse werden vor Wiederholung beobachtet.
+Mit Copilot kannst du Anweisungen per Sprache korrigieren. Liberty erkundet selbstständig. Task & Goal arbeitet auf ein vorgegebenes Ziel hin.
 
 ## Technik und Daten
 
-`apps/native`: Rust (Iced/wgpu). `crates`: Rust/Axum/Tokio. `packages/protocol`: protobuf. Die Daten liegen in PostgreSQL, der Zugriff erfolgt über SQLx. Das Projekt wird mit Cargo gebaut.
-
-Code und Nutzerdaten sind getrennt. Geräteplatten, Konten, Chats, Anhänge und Schlüssel werden nicht veröffentlicht. Updates benötigen versionierte Pakete, Sicherung, Migration und Rücknahme statt eines direkten `git pull` in Nutzerdaten.
+Die native Oberfläche nutzt Rust, Iced und wgpu. Die Nachrichten verwenden protobuf. Die eingebettete Datenbank redb speichert Geräte, Gespräche und Aufgaben lokal.
 
 ## Ausblick, Verantwortung und Lizenz
 

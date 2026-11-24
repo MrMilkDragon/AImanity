@@ -15,6 +15,102 @@ use std::{
     process::{Command, Stdio},
 };
 
+pub fn mobile_dex(args: &[OsString]) -> Result<()> {
+    use receiver_dex::{Class, emit_for};
+    let [output] = args else {
+        return Err("mobile-activity-dex OUTPUT".into());
+    };
+    let classes = [
+        Class {
+            name: "Ldev/aimanity/mobile/KeyboardView;",
+            parent: "Landroid/view/View;",
+            interfaces: &["Landroid/view/View$OnApplyWindowInsetsListener;"],
+            constructor_args: &["Landroid/content/Context;"],
+            fields: &[],
+            natives: &[
+                (
+                    "onApplyWindowInsets",
+                    (
+                        "Landroid/view/WindowInsets;",
+                        &["Landroid/view/View;", "Landroid/view/WindowInsets;"],
+                    ),
+                    1,
+                ),
+                ("onCheckIsTextEditor", ("Z", &[]), 1),
+                (
+                    "onCreateInputConnection",
+                    (
+                        "Landroid/view/inputmethod/InputConnection;",
+                        &["Landroid/view/inputmethod/EditorInfo;"],
+                    ),
+                    1,
+                ),
+                ("onKeyPreIme", ("Z", &["I", "Landroid/view/KeyEvent;"]), 1),
+            ],
+        },
+        Class {
+            name: "Ldev/aimanity/mobile/KeyboardConnection;",
+            parent: "Landroid/view/inputmethod/BaseInputConnection;",
+            interfaces: &[],
+            constructor_args: &["Landroid/view/View;", "Z"],
+            fields: &[("generation", "I", 1), ("preedit", "Ljava/lang/String;", 1)],
+            natives: &[
+                (
+                    "setComposingText",
+                    ("Z", &["Ljava/lang/CharSequence;", "I"]),
+                    1,
+                ),
+                ("commitText", ("Z", &["Ljava/lang/CharSequence;", "I"]), 1),
+                ("finishComposingText", ("Z", &[]), 1),
+                ("deleteSurroundingText", ("Z", &["I", "I"]), 1),
+                ("deleteSurroundingTextInCodePoints", ("Z", &["I", "I"]), 1),
+                ("performEditorAction", ("Z", &["I"]), 1),
+                ("sendKeyEvent", ("Z", &["Landroid/view/KeyEvent;"]), 1),
+            ],
+        },
+        Class {
+            name: "Ldev/aimanity/mobile/WorkbenchActivity;",
+            parent: "Landroid/app/NativeActivity;",
+            interfaces: &[],
+            constructor_args: &[],
+            fields: &[],
+            natives: &[
+                (
+                    "onActivityResult",
+                    ("V", &["I", "I", "Landroid/content/Intent;"]),
+                    4,
+                ),
+                (
+                    "onRequestPermissionsResult",
+                    ("V", &["I", "[Ljava/lang/String;", "[I"]),
+                    1,
+                ),
+            ],
+        },
+        Class {
+            name: "Ldev/aimanity/mobile/SpeechInit;",
+            parent: "Ljava/lang/Object;",
+            interfaces: &["Landroid/speech/tts/TextToSpeech$OnInitListener;"],
+            constructor_args: &[],
+            fields: &[],
+            natives: &[("onInit", ("V", &["I"]), 1)],
+        },
+        Class {
+            name: "Ldev/aimanity/mobile/SpeechProgress;",
+            parent: "Landroid/speech/tts/UtteranceProgressListener;",
+            interfaces: &[],
+            constructor_args: &[],
+            fields: &[],
+            natives: &[
+                ("onStart", ("V", &["Ljava/lang/String;"]), 1),
+                ("onDone", ("V", &["Ljava/lang/String;"]), 1),
+                ("onError", ("V", &["Ljava/lang/String;"]), 1),
+            ],
+        },
+    ];
+    Ok(fs::write(output, emit_for(&classes, "aimanity_native"))?)
+}
+
 pub fn select(files: Vec<String>) -> Vec<String> {
     files
         .into_iter()

@@ -142,11 +142,7 @@ impl Modes {
                     } else {
                         value.trim().to_owned()
                     },
-                    device_id: if state.goal_active {
-                        state.goal_device_id.clone()
-                    } else {
-                        device_id.into()
-                    },
+                    device_id: String::new(),
                 };
                 self.saving = true;
                 self.goal_error.clear();
@@ -179,7 +175,7 @@ impl Modes {
             Message::ToggleCopilot => {
                 if self.speech.active() {
                     self.speech.stop();
-                } else if !chat.conversation_id.is_empty() && !device_id.is_empty() {
+                } else if !chat.conversation_id.is_empty() {
                     return self
                         .speech
                         .start(self.model.clone(), self.locale.code(), chat);
@@ -476,7 +472,7 @@ impl Modes {
         } else {
             &self.goal_error
         };
-        let mut body = column![editor].spacing(14);
+        let mut body = column![crate::touch_editor::editor(editor)].spacing(14);
         if !error.is_empty() {
             body = body.push(text(error).size(12).style(style::error_text));
         }

@@ -1,13 +1,8 @@
 use ai_phone_api::wire::{DesktopActionRequest, HostDesktopReply};
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
-use futures_util::{SinkExt, StreamExt};
 use image::{DynamicImage, codecs::jpeg::JpegEncoder};
-use prost::Message;
 use std::{error::Error, fs, io, path::Path, time::Instant};
-use tokio::sync::{oneshot, watch};
-use tokio_tungstenite::tungstenite::{
-    Message as Frame, client::IntoClientRequest, http::HeaderValue,
-};
+use tokio::sync::watch;
 use xcap::Monitor;
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
@@ -68,8 +63,10 @@ impl Permission {
     }
 }
 
-struct View {
-    id: String,
+pub(super) use ai_phone_api::observations::Views;
+
+pub(super) struct View {
+    pub(super) id: String,
     display: String,
     origin: (i32, i32),
     size: (u32, u32),
@@ -97,11 +94,12 @@ fn focused_window() -> Option<usize> {
 
 fn observe(display: &str) -> Result<(View, HostDesktopReply)> {
     let monitors = Monitor::all()?;
+    let only_display = monitors.len() == 1;
     let mut displays = Vec::with_capacity(monitors.len());
     let mut selected = None;
     for monitor in monitors {
         let id = monitor.id()?.to_string();
-        if id == display || (display.is_empty() && monitor.is_primary()?) {
+        if id == display || (display.is_empty() && (only_display || monitor.is_primary()?)) {
             selected = Some((id.clone(), monitor));
         }
         displays.push(id);
@@ -112,7 +110,8 @@ fn observe(display: &str) -> Result<(View, HostDesktopReply)> {
         frame.thumbnail(1440, 1200)
     } else {
         frame
-    };
+    }
+    .into_rgba8();
     let mut jpeg = Vec::new();
     JpegEncoder::new_with_quality(&mut jpeg, 79).encode_image(&pixels)?;
     let view = View {
@@ -143,6 +142,9 @@ fn key(input: &mut Enigo, name: &str) -> Result<()> {
         Key::Control
     };
     let plain = match name {
+        "volumedown" => Key::VolumeDown,
+        "volumeup" => Key::VolumeUp,
+        "volumemute" => Key::VolumeMute,
         "enter" => Key::Return,
         "tab" => Key::Tab,
         "escape" => Key::Escape,
@@ -176,24 +178,48 @@ fn key(input: &mut Enigo, name: &str) -> Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
+fn mouse_event(
+    source: &core_graphics::event_source::CGEventSource,
+    kind: core_graphics::event::CGEventType,
+    point: (i32, i32),
+    clicks: i64,
+) -> Result<()> {
     use core_graphics::{
         event::{
-            CGEvent, CGEventTapLocation, CGEventType, CGMouseButton, EventField, ScrollEventUnit,
+            CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, EventField,
         },
+        geometry::CGPoint,
+    };
+    let p = CGPoint::new(f64::from(point.0), f64::from(point.1));
+    let button = if matches!(
+        kind,
+        CGEventType::RightMouseDown | CGEventType::RightMouseUp
+    ) {
+        CGMouseButton::Right
+    } else {
+        CGMouseButton::Left
+    };
+    let event = CGEvent::new_mouse_event(source.clone(), kind, p, button)
+        .map_err(|_| "无法创建鼠标事件")?;
+    event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, clicks);
+    if matches!(kind, CGEventType::LeftMouseDragged) {
+        event.set_flags(CGEventFlags::CGEventFlagNonCoalesced);
+    }
+    event.post(CGEventTapLocation::HID);
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
+    use core_graphics::{
+        event::{CGEvent, CGEventTapLocation, CGEventType, ScrollEventUnit},
         event_source::{CGEventSource, CGEventSourceStateID},
         geometry::CGPoint,
     };
     let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
         .map_err(|_| "无法取得鼠标输入源")?;
     let point = CGPoint::new(f64::from(x), f64::from(y));
-    let post = |kind, clicks| -> Result<()> {
-        let event = CGEvent::new_mouse_event(source.clone(), kind, point, CGMouseButton::Left)
-            .map_err(|_| "无法创建鼠标事件")?;
-        event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, clicks);
-        event.post(CGEventTapLocation::HID);
-        Ok(())
-    };
+    let post = |kind, clicks| mouse_event(&source, kind, (x, y), clicks);
     post(CGEventType::MouseMoved, 0)?;
     if action.kind == "scroll" {
         let event = CGEvent::new_scroll_event(
@@ -209,9 +235,19 @@ fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
         event.post(CGEventTapLocation::HID);
     } else {
         let clicks = if action.kind == "double_click" { 2 } else { 1 };
+        let (down, up) = if action.kind == "right_click" {
+            (CGEventType::RightMouseDown, CGEventType::RightMouseUp)
+        } else {
+            (CGEventType::LeftMouseDown, CGEventType::LeftMouseUp)
+        };
         for n in 1..=clicks {
-            post(CGEventType::LeftMouseDown, n)?;
-            post(CGEventType::LeftMouseUp, n)?;
+            let n = if action.kind == "click" && action.clicks == 2 {
+                2
+            } else {
+                n
+            };
+            post(down, n)?;
+            post(up, n)?;
         }
     }
     Ok(())
@@ -230,7 +266,12 @@ fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
     if action.kind == "scroll" {
         input.scroll(action.amount.clamp(-30, 30), Axis::Vertical)?;
     } else {
-        input.button(Button::Left, Direction::Click)?;
+        let button = if action.kind == "right_click" {
+            Button::Right
+        } else {
+            Button::Left
+        };
+        input.button(button, Direction::Click)?;
         if action.kind == "double_click" {
             input.button(Button::Left, Direction::Click)?;
         }
@@ -238,13 +279,164 @@ fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
     Ok(())
 }
 
-fn execute(
+impl View {
+    fn point(&self, x: i32, y: i32) -> Result<(i32, i32)> {
+        let map = |p: i32, image: u32, size: u32, origin: i32| -> Result<i32> {
+            let p = u32::try_from(p)?;
+            if p >= image {
+                return Err("操作点在显示器外".into());
+            }
+            Ok(origin + (u64::from(p) * u64::from(size) / u64::from(image)) as i32)
+        };
+        Ok((
+            map(x, self.image.0, self.size.0, self.origin.0)?,
+            map(y, self.image.1, self.size.1, self.origin.1)?,
+        ))
+    }
+}
+
+enum Pen {
+    Down,
+    Move,
+    Up,
+}
+
+fn paint_strokes(
+    current: &View,
+    action: &DesktopActionRequest,
+    live: &watch::Receiver<()>,
+) -> Result<()> {
+    if !(1..=32).contains(&action.strokes.len()) {
+        return Err("A stroke action accepts 1–32 paths".into());
+    }
+    let paths = action
+        .strokes
+        .iter()
+        .map(|path| {
+            if !(2..=128).contains(&path.points.len()) {
+                return Err("Each brush stroke needs 2–128 points".into());
+            }
+            path.points
+                .iter()
+                .map(|p| current.point(p.x, p.y))
+                .collect::<Result<Vec<_>>>()
+        })
+        .collect::<Result<Vec<_>>>()?;
+    drag_paths(current, paths, live)
+}
+
+fn drag_paths(
+    current: &View,
+    paths: impl IntoIterator<Item = Vec<(i32, i32)>>,
+    live: &watch::Receiver<()>,
+) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    let pen = {
+        use core_graphics::{
+            event::CGEventType as E,
+            event_source::{CGEventSource, CGEventSourceStateID},
+        };
+        let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
+            .map_err(|_| "无法取得鼠标输入源")?;
+        move |p, phase| -> Result<()> {
+            if matches!(phase, Pen::Down) {
+                mouse_event(&source, E::MouseMoved, p, 0)?;
+            }
+            mouse_event(
+                &source,
+                match phase {
+                    Pen::Down => E::LeftMouseDown,
+                    Pen::Move => E::LeftMouseDragged,
+                    Pen::Up => E::LeftMouseUp,
+                },
+                p,
+                1,
+            )?;
+            // Drawing views sample the live pointer. Give each drag point a 120 Hz input interval.
+            std::thread::sleep(std::time::Duration::from_micros(8333));
+            Ok(())
+        }
+    };
+    #[cfg(any(windows, target_os = "linux"))]
+    let mut pen = {
+        use enigo::{Button, Coordinate, Mouse};
+        let mut input = Enigo::new(&Settings::default())?;
+        move |(x, y), phase| -> Result<()> {
+            match phase {
+                Pen::Down => {
+                    input.move_mouse(x, y, Coordinate::Abs)?;
+                    input.button(Button::Left, Direction::Press)?;
+                }
+                Pen::Move => input.move_mouse(x, y, Coordinate::Abs)?,
+                Pen::Up => input.button(Button::Left, Direction::Release)?,
+            }
+            Ok(())
+        }
+    };
+    for path in paths {
+        if current.focus.is_none() || current.focus != focused_window() {
+            return Err("前台窗口已切换，请重新观察".into());
+        }
+        if live.has_changed().is_err() {
+            return Err("本机授权已结束".into());
+        }
+        let mut current = path[0];
+        pen(current, Pen::Down)?;
+        let movement = path[1..].iter().try_for_each(|&next| -> Result<()> {
+            if live.has_changed().is_err() {
+                return Err("本机授权已结束".into());
+            }
+            pen(next, Pen::Move)?;
+            current = next;
+            Ok(())
+        });
+        let release = pen(current, Pen::Up);
+        movement?;
+        release?;
+    }
+    Ok(())
+}
+
+pub(super) fn execute(
     view: &mut Option<View>,
     action: &DesktopActionRequest,
     live: &watch::Receiver<()>,
 ) -> Result<HostDesktopReply> {
     if live.has_changed().is_err() {
         return Err("本机授权已结束".into());
+    }
+    if action.kind == "foreground" {
+        let active = xcap::Window::all()?
+            .into_iter()
+            .find(|w| w.is_focused().unwrap_or(false));
+        let foreground = active
+            .as_ref()
+            .and_then(|w| w.title().ok())
+            .unwrap_or_default();
+        #[cfg(target_os = "linux")]
+        let foreground = if foreground.is_empty()
+            && let Some(window) = active
+        {
+            use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
+            let (x11, _) = x11rb::connect(None)?;
+            let name = x11
+                .get_property(
+                    false,
+                    window.id()?,
+                    AtomEnum::WM_NAME,
+                    AtomEnum::ANY,
+                    0,
+                    200,
+                )?
+                .reply()?;
+            String::from_utf8_lossy(&name.value).into_owned()
+        } else {
+            foreground
+        };
+        return Ok(HostDesktopReply {
+            foreground: foreground.chars().take(200).collect(),
+            ..Default::default()
+        });
     }
     if action.kind == "observe" {
         let (next, reply) = observe(&action.device_id)?;
@@ -263,18 +455,17 @@ fn execute(
         return Err("本机授权已结束".into());
     }
     match action.kind.as_str() {
-        "click" | "double_click" | "scroll" => {
-            let map = |p: i32, image: u32, size: u32, origin: i32| -> Result<i32> {
-                let p = u32::try_from(p)?;
-                if p >= image {
-                    return Err("操作点在显示器外".into());
-                }
-                Ok(origin + (u64::from(p) * u64::from(size) / u64::from(image)) as i32)
-            };
-            let x = map(action.x, current.image.0, current.size.0, current.origin.0)?;
-            let y = map(action.y, current.image.1, current.size.1, current.origin.1)?;
+        "click" | "double_click" | "right_click" | "scroll" => {
+            let (x, y) = current.point(action.x, action.y)?;
             pointer(action, x, y)?;
         }
+        "drag" => {
+            let start = current.point(action.x, action.y)?;
+            let end = current.point(action.to_x, action.to_y)?;
+            let middle = (start.0.midpoint(end.0), start.1.midpoint(end.1));
+            drag_paths(&current, [vec![start, middle, end]], live)?;
+        }
+        "stroke" => paint_strokes(&current, action, live)?,
         "type" | "key" => {
             let send = || -> Result<()> {
                 if live.has_changed().is_err() {
@@ -282,6 +473,10 @@ fn execute(
                 }
                 if current.focus.is_none() || current.focus != focused_window() {
                     return Err("前台窗口已切换，请重新观察".into());
+                }
+                #[cfg(target_os = "macos")]
+                if action.kind == "type" && crate::macos_accessibility::insert_text(&action.text)? {
+                    return Ok(());
                 }
                 let mut input = Enigo::new(&Settings {
                     open_prompt_to_get_permissions: false,
@@ -344,69 +539,70 @@ pub fn permission() -> Result<()> {
     Ok(())
 }
 
-pub async fn serve(
-    token: HeaderValue,
-    request_id: String,
-    ready: oneshot::Sender<()>,
-    mut stop: watch::Receiver<()>,
-) -> std::result::Result<(), String> {
-    let result: Result<()> = async {
-        let mut request =
-            format!("ws://127.0.0.1:17863/v1/host/desktop/{request_id}").into_client_request()?;
-        request.headers_mut().insert("authorization", token);
-        let (mut socket, _) = tokio_tungstenite::connect_async(request).await?;
-        let Some(Ok(Frame::Binary(first))) = socket.next().await else {
-            return Err("本机桌面已有使用中的任务".into());
-        };
-        HostDesktopReply::decode(first)?;
-        if ready.send(()).is_err() {
-            return Ok(());
-        }
-        let mut view = None;
-        loop {
-            let received = tokio::select! {
-                biased;
-                _ = stop.changed() => break,
-                received = socket.next() => received,
-            };
-            let Some(msg) = received else {
-                break;
-            };
-            let bytes = match msg? {
-                Frame::Binary(bytes) => bytes,
-                Frame::Close(_) => break,
-                _ => continue,
-            };
-            let action = DesktopActionRequest::decode(bytes)?;
-            let live = stop.clone();
-            let (next, reply) = tokio::task::spawn_blocking(move || {
-                let mut reply =
-                    execute(&mut view, &action, &live).unwrap_or_else(|e| HostDesktopReply {
-                        error: e.to_string(),
-                        ..Default::default()
-                    });
-                reply.action_id = action.action_id;
-                (view, reply)
-            })
-            .await?;
-            view = next;
-            if stop.has_changed().is_err() {
-                break;
-            }
-            socket
-                .send(Frame::Binary(reply.encode_to_vec().into()))
-                .await?;
-        }
-        let _ = socket.close(None).await;
-        Ok(())
-    }
-    .await;
-    result.map_err(|e| e.to_string())
+#[cfg(windows)]
+pub fn permission() -> Result<()> {
+    Enigo::new(&Settings::default())?;
+    Ok(())
 }
 
+pub(crate) struct Grant {
+    view: std::sync::Mutex<Option<View>>,
+    live: watch::Receiver<()>,
+}
+impl Grant {
+    pub(crate) fn new(live: watch::Receiver<()>) -> Self {
+        Self {
+            view: Default::default(),
+            live,
+        }
+    }
+    pub(crate) fn active(&self) -> bool {
+        self.live.has_changed().is_ok()
+    }
+    pub(crate) fn perform(
+        &self,
+        request: &DesktopActionRequest,
+    ) -> std::result::Result<HostDesktopReply, String> {
+        let mut reply = execute(&mut self.view.lock().unwrap(), request, &self.live)
+            .map_err(|e| e.to_string())?;
+        reply.action_id = request.action_id.clone();
+        Ok(reply)
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_views_belong_to_the_observer_and_expire_after_input() {
+        let mut frames = Views::default();
+        let mut agent = DesktopActionRequest {
+            control_session: "task A".into(),
+            epoch: 1,
+            ..Default::default()
+        };
+        let mut manual = DesktopActionRequest {
+            epoch: 2,
+            ..Default::default()
+        };
+        frames.remember(&agent, "model".into(), 1);
+        for (id, frame) in [("first", 2), ("second", 3), ("third", 4)] {
+            frames.remember(&manual, id.into(), frame);
+        }
+        agent.observation_id = "model".into();
+        let other = DesktopActionRequest {
+            control_session: "task B".into(),
+            ..agent.clone()
+        };
+        assert_eq!(frames.take(&other), None);
+        manual.observation_id = "first".into();
+        assert_eq!(frames.take(&manual), None);
+        manual.observation_id = "model".into();
+        assert_eq!(frames.take(&manual), None);
+        manual.observation_id = "second".into();
+        assert_eq!(frames.take(&manual), Some(3));
+        assert_eq!(frames.take(&agent), None);
+    }
 
     #[test]
     fn desktop_access_is_local_and_grants_expire() {
@@ -429,64 +625,141 @@ mod tests {
     }
 
     #[cfg(windows)]
-    #[test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "opens Notepad on an isolated Windows desktop"]
-    fn windows_notepad_receives_host_input() -> Result<()> {
-        use std::{process::Command, thread, time::Duration};
+    async fn windows_notepad_receives_host_input() -> Result<()> {
+        use crate::{peer_connection, workspace::Workspace};
+        use ai_phone_api::wire::{DevicePairRequest, FileLocation};
+        use prost::Message as _;
+        use std::{net::TcpListener, process::Command, sync::Arc, time::Duration};
+        use tokio::{
+            sync::oneshot,
+            time::{sleep, timeout},
+        };
         use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
 
         let dir = tempfile::tempdir()?;
-        let file = dir.path().join("Europium desktop QA.txt");
-        fs::write(&file, [])?;
-        let mut editor = Command::new("notepad.exe").arg(&file).spawn()?;
-        let result = (|| -> Result<()> {
-            let start = Instant::now();
-            let window = loop {
-                if let Some(window) = xcap::Window::all()?
-                    .into_iter()
-                    .find(|w| w.pid().ok() == Some(editor.id()))
-                {
-                    break window;
-                }
-                if start.elapsed() > Duration::from_secs(12) {
-                    return Err("Notepad did not open".into());
-                }
-                thread::sleep(Duration::from_millis(100));
-            };
-            let id = window.id()? as usize;
-            unsafe {
-                SetForegroundWindow(id as _);
-            }
-            let (_grant, live) = watch::channel(());
-            let expected = format!("Europium 中文 {}", uuid::Uuid::now_v7());
-            for (kind, text, key) in [("type", expected.as_str(), ""), ("key", "", "save")] {
-                let (view, frame) = observe("")?;
-                assert_eq!(view.focus, Some(id));
-                assert!(frame.jpeg.len() > 1000 && frame.width > 0);
-                let action = DesktopActionRequest {
-                    kind: kind.into(),
-                    text: text.into(),
-                    key: key.into(),
-                    observation_id: frame.observation_id,
-                    ..Default::default()
+        let workspace = Workspace::open(dir.path())?;
+        let port = TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port();
+        let invitation = workspace
+            .start_pairing(
+                DevicePairRequest {
+                    id: "remote".into(),
+                    name: "Windows".into(),
+                    kind: "desktop".into(),
+                },
+                port,
+            )
+            .await?;
+        let (ready, connected) = oneshot::channel();
+        let (revoke_share, share_stop) = watch::channel(());
+        let peer = tokio::spawn(async move {
+            peer_connection::share(
+                &port.to_string(),
+                &invitation.code,
+                None,
+                false,
+                ready,
+                share_stop,
+            )
+            .await
+        });
+        connected.await?;
+        let device = workspace.registry()?.devices.remove(0);
+        assert!(device.connected);
+        assert_eq!(device.system_name(), "Windows");
+        let point = ai_phone_api::wire::GeoPoint {
+            latitude: 32.,
+            longitude: 118.,
+            accuracy_m: 5.,
+        };
+        let update = ai_phone_api::wire::LocationUpdate {
+            enabled: true,
+            point: Some(point),
+            speed_kph: 5.,
+            request_id: "shared-position".into(),
+            ..Default::default()
+        };
+        let received = workspace
+            .rpc("location/update", update.encode_to_vec())
+            .await?;
+        let location = ai_phone_api::wire::LocationState::decode(received.as_slice())?;
+        assert_eq!(location.devices[0].status, "workspace");
+        let drives = workspace
+            .file_list(FileLocation {
+                device_id: device.id.clone(),
+                path: "/".into(),
+            })
+            .await?;
+        let volume = dir
+            .path()
+            .components()
+            .next()
+            .unwrap()
+            .as_os_str()
+            .to_string_lossy();
+        assert!(
+            drives
+                .entries
+                .iter()
+                .any(|d| d.directory && d.name.eq_ignore_ascii_case(&volume))
+        );
+
+        let (revoke_host, live) = watch::channel(());
+        *workspace.host.lock().unwrap() = Some(("local".into(), Arc::new(Grant::new(live))));
+        for remote in [false, true] {
+            let label = if remote { "paired" } else { "local" };
+            let file = dir.path().join(format!("Fluorine-{label}.txt"));
+            fs::write(&file, [])?;
+            let mut editor = Command::new("notepad.exe").arg(&file).spawn()?;
+            let result: Result<()> = async {
+                let win = timeout(Duration::from_secs(12),async {
+                    loop {
+                        if let Some(win)=xcap::Window::all()?.into_iter().find(|w|
+                             w.pid().ok()==Some(editor.id()) || w.title().is_ok_and(|title| title.contains(&format!("Fluorine-{label}")))) {
+                            return Result::Ok(win);
+                        }
+                        sleep(Duration::from_millis(60)).await;
+                    }
+                }).await??;
+                let hwnd=win.id()? as usize;
+                unsafe { SetForegroundWindow(hwnd as _); }
+                let expected=format!("Fluorine 中文 {label}");
+                let call=async |mut action: DesktopActionRequest| -> Result<HostDesktopReply> {
+                    action.action_id=uuid::Uuid::now_v7().to_string();
+                    let expected_id=action.action_id.clone();
+                    let result=if remote {
+                        action.device_id=device.id.clone();
+                        workspace.manual_input(action).await?
+                    }else{
+                        action.control_session="local".into();
+                        workspace.host_action(action).await?
+                    };
+                    assert_eq!(result.action_id,expected_id);
+                    Ok(result)
                 };
-                execute(&mut Some(view), &action, &live)?;
-            }
-            let saved = Instant::now();
-            while fs::read_to_string(&file)?.trim_start_matches('\u{feff}') != expected {
-                if saved.elapsed() > Duration::from_secs(5) {
-                    return Err("Notepad did not save the text".into());
+                for (kind,text,key) in [("type", expected.as_str(), ""), ("key", "", "save")] {
+                    assert_eq!(focused_window(),Some(hwnd));
+                    let frame=call(DesktopActionRequest{kind:"observe".into(),..Default::default()}).await?;
+                    assert!(!frame.jpeg.is_empty() && frame.width > 0);
+                    if remote { assert_eq!(frame.location.and_then(|fix|fix.point),Some(point)); }
+                    call(DesktopActionRequest{ kind:kind.into(),observation_id:frame.observation_id,text:text.into(),key:key.into(),..Default::default()}).await?;
                 }
-                thread::sleep(Duration::from_millis(50));
-            }
-            println!(
-                "Observed the real Windows desktop, entered Chinese in Notepad and read the saved file ({} ms).",
-                start.elapsed().as_millis()
-            );
-            Ok(())
-        })();
-        let _ = editor.kill();
-        let _ = editor.wait();
-        result
+                timeout(Duration::from_secs(5),async {
+                    while fs::read_to_string(&file)?.trim_start_matches('\u{feff}')!=expected {sleep(Duration::from_millis(45)).await;}
+                    Result::Ok(())
+                }).await??;
+                println!("{label}: observed Windows, entered Chinese in Notepad and verified the saved file.");
+                Ok(())
+            }.await;
+            let _ = editor.kill();
+            let _ = editor.wait();
+            result?;
+        }
+        drop(revoke_host);
+        drop(revoke_share);
+        peer.await??;
+        workspace.stop().await;
+        Ok(())
     }
 }

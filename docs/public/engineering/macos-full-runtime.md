@@ -16,9 +16,7 @@ The host requirement is an Apple Silicon Mac running macOS 15.0 or later, at lea
 | Device networking | Direct by default, with an optional workbench proxy |
 | Android | AOSP Android 17 ARM64 (build 16644040), Avo 1.1.0 and ADB 36.0.1. [Sources and staging](android-runtime.md) |
 | Linux desktop and workspace | One shared Debian filesystem |
-| Data services | Offline Alpine PostgreSQL 17 and Redis packages, started directly in the Lima guest |
-
-PostgreSQL and Redis listen on loopback ports 55482 and 56382. PostgreSQL stores its cluster on the installation's Linux guest disk.
+| Workspace | The native client stores its conversations, registry and work queue in `workspace.redb` |
 
 Resources are sealed by SHA-256 inventories. Runtime selection checks the host, component identity and file permissions. The distribution includes an inspectable source snapshot; chat, accounts, user files and device disks are never package inputs.
 
@@ -35,7 +33,7 @@ cargo run --locked -p ai-phone-release-tools -- macos-factory --compiler-sdk "$A
 
 The Mac job seals the staged AOSP, Avo and ADB files, builds the Lima guest resources, compiles the phone apps and assembles the signed DMG with Cargo. It writes `dist/macos-full-factory-report.json` after checking the DMG contents.
 
-To reuse a sealed Android capsule, set `AIMANITY_ANDROID_PAYLOAD` and `AIMANITY_ANDROID_PAYLOAD_SHA256` in place of `AIMANITY_ANDROID_SDK_INPUT`. In the private **Desktop installer factory** workflow, select `platform=macos` and enter the Android capsule’s `android_draft_id` and `android_payload_sha256`. The ARM64 Linux job builds the shared filesystem and desktop bridge. The Mac job assembles the DMG.
+To reuse a sealed Android capsule, set `AIMANITY_ANDROID_PAYLOAD` and `AIMANITY_ANDROID_PAYLOAD_SHA256` in place of `AIMANITY_ANDROID_SDK_INPUT`. In **Desktop installer factory**, select `platform=macos`. The ARM64 Linux job builds the current filesystem and desktop bridge. The Mac job verifies the published Europium DMG, extracts its Avo and AOSP capsule, rebuilds the guest apps and packages the workbench.
 
 A source-matched `.tools/phone-apps` lets the factory reuse the phone APKs. With the Linux host and Android capsule already staged, packaging needs 24 GiB free.
 
@@ -49,6 +47,6 @@ Private Actions storage retains the DMG, inventory and receipt. The maintainer p
 
 ## 中文
 
-macOS 安装包内置客户端、Android 和 Linux、服务及运行环境。首次部署要求 Apple Silicon、macOS 15.0、12 GiB 内存和 24 GiB 可用空间。用户数据存放在独立目录。
+macOS 安装包内置客户端、Android 和 Linux、服务及运行环境。需要创建虚拟设备时检查内存和磁盘。工作台可在零设备状态下打开，对话、设备注册表和待办保存在本机 `workspace.redb` 中。
 
 内置 Android 17 ARM64（构建 16644040）、Avo 1.1.0 和 ADB 36.0.1。构建时将 `AIMANITY_ANDROID_SDK_INPUT` 指向暂存目录并运行上方命令。已有离线胶囊时，改用 `AIMANITY_ANDROID_PAYLOAD` 和 `AIMANITY_ANDROID_PAYLOAD_SHA256`。[下载](../release-status.md) · [Android 源码与暂存](android-runtime.md)

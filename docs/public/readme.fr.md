@@ -1,31 +1,22 @@
-# AImanity
+# AImanity 0.0.6 Fluorine
 
 [English](../../README.md) · [Toutes les langues](../../README.md) · Apache-2.0
 
 ## Téléchargements et état
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
+[Télécharger 0.0.6 Fluorine](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) · [Installations vérifiées et matériel testé](release-status.md)
 
-Configuration requise : macOS 15.0 ou ultérieur sur Apple Silicon, ou Windows 11 x64. Chaque installateur contient Android, Linux, l’émulateur et les services locaux.
-
-Sur Linux x86_64, KVM et glibc 2.36 ou ultérieure sont requis. Choisissez le DEB pour Debian/Ubuntu ou le RPM pour Fedora/Enterprise Linux 10. Pour conserver vos appareils et conversations lors d’une mise à jour, installez la nouvelle version au même format. [Commandes d’installation](release-status.md#linux)
+Installez la version 0.0.6 dans un nouvel espace de travail. Il s’ouvre sans appareil. Créez des invités Android ou Linux à la demande, associez une machine distante ou autorisez une tâche à utiliser le bureau de l’hôte.
 
 ## Fonctions et scénarios
 
-AImanity réunit un téléphone Android et un bureau Linux autour d’une conversation et d’un seul agent actif. Enregistrez vos profils de modèles et choisissez le profil actif dans la configuration.
+L’agent choisit un appareil autorisé selon la tâche. Les appareils partagent la conversation, la liste des tâches et les fichiers de travail. Des sous-agents peuvent traiter des tâches indépendantes en parallèle.
 
-- Utiliser des applications telles que WeChat à partir de l’écran et des notifications réels ; répondre selon les instructions de l’utilisateur. Les restrictions du compte et de l’application restent applicables.
-- Recevoir un fichier sur le téléphone, le transférer à Linux, traiter et vérifier un tableau, puis retourner le résultat. Transfert entre appareils et remise à un contact sont deux résultats distincts.
-- Ajouter des instructions et interrompre la génération sans perdre messages ni actions. Les notifications peuvent réveiller l’Agent ; Liberty fonctionne sur les deux appareils.
-- Partager Skills, documents de connaissance liés et fichiers de travail. Modèles/API, mémoire et connexions externes appartiennent aux Agents. Les appareils se connectent directement par défaut. Vous pouvez configurer un proxy dans l’espace de travail.
-
-Les actions sont liées à une observation, un appareil, une tâche, une époque de contrôle et un identifiant unique. Un résultat inconnu est observé avant toute répétition.
+Copilot permet de corriger une consigne à la voix. Liberty explore librement. Task & Goal poursuit l’objectif que vous lui confiez.
 
 ## Architecture et données
 
-`apps/native` : Rust (Iced/wgpu). `crates` : Rust/Axum/Tokio. `packages/protocol` : protobuf. Les données sont stockées dans PostgreSQL via SQLx. Le projet se compile avec Cargo.
-
-Code et données utilisateur sont séparés. Disques, comptes, conversations, pièces jointes et clés ne sont pas publiés. Les mises à jour doivent employer des artefacts versionnés, sauvegardes, migrations et retours arrière, sans `git pull` directement sur les données utilisateur.
+L’interface native utilise Rust, Iced et wgpu. Les messages utilisent protobuf. La base embarquée redb conserve les appareils, conversations et tâches sur la machine.
 
 ## Suite, responsabilité et licence
 

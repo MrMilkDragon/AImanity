@@ -8,7 +8,7 @@ use std::{process::Stdio, time::Duration};
 use tokio::{process::Command, sync::watch};
 
 #[cfg(target_os = "macos")]
-pub(super) async fn shutdown(home: &std::path::Path) -> Result<()> {
+pub async fn shutdown(home: &std::path::Path) -> Result<()> {
     use crate::filesystem;
     use rustix::process::{Pid, Signal, kill_process};
     let lock = home.join("user/data/android/native/session.lock");

@@ -11,7 +11,7 @@ concurrency:
 jobs:
   source:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 50
     env:
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
@@ -48,7 +48,7 @@ jobs:
             fi
           done
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y curl xvfb xauth xterm x11-utils x11-xserver-utils xdotool xclip ffmpeg postgresql bubblewrap slirp4netns zstd debootstrap redis-server openjdk-21-jre-headless
+          sudo apt-get install --no-install-recommends -y curl xvfb xauth xterm x11-utils x11-xserver-utils xdotool xclip ffmpeg bubblewrap slirp4netns zstd debootstrap libasound2-dev libxkbcommon-dev libwayland-dev libpipewire-0.3-dev libspa-0.2-dev libdbus-1-dev libgbm-dev libegl1-mesa-dev libdrm-dev libclang-dev
           sudo sh infra/desktop/install-openbox.sh
       - name: Rust tests
         run: |
@@ -64,7 +64,8 @@ jobs:
           sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim
           echo "AI_PHONE_TEST_TESSERACT=/usr/bin/tesseract" >> "$GITHUB_ENV"
           AI_PHONE_TEST_TESSERACT=/usr/bin/tesseract cargo run --quiet --locked -p ai-phone-release-tools -- native-services build
-      - name: Packaged services, database roles and worker recovery
+      - name: Packaged device tools and embedded workspace
         run: |
           cargo run --quiet --locked -p ai-phone-release-tools -- client-payload --with-service-runtime
-          ./scripts/check-source-services.sh --with-event-brokers
+          ./scripts/check-source-services.sh
+          cargo test --locked --manifest-path apps/native/Cargo.toml --bin aimanity-native workspace::

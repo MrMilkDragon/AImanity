@@ -10,7 +10,7 @@ use std::{
 };
 use tokio::sync::watch;
 
-const ROLES: [&str; 5] = ["emulator", "runner", "media", "assistant", "channels"];
+const ROLES: [&str; 3] = ["emulator", "runner", "media"];
 fn text(path: &Path) -> Result<String> {
     path.to_str()
         .map(str::to_owned)
@@ -42,11 +42,6 @@ fn specification(root: &Path, role: &str) -> Result<Specification> {
             vec![("AI_PHONE_OCR", text(&binary(root, "vision"))?)],
         ),
         "media" => (vec![runner()?, "--media".into()], vec![]),
-        "assistant" => (vec![text(&binary(root, "assistant"))?], vec![]),
-        "channels" => (
-            vec![text(&binary(root, "assistant"))?, "--channels".into()],
-            vec![],
-        ),
         _ => return Err(Error::Invalid("source_service_role")),
     };
     Ok(Specification {
@@ -56,34 +51,17 @@ fn specification(root: &Path, role: &str) -> Result<Specification> {
 }
 async fn launch(backend: &mut Backend<'_, Process>, role: &str) -> Result<Value> {
     let root = backend.root;
-    match role {
-        "emulator" => {
-            let program = Path::new(&backend.env["ANDROID_HOME"]).join("platform-tools/adb");
-            backend
-                .checked(
-                    backend.command(program, ["-P", "15037", "start-server"]),
-                    vec![],
-                )
-                .await?;
-        }
-        "assistant" => {
-            for flag in ["--prepare-database", "--migrate"] {
-                backend
-                    .checked(backend.command(binary(root, "assistant"), [flag]), vec![])
-                    .await?;
-            }
-        }
-        _ => {}
+    if role == "emulator" {
+        let program = Path::new(&backend.env["ANDROID_HOME"]).join("platform-tools/adb");
+        backend
+            .checked(
+                backend.command(program, ["-P", "15037", "start-server"]),
+                vec![],
+            )
+            .await?;
     }
-    if ["assistant", "runner", "channels"].contains(&role) {
-        token(
-            root,
-            if role == "runner" {
-                "phone-runner"
-            } else {
-                role
-            },
-        )?;
+    if role == "runner" {
+        token(root, "phone-runner")?;
     }
     let spec = specification(root, role)?;
     backend

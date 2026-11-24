@@ -1,11 +1,16 @@
 use super::*;
-use std::{cell::RefCell, os::unix::process::ExitStatusExt, path::PathBuf, rc::Rc};
+use std::{
+    cell::RefCell,
+    os::unix::process::ExitStatusExt,
+    path::PathBuf,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 #[derive(Default)]
 struct Fixture {
     calls: Vec<(String, Vec<String>, Vec<u8>)>,
     trace: Rc<RefCell<Vec<String>>>,
-    assistant_running: bool,
 }
 impl Execute for Fixture {
     async fn run(&mut self, command: Command, input: Vec<u8>) -> Result<std::process::Output> {
@@ -26,15 +31,7 @@ impl Execute for Fixture {
                 fs::create_dir_all(root.join("data")).unwrap();
                 format!("{} {}\n", args[3], root.canonicalize().unwrap().display()).into_bytes()
             }
-            "--service-control"
-                if args[3] == "status" && args[2] == "assistant" && self.assistant_running =>
-            {
-                b"{}".to_vec()
-            }
-            "--service-control" if args[3] == "status" => b"null".to_vec(),
             "--service-control" => b"true".to_vec(),
-            "-p" if program == REDIS_CLI => b"PONG\n".to_vec(),
-            "shell" if args.last().is_some_and(|arg| arg == "PING") => b"PONG\n".to_vec(),
             _ => Vec::new(),
         };
         self.calls.push((program, args, input));
@@ -143,7 +140,7 @@ async fn quarantined_and_lima_owned_state_stop_before_engine_or_profile_changes(
 }
 
 #[tokio::test]
-async fn restarting_services_keeps_existing_profile_password_tokens_and_chats() {
+async fn restarting_device_services_keeps_existing_profile_and_tokens() {
     let init = Init::new();
     fs::create_dir_all(init.root.join("data")).unwrap();
     profile::prepare(
@@ -154,29 +151,18 @@ async fn restarting_services_keeps_existing_profile_password_tokens_and_chats() 
         "/existing/path",
     )
     .unwrap();
-    for name in [
-        "data/assistant/token",
-        "data/phone-runner/token",
-        "data/channels/token",
-        "data/assistant/chat",
-    ] {
+    for name in ["data/assistant/token", "data/phone-runner/token"] {
         let path = init.root.join(name);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, b"keep-existing").unwrap();
     }
     let paths = [
-        ".env",
         "data/deployment/profile.json",
         "data/assistant/token",
         "data/phone-runner/token",
-        "data/channels/token",
-        "data/assistant/chat",
     ];
     let before = paths.map(|path| fs::read(init.root.join(path)).unwrap());
-    let running = Fixture {
-        assistant_running: true,
-        ..Fixture::default()
-    };
+    let running = Fixture::default();
     let trace = running.trace.clone();
     let mut backend = fixture(&init.root, running);
     backend.start(Path::new("/root")).await.unwrap();
@@ -210,27 +196,19 @@ fn fixture(root: &Path, execute: Fixture) -> Backend<'_, Fixture> {
 }
 
 #[tokio::test]
-async fn macos_shared_linux_starts_desktop_and_data_services_without_docker() {
+async fn guest_starts_only_desktop_runner_and_media() {
     let folder = tempfile::tempdir().unwrap();
     let root = folder.path().canonicalize().unwrap();
     let mut backend = fixture(&root, Fixture::default());
     crate::desktop_bridge::configure(&root, 2, 2560).unwrap();
     backend.start(Path::new("/root")).await.unwrap();
     let calls = &backend.execute.calls;
-    for (unit, binary) in [
-        ("postgres", "/usr/libexec/postgresql17/postgres"),
-        ("redis", "/usr/bin/redis-server"),
-    ] {
-        let (_, _, input) = calls
-            .iter()
-            .find(|(_, args, _)| {
-                args[0] == "--service-control" && args[2] == unit && args[3] == "start"
-            })
-            .unwrap();
-        let spec: Value = serde_json::from_slice(input).unwrap();
-        assert_eq!(spec["command"][5], "ai-phone");
-        assert_eq!(spec["command"][11], binary);
-    }
+    let units: Vec<_> = calls
+        .iter()
+        .filter(|(_, args, _)| args[0] == "--service-control" && args[3] == "start")
+        .map(|(_, args, _)| args[2].as_str())
+        .collect();
+    assert_eq!(units, ["desktop", "runner", "media"]);
     let (_, _, config) = calls
         .iter()
         .find(|(_, args, _)| {

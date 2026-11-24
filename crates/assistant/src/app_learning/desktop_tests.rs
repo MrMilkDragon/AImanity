@@ -4,7 +4,7 @@ use super::*;
 #[ignore = "real disposable PostgreSQL; desktop experience promotion and recall"]
 async fn desktop_evidence_promotes_and_recalls_without_phone_or_title_fallback() {
     crate::worker::steering_regressions::database_case(|app|async move{
-        crate::registry::initialize(&app.db,&app.settings).await.unwrap();
+        crate::registry::initialize(&app).await.unwrap();
         crate::builtin_guides::test_files(&app.root);
         crate::workbench::initialize(&app.db,&app.root).await.unwrap();
         let device="learning-desktop";let conversation:Uuid=sqlx::query_scalar("SELECT id FROM conversations WHERE owner_id='local-user'").fetch_one(&app.db).await.unwrap();let message=Uuid::now_v7();let run=Uuid::now_v7();

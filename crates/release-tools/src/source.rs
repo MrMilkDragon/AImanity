@@ -542,6 +542,7 @@ pub(super) fn payload(
     components: Vec<&str>,
 ) -> Result<String> {
     let mut entries = scan(root)?;
+    entries.retain(|entry| !entry.path.starts_with("crates/assistant/"));
     entries.extend(runtime);
     let mut temporary = tempfile::NamedTempFile::new_in(folder)?;
     let mut encoded = Hashed {

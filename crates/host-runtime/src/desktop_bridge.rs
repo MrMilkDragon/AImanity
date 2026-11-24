@@ -52,6 +52,32 @@ pub fn native_arguments(root: &Path, operation: &str, lima: Option<&str>) -> Res
     Ok(command)
 }
 
+pub(crate) async fn apply_location(
+    mut command: Command,
+    fix: &ai_phone_api::wire::LocationFix,
+) -> Result<ai_phone_api::wire::LocationDevice> {
+    use prost::Message;
+    use std::{process::Stdio, time::Duration};
+    use tokio::io::AsyncWriteExt;
+    let mut child = command
+        .arg("location")
+        .kill_on_drop(true)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut input = child.stdin.take().ok_or(Error::Invalid("location_input"))?;
+    input.write_all(&fix.encode_to_vec()).await?;
+    drop(input);
+    let output = tokio::time::timeout(Duration::from_secs(12), child.wait_with_output())
+        .await
+        .map_err(|_| Error::Invalid("location_timeout"))??;
+    if !output.status.success() {
+        return Err(Error::Invalid("location_guest_failed"));
+    }
+    ai_phone_api::wire::LocationDevice::decode(output.stdout.as_slice())
+        .map_err(|_| Error::Invalid("location_receipt"))
+}
+
 pub fn native_command(root: &Path, operation: &str) -> Result<Command> {
     let lima = std::env::var("AI_PHONE_LIMA_COMMAND").ok();
     let args = native_arguments(root, operation, lima.as_deref())?;
@@ -67,11 +93,16 @@ struct Desktop {
 }
 
 pub fn configure(root: &Path, cpus: u32, memory_mb: u32) -> Result<()> {
+    let folder = root.join("data/deployment");
+    let mut profile: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(folder.join("profile.json"))?)
+            .map_err(|_| Error::Invalid("desktop_resources"))?;
+    profile["desktop"]["cpus"] = cpus.into();
+    profile["desktop"]["memory_mb"] = memory_mb.into();
     crate::filesystem::publish_private(
-        &root.join("data/deployment"),
-        "native-desktop.json",
-        &serde_json::to_vec(&Desktop { cpus, memory_mb })
-            .map_err(|_| Error::Invalid("desktop_resources"))?,
+        &folder,
+        "profile.json",
+        &serde_json::to_vec(&profile).map_err(|_| Error::Invalid("desktop_resources"))?,
         false,
     )
 }
@@ -81,13 +112,17 @@ pub fn desktop_arguments(
     lima: Option<&str>,
     proxy: &str,
 ) -> Result<Option<Vec<String>>> {
-    let file = root.join("data/deployment/native-desktop.json");
+    let file = root.join("data/deployment/profile.json");
     let data = match std::fs::read(file) {
         Ok(data) => data,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
     };
-    let desktop: Desktop =
+    #[derive(serde::Deserialize)]
+    struct Profile {
+        desktop: Desktop,
+    }
+    let Profile { desktop } =
         serde_json::from_slice(&data).map_err(|_| Error::Invalid("desktop_resources"))?;
     let mut args = native_arguments(root, "desktop", lima)?;
     args.extend([

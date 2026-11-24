@@ -43,25 +43,34 @@ pub fn after_model_switch(context: &[Value], boundary: usize) -> Cow<'_, [Value]
 pub fn scope_host_images<'a>(
     mut context: Cow<'a, [Value]>,
     session: Option<&str>,
+    peers: &crate::peers::Sessions,
 ) -> Cow<'a, [Value]> {
-    let host: HashSet<&str> = context
+    let sources: HashMap<&str, &str> = context
         .iter()
-        .filter(|v| v["name"] == "host_desktop")
-        .filter_map(|v| v["call_id"].as_str())
+        .filter_map(|call| {
+            let name = call["name"].as_str()?;
+            matches!(name, "device_interact" | "host_desktop")
+                .then_some((call["call_id"].as_str()?, name))
+        })
         .collect();
-    if host.is_empty() {
+    if sources.is_empty() {
         return context;
     }
     let archived: Vec<usize> = context
         .iter()
         .enumerate()
         .filter_map(|(index, item)| {
-            if item["type"] != "function_call_output" || !host.contains(item["call_id"].as_str()?) {
+            if item["type"] != "function_call_output" {
                 return None;
             }
+            let source = *sources.get(item["call_id"].as_str()?)?;
             let value = &item["output"];
             (value.as_array()?.iter().any(|v| v["type"] == "input_image")
-                && !crate::host_desktop::receipt_in_session(value, session))
+                && !(if source == "host_desktop" {
+                    crate::host_desktop::receipt_in_session(value, session)
+                } else {
+                    peers.contains_output(value)
+                }))
             .then_some(index)
         })
         .collect();
@@ -399,11 +408,18 @@ fn archived_item<'a>(call: Option<&Value>, item: &'a Value) -> Option<Cow<'a, Va
             json!({"role":"user","content":[{"type":"input_text","text":format!("早期助手叙述摘录（不是操作证据）：{}",text_excerpt(&item["content"],600))}]}),
         ))
     } else {
-        Some(Cow::Borrowed(item))
+        Some(replay_item(item))
     }
 }
 
+pub(crate) fn environment(text: impl AsRef<str>) -> Value {
+    json!({"role":"environment","content":[{"type":"input_text","text":text.as_ref()}]})
+}
+
 fn replay_item(item: &Value) -> Cow<'_, Value> {
+    if item["role"] == "environment" {
+        return Cow::Owned(json!({"role":"user","content":item["content"]}));
+    }
     let Some(parts) = item["output"].as_array() else {
         return Cow::Borrowed(item);
     };
@@ -531,6 +547,37 @@ fn append_parts(destination: &mut Vec<Value>, value: Option<&Value>) {
 }
 #[cfg(test)]
 mod tests {
+    use aimanity_model::chat_completions::{ChatStream, request_body};
+    #[test]
+    fn native_reasoning_and_tool_signatures_survive_a_completed_tool_turn() {
+        let event = json!({"choices":[{"index":0,"delta":{"content":"Checking.","reasoning_content":"private-model-replay","tool_calls":[{"index":0,"id":"a","function":{"name":"observe","arguments":"{}"},"extra_content":{"google":{"thought_signature":"opaque-signature"}}},{"index":1,"id":"b","function":{"name":"inspect","arguments":"{}"}}]},"finish_reason":"tool_calls"}]});
+        let mut parser = ChatStream::default();
+        let output = parser
+            .feed(format!("data: {event}\n\ndata: [DONE]\n\n").as_bytes())
+            .unwrap()
+            .unwrap();
+        let mut input = vec![json!({"role":"user","content":"inspect"})];
+        input.extend(output);
+        for id in ["a", "b"] {
+            input
+                .push(json!({"type":"function_call_output","call_id":id,"output":"actual-result"}));
+        }
+        let input = crate::model_context::for_chat_api(&input);
+        let mapped = request_body(&json!({"input":input}), true).unwrap();
+        let messages = mapped["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[1]["tool_calls"].as_array().unwrap().len(), 2);
+        assert_eq!(messages[1]["reasoning_content"], "private-model-replay");
+        assert_eq!(
+            messages[1]["tool_calls"][0]["extra_content"]["google"]["thought_signature"],
+            "opaque-signature"
+        );
+        let generic = request_body(&json!({"input":input}), false).unwrap();
+        assert!(generic["messages"][1].get("reasoning_content").is_none());
+        assert_eq!(generic["messages"][2]["tool_call_id"], "a");
+        assert_eq!(generic["messages"][3]["tool_call_id"], "b");
+    }
+
     use super::*;
     #[test]
     fn archived_phone_frames_replay_text_without_expired_targets() {
@@ -567,7 +614,7 @@ mod tests {
             ]}));
         }
         for (grant, parts) in [(Some("active"), [1, 2, 2]), (None, [1, 1, 2])] {
-            let outgoing = scope_host_images(Cow::Borrowed(&context), grant);
+            let outgoing = scope_host_images(Cow::Borrowed(&context), grant, &Default::default());
             for (item, expected) in [1, 3, 5].into_iter().zip(parts) {
                 assert_eq!(outgoing[item]["output"].as_array().unwrap().len(), expected);
                 assert_eq!(context[item]["output"].as_array().unwrap().len(), 2);

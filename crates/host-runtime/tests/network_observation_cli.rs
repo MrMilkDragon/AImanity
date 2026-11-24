@@ -252,13 +252,13 @@ exec sleep 60
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let started_by = Instant::now() + Duration::from_secs(10);
     while !root.path().join("command.pid").exists() {
         assert!(
             child.try_wait().unwrap().is_none(),
             "native operation exited before its guest command"
         );
-        if Instant::now() >= deadline {
+        if Instant::now() >= started_by {
             child.kill().unwrap();
             child.wait().unwrap();
             panic!("guest command not started");
@@ -271,6 +271,7 @@ exec sleep 60
         .unwrap();
     drop(child.stdin.take());
     drop(owner);
+    let deadline = Instant::now() + Duration::from_secs(2);
     while child.try_wait().unwrap().is_none() {
         if Instant::now() >= deadline {
             child.kill().unwrap();

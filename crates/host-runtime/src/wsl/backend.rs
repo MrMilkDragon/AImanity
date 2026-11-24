@@ -1,30 +1,25 @@
 //! Sealed Linux backend initialization; native phone readiness belongs to the host.
-mod postgres;
 pub(crate) mod process;
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 use crate::profile;
 use crate::{Error, Result, filesystem};
-#[cfg(target_os = "macos")]
-pub(crate) use postgres::MAC_POSTGRES_SHUTDOWN;
 use process::Execute;
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 use process::Process;
 use serde_json::{Value, json};
+#[cfg(any(test, target_os = "linux"))]
+use std::fs;
 use std::{
     collections::BTreeMap,
     ffi::{OsStr, OsString},
-    fs,
     path::Path,
-    time::{Duration, Instant},
 };
 use tokio::process::Command;
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 use tokio::sync::watch;
 
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 const PATH: &str = "/opt/aiphone/linux/bin:/usr/local/bin:/usr/bin:/bin";
-const REDIS: &str = "/opt/aiphone/redis";
-const REDIS_CLI: &str = "/opt/aiphone/redis/bin/redis-cli";
 
 fn phase(name: &str) {
     eprintln!("AI_PHONE_INITIALIZE {name}");
@@ -34,7 +29,7 @@ fn text(path: &Path) -> Result<String> {
         .map(str::to_owned)
         .ok_or(Error::Invalid("wsl_initializer_path"))
 }
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 fn environment(inherited: impl IntoIterator<Item = (String, String)>) -> BTreeMap<String, String> {
     let mut env: BTreeMap<_, _> = inherited
         .into_iter()
@@ -48,26 +43,6 @@ pub(crate) struct Backend<'a, E> {
     pub(crate) program: &'a OsStr,
     pub(crate) env: BTreeMap<String, String>,
     pub(crate) execute: E,
-}
-
-fn mac_guest(lima: &str, owner: &str, args: &[&str]) -> Vec<String> {
-    [
-        lima,
-        "shell",
-        "--tty=false",
-        "--workdir",
-        "/",
-        "ai-phone",
-        "sudo",
-        "-n",
-        "-u",
-        owner,
-        "--",
-    ]
-    .into_iter()
-    .chain(args.iter().copied())
-    .map(str::to_owned)
-    .collect()
 }
 
 impl<E: Execute> Backend<'_, E> {
@@ -126,47 +101,30 @@ impl<E: Execute> Backend<'_, E> {
             .await?;
         serde_json::from_slice(&bytes).map_err(|_| Error::Invalid("service_receipt"))
     }
+    pub(crate) async fn start_desktop(&mut self) -> Result<()> {
+        let lima = self.env.get("AI_PHONE_LIMA_COMMAND").cloned();
+        let lima = lima.as_deref();
+        if let Some(command) = crate::desktop_bridge::desktop_arguments(
+            self.root,
+            lima,
+            self.env
+                .get("AI_PHONE_CONTAINER_PROXY")
+                .map_or("", String::as_str),
+        )? {
+            self.unit("desktop", "start", command, &[]).await?;
+        }
+        Ok(())
+    }
     pub(crate) async fn start(&mut self, user: &Path) -> Result<()> {
         phase("environment");
         self.env
             .extend(crate::runtime_environment::profile_environment(
                 self.root, user,
             )?);
-        for name in ["assistant", "phone-runner", "channels"] {
+        for name in ["assistant", "phone-runner"] {
             token(self.root, name)?;
         }
-        let lima = self.env.get("AI_PHONE_LIMA_COMMAND").cloned();
-        let lima = lima.as_deref();
-        let redis_port = self.env["AI_PHONE_REDIS_PORT"].clone();
-        if lima.is_none() {
-            self.start_redis(&redis_port, None).await?;
-        }
-        phase("database_start");
-        self.start_postgres(lima).await?;
-        if lima.is_some() {
-            self.start_redis(&redis_port, lima).await?;
-        }
-        self.wait_redis(&redis_port, lima).await?;
-        let assistant = text(&self.root.join("runtime/services/bin/assistant"))?;
-        phase("database_prepare");
-        if self
-            .unit("assistant", "status", Vec::new(), &[])
-            .await?
-            .is_null()
-        {
-            fs::write(self.root.join(crate::DEVICE_SETUP_PENDING), [])?;
-            for flag in ["--prepare-database", "--migrate"] {
-                self.checked(self.command(&assistant, [flag]), Vec::new())
-                    .await?;
-            }
-        }
-        if let Some(command) = crate::desktop_bridge::desktop_arguments(
-            self.root,
-            lima,
-            &self.env["AI_PHONE_CONTAINER_PROXY"],
-        )? {
-            self.unit("desktop", "start", command, &[]).await?;
-        }
+        self.start_desktop().await?;
         phase("services_start");
         let ocr = text(&self.root.join("runtime/services/bin/vision"))?;
         self.unit(
@@ -174,15 +132,6 @@ impl<E: Execute> Backend<'_, E> {
             "start",
             vec![text(&self.root.join("runtime/services/bin/runner"))?],
             &[("AI_PHONE_OCR", ocr)],
-        )
-        .await?;
-        self.unit("assistant", "start", vec![assistant.clone()], &[])
-            .await?;
-        self.unit(
-            "channels",
-            "start",
-            vec![assistant, "--channels".into()],
-            &[],
         )
         .await?;
         self.unit(
@@ -196,65 +145,6 @@ impl<E: Execute> Backend<'_, E> {
         )
         .await?;
         Ok(())
-    }
-    async fn start_redis(&mut self, port: &str, lima: Option<&str>) -> Result<()> {
-        phase("redis_start");
-        let (mut command, directory) = if let Some(lima) = lima {
-            (
-                mac_guest(lima, "redis", &["/usr/bin/redis-server"]),
-                "/var/lib/redis",
-            )
-        } else {
-            let args = [
-                "/usr/bin/setpriv",
-                "--reuid=65534",
-                "--regid=65534",
-                "--clear-groups",
-                "--",
-                "/opt/aiphone/redis/bin/redis-server",
-            ];
-            (args.map(str::to_owned).into(), REDIS)
-        };
-        command.extend(
-            [
-                "--dir",
-                directory,
-                "--bind",
-                "127.0.0.1",
-                "--port",
-                port,
-                "--save",
-                "",
-                "--appendonly",
-                "no",
-                "--maxmemory",
-                "128mb",
-                "--maxmemory-policy",
-                "noeviction",
-            ]
-            .map(str::to_owned),
-        );
-        self.unit("redis", "start", command, &[]).await?;
-        Ok(())
-    }
-    async fn wait_redis(&mut self, port: &str, lima: Option<&str>) -> Result<()> {
-        let args = if let Some(lima) = lima {
-            mac_guest(lima, "redis", &["/usr/bin/redis-cli", "-p", port, "PING"])
-        } else {
-            [REDIS_CLI, "-p", port, "PING"].map(str::to_owned).into()
-        };
-        let ready = Instant::now() + Duration::from_secs(10);
-        loop {
-            let command = self.command(&args[0], &args[1..]);
-            let result = self.execute.run(command, Vec::new()).await?;
-            if result.status.success() && result.stdout == b"PONG\n" {
-                return Ok(());
-            }
-            if Instant::now() >= ready {
-                return Err(Error::Invalid("wsl_redis_not_ready"));
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
     }
 }
 pub(crate) fn token(root: &Path, section: &str) -> Result<()> {
@@ -271,11 +161,10 @@ pub(crate) fn token(root: &Path, section: &str) -> Result<()> {
         .collect::<String>();
     filesystem::publish_private(&folder, "token", value.as_bytes(), true)
 }
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub(crate) async fn initialize_request(request: &[u8]) -> Result<()> {
     let request = profile::parse_request(request)
         .map_err(|_| Error::Invalid("wsl_initialization_request"))?;
-    postgres::check_guest()?;
     if request.desktop.storage_gb.is_some() {
         crate::linux_vm::grow_root()?;
     }
@@ -299,7 +188,7 @@ pub(crate) async fn initialize_request(request: &[u8]) -> Result<()> {
     let _ = signal.await;
     result
 }
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 async fn initialize<E: Execute>(
     bundle: &Path,
     home: &Path,
@@ -357,6 +246,10 @@ async fn initialize<E: Execute>(
         .checked(backend.command(&stage[0], &stage[1..]), Vec::new())
         .await?;
     phase("profile");
+    #[cfg(target_arch = "aarch64")]
+    backend
+        .env
+        .insert("AI_PHONE_SERIAL".into(), "127.0.0.1:5555".into());
     if request.android_qemu {
         filesystem::directory(Path::new(crate::device_bridge::guest::RUNTIME), true)?;
         backend.env.insert(
@@ -367,16 +260,27 @@ async fn initialize<E: Execute>(
             .env
             .insert("AI_PHONE_ANDROID_QEMU".into(), "1".into());
     }
+    let desktop_only = request.phone.is_none();
     profile::prepare_request(
         &root,
         Path::new("/opt/aiphone/native-phone-bridge"),
-        "android35-x86_64",
+        if cfg!(target_arch = "aarch64") {
+            "android35-arm64"
+        } else {
+            "android35-x86_64"
+        },
         request,
         PATH,
     )?;
-    let load_tun = backend.command("/sbin/modprobe", ["tun"]);
-    backend.checked(load_tun, Vec::new()).await?;
-    backend.start(Path::new("/root")).await
+    if !Path::new("/dev/net/tun").try_exists()? {
+        let load_tun = backend.command("/sbin/modprobe", ["tun"]);
+        backend.checked(load_tun, Vec::new()).await?;
+    }
+    if desktop_only {
+        backend.start_desktop().await
+    } else {
+        backend.start(Path::new("/root")).await
+    }
 }
 
 #[cfg(test)]

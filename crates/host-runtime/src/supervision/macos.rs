@@ -10,22 +10,14 @@ use std::{
 };
 use tokio::process::Command;
 
-const SERVICES: [(&str, &str); 8] = [
-    ("postgres", "dev.aiphone.postgres.native"),
-    ("redis", "dev.aiphone.redis.native"),
-    ("desktop", "dev.aiphone.desktop.native"),
-    ("emulator", "dev.aiphone.emulator.p2"),
-    ("runner", "dev.aiphone.runner.p2"),
-    ("assistant", "dev.aiphone.assistant"),
-    ("channels", "dev.aiphone.channels"),
-    ("media", "dev.aiphone.device-stream"),
+const SERVICES: [(&str, &str); 4] = [
+    ("desktop", "dev.aimanity.workspace.desktop"),
+    ("emulator", "dev.aimanity.workspace.emulator"),
+    ("runner", "dev.aimanity.workspace.runner"),
+    ("media", "dev.aimanity.workspace.media"),
 ];
-const LEGACY_FRONTEND: [&str; 2] = ["dev.aiphone.lan", "dev.aiphone.web.p2"];
-
 fn shutdown_labels() -> impl Iterator<Item = &'static str> {
-    LEGACY_FRONTEND
-        .into_iter()
-        .chain(SERVICES.into_iter().rev().map(|(_, label)| label))
+    SERVICES.into_iter().rev().map(|(_, label)| label)
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

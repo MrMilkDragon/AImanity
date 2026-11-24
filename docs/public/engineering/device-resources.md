@@ -1,12 +1,13 @@
-# Change device resources after setup
+# Device resources
 
-The workbench can edit a device's name and Agent assignment today. CPU and memory are selected during installation. The planned resource editor belongs in the same device details, with the current values and one **Apply and restart** action.
+A Fluorine workspace can start with an empty device list. Use Device Manager to create an Android phone or Linux desktop and select its CPU, memory and disk capacity. The workbench opens a device for control when its own connection is ready.
 
-| Device | Read the applied settings | Apply and restart |
-| --- | --- | --- |
-| Android | Read the owned AVD configuration. | Use the native session owner to stop the emulator, update the CPU and memory keys atomically, then start it with the existing AVD. Return the values after root ADB and the first frame are ready. |
-| Linux desktop | Read the owned desktop container's resource limits. macOS Lima, Windows QEMU and Windows WSL all run the same desktop container. | Update the container limits and restart only the desktop container. Retain the mounted home. Check the available host memory before applying, then verify the limits and first frame. |
+**Disconnect** powers down an owned guest and keeps its disk. **Start** opens the same instance again. **Delete** removes that instance and its private files. For paired physical devices, these actions end the connection or remove the pairing from the workspace.
 
-Use one device-scoped protobuf read and one apply operation. Fetch settings when the user opens a device. An unchanged apply returns immediately. The device owner serializes an apply with its lifecycle and advances the device's control epoch so old actions cannot reach the restarted device. The response reports the actual applied state. No schema migration or registry copy of these values is needed.
+## Android hosts
 
-Disk expansion is a separate operation: stop the device, grow the backing image and guest filesystem, then verify capacity. The first editor covers CPU and memory.
+The ARM64 phone and tablet client runs one Android Virtualization Framework process per requested guest. The root manager handles authorization when the user starts a guest. Each instance owns its writable disks, control key and transport. Instances on the same host share the read-only system template. Creating the first phone extracts the Android template. Creating the first desktop extracts the Linux template.
+
+## Device audio
+
+Each virtual device has a separate microphone input and speaker stream. A task can send a WAV from working files to a particular guest. The microphone button in Device Manager connects the host’s physical microphone to that guest. Disconnect it before assigning the same physical input to another guest. Other guests can continue recording from their own digital inputs and playing sound.

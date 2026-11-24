@@ -1,6 +1,6 @@
 //! One owner for location configuration, motion and device receipts. Disabled means no lookup.
 use super::location_devices::apply;
-use super::location_motion as motion;
+use ai_phone_api::location_motion as motion;
 use crate::*;
 use axum::extract::{Path, State};
 use serde::Deserialize;
@@ -488,7 +488,7 @@ mod persistence_tests {
             db: db.clone(),
             root: root.clone(),
             token: "location-fixture".into(),
-            phone_token: "must-not-call".into(),
+            phone_token: Some("must-not-call".into()),
             settings: settings::SettingsStore::test_configured(&root),
             local: reqwest::Client::builder().no_proxy().build().unwrap(),
             remote: reqwest::Client::new(),

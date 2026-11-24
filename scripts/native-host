@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-if [ -x "$project_root/runtime/services/bin/assistant" ]; then
-  program="$project_root/runtime/services/bin/assistant"
+if [ -x "$project_root/runtime/services/bin/host" ]; then
+  program="$project_root/runtime/services/bin/host"
 else
   program="$project_root/target/debug/host-resources"
 fi

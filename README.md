@@ -6,29 +6,33 @@ An agent that listens while it works, explores on its own, and learns from using
 
 ## Downloads
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
+[Download 0.0.6 Fluorine](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) · [Platform acceptance and hardware coverage](docs/public/release-status.md)
 
 [Installation guide](docs/public/release-status.md) · [Uninstall](docs/public/release-status.md#uninstall)
 
-## What it does
+## Fluorine features
 
 - **Use a phone.** An Agent reads the Android screen, operates installed apps such as WeChat and handles notifications.
-- **Use a computer.** An Agent controls the Linux desktop and works in apps such as LibreOffice. Connect the devices to move files between them.
-- **Keep working.** Add instructions or interrupt a response in the same conversation. One conversation and one selected Agent follow you across both devices.
+- **Use a computer.** An Agent controls the Linux desktop and works in apps such as LibreOffice. Choose two devices in Files to copy work between them.
+- **Keep working.** Add instructions or interrupt a response in the same conversation. One conversation follows the task across devices.
 - **Choose a mode.** Copilot takes live voice instructions. Liberty explores freely. Task & Goal works toward a goal you can revise as it runs.
 - **Reuse skills.** Skills, linked knowledge and work files are shared. Save model profiles and switch the active Agent in Configuration.
 
 See [model and channel setup](docs/public/model-and-channel-setup.md), [notification workflows](docs/public/notification-workflows.md) and [Liberty](docs/public/autonomous-exploration.md).
 
-## How it works
+## Architecture
 
 | Layer | Technology | Directory |
 | --- | --- | --- |
 | Desktop client and workbench | Rust (Iced/wgpu) | `apps/native` |
 | Backend, devices and media | Rust, Axum, Tokio | `crates` |
-| Business API and state | protobuf, PostgreSQL, SQLx | `packages/protocol` |
+| Business API and state | protobuf, embedded redb | `packages/protocol`, `apps/native/src/workspace` |
 | Device runtimes | AOSP on Avo or QEMU (WHPX/KVM), Debian/Openbox | `crates/host-runtime`, `crates/guest-runtime` |
 | Built-in capabilities | Skills and device profiles | `skills`, `config` |
+
+Fluorine starts with zero devices. Add Android or Linux guests, pair a remote computer or phone, or grant a task access to the computer running the workspace. The Agent chooses among authorized devices and shares one conversation, task queue and set of working files across them.
+
+[Use this computer for one task](docs/public/native-client.en.md#use-this-computer-for-one-task) · [Pair a remote computer](docs/public/native-client.en.md#pair-a-remote-computer)
 
 Agents plan from current device observations and record their actions and results. Cargo builds the project. Device disks, accounts and attachments stay in the local installation.
 
@@ -52,14 +56,14 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 ## 下载
 
-[macOS 0.0.5 Europium (DMG)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) · [Windows 0.0.5 Europium (EXE)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe) · [Linux (DEB)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-amd64.deb) · [Linux (RPM)](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-linux-x86_64.rpm)
+[下载 0.0.6 Fluorine](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) · [各平台安装验收与实体机覆盖](docs/public/release-status.md)
 
 [安装指南](docs/public/release-status.md) · [卸载](docs/public/release-status.md#卸载)
 
-## 功能
+## Fluorine 功能
 
 - **操作手机。** Agent 查看真实 Android 画面，操作微信等已安装应用并处理通知。
-- **操作电脑。** Agent 控制 Linux 桌面，可使用 LibreOffice 等应用。连接两台设备即可互传文件。
+- **操作电脑。** Agent 控制 Linux 桌面，可使用 LibreOffice 等应用。在文件管理器选择设备即可互传文件。
 - **持续工作。** 在同一对话中补充指令或打断回复。切换设备时，同一 Agent 和对话继续工作。
 - **选择模式。** Copilot 接收实时语音，Liberty 自由探索，任务与目标支持边执行边修订。
 - **复用能力。** Skill、关联知识文档和工作文件共享。在配置中心保存模型配置并切换当前 Agent。
@@ -68,7 +72,11 @@ Original code is licensed under [Apache-2.0](LICENSE). Third-party components re
 
 ## 技术架构
 
-客户端与工作台采用 Rust、Iced 和 wgpu。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，数据由 PostgreSQL 和 SQLx 管理。Cargo 负责构建。macOS 通过 Avo 运行 Android，Windows 和 Linux 通过 QEMU 配合 WHPX 或 KVM 运行 Android 和 Debian/Openbox 桌面。
+客户端与工作台采用 Rust、Iced 和 wgpu。后端、设备控制和媒体使用 Rust、Axum 和 Tokio。业务接口使用 protobuf，Rust 客户端直接读写内嵌 redb 数据库。Cargo 负责构建。macOS 通过 Avo 运行 Android，Windows 和 Linux 通过 QEMU 配合 WHPX 或 KVM 运行 Android 和 Debian/Openbox 桌面。
+
+0.0.6 从零设备工作区启动。可以创建 Android 或 Linux 虚拟设备，配对远程电脑或手机，也可以逐任务授权使用本机。Agent 可在已授权设备中选择，同一对话、待办队列和工作文件随任务使用。
+
+[在本机执行一次任务](docs/public/native-client.zh-CN.md#在本机执行一次任务) · [配对远程电脑](docs/public/native-client.zh-CN.md#配对远程电脑)
 
 Agent 根据当前设备画面操作，动作账本保留执行过程和结果。设备盘、账号、聊天和附件保存在本地安装目录或数据库中。
 

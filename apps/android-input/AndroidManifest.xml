@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.aiphone.input">
-  <application android:label="AI Phone 输入与通知" android:allowBackup="false">
+  <application android:label="AI Phone 输入与通知" android:allowBackup="false" android:extractNativeLibs="true">
     <service android:name=".UnicodeIme" android:label="Unicode 输入" android:exported="true" android:permission="android.permission.BIND_INPUT_METHOD">
       <intent-filter><action android:name="android.view.InputMethod" /></intent-filter>
       <meta-data android:name="android.view.im" android:resource="@xml/method" />

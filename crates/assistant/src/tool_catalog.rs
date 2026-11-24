@@ -264,7 +264,7 @@ pub(crate) fn tools() -> Value {
         ),
         function(
             "task_finish",
-            "结束任务。用 files 附上工作文件或设备产物的绝对路径。",
+            "结束任务并回复结果。有实际生成的文件时，用 files 附上其绝对路径。",
             json!({"status":{"type":"string","enum":["completed","needs_input"]},"summary":{"type":"string","description":"给用户的一至三句交付结果：成果文件、关键核验结论或真实阻碍。"},"notification_only":{"type":"boolean","description":"仅登记安卓系统状态已读时为 true。"},"files":{"type":"array","items":{"type":"object","properties":{"device_id":{"type":"string","description":"工作文件用空字符串；设备文件用设备 ID。"},"path":{"type":"string"}},"required":["device_id","path"],"additionalProperties":false}}}),
             vec!["status", "summary"],
         ),

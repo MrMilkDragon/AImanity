@@ -1,6 +1,6 @@
 use crate::private_file::atomic_private;
 use crate::*;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{
     collections::BTreeMap,
     fs,
@@ -16,20 +16,8 @@ struct ProviderPreset {
 
 static PROVIDER_PRESETS: OnceLock<Vec<ProviderPreset>> = OnceLock::new();
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModelConfig {
-    pub api_key: String,
-    pub base_url: String,
-    pub model: String,
-    #[serde(default = "default_provider")]
-    pub provider: String,
-    #[serde(default = "default_protocol")]
-    pub protocol: String,
-    #[serde(default)]
-    pub proxy_url: String,
-    #[serde(default)]
-    pub verified_at_ms: u64,
-}
+pub use aimanity_model::ModelConfig;
+use aimanity_model::client_for_proxy;
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum RecoveryReplay {
     PreserveNative,
@@ -39,77 +27,6 @@ pub(crate) enum RecoveryReplay {
 pub(crate) enum RecoveryConfigError {
     Missing,
     Unverified,
-}
-fn default_provider() -> String {
-    "deepseek".into()
-}
-fn default_protocol() -> String {
-    "responses".into()
-}
-impl ModelConfig {
-    pub(crate) fn same_replay_identity(&self, other: &Self) -> bool {
-        self.provider == other.provider
-            && self.protocol == other.protocol
-            && self.base_url == other.base_url
-            && self.model == other.model
-    }
-    pub(crate) fn endpoint(&self) -> Result<String, String> {
-        let suffix = match self.protocol.as_str() {
-            "responses" => "/responses",
-            "chat-completions" => "/chat/completions",
-            "anthropic-messages" => "/messages",
-            _ => return Err("请选择有效的模型服务商与 API 协议".into()),
-        };
-        let base = self.base_url.trim_end_matches('/');
-        let url = reqwest::Url::parse(base).map_err(|_| "请输入完整的 http(s) 地址")?;
-        let path = url.path().trim_end_matches('/');
-        if path.ends_with(suffix) {
-            return Ok(base.into());
-        }
-        if path.ends_with("/responses")
-            || path.ends_with("/chat/completions")
-            || path.ends_with("/messages")
-        {
-            return Err("API 地址的末尾与所选协议不一致".into());
-        }
-        let version = if self.protocol == "anthropic-messages" && !path.ends_with("/v1") {
-            "/v1"
-        } else {
-            ""
-        };
-        Ok(format!("{base}{version}{suffix}"))
-    }
-    #[cfg(test)]
-    pub fn client(&self) -> Result<reqwest::Client, String> {
-        client_for_proxy(&self.proxy_url)
-    }
-    pub(crate) fn profile(&self, revision: u64) -> wire::ModelProfile {
-        wire::ModelProfile {
-            revision,
-            provider: self.provider.clone(),
-            protocol: self.protocol.clone(),
-            base_url: self.base_url.clone(),
-            model: self.model.clone(),
-            proxy_url: self.proxy_url.clone(),
-            has_api_key: !self.api_key.is_empty(),
-            verified_at_ms: self.verified_at_ms,
-        }
-    }
-    fn unverified(mut self) -> Self {
-        self.verified_at_ms = 0;
-        self
-    }
-}
-fn client_for_proxy(proxy_url: &str) -> Result<reqwest::Client, String> {
-    let mut builder = reqwest::Client::builder()
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(15))
-        .timeout(Duration::from_secs(180));
-    if !proxy_url.is_empty() {
-        builder = builder.proxy(reqwest::Proxy::all(proxy_url).map_err(|_| "代理地址无效")?);
-    }
-    builder.build().map_err(|_| "无法创建模型连接".into())
 }
 struct Verification {
     scope: String,
@@ -184,8 +101,11 @@ impl SettingsStore {
         }
         let store = Self {
             dir,
-            harness_proxy: crate::harness_proxy::HarnessProxy::new(root)
-                .map_err(|_| "无法创建代理下载连接")?,
+            harness_proxy: crate::harness_proxy::HarnessProxy::new(
+                root.join("data/harness-proxy"),
+                root.join("runtime/services/bin/mihomo"),
+            )
+            .map_err(|_| "无法创建代理下载连接")?,
             model_clients: SyncMutex::new(BTreeMap::new()),
             state: SyncMutex::new(State {
                 current,
@@ -464,6 +384,7 @@ impl SettingsStore {
     }
     pub async fn test_connection(
         &self,
+        db: &PgPool,
         scope: &str,
         expected: u64,
         config: &ModelConfig,
@@ -483,7 +404,9 @@ impl SettingsStore {
         }
         let _guard = Guard(self);
         let client = self.http_client(&config.proxy_url)?;
-        let checks = crate::model_adapter::probe(config, &client).await;
+        let vision = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM devices WHERE owner_id='local-user' AND runtime_state='managed')")
+            .fetch_one(db).await.map_err(|e| e.to_string())?;
+        let checks = crate::model_adapter::probe(config, &client, vision).await;
         let ready = checks.iter().all(|c| c.passed);
         let verification_id = if ready {
             self.verified_for(config, expected, scope)
@@ -562,11 +485,14 @@ pub async fn route(
                     .into(),
                     duration_ms: 0,
                 }];
+                let Some(token) = &app.phone_token else {
+                    return Ok(pb(StatusCode::OK, wire::RuntimeStatus { checks }));
+                };
                 let media = async {
                     let response = app
                         .local
                         .get("http://127.0.0.1:17865/status")
-                        .bearer_auth(&app.phone_token)
+                        .bearer_auth(token)
                         .timeout(Duration::from_secs(4))
                         .send()
                         .await
@@ -619,7 +545,10 @@ pub async fn route(
                 };
                 let config = app.settings.resolve(request.draft.ok_or("缺少模型配置")?)?;
                 let revision = app.settings.current();
-                let result = app.settings.test_connection("", revision, &config).await?;
+                let result = app
+                    .settings
+                    .test_connection(&app.db, "", revision, &config)
+                    .await?;
                 Ok(pb(StatusCode::OK, result))
             }
             "save" => {
@@ -630,7 +559,7 @@ pub async fn route(
                 let config = app.settings.resolve(request.draft.ok_or("缺少模型配置")?)?;
                 app.settings
                     .save(request.expected_revision, &request.verification_id, config)?;
-                crate::registry::initialize(&app.db, &app.settings)
+                crate::registry::initialize(&app)
                     .await
                     .map_err(|_| "模型已保存，注册表需要重新载入")?;
                 Ok(pb(StatusCode::OK, app.settings.public()))
@@ -642,7 +571,7 @@ pub async fn route(
                 };
                 let config = app.settings.get(request.revision)?;
                 app.settings.commit(request.expected_revision, config)?;
-                crate::registry::initialize(&app.db, &app.settings)
+                crate::registry::initialize(&app)
                     .await
                     .map_err(|_| "模型已保存，注册表需要重新载入")?;
                 Ok(pb(StatusCode::OK, app.settings.public()))
@@ -910,7 +839,7 @@ mod tests {
             db: db.clone(),
             root: root.clone(),
             token: "test-service-token".into(),
-            phone_token: "unused".into(),
+            phone_token: Some("unused".into()),
             settings: store,
             local: reqwest::Client::new(),
             remote: reqwest::Client::new(),

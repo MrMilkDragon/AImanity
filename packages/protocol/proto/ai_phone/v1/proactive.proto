@@ -6,6 +6,7 @@ message TodoItem {
   string title = 2;
   string source = 3;
   string status = 4;
+  string device = 5;
 }
 message TodoList { repeated TodoItem items = 1; }
 message TodoMove {

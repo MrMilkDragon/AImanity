@@ -138,23 +138,22 @@ pub fn tool_scroll() -> scrollable::Direction {
 }
 
 pub struct Surface {
-    shader: Shader<Message, Scene>,
-    keyboard_target: Option<usize>,
+    scene: Scene,
 }
 impl Surface {
     pub fn new(scene: Scene) -> Self {
-        Self {
-            keyboard_target: scene.keyboard_target,
-            shader: shader(scene).width(Length::Fill).height(Length::Fill),
-        }
+        Self { scene }
+    }
+    fn shader(&self) -> Shader<Message, &Scene> {
+        shader(&self.scene).width(Length::Fill).height(Length::Fill)
     }
 }
 impl Widget<Message, Theme, Renderer> for Surface {
     fn tag(&self) -> tree::Tag {
-        <Shader<Message, Scene> as Widget<Message, Theme, Renderer>>::tag(&self.shader)
+        <Shader<Message, &Scene> as Widget<Message, Theme, Renderer>>::tag(&self.shader())
     }
     fn state(&self) -> tree::State {
-        <Shader<Message, Scene> as Widget<Message, Theme, Renderer>>::state(&self.shader)
+        <Shader<Message, &Scene> as Widget<Message, Theme, Renderer>>::state(&self.shader())
     }
     fn size(&self) -> Size<Length> {
         Size::new(Length::Fill, Length::Fill)
@@ -165,8 +164,8 @@ impl Widget<Message, Theme, Renderer> for Surface {
         renderer: &Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        <Shader<Message, Scene> as Widget<Message, Theme, Renderer>>::layout(
-            &mut self.shader,
+        <Shader<Message, &Scene> as Widget<Message, Theme, Renderer>>::layout(
+            &mut self.shader(),
             tree,
             renderer,
             limits,
@@ -183,7 +182,7 @@ impl Widget<Message, Theme, Renderer> for Surface {
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
-        if let Some(target) = self.keyboard_target {
+        if let Some(target) = self.scene.keyboard_target {
             let state = tree.state.downcast_mut::<Pointer>();
             match event {
                 Event::InputMethod(input_method::Event::Preedit(content, selection)) => {
@@ -223,8 +222,8 @@ impl Widget<Message, Theme, Renderer> for Surface {
             });
         }
         if !shell.is_event_captured() {
-            <Shader<Message, Scene> as Widget<Message, Theme, Renderer>>::update(
-                &mut self.shader,
+            <Shader<Message, &Scene> as Widget<Message, Theme, Renderer>>::update(
+                &mut self.shader(),
                 tree,
                 event,
                 layout,
@@ -246,7 +245,7 @@ impl Widget<Message, Theme, Renderer> for Surface {
         cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
-        self.shader
+        self.shader()
             .draw(tree, renderer, theme, style, layout, cursor, viewport);
     }
     fn mouse_interaction(
@@ -257,8 +256,8 @@ impl Widget<Message, Theme, Renderer> for Surface {
         viewport: &Rectangle,
         renderer: &Renderer,
     ) -> mouse::Interaction {
-        <Shader<Message, Scene> as Widget<Message, Theme, Renderer>>::mouse_interaction(
-            &self.shader,
+        <Shader<Message, &Scene> as Widget<Message, Theme, Renderer>>::mouse_interaction(
+            &self.shader(),
             tree,
             layout,
             cursor,

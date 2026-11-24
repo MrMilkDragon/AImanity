@@ -3,6 +3,12 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Native checks to run
+        type: choice
+        options: [all, windows]
+        default: all
 permissions:
   contents: read
 concurrency:
@@ -13,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-26, windows-2022]
+        os: ${{ fromJSON(inputs.platform == 'windows' && '["windows-2022"]' || '["macos-26","windows-2022"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     env:
@@ -38,14 +44,29 @@ jobs:
         run: cargo build --locked
       - name: Test native workbench
         run: cargo test --locked
-      - name: Exercise Windows desktop input in Notepad
+      - name: Open and reopen a fresh zero-device Windows workbench
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:AIMANITY_QA_ROOT = Join-Path $env:RUNNER_TEMP 'empty-workbench'
+          $env:AIMANITY_QA_CLIENT = (Resolve-Path target/debug/aimanity-native.exe).Path
+          cargo test --locked --bin aimanity-native windows_empty_workbench -- --ignored --nocapture
+      - name: Save the Windows workbench screen and log
+        if: failure() && runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows-empty-workbench
+          path: ${{ runner.temp }}/empty-workbench
+          if-no-files-found: ignore
+      - name: Exercise local and paired Windows desktops in Notepad
         if: runner.os == 'Windows'
         run: cargo test --locked windows_notepad_receives_host_input -- --ignored --nocapture
       - name: Test native host runtime
         working-directory: .
         run: cargo test -p ai-phone-host-runtime --lib --locked
   macos-arm64:
-    runs-on: macos-26
+    if: inputs.platform != 'windows'
+    runs-on: macos-15
     timeout-minutes: 45
     env:
       CARGO_BUILD_JOBS: '2'
@@ -75,7 +96,8 @@ jobs:
             curl -fsSL "https://github.com/RustSec/rustsec/releases/download/cargo-audit/v0.22.2/$archive" -o "$audit_dir/$archive"
             printf '%s  %s\n' ec7ca4263769593df4d909be85b94a6b79efa2897be5d2bb8ebd516e823175af "$audit_dir/$archive" | shasum -a 256 -c -
             tar -xzf "$audit_dir/$archive" -C "$audit_dir" --strip-components 1 "${archive%.tgz}/cargo-audit"
-            PATH="$audit_dir:$PATH" cargo run --quiet --locked -p ai-phone-release-tools -- audit-dependencies --target aarch64-apple-darwin --output audit.json
+            PATH="$audit_dir:$PATH" cargo run --quiet --locked -p ai-phone-release-tools -- audit-dependencies --output audit.json
+            jq -e 'all(.blocked_targets[]; length == 0)' audit.json
           ) > "$RUNNER_TEMP/aiphone-native-audit.log" 2>&1 &
           audit_pid=$!
           native_result=0
@@ -94,6 +116,7 @@ jobs:
           retention-days: 14
 
   android-arm64:
+    if: inputs.platform != 'windows'
     # Phone-control helpers run inside the virtual Android guest.
     runs-on: ubuntu-24.04
     timeout-minutes: 60

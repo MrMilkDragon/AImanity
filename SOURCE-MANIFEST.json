@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "0.0.5",
+  "version": "0.0.6",
   "license": "Apache-2.0",
   "remote_publication_authorized": true,
   "remote_review_authorized": true,
@@ -13,8 +13,8 @@
     },
     {
       "path": ".env.example",
-      "size": 444,
-      "sha256": "0bb0c0b5658a30e940e5d95eabbe7300d9a3cff54dc33b54bec604ab874a5bcc"
+      "size": 69,
+      "sha256": "1592ec397c415acf4d9bf2acef17b87646451349e8de1f5a1bcadef5359ae837"
     },
     {
       "path": ".gitattributes",
@@ -42,14 +42,29 @@
       "sha256": "926bfdabf5ec45b61810aa52e3d36b0f26cc4bcac7def0bd169af9dc5abdfc0e"
     },
     {
+      "path": ".github/workflows/android-guest-inputs.yml",
+      "size": 2314,
+      "sha256": "b8404f0a336761c8f064599d5d18160b2ac79f8ee968539bb3eacd087ae373fa"
+    },
+    {
+      "path": ".github/workflows/android-linux-avf.yml",
+      "size": 4571,
+      "sha256": "56450e7fa086d1d7ab2a9b7b25eedacec66f27c2fc8e65e44789a0a3ef9de31a"
+    },
+    {
+      "path": ".github/workflows/android-mobile.yml",
+      "size": 18274,
+      "sha256": "7499107330c5e69686be2f2cad15589cedbf754c35a3fbabf1edc08b8f0dfe9a"
+    },
+    {
       "path": ".github/workflows/client-factory.yml",
-      "size": 9223,
-      "sha256": "4de7afcf900c3be020f57693e231a7cdae229075d9c387dad43560e2b9f6d389"
+      "size": 15864,
+      "sha256": "cc613281731bfb6b21f90118b13287686e0790276e865e596835f650140a1dae"
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 4589,
-      "sha256": "4b40cea7fc076ad605da7fc02828c43d845148a630c0099223b10635f663cfd3"
+      "size": 5664,
+      "sha256": "36a6ea3181e2ab15459524933c68759e5faf7db31ef3bc1bda4e5a301f91e1f8"
     },
     {
       "path": ".github/workflows/linux-backend.yml",
@@ -58,53 +73,53 @@
     },
     {
       "path": ".github/workflows/linux-guest-inputs.yml",
-      "size": 1972,
-      "sha256": "e6076b5a5c85c182e78ac9a0e1e7d2c28ac15c1759acdc3b531ea355c79e5b86"
+      "size": 2534,
+      "sha256": "02bf8ab58698da6d0a7e32fca0635eaa1b67eee97480b6d22eface9d78667b39"
     },
     {
       "path": ".github/workflows/linux-install-check.yml",
-      "size": 4751,
-      "sha256": "06aebba0540582908688b0f2f497ea21da57d346527e485e079d146e417dfb94"
+      "size": 6519,
+      "sha256": "6bf4d1e92de9a5150f71ef0fc069d9585ef6aa921e0cd67d45309bc3d0b86256"
     },
     {
       "path": ".github/workflows/linux-packages.yml",
-      "size": 4531,
-      "sha256": "cc9d7add8878f0078c052098c5a4ee2a92b4295805b91ef177b3efb667e7725b"
+      "size": 4676,
+      "sha256": "6467e2208335772e4f84b2259b220e92d06b62dea6847627a46c50046c714011"
     },
     {
       "path": ".github/workflows/linux-publish.yml",
       "size": 1670,
-      "sha256": "4079cf72f18207fdd6839c46dc91ac78fdd55c7c20f1280b23fa1029ad477ba1"
+      "sha256": "95ddca07a7d8f269f283f4d6d35a6fac4cd6eb4f34e8883391a6acc53571fc43"
     },
     {
       "path": ".github/workflows/linux-sign.yml",
       "size": 3693,
-      "sha256": "fe8aac44a46f23b1462be8626f49316a78e6a8277a3dd18805e30d72ba0f3aef"
+      "sha256": "9fcc66045ad945a9238699318ad5d69ffce858e156635a9c19fca0284d15c0c5"
     },
     {
       "path": ".github/workflows/source.yml",
-      "size": 3245,
-      "sha256": "45d5633e3e1fb627ecdd17c8c060c3c334201d91fb4c59c08abf9297e8b322b2"
+      "size": 3418,
+      "sha256": "d0b6f2c1cd8ec3bdb1ba9875dc48fbee2fe724aa23059fe2d2bb7951aebf014a"
     },
     {
       "path": ".github/workflows/windows-aosp-qualification.yml",
-      "size": 3296,
-      "sha256": "652c2dc8836c9da8ef62273a4022b74f3aa9db442f761482424d838a4b739876"
+      "size": 3295,
+      "sha256": "5275e992b0e1ed584dcd4e6c70eef14bb4fbfe6f8d5eb95b6a86effe8e1c8896"
     },
     {
       "path": ".github/workflows/windows-guest.yml",
-      "size": 4142,
-      "sha256": "24a3965e0697259c1e33464fcd82a2ab1d7d6f707bcd3a19b1ab2a021d96c1c5"
+      "size": 4130,
+      "sha256": "99b31da4723835ed9d8e4091d2b35acf18042212e94580abfae989f6908e3fad"
     },
     {
       "path": ".github/workflows/windows-installer-acceptance.yml",
-      "size": 3085,
-      "sha256": "64e8772d0586ca292dc846eb4eb7d62e917fd27d83ce0b285db1a95b4f7868c3"
+      "size": 3943,
+      "sha256": "e64632151c961783d7accedebe143ff02e3c043c4744954cd00bf4fcd26b6b97"
     },
     {
       "path": ".github/workflows/windows-qemu.yml",
-      "size": 2559,
-      "sha256": "b9712920bed3c4ac409a7e0fef7b08ef80a1a25c36d5056668a425c545553c7d"
+      "size": 2445,
+      "sha256": "58f4a3c52fc9d0fc50e2002b19dda4f41a0fd30fddc3dc70350f4e3365f7ecf4"
     },
     {
       "path": ".gitignore",
@@ -113,8 +128,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 3460,
-      "sha256": "f1ab872d812aef7f183f66fca077aa6b4cd2bd4fffddf37f8f1144f1442c8cb6"
+      "size": 4962,
+      "sha256": "a3ae6cd929f54471b91cf4620db23c9ccffd5a0ae5cdf55a21598f7625b842dd"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -123,13 +138,13 @@
     },
     {
       "path": "Cargo.lock",
-      "size": 141620,
-      "sha256": "78a104c3a7fd9683ea3b5306126e5ae69950e5090e654d1893e3af8d1d87f381"
+      "size": 107323,
+      "sha256": "5d0dd577b86d3e3ddc8622a29c9f2f98f52f07bc34ea476c55bb27815377a9dd"
     },
     {
       "path": "Cargo.toml",
-      "size": 644,
-      "sha256": "b98240fda5c883f5d2d54ad241a43524d2a892ca60aa9a60e7eb5ddd14df96b0"
+      "size": 717,
+      "sha256": "a8c80f2e8a7fb0acd95c574dfc669ef8f44e9e665b558a94dc2764d0c22cd1ff"
     },
     {
       "path": "DISCLAIMER.md",
@@ -153,13 +168,13 @@
     },
     {
       "path": "README.en.md",
-      "size": 3189,
-      "sha256": "570eff11db1a8e6afe68ee2663236a736bfba06b7dec6de30d2a831ed2c055f5"
+      "size": 3507,
+      "sha256": "b271b0dbce74e9013b70af05485aff751bbeead7ac2a1e6d617b3ce39b2904b0"
     },
     {
       "path": "README.md",
-      "size": 5923,
-      "sha256": "b07d9c44547ac91a4ff1524fffdc0b982cb7758b6f0f732de92fbea4e6cf3782"
+      "size": 6196,
+      "sha256": "da397482bd5f24ac4f0c8b5baa48a1098ceb73f414400e6ba4db9d0c37171d21"
     },
     {
       "path": "SECURITY.md",
@@ -168,13 +183,23 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 16290,
-      "sha256": "8ac3cfb86e44e9a6906351a2b946b841a482fa881eb041f265f10cedd4ca3e61"
+      "size": 17724,
+      "sha256": "6cc6657ec90de4a7ceeb181ba877f7883233ec3f0879e1de6ca20952838ef4a2"
     },
     {
       "path": "ai-phone",
-      "size": 398,
-      "sha256": "3b8890cdc6d5e0340dab909caf45037c84ea82472d1f4565f57673b9368d80dc"
+      "size": 388,
+      "sha256": "d4247b0d2c664f850a114ed06de5b21ea354a04db8cc34c9b64b014bd0b9ad39"
+    },
+    {
+      "path": "apps/android-client/AndroidManifest.xml",
+      "size": 1766,
+      "sha256": "f4996ca6a42dfcc0b12b630cb37078fd87394a0e752552f78205c2da1cb821b5"
+    },
+    {
+      "path": "apps/android-client/res/drawable/aimanity.xml",
+      "size": 915,
+      "sha256": "7e49948079e2c75735161dad338c8481fe27a52df6e1ca99063e20a1603d490d"
     },
     {
       "path": "apps/android-home/AndroidManifest.xml",
@@ -202,9 +227,39 @@
       "sha256": "08a100fe56b6097c117241292881f23d7b9bb58f76ae9c1e04cfcc19d7f3ecd2"
     },
     {
+      "path": "apps/android-host/Cargo.lock",
+      "size": 12400,
+      "sha256": "3520e5586c2e31d9143916d2ba9ac2eda73a95db805da372457e6f339c661aba"
+    },
+    {
+      "path": "apps/android-host/Cargo.toml",
+      "size": 437,
+      "sha256": "34826cc42afb0068bbef1f37dd1d4e538d99b71e1510b796604a76b63f1f04c9"
+    },
+    {
+      "path": "apps/android-host/src/adb.rs",
+      "size": 9740,
+      "sha256": "d9272095e9305858e0efadd2cb5c1297807f93c56ba0e0ad8749ecd1ea3f04ee"
+    },
+    {
+      "path": "apps/android-host/src/bin/aimanity-avf-guest-relay.rs",
+      "size": 290,
+      "sha256": "049189257c88e6324533b7770f76d2bb4db2e41020308b20fcb74002fd7db445"
+    },
+    {
+      "path": "apps/android-host/src/main.rs",
+      "size": 5981,
+      "sha256": "f29e6a3295bad216a94f462cef856b9641e07b3b341905361178c18ca6eaa206"
+    },
+    {
+      "path": "apps/android-host/src/relay.rs",
+      "size": 2888,
+      "sha256": "2ea30ff9493a38b342ebaf51f501fa60f23cfbf94a6aff1d3e48786c24416bac"
+    },
+    {
       "path": "apps/android-input/AndroidManifest.xml",
-      "size": 1386,
-      "sha256": "a4535eeca2205cea862e3f7a3d24025bd5d96bd1c4578903f4b1647ff5eeb0c8"
+      "size": 1419,
+      "sha256": "242d90a3b73ed15ebc9ff7c2df2773c267f94f01f289ee396d8fb9522f06e4f4"
     },
     {
       "path": "apps/android-input/res/xml/attention.xml",
@@ -220,6 +275,11 @@
       "path": "apps/android-input/rust/attention.rs",
       "size": 21796,
       "sha256": "722c262b55ddc8d1782293b2c2438ee042ed36db805e5c508e135df74e8cbde1"
+    },
+    {
+      "path": "apps/android-input/rust/audio.rs",
+      "size": 9454,
+      "sha256": "cee3f7ab46e43b072abacdd501719691bdb32bcb73576235c0227e855e062eeb"
     },
     {
       "path": "apps/android-input/rust/feed.rs",
@@ -243,33 +303,33 @@
     },
     {
       "path": "apps/android-input/rust/receiver.rs",
-      "size": 10050,
-      "sha256": "3f8815f788271a5813945ef0c584351a11252660c051d1ad354e757b7524636e"
+      "size": 10061,
+      "sha256": "a793ac8158a4e47ec939dbf63619cc4f34516014bafa6759af8a4f6e60361174"
     },
     {
       "path": "apps/android-input/version-code.txt",
       "size": 2,
-      "sha256": "f0b5c2c2211c8d67ed15e75e656c7862d086e9245420892a7de62cd9ec582a06"
+      "sha256": "06e9d52c1720fca412803e3b07c4b228ff113e303f4c7ab94665319d832bbfb7"
     },
     {
       "path": "apps/native/Cargo.lock",
-      "size": 168762,
-      "sha256": "6f820a08bc3ebefe43cbe15be6493a100863581df0e15758b58b2bcf0d7e6d5f"
+      "size": 171174,
+      "sha256": "40341cf6d03682f8004b0b5de355d53d7180015ff1a112ea7455d658fe7a307d"
     },
     {
       "path": "apps/native/Cargo.toml",
-      "size": 3187,
-      "sha256": "56dd22fa8bbce5729d57cb9a4dd06e986ac452e0c0a6c2c3ec728a41d455eb60"
+      "size": 4304,
+      "sha256": "8df25205509c1b7755b3f2634a231074a3797d40f86b5ace56133caf9288ed04"
     },
     {
       "path": "apps/native/Info.plist",
-      "size": 328,
-      "sha256": "192cd8a0e960f0024a5ee9f96bdcbdbbe4689750a2d9852ba6790237d537af57"
+      "size": 333,
+      "sha256": "303cf262d9f1bf7a9ef62b64e95cc709329a80c5972db7efe36e6e5ab2bf7ff4"
     },
     {
       "path": "apps/native/build.rs",
-      "size": 1008,
-      "sha256": "81846687ce5d820ff129abb11b7e32a0fa60411fc8271702aef980141110c9c6"
+      "size": 2299,
+      "sha256": "ad3c72e23751a351479a91811832f97aac681937accfdb35659d8acfb4999d87"
     },
     {
       "path": "apps/native/entitlements.plist",
@@ -293,53 +353,53 @@
     },
     {
       "path": "apps/native/locales/ar.json",
-      "size": 29018,
-      "sha256": "12c80aa406e9f134d7eb75b9623052a251cb1737d76dd884c0b7f0da1606916d"
+      "size": 30746,
+      "sha256": "74c1bdcb0190876ac73f2509e1efbb76cba6be00c4386050837ad0bd0dd3a4ec"
     },
     {
       "path": "apps/native/locales/de.json",
-      "size": 24580,
-      "sha256": "3338b755e2bd7138e0b1e742cdf6e630286130c685c8e1c4f81c46f5a9132476"
+      "size": 25992,
+      "sha256": "460839ce5aa8ce0c65ec4dc58da1425fb67f5c6e52be3517ac97b2c43c052d30"
     },
     {
       "path": "apps/native/locales/en.json",
-      "size": 23731,
-      "sha256": "780849df384836f9863870ce5c595ae209ec1bb445f01c0b643bd2fe463199a8"
+      "size": 25019,
+      "sha256": "8e822bae2b410cc0f1ebd5f3dfaddba5a15ed5d59cd7beb7a753aed8ef7a1f28"
     },
     {
       "path": "apps/native/locales/es.json",
-      "size": 24634,
-      "sha256": "e6b1b63fed113a2dba0a75f8b9d6407fa9e037d943037ee0a51edc455d64c691"
+      "size": 26113,
+      "sha256": "096fbf5f709e50d3193f6571e2b19c89788a2fd87eb9ca47469386e983d515fa"
     },
     {
       "path": "apps/native/locales/fr.json",
-      "size": 25396,
-      "sha256": "0abd3f280447f746e48573b3a2387d2a1a6ffb4757576daf26b56b8d326aeb0a"
+      "size": 26908,
+      "sha256": "2d5e53186b5d87cf4fbf72432bf89cc172e96938f865b7d788190b61903dcda7"
     },
     {
       "path": "apps/native/locales/ja.json",
-      "size": 27318,
-      "sha256": "76a2579d6ce5875908d1ab79e5c45eff156cd3283948cbeb0e824a2fbe23fe91"
+      "size": 28917,
+      "sha256": "1b6a3d19aea179fde88a1bab31f62fa04309437c053912ac651d210052dc4e59"
     },
     {
       "path": "apps/native/locales/ko.json",
-      "size": 24755,
-      "sha256": "0ae2729f2577ed6967d0cdd0c5ff1ef32fa6f0d736d0a9d762f3c9435f48ee4e"
+      "size": 26194,
+      "sha256": "3bc5322359936a02d681d887ef88665dcdd5550efd516a8938e723119928ae23"
     },
     {
       "path": "apps/native/locales/ru.json",
-      "size": 33113,
-      "sha256": "72498a663c2db3b0d27e341b86c42b2cfa660bfdd1106b619cec2f3612abb0c8"
+      "size": 35076,
+      "sha256": "44c9ae7488bf76cd23b9e22d59df3332e51c3755a5395597b659e4885da5bf11"
     },
     {
       "path": "apps/native/locales/zh-TW.json",
-      "size": 21747,
-      "sha256": "d7b2e3bf489c4a02470737d0462de919c44350b2639e0013fd3911e0fca113a9"
+      "size": 22972,
+      "sha256": "b0711368b729bd53546cb9a2b5a8477e6ca5519559b212f5e08a5140643c8cfb"
     },
     {
       "path": "apps/native/src/agent_details.rs",
-      "size": 30339,
-      "sha256": "9fb7658aed2ce97e5393787fe8344bed21aa8b98de5de7c79fcb8feca30bddf6"
+      "size": 30669,
+      "sha256": "65d452ce7fb5b46bc910ef1e4683764732177e47f1b291133700c98145d88c39"
     },
     {
       "path": "apps/native/src/agents.rs",
@@ -347,54 +407,119 @@
       "sha256": "fb3377e83435f2a0caf3e6b23384ba45c778dd87a59cacc647e899342a9d08a0"
     },
     {
+      "path": "apps/native/src/android_assets.rs",
+      "size": 7976,
+      "sha256": "f2c41afd2c813dc2b3c11c52fcc5fb0c5044d00cb3b523d2b59037c13b404104"
+    },
+    {
+      "path": "apps/native/src/android_host/profile.rs",
+      "size": 6385,
+      "sha256": "eeb74fc04be5c46d387ab871f9c9ab4afa6c46f49fa8ab8ac1bdf5502a83bbed"
+    },
+    {
+      "path": "apps/native/src/android_host.rs",
+      "size": 7560,
+      "sha256": "ef36ce1368207f5de8e7256cb69e1d6954d2bc805d60d0972e7fc25750e5387f"
+    },
+    {
+      "path": "apps/native/src/android_keyboard.rs",
+      "size": 15250,
+      "sha256": "e654acaa96bd2c0b5d11088b11e94fb536ba19021b9d65b1aafd49a621c8ba7f"
+    },
+    {
+      "path": "apps/native/src/android_os.rs",
+      "size": 20242,
+      "sha256": "c6c00ef42e886dedd3282be632ed177646c48b2e0ffb4af18cdf5682d6bac677"
+    },
+    {
       "path": "apps/native/src/audio.rs",
-      "size": 13437,
-      "sha256": "13502588284f41b608185a1c99433edc08d9cc2fb791d66ff1dd78b3a6acd409"
+      "size": 14723,
+      "sha256": "9d5ab49e7e2094a8f16689b842f61f9d1041993ad354f05e5a2068085e25ee2f"
+    },
+    {
+      "path": "apps/native/src/board.rs",
+      "size": 4955,
+      "sha256": "9ed87575fc504dbf74541d2b141e7fcb5a66e0ebf009618d12465f088cbc483a"
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 61027,
-      "sha256": "1930a20f0a4260031af2ee8a66bb107519c649487bcaa2a054dfe94955e9ac90"
+      "size": 60946,
+      "sha256": "a14c8c7a47795befc1e4d7d952db7e25e8498d78ee417d0237aa627d63df4ab1"
     },
     {
       "path": "apps/native/src/connection.rs",
-      "size": 25004,
-      "sha256": "3d717abd9431fc4d08d48431093c0dc3154ef9d63702a2e2f9df001c2a57425c"
+      "size": 14115,
+      "sha256": "ccc82df238906ba3db1bce1c6a6f05a8f354886ecdccb5a727a6b84f310d4611"
     },
     {
       "path": "apps/native/src/controls.rs",
-      "size": 11023,
-      "sha256": "c6532f2959c1b4fb3726b200514333064e71cd8d1dbadf688938b0d65c5e0af1"
+      "size": 11256,
+      "sha256": "35086d1ade94224730de0a53ce40f69c68b5ef578d6874b3ada3215fc9d92348"
     },
     {
       "path": "apps/native/src/deployment.rs",
-      "size": 30800,
-      "sha256": "8f7eff877d352929b867cc202a6d784d8982e90bc54a9a7b39561b4c0b6279e2"
+      "size": 15324,
+      "sha256": "9a091622224def9fc286735939b39e17c8290c7f32edf4c6dedd8a74d84571d9"
+    },
+    {
+      "path": "apps/native/src/device_io.rs",
+      "size": 3060,
+      "sha256": "6fc0d1344a4217093c76e5824d304390072acf55053f0f42c0aa5f1c641b43dd"
+    },
+    {
+      "path": "apps/native/src/device_notices/macos.rs",
+      "size": 3848,
+      "sha256": "275b47713b91909b8b222ecf82215b05d5056f139ca2b9330b3958f4f2c1262b"
+    },
+    {
+      "path": "apps/native/src/device_notices/windows.rs",
+      "size": 4785,
+      "sha256": "23babbaef56708ab770ab03ee216124811cbaa40856e8837d5afcb6d60fbde49"
+    },
+    {
+      "path": "apps/native/src/device_notices.rs",
+      "size": 3393,
+      "sha256": "00e77fbe5c660c8c0176bf2afd2709d3f1561b1f9b8745baaa9d75a6abeb1ecb"
     },
     {
       "path": "apps/native/src/devices.rs",
-      "size": 14442,
-      "sha256": "8a1b3aa1f95bb69027497a36961fae6e0f2021be34d223d90c382d0486c3fc06"
+      "size": 30453,
+      "sha256": "a56b47c6799ee9fd528e72b1aeba213e3207dac37a8bec1a7f0aac937343502a"
+    },
+    {
+      "path": "apps/native/src/documents/android.rs",
+      "size": 3129,
+      "sha256": "152a25f55af20a3829f86767fc4d20f3fdb196c6b985fa3062aedc64641f6684"
+    },
+    {
+      "path": "apps/native/src/documents.rs",
+      "size": 2298,
+      "sha256": "47d037b212bcc78a796995e2455f8016982d0314b4ddc8f1dbcfa58cdace37be"
     },
     {
       "path": "apps/native/src/files.rs",
-      "size": 33999,
-      "sha256": "aea1a25d9cf2143822cdffbb09f62611641e778186c8b86f34f1ec325b7903fd"
+      "size": 39801,
+      "sha256": "65e4dab5d9faa3554294d09f0c0607384a422e775069a48d091d74dd497076f7"
     },
     {
       "path": "apps/native/src/host.rs",
-      "size": 11943,
-      "sha256": "60dda9a854b0f6538b5e6dd36a7cf1873819c5db27d5401259dc2584815a4d81"
+      "size": 2409,
+      "sha256": "160769ceca162502a2563806270852f36271e6a60b54768810a093c8ab5cb064"
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 16887,
-      "sha256": "7874734120938814e6efa709ad6007bde159df5539f2db06315b7c3c6e7f96e6"
+      "size": 26380,
+      "sha256": "d3a5ebd305b167d59294aa7eb96f739e663a4e251d6c5dcca4fa5667e8a807b1"
+    },
+    {
+      "path": "apps/native/src/host_desktop_mobile.rs",
+      "size": 1235,
+      "sha256": "bb8af7adccb03c481f9c066e78ee0f4e2ae1a4df375f8478a1073534b62201f7"
     },
     {
       "path": "apps/native/src/host_memory.rs",
-      "size": 1481,
-      "sha256": "b5bab6435dc4bee2d1194d62f912b353ffdf076f7c955c8b3f7f208d8fb533a3"
+      "size": 1509,
+      "sha256": "f543a0a15be4ae5db18f94986c7eb2149ccae077032888a06bc8ff36a7d4d188"
     },
     {
       "path": "apps/native/src/knowledge/graph.rs",
@@ -403,13 +528,18 @@
     },
     {
       "path": "apps/native/src/knowledge.rs",
-      "size": 37378,
-      "sha256": "45b07937cfe5622d7459e18b74556e87ef63f10a5aecb83f57fd5250f971850f"
+      "size": 37777,
+      "sha256": "edfcc65ed2efb977d0bd2231508f78fe4da2f4eb6692b41c8c495e6b44df4c77"
     },
     {
       "path": "apps/native/src/layout.rs",
-      "size": 9052,
-      "sha256": "b72d0d65640e3b02b31e37171ffe657f9432dff315448ba7ef340b7725ee7037"
+      "size": 12602,
+      "sha256": "f01e59bed13b958ffe8c86f43e619b71c6549fff225bf56e834a5024c842251b"
+    },
+    {
+      "path": "apps/native/src/lib.rs",
+      "size": 473,
+      "sha256": "41eaf13022ee1fc92d5b0650677a0092ffe6a33c7763249a9aea40b5ad69c5a7"
     },
     {
       "path": "apps/native/src/loading.rs",
@@ -423,23 +553,28 @@
     },
     {
       "path": "apps/native/src/location.rs",
-      "size": 28548,
-      "sha256": "89c51ec3eaae9dc14529d8a63982547fd5421784483a931d5b1dd5c5dbcf0291"
+      "size": 28712,
+      "sha256": "d363cb0ddc63959f29744c98116c831591432fb904fc36beb8d9e9e479ec624e"
+    },
+    {
+      "path": "apps/native/src/macos_accessibility.rs",
+      "size": 3748,
+      "sha256": "17072410b2d7e81c1fe4b6c213648fe419e546bd9e57d88ff277f8c0dc6b028e"
     },
     {
       "path": "apps/native/src/main.rs",
-      "size": 108442,
-      "sha256": "32aa91e8b9c3159026c6ba48f4f45f3319d7cd440edc5965196e8f439aca7899"
+      "size": 273,
+      "sha256": "e3fe5fd83c557637713cede0130f756cc914b35115a5e46dde867ed9fc589b87"
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
-      "size": 12215,
-      "sha256": "43b20ba9b71776fd82c7797239196f226868f4337b9267019db0ab50d8f0e4af"
+      "size": 11981,
+      "sha256": "af594979c75d9ac2bcdf82815980f6746ff40ed53ad232a1c1d57db1e471837e"
     },
     {
       "path": "apps/native/src/modes/speech/speaker.rs",
-      "size": 6356,
-      "sha256": "c19b432a07d11f5f290abd2d4d6bc09cacb912d511c5325dbbb2b05155b696a3"
+      "size": 6670,
+      "sha256": "15c7015267ad254cd60813d12bd477731f129bdbae1c52debe6da2504247371a"
     },
     {
       "path": "apps/native/src/modes/speech.rs",
@@ -453,8 +588,8 @@
     },
     {
       "path": "apps/native/src/modes.rs",
-      "size": 18344,
-      "sha256": "5b5778a66f3a5a59d7ddca6356cd306c3c4ae9da8ef28b193ce3cf1144014f81"
+      "size": 18194,
+      "sha256": "deba645702669c62e24e842e69ec6883c79491ee52087318fae4749b3cbab847"
     },
     {
       "path": "apps/native/src/occlude.rs",
@@ -462,29 +597,59 @@
       "sha256": "d9dc4685b788baa10a022072f543f640b0fd40fe1ddcd9c5109305af71823b04"
     },
     {
+      "path": "apps/native/src/paired_phone.rs",
+      "size": 8592,
+      "sha256": "0205dd1807e4e86526c6e76ff66d022095fa5c7f8e947449e7c5a0ce15c0bac9"
+    },
+    {
+      "path": "apps/native/src/peer_connection.rs",
+      "size": 6349,
+      "sha256": "267f440afe0f31cdeaa382839184406c8b5b4c3966f1db2242aa083f67ba9106"
+    },
+    {
+      "path": "apps/native/src/peer_session.rs",
+      "size": 7706,
+      "sha256": "d81dc03b3a374340188fa10834c3b8980efc65c018cce89a84064f46e299a9b0"
+    },
+    {
+      "path": "apps/native/src/physical_mic.rs",
+      "size": 6373,
+      "sha256": "e4c8c51b120b12ae46f55ddf0cb107424b5e8093633cf6e01aa73e736fad3844"
+    },
+    {
       "path": "apps/native/src/platform.rs",
-      "size": 12496,
-      "sha256": "557fa30298d110f8e9448cd8fe4ef1b563588b3235890c82325a61639a53fafb"
+      "size": 13704,
+      "sha256": "1d8ab6997556b610ae42177ab8d7f1b7456891febd72a84df70c95ef38799b98"
     },
     {
       "path": "apps/native/src/proxy.rs",
       "size": 5154,
-      "sha256": "fd0613704270e948604433f010f4b2cac740a3e0df462f8479c0e5d995c55c75"
+      "sha256": "b7c14f2f8486636d548db1324609ef8f34beaa34e623887f08110d0cf5b90537"
     },
     {
       "path": "apps/native/src/scene.rs",
-      "size": 32714,
-      "sha256": "f1eb5c3feb090746b463fa0fa012642e58665f8d4fd6602883bc1073f643e594"
+      "size": 27150,
+      "sha256": "c435846ceed422a2621a9d252ed60109e2ac77a1044c4a94607c68cfc36f6843"
     },
     {
       "path": "apps/native/src/scene.wgsl",
-      "size": 11587,
-      "sha256": "8528b736bae692cde02f26b8cfae041ffeca964b88c19337f8000c7107a65464"
+      "size": 9779,
+      "sha256": "c12d92d6b6fba362b8cf17591da8401445774f944aaa99fbaf75d4cd5c0ec891"
+    },
+    {
+      "path": "apps/native/src/scene_gpu.rs",
+      "size": 13828,
+      "sha256": "8e39704b1f4e79852fc43081201ad1cd32f6600f40599073436574ddcde71d01"
+    },
+    {
+      "path": "apps/native/src/sharing.rs",
+      "size": 8197,
+      "sha256": "592051b21cece99146f625b8e0f01b080d6902759a5e357e06b5c9bd9859cd13"
     },
     {
       "path": "apps/native/src/skills.rs",
-      "size": 13188,
-      "sha256": "7dfbc208de1e69c90b7dbad8ab135ee4b0ac68a44f175e7922efd393036467ba"
+      "size": 13217,
+      "sha256": "0ab3474ab78f66c23b7188eb326b950e52fc3c56bd99c18bcd9f7efe8a25c016"
     },
     {
       "path": "apps/native/src/spring_slider.rs",
@@ -492,29 +657,39 @@
       "sha256": "e08c59bc3e1fb0edd6a60cc6e1bc1484e608596a15d0f1af97de257bffb2b2b2"
     },
     {
+      "path": "apps/native/src/stage.rs",
+      "size": 1573,
+      "sha256": "1d84c94ebd407e0460fd2df3482d04def8dc43ff9a5cfd21cb5cbe8863e51f4f"
+    },
+    {
       "path": "apps/native/src/style.rs",
-      "size": 6304,
-      "sha256": "80213d1b18b432a8fe519e8226c3e65a670a61fd830a2fca9554224e4ff876f6"
+      "size": 6357,
+      "sha256": "1493a63576719ce752e3eca38e2990e42e3e8684327dc12ca8983bea38ef8d6b"
     },
     {
       "path": "apps/native/src/surface.rs",
-      "size": 8837,
-      "sha256": "0f6946673f593820ec7564beb3c2c1a0379c2aea02cba9141eb5eed2ae73529a"
+      "size": 8801,
+      "sha256": "66884cc73a0793353243ea74ec0f3a7746c176909169ca0b82b28acd55310925"
     },
     {
       "path": "apps/native/src/todos.rs",
-      "size": 8046,
-      "sha256": "8cd0662f7677325a4eb0faf2253a5e04536a2feb3bbad12be9d1823657c584d0"
+      "size": 8384,
+      "sha256": "bc78dbc7f723f801aec1be62713735c24a2a913b532c669915917431e548b5e5"
+    },
+    {
+      "path": "apps/native/src/touch_editor.rs",
+      "size": 4010,
+      "sha256": "6053a8b4c8e2e60697770ddfc1fc0b962476bce1e68670f9734dd8f5fc4cd37a"
     },
     {
       "path": "apps/native/src/uninstall/linux.rs",
-      "size": 2312,
-      "sha256": "40e59b0bc1439dd0f2877b969665509a4e7c2d940e97f3725c7cec3b9eccfa2b"
+      "size": 2332,
+      "sha256": "02c4f2a33a25d9f70520c4200a83e1bb3a02a675736d77d4928f273dc71cf259"
     },
     {
       "path": "apps/native/src/uninstall/macos.rs",
-      "size": 5839,
-      "sha256": "27a9ae0bc48d4d42ac268abfd47b4ce1049d5d8c57d3152700b1be2af0e83cb1"
+      "size": 7080,
+      "sha256": "3cb98fcda590b5650d8e27821619cc5feb2a960fff0892c90bbe5860c50f4f60"
     },
     {
       "path": "apps/native/src/uninstall/windows.rs",
@@ -523,33 +698,118 @@
     },
     {
       "path": "apps/native/src/uninstall.rs",
-      "size": 1220,
-      "sha256": "13df2563fc9ec814f79504d55c600a66f6ae81184989caf2024ccdbd70b813d1"
-    },
-    {
-      "path": "apps/native/src/update_core.rs",
-      "size": 13242,
-      "sha256": "e96c7f8bac444059194617c2c50f1eb1b1dde85f89fe12227ee2c7debda8b4fa"
-    },
-    {
-      "path": "apps/native/src/update_install/macos.rs",
-      "size": 11108,
-      "sha256": "1e233527470d49c077136046a45eea45417bb57ccb5f25711afa8c9274e28eb2"
-    },
-    {
-      "path": "apps/native/src/update_install/windows.rs",
-      "size": 8419,
-      "sha256": "54fad592434560c68c085fbd0398c6575aa90b764f905b8528462eeae0fbb848"
-    },
-    {
-      "path": "apps/native/src/updates.rs",
-      "size": 4494,
-      "sha256": "ca920ecb776c5c152bb9cddad7915d2e3cf5f4cc6fcc245b5733182e29b58c85"
+      "size": 1866,
+      "sha256": "dd484e6ead029a31a4ee5559f9cb7664056daa52ac1ceedf2bc20ebfcea91c3e"
     },
     {
       "path": "apps/native/src/windows-lifecycle.rs",
       "size": 4582,
       "sha256": "2bb7632202b5a3e1bf78a7ac37f38fd22e3c24e7b2eaefcc8b017838a3cd1109"
+    },
+    {
+      "path": "apps/native/src/workbench.rs",
+      "size": 106219,
+      "sha256": "14ea8494fa860798a660563332083e2eb69fa358ae46577962cce7c8514663b4"
+    },
+    {
+      "path": "apps/native/src/workspace/conversation.rs",
+      "size": 20524,
+      "sha256": "804c5909768c9bf2774375668078916b3953b3f1ed8a56135b5702a437732462"
+    },
+    {
+      "path": "apps/native/src/workspace/device_run.rs",
+      "size": 11545,
+      "sha256": "716c90bdc9271040f3b8c11aa9674d5361443ff4425810d178c2cdf8f0c7f8c7"
+    },
+    {
+      "path": "apps/native/src/workspace/documents.rs",
+      "size": 5735,
+      "sha256": "d1a095a5ba1aa73e9aea16b9e9e7036282323e47e0031a11f4feb003df5c839e"
+    },
+    {
+      "path": "apps/native/src/workspace/files.rs",
+      "size": 10980,
+      "sha256": "f9755aecbffade2083a7a2581b1b68db294c5c7616aa70c5f47cf9ee0d655565"
+    },
+    {
+      "path": "apps/native/src/workspace/lifecycle.rs",
+      "size": 5904,
+      "sha256": "ea47d02042bc6a7f4c8c5a7f2e5e62ffd036e21a2695902803581cb9cee9f767"
+    },
+    {
+      "path": "apps/native/src/workspace/location.rs",
+      "size": 10676,
+      "sha256": "b640f0f901607ed60d82cfd69c954cc1363361029b41387402aeec1ca0c9062c"
+    },
+    {
+      "path": "apps/native/src/workspace/modes.rs",
+      "size": 5779,
+      "sha256": "64d690a60c8ef6d7754e50ba7a07b8ddb48b88e35f81a3e8d06f7533f3d628c9"
+    },
+    {
+      "path": "apps/native/src/workspace/network.rs",
+      "size": 949,
+      "sha256": "e2f7501b80060664dfa17677aba5b07bed7c901b6a947b73dc914ad4fb1f5df5"
+    },
+    {
+      "path": "apps/native/src/workspace/owned.rs",
+      "size": 8790,
+      "sha256": "48e8c77ed77b82252bd7583582f0725f4379f6c7429bf6e3d059360c82b53024"
+    },
+    {
+      "path": "apps/native/src/workspace/peers.rs",
+      "size": 38560,
+      "sha256": "ee023076dddc0b0b0e431d6236512fff8acf5d7d02b170730fac3b813a65e824"
+    },
+    {
+      "path": "apps/native/src/workspace/power.rs",
+      "size": 7961,
+      "sha256": "a621f63328c85a595d7b56b2cd8271ef57046c382e60fe83a4ad343e49c20b70"
+    },
+    {
+      "path": "apps/native/src/workspace/records.rs",
+      "size": 16547,
+      "sha256": "370fcaab390651c7e76ed87e3c9de3f3c6f6109f0c544f63c18e7b12fc91af32"
+    },
+    {
+      "path": "apps/native/src/workspace/scheduling.rs",
+      "size": 25915,
+      "sha256": "63c0146b35fe144ff3b6170800e20db7671c80662a7f16bddcd2a6defc342422"
+    },
+    {
+      "path": "apps/native/src/workspace/skills.rs",
+      "size": 3672,
+      "sha256": "c353a61c62f3cb03ad2e1921c9bb7d01503b84564e928f9b1b693f023e9a4c34"
+    },
+    {
+      "path": "apps/native/src/workspace/worker.rs",
+      "size": 25634,
+      "sha256": "7540a4c256de5d53ac4445b6b20e820288afbc736ac8bfbc39f4e89617d94242"
+    },
+    {
+      "path": "apps/native/src/workspace.rs",
+      "size": 24756,
+      "sha256": "27de210e1575832353dd8f158f59904da8b7ec954fbcc83a5ee4dfb50f1d1a84"
+    },
+    {
+      "path": "apps/native/tests/installed/guests.rs",
+      "size": 9802,
+      "sha256": "5417e90b40f1e4592505cbcc0a1dab04ec096aa7c3d84783769882cdef17a15d"
+    },
+    {
+      "path": "apps/native/tests/installed/window.rs",
+      "size": 14146,
+      "sha256": "28878ad034355aeaa7637e08a9fa6a9c0dcdac6900f8b5f680c99886b32f9164"
+    },
+    {
+      "path": "apps/native/tests/installed/windows.rs",
+      "size": 4190,
+      "sha256": "59095505676f0b9c713634750cb75da463b1c6941287e8afec8db4b4f46446aa"
+    },
+    {
+      "path": "apps/native/tests/installed_macos.rs",
+      "size": 1621,
+      "sha256": "364a9ebeccf7fc746f961c5093b24e8cf8e8deff07ae7b89d5d939ebd5c564a2"
     },
     {
       "path": "apps/native/vendor/cryoglyph/Cargo.toml",
@@ -607,9 +867,1019 @@
       "sha256": "5642b1135176ebe5db80344ca60f3c585c767b36227dd8f02d8b3dc56a96f4fb"
     },
     {
+      "path": "apps/native/vendor/iced_winit/Cargo.toml",
+      "size": 3062,
+      "sha256": "62d2c4551a2da9f36328f437453f31c60c47eb2ed2c23c098f7ee32c736f5bf9"
+    },
+    {
+      "path": "apps/native/vendor/iced_winit/LICENSE",
+      "size": 1073,
+      "sha256": "fc9086ba4eba4b77e4c603906362742bc3715ffa2c7810c6074fe7780d3a0398"
+    },
+    {
+      "path": "apps/native/vendor/iced_winit/src/clipboard.rs",
+      "size": 3239,
+      "sha256": "a22787f6644d54c903e4f0a942ebd301a24b28ad64f730b9d66815117f00e757"
+    },
+    {
+      "path": "apps/native/vendor/iced_winit/src/conversion.rs",
+      "size": 56024,
+      "sha256": "862dbae80a3c8649e90aac6561937966bfc90f7cee021117a47d1d4d24ee78c9"
+    },
+    {
+      "path": "apps/native/vendor/iced_winit/src/error.rs",
+      "size": 801,
+      "sha256": "71ee4325daee93a87c897c933b3c4c4dfb2d8f6445b79d4c8fa54e192486ef94"
+    },
+    {
+      "path": "apps/native/vendor/iced_winit/src/lib.rs",
+      "size": 80077,
+      "sha256": "8feda851aa0b1ebcee6f86174f68048f9f84bab194f9f7d667ab7f35b99b6aea"
+    },
+    {
+      "path": "apps/native/vendor/iced_winit/src/proxy.rs",
+      "size": 4150,
+      "sha256": "98fd36252bf8aec9b9708da5cbf5aaa3ab1bafee115366095b657972986aa53c"
+    },
+    {
+      "path": "apps/native/vendor/iced_winit/src/window/state.rs",
+      "size": 7677,
+      "sha256": "95482e880de39ce7ea0a7c9a200df2dd1c9ce8789e334736902061db23fb93c2"
+    },
+    {
+      "path": "apps/native/vendor/iced_winit/src/window.rs",
+      "size": 13750,
+      "sha256": "a00804650eeb57c945fb40460b2616a72b90eb430fb792614573f42a61d73b38"
+    },
+    {
+      "path": "apps/native/vendor/winit/Cargo.toml",
+      "size": 13048,
+      "sha256": "dcc8b536eef016eac464868859305ff56f808a9d8e4e3307b4c88137be7160b4"
+    },
+    {
+      "path": "apps/native/vendor/winit/LICENSE",
+      "size": 11323,
+      "sha256": "6dc0e068dcf3a5bc8e054205b85b7720e1d49265bbc64bf515d2cf79197df69a"
+    },
+    {
+      "path": "apps/native/vendor/winit/README.md",
+      "size": 729,
+      "sha256": "e3d206250c09c76516c4cb72d30c064d5894702bd73db3c488e499ffa336542f"
+    },
+    {
+      "path": "apps/native/vendor/winit/build.rs",
+      "size": 1004,
+      "sha256": "eda62c3ebf765708bf1608b51ccf77501b4aa0253214c419f813c6d08d640b1a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/application.rs",
+      "size": 14135,
+      "sha256": "993ddc2bbffca969224b2045dfd6cefd6cadd923df83f8ba24da8da8e5ab3fb4"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/mod.rs",
+      "size": 1648,
+      "sha256": "55a97a82a15c4006dca76e46bbd7ade72e103f54bbcc111bc55341207dff5140"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/unreleased.md",
+      "size": 1192,
+      "sha256": "21810a83a3b89ef6dc1471c8028bcc9beecb467e88bbb944f2cdb9f04633ad1f"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.10.md",
+      "size": 1130,
+      "sha256": "3ed4a49e068409208aa2d1640693bcf835b5b0a5367fc19a03f458edb366a7cb"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.11.md",
+      "size": 1631,
+      "sha256": "81110653eea2a68ff69b19cd540c1461cff1d9a4353fec08dc3a4e26ff44db07"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.12.md",
+      "size": 711,
+      "sha256": "41250756388ef71a6889f076a4ee87f63c6c70bf75597ce3dc5bd812d36d2f82"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.13.md",
+      "size": 1911,
+      "sha256": "021eb96e41f10de60fc33c0463df68194571ecd6169e17cc8c5c938f7f64e5ce"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.14.md",
+      "size": 2821,
+      "sha256": "8ed872d3e8abdd2c18ae1d65976734442ab41194195b31888c155b2bcba21c98"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.15.md",
+      "size": 3935,
+      "sha256": "3c96f73e28f85926440b9db7b445a1786f30bb7ec2844c3f3f57e7849db32b07"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.16.md",
+      "size": 3673,
+      "sha256": "5c8333b5bf024a2f39d91f93846ffe469d141c7b11e5ce501daa720ba64a9196"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.17.md",
+      "size": 1336,
+      "sha256": "2598e37dbb7e495bec60cafe693041fa5d58335a1a38b37a0779edae24e6942a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.18.md",
+      "size": 4366,
+      "sha256": "f61eab5f6eace3ff07f66d4340c21926172332c748ba3e3fc4b7e07bdfa92ecf"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.19.md",
+      "size": 2130,
+      "sha256": "ea5ca936d53274e8a4f8bd385ba59fff5df866d889a4a69ca329791a664a3aee"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.20.md",
+      "size": 13979,
+      "sha256": "b04bf3e79ee11fd5f9646ccdc076a50c5a7e9749dc872adcc1f392fa1f1b1723"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.21.md",
+      "size": 1346,
+      "sha256": "ebc856323df17decd003fba57fc5e3f5b8c7ae8eaa763048b4d6dbef8ae09b01"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.22.md",
+      "size": 2046,
+      "sha256": "bd56cb152ac452ee4b354ace3976d3abda73d7db3a81afafee25c84cfdf08705"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.23.md",
+      "size": 5137,
+      "sha256": "6570ab734b9201360f5ca592343114bb3de9a608051333a4601c087dff234d5c"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.24.md",
+      "size": 1970,
+      "sha256": "a7bea6cd9d087c0a6ecddbbe5472dd3fa87735f088614c052db808c5742b57a8"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.25.md",
+      "size": 2697,
+      "sha256": "38d2cd8e8b067779b4c86c0b1d7d81a3b5f4101b2868eb316f41bd55e8bff71e"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.26.md",
+      "size": 2745,
+      "sha256": "b7a52b06cdddeff78c1c3e845ab42f5d41a268ef409c5237ddf3e15c1bbb7772"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.27.md",
+      "size": 8901,
+      "sha256": "51765d0114217504dc17c65894194ceb6928601eade2949fa72fcb6c00051528"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.28.md",
+      "size": 7132,
+      "sha256": "12829235afb1ae4481cc74bfff80997d404c987fda69c81bb657d7b709ead394"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.29.md",
+      "size": 18622,
+      "sha256": "04f9f09219695380622359e3ef74ebda5a89549cf8175b7aa965743a9e6d48b0"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.30.md",
+      "size": 16977,
+      "sha256": "5e436376fe1234cf94b08c4cb1dcd6d2e6e7684e4a33b71e17217a8fd0c18721"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.8.md",
+      "size": 1464,
+      "sha256": "c936e8b8ef369180ab9cf8fc24891d398dca5f238cb39467fe79a2f0b19539a1"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/changelog/v0.9.md",
+      "size": 1369,
+      "sha256": "fe9f9f731d585e83c2d35d7c2c560fa892c424d3e7ea1d13050ffdb467d50383"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/cursor.rs",
+      "size": 8117,
+      "sha256": "479eb73a7a23a58b718ce7255345f3f65ed2cf46d2e4e7d1716deb469dd9099b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/error.rs",
+      "size": 3675,
+      "sha256": "549f95a2afff4435eed400c580b7d512229c7958df19258c0ce2ac30474f121d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/event.rs",
+      "size": 46250,
+      "sha256": "ff5c577343a725173a539c797e243fa8f6150c02181d904bddb9d82581a7a61e"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/event_loop.rs",
+      "size": 24295,
+      "sha256": "fb381422e4f0bcdcf246d5942a1600f314edb6f1b050f34b80e6f2b7d474db0a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/icon.rs",
+      "size": 4082,
+      "sha256": "42780fcdb3dfe001fa24c51e21d326df2961e4232e0b09b0e8d9c3518161e73b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/keyboard.rs",
+      "size": 67598,
+      "sha256": "fb1400750fb0c6d376415e642c837e0e8ded95f55ba03a8889d336d180620394"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/lib.rs",
+      "size": 9548,
+      "sha256": "924aead3c0bd3e446e8ee51193c636916f8b0b9d2cbb964e81e160db0f07a2ec"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/monitor.rs",
+      "size": 5460,
+      "sha256": "60d8887910f1d3836544f12d000146d95790f8af54476d7288f73f822377083b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/android.rs",
+      "size": 8150,
+      "sha256": "7a576387937d93c03654067a7197ec65da6c9f3e39b145a32182fe43f93609bc"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/ios.rs",
+      "size": 17288,
+      "sha256": "bfb43e3067cd74067ce6019048141f86c1524b5a7859756f7b938310e9d9984b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/macos.rs",
+      "size": 18909,
+      "sha256": "c6685a9e320715b00124d66eb5e9be088cf1f165678e832a86459f0026d215e9"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/mod.rs",
+      "size": 1216,
+      "sha256": "371ae3adce64ba6353c03cc5f7251325b50f0516bed4eca50496f1e42b5f6dfc"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/modifier_supplement.rs",
+      "size": 1312,
+      "sha256": "e23c4a667aec84232ce072b7066a2aa2c912a1a7d5c0b7d9b5b648f877fb642d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/orbital.rs",
+      "size": 201,
+      "sha256": "e511445fa2d06fc7210a88abbc760395710c60a4c0376d1a4a0ee29e522bf2ac"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/pump_events.rs",
+      "size": 6272,
+      "sha256": "bbdc0f490758f91609f1b46998976e071775bf9f17a7c4a3a12bd6781b0c6b3c"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/run_on_demand.rs",
+      "size": 4676,
+      "sha256": "007047afc1e916f1bc01c5ee1bc959dd865049f17be97dc517abb7bacda66262"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/scancode.rs",
+      "size": 1820,
+      "sha256": "2ce520012ee3ab6b5884d2f74e84380811b6e50c7139eee176fb233d75b25df2"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/startup_notify.rs",
+      "size": 3673,
+      "sha256": "c2b3ba714649268109ab48ef5cc7dddd7dab0198518987f8735c174fe6b2c5b8"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/wayland.rs",
+      "size": 4268,
+      "sha256": "4fd4601c7733275031f14c40d33caca8e493197c40bc721fdd055297f9690d00"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/web.rs",
+      "size": 16678,
+      "sha256": "4dac8e96213a4ca4ec586946f18d16dfbad3666ce1e60b34c4e28eac6e213c5e"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/windows.rs",
+      "size": 27788,
+      "sha256": "1a480966b317ac2f3117b26d379954b2d9af1740472a9ae07e055598862a24eb"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform/x11.rs",
+      "size": 9358,
+      "sha256": "a64f13d1e3e77c4cb3b21faafe87d74e8063bd901e5cb38af98738dbdd0fa911"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/android/keycodes.rs",
+      "size": 27966,
+      "sha256": "ee8674acc597a71665bedd05e7ac79b8efb76570fcefe616e5eeb81474822475"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/android/mod.rs",
+      "size": 38298,
+      "sha256": "b1c26db7b1affc032cb7c0eb99f28638758ab391b0cfa4ddfc4babca311c0f93"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/ios/app_state.rs",
+      "size": 34620,
+      "sha256": "f2ff4a1093ccd4d52f3db86458ea8fbd18805876082c3a4ccc127e8d8e614a6a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/ios/event_loop.rs",
+      "size": 18404,
+      "sha256": "df8f0d5e25b799b63edba57168ccfd736283c10149d596aab146019fc770a5aa"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/ios/mod.rs",
+      "size": 1493,
+      "sha256": "0707a46215de8a0c7692ae04ade45de27de19988fd3cb54fd4c5553e7c3aea7c"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/ios/monitor.rs",
+      "size": 9359,
+      "sha256": "76abeeafdab29e5dd46426a3f0eb173931b392dcff356bdc1c218e00adefec37"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/ios/notification_center.rs",
+      "size": 886,
+      "sha256": "cdcee390403dc4518402248022ad7d7fcd61ac42a041633f3de684d6533bddd3"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/ios/view.rs",
+      "size": 25388,
+      "sha256": "95f8cb9caf86ef10174c687eb017d110567d8ad3adba89c25c37f41fb6359cc6"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/ios/view_controller.rs",
+      "size": 6728,
+      "sha256": "fe4d8403c4e8f8bba6cb5f45191532649c6e28886536173dc3f546a3c9c9ff69"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/ios/window.rs",
+      "size": 26290,
+      "sha256": "731b07469178cf763d44f43e6dc31a2b1dce89788ac4b5a9e8adf641237ea7f4"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/common/mod.rs",
+      "size": 13,
+      "sha256": "697b29a56eeebe70eed5e9549b53d15c474d8c7f54a7476f992646f8603aeb25"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/common/xkb/compose.rs",
+      "size": 3424,
+      "sha256": "d4f11c74f1e1ffd93ecc75d7fa2afdba25212925f0589d7a9c26b9784a43e344"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/common/xkb/keymap.rs",
+      "size": 40223,
+      "sha256": "e08d41edd547e57df87b6c8da271f7c956a0d4dcead1cf2b17ab2c67652e0c82"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/common/xkb/mod.rs",
+      "size": 14275,
+      "sha256": "4ae8efa819657fa6cd8c38543f8638d7c7c67af18ff3a8b871919252d87c2400"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/common/xkb/state.rs",
+      "size": 5925,
+      "sha256": "c7a940941b2d1c679a2da163b244d6ec131c2d5d24f75e5265921cdb938c3cb5"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/mod.rs",
+      "size": 32702,
+      "sha256": "ee825f75ba79a7a12932640e8b085fdc897a35d3ec8105a37987ffd166d1c9f2"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/event_loop/mod.rs",
+      "size": 30268,
+      "sha256": "dd1ceefa859550fb109460ff9b536307dfa457069899244da0220c0a81267edb"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/event_loop/proxy.rs",
+      "size": 791,
+      "sha256": "090756d810c1cdf56832c8b283044f93965f0149db601f40625bb977a05468de"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/event_loop/sink.rs",
+      "size": 1526,
+      "sha256": "3f92a12b7d786f12edfe69925c2ba17194974c427614d4c449335aa843f9d2c2"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/mod.rs",
+      "size": 2375,
+      "sha256": "473911ef643fb20ca22dcc9a7eb9c87344b0914b470b019384d7ba1be1e92111"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/output.rs",
+      "size": 4658,
+      "sha256": "14982bc1e6ba130eb2c3d0da790905d28075cd1cec215b6f74e560fa449f5421"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/seat/keyboard/mod.rs",
+      "size": 14435,
+      "sha256": "dd20e74809b3a7987864bc5cabdbeaf62a8474400ddbc4fc86188ed7a84dea62"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/seat/mod.rs",
+      "size": 7788,
+      "sha256": "70bbd2a8c43a898f4cb2580d38c4f14e478e7331ab65d2e115feb0377fe2fc44"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/seat/pointer/mod.rs",
+      "size": 17688,
+      "sha256": "842ea0e853a3fef090ddf2ff6bc68f00c008f38db3b222468f8332451aa569b8"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/seat/pointer/relative_pointer.rs",
+      "size": 2747,
+      "sha256": "c1e9a253d23827036950ec58fb78f4d3b326b2f57cdff7381f0c0cef8015bea9"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/seat/text_input/mod.rs",
+      "size": 7211,
+      "sha256": "197f1b241915f4d579649e187b653efb7f1bfac9405821f2a2e0eef88e5375c2"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/seat/touch/mod.rs",
+      "size": 6635,
+      "sha256": "dd16a75607cab3ba5723ad6b7a2ad6dd09fa2a63fffa57622367f137ea5d3987"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/state.rs",
+      "size": 14800,
+      "sha256": "18beef206a1d0a1cf72ac65b1cefb4984bc204ca0638ecbbe2cb2c8d316422c9"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/types/cursor.rs",
+      "size": 1640,
+      "sha256": "b513bb85d34e3df1d5bc765e2f88a468e80f43d50464336d5dbaf54332fdf8e7"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/types/kwin_blur.rs",
+      "size": 2068,
+      "sha256": "6cbb4ce3e2484a01bacfa24a55ea3c1659503b18fc48e8f41f341d437f291ea4"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/types/mod.rs",
+      "size": 163,
+      "sha256": "84e32b36a90e15747ce5beae9318f1475d15925a45248147a5b7e9920e74f4c8"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/types/wp_fractional_scaling.rs",
+      "size": 2611,
+      "sha256": "c0897ffeee6f631aac024e9a737b90c18b807a775cf898e64b45fcca84ca97c7"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/types/wp_viewporter.rs",
+      "size": 1931,
+      "sha256": "77b67951f7bdd959555e8b39a8830d4547b28f73a921a4f347a647a9758d156a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/types/xdg_activation.rs",
+      "size": 3506,
+      "sha256": "8d0fd39c97c6eb19b8231df20624777feca1aa45bb38692ab498e37e42aa5bab"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/window/mod.rs",
+      "size": 25452,
+      "sha256": "30b6c00aa143046e4b1d7277e5fd08ae7ef7f7f084b0c0e62c89e0dda8a5c6c2"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/wayland/window/state.rs",
+      "size": 43519,
+      "sha256": "d09f9c19235a36d0a0068eb82428a27e3a4f318f31925368e573310ae791030a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/activation.rs",
+      "size": 6250,
+      "sha256": "e30310151a7277aa8467adb0890b16482913efa6aea1e518a0b1d5ac83e3ec95"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/atoms.rs",
+      "size": 2699,
+      "sha256": "409f77f94faa03e9ae3ab09d62a01e044aaeb5bbde9c9ee5e55ad6994374138b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/dnd.rs",
+      "size": 5512,
+      "sha256": "89b186416d72fb36ecfaa350cae884949b1445d7a7b99a926eadba861d550243"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/event_processor.rs",
+      "size": 73445,
+      "sha256": "eefe47e789dae7cd56f3579eb292935d6237c886d486688ed2649b2aa6a76237"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/ffi.rs",
+      "size": 144,
+      "sha256": "a311e1e922ce9dab1d1761854bcff0b64ff50d7c34848a869ef70820cbcbdd79"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/ime/callbacks.rs",
+      "size": 7184,
+      "sha256": "82fe96afa6d46514b54d3c1a35bc9ea8ef44e91750976c17aada99f521f33325"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/ime/context.rs",
+      "size": 12481,
+      "sha256": "c4cbbdd20f6eb46e26521c1e877456363a2752e962ea4c4d27ee0f8e98e545f9"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/ime/inner.rs",
+      "size": 2361,
+      "sha256": "0f8e8070b1590cff566db06d8fd4e849ebfd4066817f60a455cb020dff81ba2d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/ime/input_method.rs",
+      "size": 12098,
+      "sha256": "b301d72119cd3c87109540a760a7c0cac5cec58ced425a4bf2a91ff1c7dfb700"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/ime/mod.rs",
+      "size": 7251,
+      "sha256": "efa84f5da26bdb10bbed3c0c5089e4aa719985b96fa18215db9c71bf3dcd5f10"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/mod.rs",
+      "size": 34785,
+      "sha256": "811861508c9e34923fc77ff9aa610b1b977b641fd72a919e634ce0d38f788d45"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/monitor.rs",
+      "size": 10772,
+      "sha256": "5c49263f0ae5355cf56f379544f28301ebe63f4130e3b5744bfb5e1ae5d16fa0"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/tests/xsettings.dat",
+      "size": 6840,
+      "sha256": "26968fe327bd1b9617766cc73128812a582c6254eb9ed1d222bc0d0faea43aac"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/client_msg.rs",
+      "size": 967,
+      "sha256": "76c0c08831829fc010be1150e8f9aa9cc366b25dd344dba381ce7f7d3d3373af"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/cookie.rs",
+      "size": 1516,
+      "sha256": "d53987a8d3bb8e0b4462ed3bf670ff35f1f9c8315f622ad199990cd7629adaef"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/cursor.rs",
+      "size": 5062,
+      "sha256": "e3d229d3f27ed087c8916ba9b7e9ec6f08af11a5064e659f45aeb364ca703d22"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/geometry.rs",
+      "size": 10455,
+      "sha256": "fd2054b2e1c086011cb639830038737654fb9ecbd7fd090f5bcc0cc1567a1803"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/hint.rs",
+      "size": 4886,
+      "sha256": "f5f4744d090bbe6280e09ce2d6ea2da76d0d899d87762059a99d1174b39e47f8"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/icon.rs",
+      "size": 1159,
+      "sha256": "598a457838fff1e3eccc4274a13bdd140419ce303684347604712b127d57c6d6"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/input.rs",
+      "size": 3467,
+      "sha256": "a1db43e9940a20581cc4308f9be5b749d9912208c5bfd5fa6ce7d2aac71daaef"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/keys.rs",
+      "size": 1636,
+      "sha256": "5d6af7d9c91107ad5d9d8451bc3f85922bc5dcb87deb9e215956d03d2a69acba"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/memory.rs",
+      "size": 907,
+      "sha256": "b88e9bb56f20582c85bf07d176011dce4c6357c1de877c6241f2496ad4d27c42"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/mod.rs",
+      "size": 2310,
+      "sha256": "180f12c887da4c10904de7cf2934543784c917338b49d182aba7d098b183a899"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/modifiers.rs",
+      "size": 5563,
+      "sha256": "1f99aa3c76936f76eccc1eab18d39aa38916b97c4429e40818279650a09df78b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/mouse.rs",
+      "size": 1064,
+      "sha256": "5eb02a1b1206dc05d056da762c210e4828158758d10f547277e7e08d8cead38b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/randr.rs",
+      "size": 6438,
+      "sha256": "220d9343b2b3987c77fd346154fdfd9a23b004c077e1f57c3649c458a935b502"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/window_property.rs",
+      "size": 5946,
+      "sha256": "a079a7c6a7ed75e39b35cc76e4f55aff54b1cb6887711d1323fd60bc36ab4e4a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/wm.rs",
+      "size": 5226,
+      "sha256": "09ec80c212ce2110022c8d2d81731e1f7c90438722cff8fae8dbbcc5e92ae220"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/util/xmodmap.rs",
+      "size": 1609,
+      "sha256": "1bd99ff1891b79ff59f38773a1ab5ad3fb9a60fc55643a3787dd3c02b6afb48d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/window.rs",
+      "size": 74470,
+      "sha256": "caa0e303e2d1956020b1c27ead24dbe9c45fa73559ab38fea9a71d5e111ba8c7"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/xdisplay.rs",
+      "size": 11135,
+      "sha256": "ddfa5f2140c8cded23e14247011a5fdcc6c2a83d2523584f50d2da49b8a094d6"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/linux/x11/xsettings.rs",
+      "size": 9014,
+      "sha256": "3429aea240688c0faaab7f9725b586b6cd2f3332d6f9b19ac8da7689605713b0"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/app.rs",
+      "size": 7656,
+      "sha256": "14ba9f49d955a906a115c34fd12fdbbda13ac9b75740606e9fe0daeffa903c5b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/app_state.rs",
+      "size": 17881,
+      "sha256": "cb346eda09cfb7ddb4941fead441e3242eec0c64639a621e7f3116702531b7a4"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/cursor.rs",
+      "size": 8808,
+      "sha256": "537ee43a90cba74cc73801a45b67ef2356d99c7af12489865d0ff78273c6a9c9"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/event.rs",
+      "size": 23632,
+      "sha256": "dd073f82f85c5950eebb45256521da675e216ec56eaacadb7b413b96f1e894d4"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/event_handler.rs",
+      "size": 5303,
+      "sha256": "05b01ef0413ef0eb1004decf7def1131aa0ac6ce445bbcc03606c9c8b3a862c5"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/event_loop.rs",
+      "size": 18381,
+      "sha256": "c538c57419a311e335842f18e55d3e1ba4d493fa88c111d3e956ef81458f0c89"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/ffi.rs",
+      "size": 9114,
+      "sha256": "ae4aed628db11c332c8de422bb181bec15b22e44712b50d0a8eabb98d25f417d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/menu.rs",
+      "size": 3426,
+      "sha256": "b0bcc89693df6c2f5ff5cbfadaad83cff7fd5815483e2aaeea07b55e61a32ceb"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/mod.rs",
+      "size": 1655,
+      "sha256": "584af72536847910a3e461fb40b9a0f9a375da3200f7ecf38f5d989b3c143d9d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/monitor.rs",
+      "size": 14690,
+      "sha256": "456ae20157b0c40f98cf2d7b6850fc07aacb510f5cfda27891c0ffcc2ee47e68"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/observer.rs",
+      "size": 12203,
+      "sha256": "c4b1a7e129237924d6f2f20eed2e66d1d9c111b267d2bf1556bec85accc509b4"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/util.rs",
+      "size": 679,
+      "sha256": "9c938d322c89cee11fb041ebd43ef77355fb1a38fc77151ce730133929e32955"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/view.rs",
+      "size": 45271,
+      "sha256": "de63351d7a757d58883600c3f1702fc369cb77b2ae323a4efca7cb520e9da90e"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/window.rs",
+      "size": 3543,
+      "sha256": "981b8acb0e46f9b153c143b939c8e39a63b994b5d3f8f0c0f24c56b2993bd1f8"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/macos/window_delegate.rs",
+      "size": 76164,
+      "sha256": "791c8112b5eb95d4c5bf7efff3f458432cdfd77598053c3d756ae610323f36ae"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/mod.rs",
+      "size": 2155,
+      "sha256": "32e11e828a4cee9ad1dcb649beab6b6842f9b5bff4c1e070c67e78c7c1e3d6c6"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/orbital/event_loop.rs",
+      "size": 33392,
+      "sha256": "20865c2ee7405e5dec577bc5aa6c62ca043ae4c3ff0cbd17f6d029ee27b1726d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/orbital/mod.rs",
+      "size": 6598,
+      "sha256": "6b078d029061621f88dca6b1b88eba78671304779352281a9ee8d84e6c5829ca"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/orbital/window.rs",
+      "size": 15331,
+      "sha256": "a804344a32c90e8ff43a2640f99a63f3a3894a52137dd07a4503a435e7552279"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/async/abortable.rs",
+      "size": 2100,
+      "sha256": "9a6e1ca49d3cc19cd808dc5d0a94a1da16f7049021449aed05073703f1410f1e"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/async/atomic_waker.rs",
+      "size": 846,
+      "sha256": "d06e582da4c06722419566040cf2b9b131139072825d3c6da94183fa42d760ba"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/async/channel.rs",
+      "size": 3200,
+      "sha256": "32c90e56e0c975168e6f1cb05dbec119112f5c34925ebdae02ac3ff933ee66ad"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/async/concurrent_queue.rs",
+      "size": 1198,
+      "sha256": "b2db7edc5ae541bab5157cc057a5c5594aa4083acd6c564f615387799520c1b4"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/async/dispatcher.rs",
+      "size": 3828,
+      "sha256": "8e9f12f85ff04ef43af769eb968208076c47bd8135e31af78e65defe972e58e1"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/async/mod.rs",
+      "size": 580,
+      "sha256": "3d67f5c7205a9c506bf0273d97b786901225c015058eca4408f9aa09de4b5fa4"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/async/notifier.rs",
+      "size": 1971,
+      "sha256": "a13b0d9e0517da28716b86c5155fcce06294e3386f4267a20eac043e97b7fa90"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/async/waker.rs",
+      "size": 3784,
+      "sha256": "c6cde0c84e315972bc1735762961e29ff5cfdb4990a16c6e4196705a32305852"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/async/wrapper.rs",
+      "size": 2842,
+      "sha256": "03aa2bcbf2a4af964f023d34d89344268ecd6851ee14ed62ec80735f7633894e"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/cursor.rs",
+      "size": 24430,
+      "sha256": "4c44bb489893ffa0ce6f72e3949d4f6ec208ef0848ab76e2f2491d49227dd63b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/device.rs",
+      "size": 174,
+      "sha256": "b01dba26e4eaaa488e25637428d766d64e0ba3985645f9dd4f7a6c999d77243a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/error.rs",
+      "size": 200,
+      "sha256": "aa81b02160abb8707f5420d373ce9fd664f3255fedb49982f8539caf3a5e6083"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/event_loop/mod.rs",
+      "size": 4203,
+      "sha256": "6352287ae6a0afb3ebcf3919d12c2dfb3821901f790dd31cdd4bf4a3846069a0"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/event_loop/proxy.rs",
+      "size": 810,
+      "sha256": "03062c47460e5c53007bbccb233484435e081c515d7b59edd66bf808b40b3d62"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/event_loop/runner.rs",
+      "size": 31583,
+      "sha256": "e8ecd77ef8c4550ded308827e3975fdc54065ab58413a80b48e2f2bd1325bc8a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/event_loop/state.rs",
+      "size": 343,
+      "sha256": "989601ab5a56c7eb6ba495d027f6093a64a8fb32facd31ad9e2f0da24697c98a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/event_loop/window_target.rs",
+      "size": 26317,
+      "sha256": "8c47586f4fba7a77d8ce339289893040287b6c78e6d98dc7f12522522ace337e"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/keyboard.rs",
+      "size": 24028,
+      "sha256": "b15c5d89b2989b516ad87dbdc97b0b41aea6d09f929404894a0a907e4c4a2f6d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/main_thread.rs",
+      "size": 2595,
+      "sha256": "9658c9a69410784162c983144a5c37638eef4cd6967d24eaedd25f01567ab00c"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/mod.rs",
+      "size": 2230,
+      "sha256": "2208e8c703370f19caa7c545badae78fce6f4bd5c569399dfa5497399212c98e"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/monitor.rs",
+      "size": 1073,
+      "sha256": "a746440b15fd8affbef1cc7bec63bbb40e548494a01b67bfc061fb0e4da77d38"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/animation_frame.rs",
+      "size": 1640,
+      "sha256": "6aee3f5a4ed6c2d6b8d5f570da552a618773e4e513c76746efcdd8c316f94043"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/canvas.rs",
+      "size": 19378,
+      "sha256": "f2272f16a45b2245bd2e7dfc9458899d1fd248a9615ab49d5976bd1584d9af56"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/event.rs",
+      "size": 8846,
+      "sha256": "f73d5c0509b1e4a430ac238712e5963d21d378e0701e9c2b67cf839d890e3fb1"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/event_handle.rs",
+      "size": 1137,
+      "sha256": "3e81317e037627fa4874d28ff6d43dff4cc3f2970f33496ed345910f33eed108"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/fullscreen.rs",
+      "size": 3135,
+      "sha256": "6cf26354391839b55f8d9f1426f842349bb159384a79598a47628da64ae5dc1d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/intersection_handle.rs",
+      "size": 1002,
+      "sha256": "af2024c3fea10a70fa9fdbb6cca474730fecc9ccdcf1d3bb7cec6305fdb7346b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/media_query_handle.rs",
+      "size": 1473,
+      "sha256": "0c6dde21f28ee2f47db2cf10f859e158e156549dd1c10141be02d9496ea720ab"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/mod.rs",
+      "size": 7321,
+      "sha256": "60c26a5a11e998a7ebaa0432fdc11aa1458a9b6676ca6c398487f7d9dbbdffc9"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/pointer.rs",
+      "size": 9605,
+      "sha256": "e6277ddcc06acf6d3e09ba95ea54e618c3d355a82f92fa8ee56463bd30c6f643"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/resize_scaling.rs",
+      "size": 10212,
+      "sha256": "fe98de29d14f60d10447ddd87ffec46bd24bfdf90095b608143f8d253627e06e"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/schedule.rs",
+      "size": 11056,
+      "sha256": "351aa8dc3019b4efd8af1457129faafc35ea8ce0581b39b9ac95d141753f2c09"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/worker.js",
+      "size": 244,
+      "sha256": "13d7ad44fd0ad212cb3691cda3b94c0350b8f553447ec3395647472ed8e008cf"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/web_sys/worker.min.js",
+      "size": 127,
+      "sha256": "1781ca3da664be395164092322711dd677283d98753c6b4bfe448586e9fcc8fd"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/web/window.rs",
+      "size": 13810,
+      "sha256": "fc6a7844845ec3b9d84188b59c9ef4bc8f5357a922f34bcb62d7a1dd3ec29424"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/dark_mode.rs",
+      "size": 5721,
+      "sha256": "9fa225a2462e0a0467b7608fc126515f5138d7762f0f86688b17ef9d627f0fe1"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/definitions.rs",
+      "size": 4494,
+      "sha256": "d3eb11a33c6daf98682796f7c019238fdc8bd2d389119699a20c1ed7d9dbddaf"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/dpi.rs",
+      "size": 4356,
+      "sha256": "de57490ede1509fadd0b92404450bb1044aa42fb59a14619e32497618e1dac46"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/drop_handler.rs",
+      "size": 8361,
+      "sha256": "47abcad8770ba1d5ec8c877c8e725aa330c472ef07ec4ffcb60c1e7ae33c41c8"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/event_loop/runner.rs",
+      "size": 14879,
+      "sha256": "dfa68a445d4218098e39c731d27abfb172d55a2580c8e5bd16e209409f315f5b"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/event_loop.rs",
+      "size": 109774,
+      "sha256": "f99c748e189ea8ce4bde08ec186ee27306756ce93d5235371e198c07e582c52d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/icon.rs",
+      "size": 7503,
+      "sha256": "89dd2f1e567852327cdc20adfb78ce12404f9ecc6786178d4caffe425a8d96c5"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/ime.rs",
+      "size": 5440,
+      "sha256": "fb98b36a12d98bacf7fa88e8444f5d85713d51110e9ada028ce5ca12677a7feb"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/keyboard.rs",
+      "size": 51671,
+      "sha256": "93188bdea60bce1014d624f289d25063b59a14985a318ca736bf62d8ba3e5d16"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/keyboard_layout.rs",
+      "size": 42736,
+      "sha256": "d324796eaf474c35905f1b539cafaedaa3ee639e8ad7ad9ec559aeb2c56cf722"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/minimal_ime.rs",
+      "size": 2118,
+      "sha256": "f400011bf7f57b50dd6f47066b6b1f354339217887938c26cbd22a062594805c"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/mod.rs",
+      "size": 5208,
+      "sha256": "c739237f4903d6be9aaa3e913e50ae01575a689a4678486a3b82e214adf7020d"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/monitor.rs",
+      "size": 8274,
+      "sha256": "fb177904e37746a41ff7607b60863282c505a885180dc9e069904f379b66f206"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/raw_input.rs",
+      "size": 11228,
+      "sha256": "d36ff2c05cecc97b8b4e293a0a7dff4046a033b128101b07cc04812cbcc24b7a"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/util.rs",
+      "size": 10488,
+      "sha256": "beed128bdedfb31daaa28da786bc6bdae037cbb41e5bf4db4d10678a44c72a68"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/window.rs",
+      "size": 58448,
+      "sha256": "337a9fe3162e6ec2c4075b0a483fcdb9f424d57ac4c758bffc17adf712845bd7"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/platform_impl/windows/window_state.rs",
+      "size": 19341,
+      "sha256": "505e7ea90e1fa75500cb296cf6ec4cf3f04407c44731ffc9ae1f48e78d8d0f34"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/utils.rs",
+      "size": 623,
+      "sha256": "a6b2a21ab09102d288d9c9bfdd4c9173ae24cd50b18f3b11c6d9842c69ea3fc9"
+    },
+    {
+      "path": "apps/native/vendor/winit/src/window.rs",
+      "size": 71910,
+      "sha256": "977153e4a39ae156c0dcbfcbd7270915fbc12c3459591535b351875a226aff97"
+    },
+    {
       "path": "apps/native/windows/installer.iss",
-      "size": 5989,
-      "sha256": "b0f6785b7b3b21db9910528a6433425034fa8f1cbb03107d5485f347441787b4"
+      "size": 3259,
+      "sha256": "05a78c044d31e10927031fbc186db11b036aba6646f5cb7f14e5fb84733814b2"
     },
     {
       "path": "buf.yaml",
@@ -617,14 +1887,9 @@
       "sha256": "2247a7db1d5fff88365ae20458891edf0add8233a19bc9abe647ef128ef7c21b"
     },
     {
-      "path": "config/client-update.json",
-      "size": 104,
-      "sha256": "d72838ac2aa904fbd7d314d4965c456de4189ae4dc2946dcb73d7a72248e7acc"
-    },
-    {
       "path": "config/container-host-runtime.json",
-      "size": 23936,
-      "sha256": "42cc858e522cf53174025732ce433377445350b052d01c6cb5e9518535a3fb1f"
+      "size": 22184,
+      "sha256": "033432f480ba2f5ac87f7d166205fcb6834ec1942915e175c9d0322b1dddfb0f"
     },
     {
       "path": "config/device-presets.json",
@@ -643,8 +1908,8 @@
     },
     {
       "path": "config/mihomo-release.json",
-      "size": 1958,
-      "sha256": "5bf9a42a7780fb5ba7366cd466ceff7610ad385dd98dbe3a2b9cf90714a2e79d"
+      "size": 2598,
+      "sha256": "24e1c1f77919221b2a3d8ffb0ef83f7ba10f0abb81d5266c563e42d6593d1405"
     },
     {
       "path": "config/model-providers.json",
@@ -653,13 +1918,13 @@
     },
     {
       "path": "config/native-client.json",
-      "size": 103,
-      "sha256": "409e5f32821f4a49c9e215c04823b57ffb803e8d6bed941a83e8345ba9f5da70"
+      "size": 106,
+      "sha256": "02b84f2b69a1848caf37f7e7c51836d43b888c5d3e519583dbb518b2f0e7fc81"
     },
     {
       "path": "config/native-notice-supplements.json",
-      "size": 73032,
-      "sha256": "2f8d36d3c2f33d29feaa9b674560667bd950da0cc4957a96e3a89b41dfcd6f02"
+      "size": 72539,
+      "sha256": "16613ff201d76a58aeb16595bd479359e2e1b6d40b3766070017b7b8f0b33e42"
     },
     {
       "path": "config/ocr-models.json",
@@ -678,8 +1943,8 @@
     },
     {
       "path": "config/release-policy.json",
-      "size": 443,
-      "sha256": "7ad4e85c567866909c5ff1bea41b5920e1e061ac70ff88537b7e236e512559ea"
+      "size": 293,
+      "sha256": "4d3e3e0f64753a7b440e9eff829fe7fb6a704b0af6ed3367b0674c04acc45b65"
     },
     {
       "path": "config/rust-runtime-notices.json",
@@ -713,8 +1978,8 @@
     },
     {
       "path": "crates/adb-client/src/lib.rs",
-      "size": 6383,
-      "sha256": "17c66cc443802e22d3499cbd788806439fd9a6ad7d6feefffd1f4224cd5ef258"
+      "size": 8300,
+      "sha256": "46841b98ef39ebc7349608a1d30a282f911eafa2c004e9a045d49d4617b3dff8"
     },
     {
       "path": "crates/adb-client/src/sync.rs",
@@ -738,8 +2003,18 @@
     },
     {
       "path": "crates/api/src/lib.rs",
-      "size": 234,
-      "sha256": "84770b00bc5263a01eb7983337517c5ed278ac0726e32be1848987f76daa807e"
+      "size": 983,
+      "sha256": "f1621b1115836bff75fb24875ddaa7ac719d93b79050f8115288a63f57fa5167"
+    },
+    {
+      "path": "crates/api/src/location_motion.rs",
+      "size": 2869,
+      "sha256": "40794be169e38311cf6b27e412d6039e83d806d452635d4f4c314fa28e022146"
+    },
+    {
+      "path": "crates/api/src/observations.rs",
+      "size": 1352,
+      "sha256": "b99eea7a27a32c917be45d21ca6026e61a6cb6ff9f3278e216b7d86be8baf801"
     },
     {
       "path": "crates/api/tests/smoke_protocol.rs",
@@ -748,8 +2023,8 @@
     },
     {
       "path": "crates/assistant/Cargo.toml",
-      "size": 2111,
-      "sha256": "cd8caff9f42770dca0d60f67f6707fb996d01bb4f96a075b37307a6117b8287e"
+      "size": 2192,
+      "sha256": "5ea6669417913abcf3086d23f83053467150578a326f9a0b7b78832386999c2d"
     },
     {
       "path": "crates/assistant/build.rs",
@@ -1022,14 +2297,19 @@
       "sha256": "553890f0111c2fbfa05031fd5b7d829d208b850d87fafb526b150be0e1f3ecdc"
     },
     {
-      "path": "crates/assistant/src/agent_loop.rs",
-      "size": 17009,
-      "sha256": "fa6ff49b440a75c95cde41f1437ac3fb3230d842c3fe521bd4c387038d117ecf"
+      "path": "crates/assistant/migrations/0055_workspace_agent.sql",
+      "size": 307,
+      "sha256": "297582be70c8d3639f2fdb5c38a7f9214626ffc37734ef7d82715eeab6ea3c73"
     },
     {
-      "path": "crates/assistant/src/anthropic_messages.rs",
-      "size": 19194,
-      "sha256": "74d6e267f7025bbf2df62e4f27108d9607eee1d6a3877f08dc3524eeab793d16"
+      "path": "crates/assistant/migrations/0056_paired_devices.sql",
+      "size": 70,
+      "sha256": "924930551fadd92d57e5cd58dc89e64d8e31c8a11424f5ae054f3a861ba261e2"
+    },
+    {
+      "path": "crates/assistant/src/agent_loop.rs",
+      "size": 17073,
+      "sha256": "c37e8cd1d267055da2fb0e40e9f1c758ee848b94d7dd2592055858a5d09b095a"
     },
     {
       "path": "crates/assistant/src/app_guidance_tests.rs",
@@ -1038,18 +2318,18 @@
     },
     {
       "path": "crates/assistant/src/app_learning/desktop_tests.rs",
-      "size": 5144,
-      "sha256": "d153d62d34c063ca638f9957cd91eaaf1ea44c33f0c13ac60de8dfe4d240edce"
+      "size": 5127,
+      "sha256": "67068c0e3f794c4d7b9351c4d65ed1b323dba0df1bbe5860ff4b5b628cb9da39"
     },
     {
       "path": "crates/assistant/src/app_learning.rs",
-      "size": 23742,
-      "sha256": "5e8fe15ffc6dd271f32c45297be75a9d08a608cf67779b48a0b7bbf89a32e48a"
+      "size": 23770,
+      "sha256": "554d903270489a4784f564fa89fdaa8762e36ccab6f097178191a64792425737"
     },
     {
       "path": "crates/assistant/src/app_mcp/author.rs",
-      "size": 12068,
-      "sha256": "a5a330598a343851215a6342bb19b72a4c9b622c2a0d677ff7f2c4d05ec7512e"
+      "size": 12043,
+      "sha256": "21011473549523714a3dd76944a3cfb3800147cdef8ae932a30d489d3b346de1"
     },
     {
       "path": "crates/assistant/src/app_mcp/inventory.rs",
@@ -1073,8 +2353,8 @@
     },
     {
       "path": "crates/assistant/src/auth.rs",
-      "size": 13049,
-      "sha256": "535b4d7fba422fb1644a8bb20aecdefd8fbd50735e39ab45e8306251073d928f"
+      "size": 13055,
+      "sha256": "08365a9e68a548a513a665b3250b025df28de1d06210a490667bf55b4caf2f36"
     },
     {
       "path": "crates/assistant/src/backup/archive.rs",
@@ -1177,14 +2457,9 @@
       "sha256": "8ee286c372a1b173ba7c46054e3e67bd9c927784f26ff8bccd5f2320af229619"
     },
     {
-      "path": "crates/assistant/src/chat_completions.rs",
-      "size": 16969,
-      "sha256": "cab8a0f47c614e064a276bb2aea151fca29edeb1c82ea8188180c7b12a5e299e"
-    },
-    {
       "path": "crates/assistant/src/completion_audit.rs",
-      "size": 66754,
-      "sha256": "87f5d1b71f91305db3ce3f08d3df4c81c2c8ae33013c8ce407b9679c25957cbf"
+      "size": 69935,
+      "sha256": "3aeb1a124949cd89aa4e04cda496be39cf40c915f4bb39f560acfdb994ffa1f2"
     },
     {
       "path": "crates/assistant/src/database/bootstrap.rs",
@@ -1213,8 +2488,8 @@
     },
     {
       "path": "crates/assistant/src/desktop.rs",
-      "size": 90034,
-      "sha256": "7bd1d5a921ddf3d3fcf8c99d9a38e25870f2b4e033b256b113c0d7850df23d9c"
+      "size": 90943,
+      "sha256": "a30e7ce00e573584fd63098f13e47ffcec7bdbfb29b22da50991ea8602c26457"
     },
     {
       "path": "crates/assistant/src/device_exchange/kafka.rs",
@@ -1223,8 +2498,8 @@
     },
     {
       "path": "crates/assistant/src/device_exchange.rs",
-      "size": 18895,
-      "sha256": "ef5416e0eeb5946726b12324098544f870cf6bacfbe94698cae625e517dbb72c"
+      "size": 18923,
+      "sha256": "723ff87ccbe3f6ed175ffbf191cfde519cfbb99551cc12d05a0a05380bc1fd4a"
     },
     {
       "path": "crates/assistant/src/device_network.rs",
@@ -1258,18 +2533,18 @@
     },
     {
       "path": "crates/assistant/src/device_setup.rs",
-      "size": 10117,
-      "sha256": "c309ed29425f775105f7e73a6bc7e29f0d9312135d04cde8b9ee9e3054286a83"
+      "size": 10153,
+      "sha256": "ee1f82b69549788f5fbbb4e0051ce3f92b02323a3b9f4eb0d3b4d3e7574fb221"
     },
     {
       "path": "crates/assistant/src/execution_tests.rs",
-      "size": 41517,
-      "sha256": "c15b6372205e649642cc4dd8a75ce4f83e6c7f7da89e13dc821ec558207f9a8a"
+      "size": 41611,
+      "sha256": "adf93e3a137ea7dcf0ba114a32993caf684b2e4735865f3e9770ba7334e2a6fe"
     },
     {
       "path": "crates/assistant/src/exploration_policy.rs",
-      "size": 1715,
-      "sha256": "611ef854b8616196fa891f0630fb7d5cfc6f12171d686c58b0d28ccfb55ada6c"
+      "size": 1510,
+      "sha256": "fab6401a1444a43c5e44526127afacf741f0e1ef4805abde55476d13683b5b34"
     },
     {
       "path": "crates/assistant/src/files.rs",
@@ -1283,13 +2558,13 @@
     },
     {
       "path": "crates/assistant/src/handoff_tests.rs",
-      "size": 35324,
-      "sha256": "a6cd3c351932f6d0d5463b6e97fac72dd060a7556be23a8ac068dc0355766333"
+      "size": 35341,
+      "sha256": "a993fe2a818ff9d1972bf7cee73004ed32fa1002c97bdd5fe1b936ea5410642a"
     },
     {
       "path": "crates/assistant/src/harness_proxy.rs",
-      "size": 14781,
-      "sha256": "bde1075cdf189c4e4333cb5cfc56e6b75914b7c6e704c3272c852d0a559f6c73"
+      "size": 1779,
+      "sha256": "573475704a669b74aab28f8e5a51462eb2f67ef947c42899c86a2552c3b5424e"
     },
     {
       "path": "crates/assistant/src/harness_proxy_devices.rs",
@@ -1308,18 +2583,18 @@
     },
     {
       "path": "crates/assistant/src/host_desktop.rs",
-      "size": 8437,
-      "sha256": "732947ea4be5f8a7fd076e7c0b2e7e7c78956aeaa6638f9dd168ba0ab87ed2a9"
+      "size": 9950,
+      "sha256": "9bc99cb8dde7eb41ec767115ee08b3e25eb1f80711b0e294d03fca83ab35e864"
     },
     {
       "path": "crates/assistant/src/http.rs",
-      "size": 56330,
-      "sha256": "59fb1205c3e86c23f24581870bb72acfcda7ca4db9d20c1d5c215118486e8e19"
+      "size": 56597,
+      "sha256": "2db5b8429f7c05a1168ed0a35b10318fd861b235a72d0547e8a61f97f73b1a87"
     },
     {
       "path": "crates/assistant/src/location.rs",
-      "size": 19701,
-      "sha256": "e8ae2fa5eed682897e285cb0c9cd1d11474bc5045ec8d7824112dd5c23746153"
+      "size": 19714,
+      "sha256": "0745b2c9895f6b8f7665be8151ab079a0bff873eec848f88881040dc5d980434"
     },
     {
       "path": "crates/assistant/src/location_devices.rs",
@@ -1327,59 +2602,49 @@
       "sha256": "8d316e6aef82589179a8c6110a4803900bfdb4a5459ff0415f90376b1d2642cb"
     },
     {
-      "path": "crates/assistant/src/location_motion.rs",
-      "size": 2919,
-      "sha256": "eba009cc99e155e19811c66c323cd46f79b5bcd5249d9825066af4e7f3c377b3"
-    },
-    {
       "path": "crates/assistant/src/main.rs",
-      "size": 14436,
-      "sha256": "b291f61d018911888699a3c6a3051fa8ebf451a3fe7b1c5b1ccd326417513298"
+      "size": 14855,
+      "sha256": "d4d47ca1933c89aec81677c75dd3c586568a8cfa34badcdbed368dd640d9a8fa"
     },
     {
       "path": "crates/assistant/src/model_adapter.rs",
-      "size": 56734,
-      "sha256": "34afbdd77eea831f77da9f1678726b2a0926592a6d6468197dd4ac6ac1140732"
+      "size": 31757,
+      "sha256": "5293064e1dd0c4710896d5beeabf4c39aae0ed001c36315cf994f166b00911fe"
     },
     {
       "path": "crates/assistant/src/model_context.rs",
-      "size": 43541,
-      "sha256": "2845eb78bec7dd1d273c12b64c4bb925b34e8677ca1a78d51464dcac5084dd97"
+      "size": 45998,
+      "sha256": "9755fea22cc020c702624ceec786a936e6d341146820eaf14b291ac5db4fb2fe"
     },
     {
       "path": "crates/assistant/src/model_recovery_tests.rs",
-      "size": 38244,
-      "sha256": "438f19c7f9a8df5133c6644051c1e82743150a98eb797ca5439f115a1611c52b"
-    },
-    {
-      "path": "crates/assistant/src/model_sse.rs",
-      "size": 4988,
-      "sha256": "6946cf57df6b40b7cfb390f7a3ea48c3fb0d17968d75868a88db24eb925dcb17"
-    },
-    {
-      "path": "crates/assistant/src/model_timing.rs",
-      "size": 2331,
-      "sha256": "701fe64063835af7e1e89ce02e8a72326b7f9c652a56ab285ba4729846c171a5"
+      "size": 38200,
+      "sha256": "08762065dd9d9ced4c9fc6a4a5ddbb01747f5631ba32b9452f9bb4be9152b69e"
     },
     {
       "path": "crates/assistant/src/notification_forwarding_tests.rs",
-      "size": 18374,
-      "sha256": "4e0a89ee695480c458ac88bba8364b108fc00369f49d84b7f4d60f7447b03a6b"
+      "size": 18320,
+      "sha256": "181510c66d4231d35f3a757b2cabdfa188bf29582e937c48adc725644b6ab735"
     },
     {
       "path": "crates/assistant/src/notification_policy.rs",
-      "size": 4256,
-      "sha256": "bcab0fd44076134e4e7e2946e7db86bd41bac9e3d5678ec410909d4f1f002f33"
+      "size": 4372,
+      "sha256": "bc52f43c93f035d20e5e1c44776c6eb313844b161edbd8a966d90e640da62f76"
+    },
+    {
+      "path": "crates/assistant/src/peers.rs",
+      "size": 10220,
+      "sha256": "d0a2858e3a9d56585a9b85e0140069ba81c78173f2088eb52de76e94fc1be334"
     },
     {
       "path": "crates/assistant/src/persistence_tests.rs",
-      "size": 20059,
-      "sha256": "71dde881bfd445f8166a3a4ad37bca7f1831e77c128d0cac8956558390c5d476"
+      "size": 20065,
+      "sha256": "fc535f8f7f999c26b6fa947a8ea9d8011a1565dbe35909527ddfc005a0061057"
     },
     {
       "path": "crates/assistant/src/phone_system.rs",
-      "size": 2411,
-      "sha256": "732f6a8e396ae4ef39ffc38bb904e599a8067b8fa6371f94faec82909cd4aa0c"
+      "size": 2437,
+      "sha256": "6f7025a955b3f5ae00d52541d08322d58e0666851d6e079dda3dd1d0bd656d3d"
     },
     {
       "path": "crates/assistant/src/private_file.rs",
@@ -1388,8 +2653,8 @@
     },
     {
       "path": "crates/assistant/src/proactive/knowledge_review.rs",
-      "size": 5536,
-      "sha256": "6cd5f8bc65b52db06d7225febbf8b891bbaf86fe499fc0764b80fcb56bf7c23f"
+      "size": 5518,
+      "sha256": "7c8bf555a58e28634ffb99376b28c223d0689b7787248d39fd14443bb8ef1ba8"
     },
     {
       "path": "crates/assistant/src/proactive/screen_attention.rs",
@@ -1398,8 +2663,8 @@
     },
     {
       "path": "crates/assistant/src/proactive.rs",
-      "size": 78780,
-      "sha256": "3c77b5424b3d25d963919b6c66520f360c5f94f4563701607b421039fbaa1c3d"
+      "size": 78929,
+      "sha256": "f4bf78afb19427ca314f621de0c94bec49789a4a87d8b51c19832dd8bcde4fea"
     },
     {
       "path": "crates/assistant/src/recovery_process_tests.rs",
@@ -1413,8 +2678,8 @@
     },
     {
       "path": "crates/assistant/src/registry.rs",
-      "size": 56445,
-      "sha256": "5016d6a4cc83d136410df3fc74d2dc6675680ecde778f274e3e7fed4d01b49f0"
+      "size": 61970,
+      "sha256": "65ad9cdfdc51b40a1c860da9dfa31aad0729a0dd1bb8cebd879363458208f93e"
     },
     {
       "path": "crates/assistant/src/request_digest.rs",
@@ -1433,18 +2698,18 @@
     },
     {
       "path": "crates/assistant/src/run_queue.rs",
-      "size": 3583,
-      "sha256": "a7c9122b9496a0dff8603e00c3188c3b1bc5eca9ca8b015308b21cad9b3acdd2"
+      "size": 3681,
+      "sha256": "a7999be6159169ca0f975d30dbafe6874db2d295e500c431870cf5e82be355e6"
     },
     {
       "path": "crates/assistant/src/run_signals.rs",
-      "size": 7130,
-      "sha256": "e6d23ce76ea50c93d83aa671d0691c69367e173eaaf70f5ecd0804fe16c506e9"
+      "size": 7190,
+      "sha256": "098bf157fd1fd00756b0b0eb2662717355e4f43a3d9abbb0998fff2a3af379f6"
     },
     {
       "path": "crates/assistant/src/settings.rs",
-      "size": 41104,
-      "sha256": "4ca787a0e59ab82540debef124ea4e9ce3c7f07b07410baaab44e019f3cdc9d9"
+      "size": 38659,
+      "sha256": "feb7e86acc4220b8c98df95f12b4c9fd851d17cf720a07b212de7e82c4db002a"
     },
     {
       "path": "crates/assistant/src/setup.rs",
@@ -1453,8 +2718,8 @@
     },
     {
       "path": "crates/assistant/src/skill_persistence_tests.rs",
-      "size": 24007,
-      "sha256": "c3800408a428658b6c167163bc4a467e8bd2db93d0d795999dace52b57e99606"
+      "size": 24013,
+      "sha256": "e46be021eb901ac5b15652f958753fa6ca41c6b733fb0cbc919098e7c4ab558e"
     },
     {
       "path": "crates/assistant/src/skill_resources.rs",
@@ -1468,8 +2733,8 @@
     },
     {
       "path": "crates/assistant/src/speech/playback/tests.rs",
-      "size": 10264,
-      "sha256": "8af59f1af8a7d9f7c0f01a38d39ce77891ec7472c32ac50f39c806257b021e77"
+      "size": 10246,
+      "sha256": "89165b67790934631bd02dba53a301a8647f9f9a9c3b2454e6e7b2967a632fb0"
     },
     {
       "path": "crates/assistant/src/speech/playback.rs",
@@ -1488,8 +2753,8 @@
     },
     {
       "path": "crates/assistant/src/speech/realtime/tests.rs",
-      "size": 11916,
-      "sha256": "337d9f95e13dc66723c70ce44377dfc0886b6ec670ad736c7fca77df50e7b9f9"
+      "size": 11898,
+      "sha256": "0f4d91dc6dcb7cf47a0e5c1dc973838ccc0bf10675bc017976662ab3253e7afa"
     },
     {
       "path": "crates/assistant/src/speech/realtime.rs",
@@ -1498,8 +2763,8 @@
     },
     {
       "path": "crates/assistant/src/speech/tests.rs",
-      "size": 9271,
-      "sha256": "94b55bc8c95efe0b6e2e81a70d8b836bbc4997e5864a47bc8aa2238da674653b"
+      "size": 9244,
+      "sha256": "08d4c9abb0a1e46cedc0856c1b954ef76e043b7100fc89a8db81e79273741827"
     },
     {
       "path": "crates/assistant/src/speech.rs",
@@ -1508,23 +2773,23 @@
     },
     {
       "path": "crates/assistant/src/steering_tests.rs",
-      "size": 52584,
-      "sha256": "6d6f744dd800cf2b7b7a8fb55b0a9d38172b1c86cae8f6abcf683f41a28aac41"
+      "size": 52573,
+      "sha256": "0d43526b98a97e9ae016eabdff2824d3b9a92d385c976085a3470c93f745100c"
     },
     {
       "path": "crates/assistant/src/task_goal_tests.rs",
-      "size": 8202,
-      "sha256": "a2726a69fea920603b3c76b55d358a16b44f57aa7c1d7c3572e17506a17d25b3"
+      "size": 8184,
+      "sha256": "539b54bbe17d1df30644f8724d70ff4859abbf26848c059489dd8879ecdfc816"
     },
     {
       "path": "crates/assistant/src/todos.rs",
-      "size": 3317,
-      "sha256": "d470ce66f151e8a7d5c0a12cb14ebe3b7105d33af4b3e65b6662c2e18347a042"
+      "size": 3356,
+      "sha256": "7c63157fcac7a4246b41252efdb53ff3ca5891ef0410e8eebfc306fd526228f1"
     },
     {
       "path": "crates/assistant/src/tool_catalog.rs",
-      "size": 22341,
-      "sha256": "cd1915f7d27a6cf7bb23cbc1e84d2c65fa54cd2c96f500e83016b2307e27baa0"
+      "size": 22359,
+      "sha256": "359e3033cda482a3906be065f896260e1b3fba5ebc6a33383e90df21b701a966"
     },
     {
       "path": "crates/assistant/src/voice_input.rs",
@@ -1538,8 +2803,8 @@
     },
     {
       "path": "crates/assistant/src/workbench.rs",
-      "size": 56463,
-      "sha256": "ed358df37c94fd0b0415891ae262b13fcaa79f662fc2ef0c6d3cf8a208e22b5b"
+      "size": 56064,
+      "sha256": "65e423969b7b4429a88cebd16d284c5905079b20ffff298c67c21e483dba5d46"
     },
     {
       "path": "crates/assistant/src/worker/action_cue.rs",
@@ -1558,13 +2823,13 @@
     },
     {
       "path": "crates/assistant/src/worker/work_intent.rs",
-      "size": 9628,
-      "sha256": "e1e8fa28226984318d3738db8548d996f7985dd08b4d8d574bf7f98eaf9c6e5a"
+      "size": 10137,
+      "sha256": "09e9ed4b07f578b89c8912e7e37b5262ec630d54bea29b59437303a1be700dce"
     },
     {
       "path": "crates/assistant/src/worker.rs",
-      "size": 278288,
-      "sha256": "60466a1984ddfe499314993fee5538930f4c37a5e76fae584a7b9d94aa409084"
+      "size": 293494,
+      "sha256": "c43fd70d04f16c6983e1c085c7b8818052f518921b6cf9d4a6e8a2df4c5817f9"
     },
     {
       "path": "crates/assistant/src/workspace_runtime.rs",
@@ -1577,9 +2842,34 @@
       "sha256": "d2d4a68bebda8f3e1e999a2c92fa933e0ab031f3d4b107c2be0a5075aecf13ea"
     },
     {
+      "path": "crates/device-io/Cargo.toml",
+      "size": 843,
+      "sha256": "15d851e19863efe3aa815c61e8c1cbf0ce72bc493e304bb05078a10ffddb5dab"
+    },
+    {
+      "path": "crates/device-io/src/android_audio.rs",
+      "size": 6820,
+      "sha256": "742a53ab1d399d6d218af3216ed731bb737c55edec50eaa2c43c5863961d9e65"
+    },
+    {
+      "path": "crates/device-io/src/files.rs",
+      "size": 10810,
+      "sha256": "1ed4968f6c592693f39ab77e515bf450d5c474003586920e146149005026eece"
+    },
+    {
+      "path": "crates/device-io/src/lib.rs",
+      "size": 7696,
+      "sha256": "9300b071b64f9ccd7253d99bff696d3c2894eca1d7a86f605302d0135fa02bc7"
+    },
+    {
+      "path": "crates/device-io/src/notices.rs",
+      "size": 1769,
+      "sha256": "6b6e74a5ea7eee8eae3800b85912aaf4d47401c5fb2404927ad8b3c99f47d61c"
+    },
+    {
       "path": "crates/guest-runtime/Cargo.toml",
-      "size": 1380,
-      "sha256": "b0bf62bdc05b72498754c32215883b2c3bbbc7e6fd28f7ca8f368015322dba87"
+      "size": 1435,
+      "sha256": "1bb449d0bc69162c9ac889b3fa7a9372debc9c087156c7ff22e5f67a6d7e2cac"
     },
     {
       "path": "crates/guest-runtime/src/accessibility.rs",
@@ -1593,8 +2883,8 @@
     },
     {
       "path": "crates/guest-runtime/src/actions.rs",
-      "size": 13431,
-      "sha256": "1799c640ee8b51977b672c5a7d25afd8c7a12311eff26cee410589fef4b62e5b"
+      "size": 14492,
+      "sha256": "70a468bb2c98e2c86a39e91f8038186ee97661cdf179c36db737402a11d05872"
     },
     {
       "path": "crates/guest-runtime/src/audio.rs",
@@ -1638,8 +2928,8 @@
     },
     {
       "path": "crates/guest-runtime/src/lib.rs",
-      "size": 581,
-      "sha256": "fba6a9cb3f3ef2b866413316d092be355a382eda224e81953426f2a377551d34"
+      "size": 600,
+      "sha256": "7e89bd93552c03519ca519839d52c48d37517b1184308213d3068701d9e625ee"
     },
     {
       "path": "crates/guest-runtime/src/linux_runtime.rs",
@@ -1663,8 +2953,8 @@
     },
     {
       "path": "crates/guest-runtime/src/main.rs",
-      "size": 5552,
-      "sha256": "3dd0f75a2ffddb676e7647803bae6d17571212eb349c354b03f8ef2da704281c"
+      "size": 5761,
+      "sha256": "b64f2369dae753d09bff2c4eea222f44bb0a719fdd0b5ac4bc4e4f7e46511482"
     },
     {
       "path": "crates/guest-runtime/src/media.rs",
@@ -1700,6 +2990,11 @@
       "path": "crates/guest-runtime/src/settings.rs",
       "size": 1233,
       "sha256": "4c7cda9b799fda53da71271c8a3a6ac9b1bc8983f10b3fa3b80afe08c629c5b0"
+    },
+    {
+      "path": "crates/guest-runtime/src/workspace.rs",
+      "size": 7312,
+      "sha256": "19b3ff8ad250e664585b7bde3bb0117c56c66a1ef983f5859f44bec798daf9c1"
     },
     {
       "path": "crates/guest-runtime/tests/cli_framing_contract.rs",
@@ -1753,8 +3048,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/input/device.rs",
-      "size": 2921,
-      "sha256": "458960eb5c85307f4754d36ee001148026978eda25816b53abea8c353dfff7f9"
+      "size": 3370,
+      "sha256": "91c01fc29ca9bd504e405bad0c36f9a17263a0f15f75a7659f7963dc932748f8"
     },
     {
       "path": "crates/host-runtime/src/android/input/policy.rs",
@@ -1778,13 +3073,18 @@
     },
     {
       "path": "crates/host-runtime/src/android/input.rs",
-      "size": 13688,
-      "sha256": "32b23cf1434f62bae81a8e45ea48d2a167cee9b774e75973feb2c706e2436ea1"
+      "size": 13761,
+      "sha256": "2124656d49bb06a95e8d405020c7a46301df565bf3359316f1de5597a7eeafe2"
     },
     {
       "path": "crates/host-runtime/src/android/launch.rs",
       "size": 8972,
       "sha256": "7131c62d3c124d18ddb1d52bc02a028d4c9558127bafaa9e092ebf5cd39d0b9a"
+    },
+    {
+      "path": "crates/host-runtime/src/android/location.rs",
+      "size": 3090,
+      "sha256": "ae7b3950af3ec6ff468e0362d8827ee6811bd27055a77dbdd222f8f03ae63ad9"
     },
     {
       "path": "crates/host-runtime/src/android/maintenance.rs",
@@ -1803,8 +3103,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/session/adb.rs",
-      "size": 4778,
-      "sha256": "da3fdf11eeca6ddb4919fc099084bbc315b4c69015f76d07a7f0b434af61a866"
+      "size": 4701,
+      "sha256": "cd3b54d5b0ad6bf0e1b2bef156a8318f00c0ad25132bf6e0f40952c25743d293"
     },
     {
       "path": "crates/host-runtime/src/android/session/avo.rs",
@@ -1848,8 +3148,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/session.rs",
-      "size": 2933,
-      "sha256": "9f09e12fc77b715bba03216a963152d1e8b7e0600c2984058554d0a3bfd43b39"
+      "size": 5837,
+      "sha256": "e804c83348ea90ba5d4e117212be4e63598fb7af8ce9b88038cc90e4b55ea1af"
     },
     {
       "path": "crates/host-runtime/src/android/tests.rs",
@@ -1858,8 +3158,8 @@
     },
     {
       "path": "crates/host-runtime/src/android.rs",
-      "size": 6910,
-      "sha256": "f889d788afa96dd76acf743db4a15d87418530487f95e2a48a8763cad2ce70a2"
+      "size": 6928,
+      "sha256": "c23353b60bd4e7567ff333ecb3df002916406af4cf0999e5bc950407871ab637"
     },
     {
       "path": "crates/host-runtime/src/archive.rs",
@@ -1868,8 +3168,8 @@
     },
     {
       "path": "crates/host-runtime/src/bin/host-resources.rs",
-      "size": 545,
-      "sha256": "f890e6d25f4872d1752e91d2c4223391e585f890266fa909b7df830e78eab84b"
+      "size": 669,
+      "sha256": "1379df06b6847366b0a67805c9f99d9583525c687e2a7afd1108e03b94b192fe"
     },
     {
       "path": "crates/host-runtime/src/bin/qualify-android-aosp.rs",
@@ -1878,8 +3178,8 @@
     },
     {
       "path": "crates/host-runtime/src/bin/qualify-windows-installer.rs",
-      "size": 33824,
-      "sha256": "5539046e8c9ac10b9834b8ace678465fc2c7d31f2599d423e23b6544316829b2"
+      "size": 4044,
+      "sha256": "dcf27bf6453bc0b074289c13d6d005de13d533ed41de3f41101eefa0026c87c5"
     },
     {
       "path": "crates/host-runtime/src/capsule.rs",
@@ -1888,8 +3188,8 @@
     },
     {
       "path": "crates/host-runtime/src/component.rs",
-      "size": 6575,
-      "sha256": "90cd429d82dfb2bbfb128e87f4c7e07e136f77b001895a87bcce08377a64a0a3"
+      "size": 6954,
+      "sha256": "50e4d2ced5c43a9f84efe7764ab356383a71002ceb418d262f0ece7f8575f6bd"
     },
     {
       "path": "crates/host-runtime/src/control.rs",
@@ -1898,8 +3198,8 @@
     },
     {
       "path": "crates/host-runtime/src/desktop_bridge.rs",
-      "size": 3556,
-      "sha256": "97e158b55ca78eeb0baeee1713a3ed17bfbed33fcdc24f0eae4f1e9f7f6738c5"
+      "size": 4877,
+      "sha256": "b8a6c0a298b0aa26ecbfa9513d7224fa0c93b66c2be730f27a67aad686973495"
     },
     {
       "path": "crates/host-runtime/src/device_bridge/cli.rs",
@@ -1923,8 +3223,8 @@
     },
     {
       "path": "crates/host-runtime/src/device_bridge/guest.rs",
-      "size": 2336,
-      "sha256": "9603034ea40b2f24f6401f1820994199c9388741336da16c4342ff134393c3da"
+      "size": 2307,
+      "sha256": "fb8f0a30f63c82b1084cfeea414d8b23c4867d01e065dabdd234f7996e4d7327"
     },
     {
       "path": "crates/host-runtime/src/device_bridge/peer.rs",
@@ -1957,9 +3257,14 @@
       "sha256": "2654027403774992bd61deb46dfa50682b2634b2c6bd69f4894717b383ecf9c4"
     },
     {
+      "path": "crates/host-runtime/src/guest_channel.rs",
+      "size": 3659,
+      "sha256": "133cbfaf073e0f5a91d9b1eec6eb49bb72ba39ccde2f73d3bf6db2808b44cc73"
+    },
+    {
       "path": "crates/host-runtime/src/lib.rs",
-      "size": 4451,
-      "sha256": "2708c9f24943c57c2b94441531cb99618b867cbdcb0754ef48694d72ff517762"
+      "size": 4883,
+      "sha256": "3ac7433db9ee4e6bf950e98199c8daa69a96fa29d17151b6f528357c973856c3"
     },
     {
       "path": "crates/host-runtime/src/links.rs",
@@ -1968,18 +3273,18 @@
     },
     {
       "path": "crates/host-runtime/src/linux_vm/host.rs",
-      "size": 20481,
-      "sha256": "49281f8911a04601d48684f5ba7137fcd00d6390efea03d0ca3c1a54a8bb7566"
+      "size": 21359,
+      "sha256": "ffdd160372eeb81d8bc5c17aaec1696ded00cb178f4eb7157b7eb9cabda1b4da"
     },
     {
       "path": "crates/host-runtime/src/linux_vm.rs",
-      "size": 6584,
-      "sha256": "aed25c9c3dc80fb36f3812262f406bff1b4d3025755b422068aac06cff3494ea"
+      "size": 7419,
+      "sha256": "eba6aa012978838b0577f2ad101afc0a25545f0c7984d661817d0a1a834f7f5f"
     },
     {
       "path": "crates/host-runtime/src/managed_engine.rs",
-      "size": 11811,
-      "sha256": "077616aa3a35e5a47ada4492ad075a7bd29e8115d8c762f28c5b4ac3a9783789"
+      "size": 12681,
+      "sha256": "4c13bae81b7308a265236f1bd4119227c8655a62e4c25e1fb620cd5d9fc8d904"
     },
     {
       "path": "crates/host-runtime/src/manifest.rs",
@@ -2008,23 +3313,23 @@
     },
     {
       "path": "crates/host-runtime/src/profile.rs",
-      "size": 15311,
-      "sha256": "4dadadb741f81b71661e6c168fa7fb0ec95eadae6bba48342679a30dd9d5bace"
+      "size": 14225,
+      "sha256": "4e1d61fa94cba2a2c5af674fba774a33956ccf7e0fc9c9694441429b5a62d33c"
     },
     {
       "path": "crates/host-runtime/src/project_command.rs",
-      "size": 8867,
-      "sha256": "cbaea9951e88a2badabd4eeb2b1fbba8e279dc7c77139f33b83731facbfc67a7"
+      "size": 8418,
+      "sha256": "18b8646d6592d8176768b1c171ba9a868c4c693aca1cc8ca5c2abfa5b3d63b81"
     },
     {
       "path": "crates/host-runtime/src/qemu_native.rs",
-      "size": 5081,
-      "sha256": "0ec4b3c94d75884f15e00b49c3339e7a9fbcb01eec3515a22fdffd18a00b7535"
+      "size": 5146,
+      "sha256": "67201f08beb117f9f93c5eb9c6af09409d9c0ba6c09e5f7a40a6c2ddc4a32c62"
     },
     {
       "path": "crates/host-runtime/src/runtime_environment.rs",
-      "size": 9650,
-      "sha256": "7edd5ab813d4c732829da0934a3bcb180ea7776fe5d7ab3f2ac2c5b29f213b8a"
+      "size": 9590,
+      "sha256": "f764d1887af961951e3bcedf1314d6264a7a777724ebbbf6dd932fba375fa8f6"
     },
     {
       "path": "crates/host-runtime/src/source_cli.rs",
@@ -2033,8 +3338,8 @@
     },
     {
       "path": "crates/host-runtime/src/source_services.rs",
-      "size": 6357,
-      "sha256": "bcb62196191ea7cd5395bf92c9f03d72b8d35e41e11f80f1c95b0664d287ec42"
+      "size": 5645,
+      "sha256": "6341d945b8598357c0a993870b4905c7b20b739e3d30935c8de3263689224a60"
     },
     {
       "path": "crates/host-runtime/src/staging.rs",
@@ -2058,8 +3363,8 @@
     },
     {
       "path": "crates/host-runtime/src/supervision/macos.rs",
-      "size": 12147,
-      "sha256": "f55ace681a3e94e6a9ea9e5b24413f327959ea1c2f87fca32b910417c6e98220"
+      "size": 11860,
+      "sha256": "beb8dc71cbd298a393c704cae9ef5c827de131a482635f1f211e0f7275517b75"
     },
     {
       "path": "crates/host-runtime/src/supervision.rs",
@@ -2068,43 +3373,43 @@
     },
     {
       "path": "crates/host-runtime/src/tests.rs",
-      "size": 20435,
-      "sha256": "4ecc87b33351d4808746d563d6ff0b5293c52dfc58eaba07f91507e312ff7ebe"
+      "size": 20425,
+      "sha256": "1fe8fc79fb73a7e2bccd19c749b0a20972cca63ef0903f3f58392eee3e7cd2b7"
     },
     {
       "path": "crates/host-runtime/src/unix_initializer/engine.rs",
-      "size": 7233,
-      "sha256": "9b56f841e8bfaad00a4e5bc078dd307176e3e47a297b105559df64610184a6a7"
+      "size": 7823,
+      "sha256": "4d98d61bc717fecdbaa8fc1487abcee550235eeaee40ebbe1633f9e726ecd2cc"
     },
     {
       "path": "crates/host-runtime/src/unix_initializer/phone.rs",
-      "size": 4994,
-      "sha256": "2650f81f36900821fe50c39be44eacc3b390158ca2434ccc65ca3f0354751ba5"
+      "size": 4987,
+      "sha256": "286f6bf968faa07b7f22577e4d772dafa708c9649dfe9c6b0773dbed711636bc"
     },
     {
       "path": "crates/host-runtime/src/unix_initializer/readiness.rs",
-      "size": 6552,
-      "sha256": "5f2499e72d934c50c1367d442fb754860cc71455a7ae5e55c8b78902444dc78e"
+      "size": 6198,
+      "sha256": "45ff61a38cc9c981c99fa0c5dcee05f6741328c6025592579b84fd5e281a3b08"
     },
     {
       "path": "crates/host-runtime/src/unix_initializer.rs",
-      "size": 14429,
-      "sha256": "67732a7a3c6f89fbf02773e6e3c4f47973328183fadcfb5b7bb30824ad9437f9"
+      "size": 16597,
+      "sha256": "12ad38bf821f787b2aab830a98b5ad82a1de38a9b06aa19829bef0d4e04b914a"
+    },
+    {
+      "path": "crates/host-runtime/src/virtual_device.rs",
+      "size": 5343,
+      "sha256": "2d2f42cd673a4e212c5c4ac7acfdd4f2a56c89794f057619c3f336b9ab66b300"
     },
     {
       "path": "crates/host-runtime/src/vm_control/guest.rs",
-      "size": 8539,
-      "sha256": "a442598ef64ce749d44c12a6053145a2fb2f661e3a2bee706d11430695b8e134"
+      "size": 12299,
+      "sha256": "c3e94c1d049a6c0665ac825cd0452693eb7956762a74a56e1d10939bf21110b0"
     },
     {
       "path": "crates/host-runtime/src/vm_control.rs",
-      "size": 7465,
-      "sha256": "c36d1d8e5f7a1323cfe899a5e3422f1c89fce2fa7120773e7b1b91beb0af7242"
-    },
-    {
-      "path": "crates/host-runtime/src/wsl/backend/postgres.rs",
-      "size": 5957,
-      "sha256": "59bacb1e624bbd702214714c69ed2d8289f3d4d6c6b18410b5a24488d91aa4d4"
+      "size": 8449,
+      "sha256": "a8dede079633be057e2f99fc58ef6d63dfc4979db6e8a3ee3b4006cf1a2d1cdc"
     },
     {
       "path": "crates/host-runtime/src/wsl/backend/process.rs",
@@ -2113,13 +3418,13 @@
     },
     {
       "path": "crates/host-runtime/src/wsl/backend/tests.rs",
-      "size": 11047,
-      "sha256": "23914c12a3ecda1e5d26dbe69dc86203689d70361523df4bf17ef09364af17bd"
+      "size": 10122,
+      "sha256": "d0fddd5d973763bf9b1f8c6da8a812770875f92cf83d852a1c62c23042bdb729"
     },
     {
       "path": "crates/host-runtime/src/wsl/backend.rs",
-      "size": 12666,
-      "sha256": "ad7c39f98721b2256171c285f9328a66fa7445b6f65b536b14f5a59aff335892"
+      "size": 9328,
+      "sha256": "7306b4fa6cd369d58a00351152c84cc8b60d0301f9d90450041ab6b61895997f"
     },
     {
       "path": "crates/host-runtime/src/wsl/devices.rs",
@@ -2153,8 +3458,8 @@
     },
     {
       "path": "crates/host-runtime/tests/host_profile_cli.rs",
-      "size": 12295,
-      "sha256": "c703d1d5b019d5f6d901fb0891834842bed8817081ca17ff55b5743c4fe6f5f0"
+      "size": 10995,
+      "sha256": "823fb6fc0cb1b036a11eca16c5581a6a2345a6d56bd05bf2ddfea3cc91a64a18"
     },
     {
       "path": "crates/host-runtime/tests/legacy_format1.rs",
@@ -2168,8 +3473,8 @@
     },
     {
       "path": "crates/host-runtime/tests/network_observation_cli.rs",
-      "size": 21365,
-      "sha256": "503967df9cdb4b1496cc145660ff925b1bc07cc287040fe1b5f039ab6658f188"
+      "size": 21430,
+      "sha256": "38ed91ee9445fa1bacae3b55118683f0346e27351fa1e8dd2520ef286e3ff340"
     },
     {
       "path": "crates/host-runtime/tests/network_paths_cli.rs",
@@ -2212,6 +3517,41 @@
       "sha256": "340e8edd8701fd3390fb24f64fcfc9aa6b754cddc767b4a1e084a7526a5e7d8a"
     },
     {
+      "path": "crates/model/Cargo.toml",
+      "size": 513,
+      "sha256": "8fff210e9cf866058292f53931b6ae5b7c493242fc271128800a43cd08e787c9"
+    },
+    {
+      "path": "crates/model/src/anthropic_messages.rs",
+      "size": 19405,
+      "sha256": "ad3392c25145fedcfb184bc8826251582abf58050f35bf20dd1136d67256e9b1"
+    },
+    {
+      "path": "crates/model/src/chat_completions.rs",
+      "size": 15765,
+      "sha256": "1f887bdaed62895ba401b0a6162f8c0dce4f3dc064c21327a03f3ad87c108bc0"
+    },
+    {
+      "path": "crates/model/src/config.rs",
+      "size": 3093,
+      "sha256": "37cbb0e0c34f263865edd71e4ab8ae72282369d86f7fb3b6cc61166cf8f691e3"
+    },
+    {
+      "path": "crates/model/src/lib.rs",
+      "size": 26462,
+      "sha256": "d9e60c9730dec8478d0f65c68a5c7d24052ad56c81f47d228c23a99554561c30"
+    },
+    {
+      "path": "crates/model/src/model_sse.rs",
+      "size": 4988,
+      "sha256": "6946cf57df6b40b7cfb390f7a3ea48c3fb0d17968d75868a88db24eb925dcb17"
+    },
+    {
+      "path": "crates/model/src/model_timing.rs",
+      "size": 2331,
+      "sha256": "701fe64063835af7e1e89ce02e8a72326b7f9c652a56ab285ba4729846c171a5"
+    },
+    {
       "path": "crates/phone-runner/Cargo.toml",
       "size": 1242,
       "sha256": "7656489d5abe735f8ae5b8d82eea6bfff214c95cff841045440ef006352a9d35"
@@ -2248,8 +3588,8 @@
     },
     {
       "path": "crates/phone-runner/src/location.rs",
-      "size": 7891,
-      "sha256": "595b6d7b352261371c909642cbac150c108618d6bb275d49020c854560948c46"
+      "size": 5763,
+      "sha256": "9b4f660990338a4cd866e03d59e66b56b55c28ce89e59cecbe62e1dee5fa49fd"
     },
     {
       "path": "crates/phone-runner/src/main.rs",
@@ -2318,8 +3658,8 @@
     },
     {
       "path": "crates/release-tools/Cargo.toml",
-      "size": 904,
-      "sha256": "da5d70b39d1ccaf6ea6023e1a90d16f86ca21d6e721e749b6b29bc2cf2d9891b"
+      "size": 998,
+      "sha256": "ce3fe11768318f5712134e8284835eb5ae24a84fe835b93b334a27cbbdaaf7e2"
     },
     {
       "path": "crates/release-tools/src/android_component.rs",
@@ -2333,28 +3673,28 @@
     },
     {
       "path": "crates/release-tools/src/android_package/home_dex.rs",
-      "size": 5161,
-      "sha256": "82821078ed763a9bb0a8ae4bc9d699f49209caa192e0b82914a0557239040755"
+      "size": 5205,
+      "sha256": "6891601b9d5e365289c6690f53cdcefef7d63019c332b667f03b8264a59ed25d"
     },
     {
       "path": "crates/release-tools/src/android_package/network_dex.rs",
-      "size": 1214,
-      "sha256": "4099f68948167b78fe388acb26353e115ad4648834ec938be21612bf2dc938b1"
+      "size": 1216,
+      "sha256": "3bd3a7e1038a6b97f2e9c85c609d68000e6be9a2cf824d7d51c6a88737a73d90"
     },
     {
       "path": "crates/release-tools/src/android_package/receiver_dex.rs",
-      "size": 15206,
-      "sha256": "96c68a49ce5db60f8cfc3592cba5c2b44d13ff19acd04dc9111181123fd69a8a"
+      "size": 16827,
+      "sha256": "ff4ce2bbf1192efb9741a69ee54c8270eb982f930be28e7aab2fb4a624ad34a9"
     },
     {
       "path": "crates/release-tools/src/android_package.rs",
-      "size": 5444,
-      "sha256": "c0a1f444d9a75a253978d71d9d0c4da01810a381792b3b2f0b6afafe1c806df3"
+      "size": 9114,
+      "sha256": "98363e5e0efe5acdfad19baf55822068696faf713426c9c841c4f97dd21c79dc"
     },
     {
       "path": "crates/release-tools/src/assets.rs",
-      "size": 11002,
-      "sha256": "df27b96cca88f779952ab843423ebff42da5e4b0e9999f14cb2b6393c89640aa"
+      "size": 13036,
+      "sha256": "7b4e7a0929a0df82821825a38f0aa2f1d0c74f0f7bf0616979c27cc00b7cd4d2"
     },
     {
       "path": "crates/release-tools/src/capsule.rs",
@@ -2364,22 +3704,22 @@
     {
       "path": "crates/release-tools/src/client_installer/aimanity.spec",
       "size": 1005,
-      "sha256": "837a47d33d0f4775142bba5f8b58058620a8f99fb630a2a8154f81e93176b0a7"
+      "sha256": "0ab9a6e38f3fa48791b69403b219472aa9a9d66002a7e31362677b548e153f28"
     },
     {
       "path": "crates/release-tools/src/client_installer/bundle.rs",
-      "size": 11999,
-      "sha256": "3da05855fbe8148ad810476c6ae7caa454598bd5306eadeec6f6ecbec91e85a4"
+      "size": 12042,
+      "sha256": "e418d6b58d4ff91e9b1b759b56f08cabbc121139c6745ed590510a2daa75f2e2"
     },
     {
       "path": "crates/release-tools/src/client_installer/linux_packages.rs",
-      "size": 6117,
-      "sha256": "b587150008db220c0c684d53dfbca489c8d1278480e2bdd9ef3053f856ffb967"
+      "size": 6652,
+      "sha256": "d3fe9ad90ddf2bb9e6451e50f95f884381430d789dddb0f11344ba9f325f1fbb"
     },
     {
       "path": "crates/release-tools/src/client_installer/linux_payload.rs",
-      "size": 4117,
-      "sha256": "b805614f47dea26af9e357ac9819636314145015b69f07deb8fb611cf472da72"
+      "size": 4448,
+      "sha256": "783025e73ba5324acf835d84bdf307ff12690ae6e9ea48b03cc0016949639c94"
     },
     {
       "path": "crates/release-tools/src/client_installer/notices.rs",
@@ -2388,23 +3728,23 @@
     },
     {
       "path": "crates/release-tools/src/client_installer/resources.rs",
-      "size": 9820,
-      "sha256": "cf9efe49d40f86a94c637fb83c612137acca993ab582aea9aeaa70f4498f9909"
+      "size": 9878,
+      "sha256": "61d1712d28a6a9e543fe67752b621de1cdb1ab917a4a7aad1270abb9fb3f2470"
     },
     {
       "path": "crates/release-tools/src/client_installer.rs",
-      "size": 9150,
-      "sha256": "039244d07b929db57287cc7405722372b66a00453fb1c64b3bfc0e100ed27b44"
+      "size": 9164,
+      "sha256": "94339653648cfeeb03b516196e1ebdf26a9de0e9ad993ecc4e23431efcc6c9c0"
     },
     {
       "path": "crates/release-tools/src/client_payload.rs",
-      "size": 6984,
-      "sha256": "a5ac441d80d141ff234c1de326167f8458bf7cab8f1feac7080e86fbc4073838"
+      "size": 7444,
+      "sha256": "98d0deb424c7e21d5f702838921bd97678efb5b3751e7f8789ce6999122b9135"
     },
     {
       "path": "crates/release-tools/src/cuttlefish/boot.rs",
-      "size": 5993,
-      "sha256": "9f892ec4ab710faced163d356e062ef5dd256a180cf29a8d66c046df89cbde5a"
+      "size": 7046,
+      "sha256": "ea0d93911d5e2e1aeddd422754fabc166f914077a24fe380eae101dbcfba5276"
     },
     {
       "path": "crates/release-tools/src/cuttlefish/bootconfig.txt",
@@ -2418,13 +3758,13 @@
     },
     {
       "path": "crates/release-tools/src/cuttlefish.rs",
-      "size": 2316,
-      "sha256": "e63c93899b7e5207c7625b342e53542293f721c3cf2eaaabefb806488a6dcee8"
+      "size": 2645,
+      "sha256": "5d6e24b94597f15e9ed0e95f98bfb5f5f2688680203ee018816da178d11902dd"
     },
     {
       "path": "crates/release-tools/src/dependency_audit.rs",
-      "size": 6176,
-      "sha256": "72bde4edf86ab84580601e395a49eb792c81b660abb9752c6f6c2b267f853dc4"
+      "size": 6775,
+      "sha256": "be66ed87a5d46b502cb7c5e04ce55fb3f716ef2a5a83173fb3f9b2ba70b505c0"
     },
     {
       "path": "crates/release-tools/src/image_factory.rs",
@@ -2443,33 +3783,28 @@
     },
     {
       "path": "crates/release-tools/src/macos_factory.rs",
-      "size": 14207,
-      "sha256": "39b7ab7497deb66e54e77e3508baa390e24747af73652fed4f948794194d7ed1"
+      "size": 14193,
+      "sha256": "88e98e790ad821eb5ebc27545b4542cbc64ba24f0c9f2a7146d0c7b5e56e65f5"
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 5061,
-      "sha256": "323cd4d9daf797260184132ccf00a3a8fda298afc49b708c188e1938df7228ac"
+      "size": 5700,
+      "sha256": "3b43aa7aaf1cda3423a6876b94e8b872b775bf7eb013470055580967392aced0"
     },
     {
       "path": "crates/release-tools/src/native_services.rs",
-      "size": 16493,
-      "sha256": "4852d83fea9dffdb3ef88325fea85d384432d86b2ce5f3d7396a32ec9c22f2b9"
+      "size": 17641,
+      "sha256": "fc20521a0d36232d6059da1271d8ebcaa261a91753f221995260d1e83abdf42a"
     },
     {
       "path": "crates/release-tools/src/phone_apps.rs",
-      "size": 5029,
-      "sha256": "686e941ce9bbde9ff4b0e70756ba9ba9a593db74254e39ef4e51c405de801076"
+      "size": 6395,
+      "sha256": "748adc9d90c234786e864a00f596f4036a851fcc226966f95b889aed9bb0c88f"
     },
     {
       "path": "crates/release-tools/src/source.rs",
-      "size": 22928,
-      "sha256": "e8e600265307793a0cc7815b4de728c87d2aa72b2098660d996af10b4cf30f89"
-    },
-    {
-      "path": "crates/release-tools/src/update_feed.rs",
-      "size": 6016,
-      "sha256": "6e6cf48c879e9561f914d2b3db99a9aa51e07a7ad11486ad9185b6d96a63ede5"
+      "size": 23002,
+      "sha256": "419a1f1fd3ff8a716e97f8227a992ed4ff4771de50d5e541ea6026138127d0dc"
     },
     {
       "path": "crates/release-tools/src/windows_factory/guest.rs",
@@ -2483,18 +3818,18 @@
     },
     {
       "path": "crates/release-tools/src/windows_factory.rs",
-      "size": 12150,
-      "sha256": "bce89e53fb90b61e87c799886a6c104612daa339cbe22324ce1d3c61fb6d6801"
+      "size": 11766,
+      "sha256": "92f97beffe94abc7b20ecf8e388a5524153e06d334d9d224fe9c816e0e9f4c84"
     },
     {
       "path": "crates/release-tools/src/windows_release/assets.rs",
-      "size": 6020,
-      "sha256": "dbdb5cbb1841517b3143c09701c8138b370c378741af72f150b3bb7eb1630e8b"
+      "size": 6282,
+      "sha256": "78748c189ee965482f9814e893ad43a604ae09b654fd65e141dffc8d97390be8"
     },
     {
       "path": "crates/release-tools/src/windows_release.rs",
-      "size": 7340,
-      "sha256": "6e039ca6bf7df8163d6a7aa59fc3da20474eae119efcbf75c2e3a931a0b8ff82"
+      "size": 7626,
+      "sha256": "0d58c70f54d6d47887a7b8b9acc9c0af41b385c029871309fcc5702d08d35f90"
     },
     {
       "path": "crates/release-tools/tests/capsule_encoder.rs",
@@ -2527,19 +3862,29 @@
       "sha256": "5219177b776a8448a841363cb4ebdfaf55958593707ad018fffd76cb2d3d8722"
     },
     {
+      "path": "crates/workbench-proxy/Cargo.toml",
+      "size": 550,
+      "sha256": "6f4af24a5902e59a59566ad8d359166530523d292a421d53af9ae5c827d21e8f"
+    },
+    {
+      "path": "crates/workbench-proxy/src/lib.rs",
+      "size": 14437,
+      "sha256": "a936b953f5addd0102e411b841880e1e8c996005a7a3c0ac204b13c5824a70a1"
+    },
+    {
       "path": "docs/public/action-records.md",
       "size": 3292,
       "sha256": "11a9686ea01fb5bdafcec2cc483d5a7183c1dbf00c44947569ac0663a003b8df"
     },
     {
       "path": "docs/public/architecture.en.md",
-      "size": 8679,
-      "sha256": "3807a98a42e32fee1347e12301cdd8d44ff7b9f6bc444d053aba5e272a9677ff"
+      "size": 1678,
+      "sha256": "5eed3ba019d2fe75e0d6bfa0349a1e0f307ebaaf65588775ca6b9c7a00e1e639"
     },
     {
       "path": "docs/public/architecture.zh-CN.md",
-      "size": 7873,
-      "sha256": "f8d50540144a35aeaa7f7e9d0ffb2d96f1e5b6037f9df43b0c156394bcdf4770"
+      "size": 1486,
+      "sha256": "4296d370449fbd0b60dc7cb266f5a419249bbbd45abb1c5f89435552b1975880"
     },
     {
       "path": "docs/public/autonomous-exploration.md",
@@ -2548,13 +3893,13 @@
     },
     {
       "path": "docs/public/backup-restore.en.md",
-      "size": 1710,
-      "sha256": "feb95e01f0d671feed9644712d6cc270bd739fc7be4b9f95fcf65883e72a80f6"
+      "size": 726,
+      "sha256": "269b39bf27b4170596bd2b104a2a1091de94e65198496da8b1c7f211263bb58b"
     },
     {
       "path": "docs/public/backup-restore.zh-CN.md",
-      "size": 1472,
-      "sha256": "e60b95e27b47266af9f108d4ab5e7f4efa570dd9c32cd3f9acd45eb6700c0fca"
+      "size": 593,
+      "sha256": "2bb547b7c4ae233085d44a603366911eef8687d3cf6783f7abc4216b52445312"
     },
     {
       "path": "docs/public/capabilities-and-data.md",
@@ -2587,11 +3932,6 @@
       "sha256": "b5d66e52151cc967be5fd79aff73870245ce4d09fd36144fcb418847df3b786a"
     },
     {
-      "path": "docs/public/database-roles.md",
-      "size": 2925,
-      "sha256": "a347705d586630c2d739b62bd1373ae404e4e4989e5dedfeae9d658a388d80bc"
-    },
-    {
       "path": "docs/public/dependency-licenses.json",
       "size": 336640,
       "sha256": "e9522dffa088b12cb150ea7ea15bd9704bea85ded26ee3f7d82253c6e1afc6bc"
@@ -2603,18 +3943,18 @@
     },
     {
       "path": "docs/public/distribution-requirements.md",
-      "size": 1314,
-      "sha256": "1d758422f89cd6a975d9f04b448bc729bb7a8c689e549c689f6dc3de7f756457"
+      "size": 1408,
+      "sha256": "bf85152b7d5c515ae9fa26490221164194d6ea106df791d57f1330ae973e77bb"
     },
     {
       "path": "docs/public/distribution.en.md",
-      "size": 2919,
-      "sha256": "df430efb4acf30b548afa7f54011a01257c027a1e5b177e97998a6924f06ee7a"
+      "size": 1065,
+      "sha256": "155ec19169c273e7d75736d13bb4ca9f9d367dfd4b84cc6176a2fb045bc12231"
     },
     {
       "path": "docs/public/distribution.zh-CN.md",
-      "size": 2637,
-      "sha256": "c5ab78b5fe9337c6855d54a733e398a5a31b9c3d12413c5d1cc1e5e11789fa01"
+      "size": 941,
+      "sha256": "2fe5801d8235ac1f389ed7c4d141d4c32c6bbf237b76e7547ae1b6dbc13b975f"
     },
     {
       "path": "docs/public/engineering/android-corresponding-source.md",
@@ -2648,8 +3988,8 @@
     },
     {
       "path": "docs/public/engineering/device-resources.md",
-      "size": 1508,
-      "sha256": "3b54c5ccf82f9fbacb2c724913387c0588dc9e87f7763aba23630c12b9372e31"
+      "size": 1370,
+      "sha256": "75879de89c973d4a009363f215368aecff412ff627715b201a72874881129759"
     },
     {
       "path": "docs/public/engineering/europium-scenarios.zh-CN.md",
@@ -2673,8 +4013,8 @@
     },
     {
       "path": "docs/public/engineering/macos-full-runtime.md",
-      "size": 4089,
-      "sha256": "6fbd7b02c9adb973b2ed98ce22bdb5c52c0495dcdda6d4bcc4a4df970fa052e9"
+      "size": 4000,
+      "sha256": "f00bee5ca81cbde047aa07d13e7de139e9b64a48f82bc849cfa16714380b4f2b"
     },
     {
       "path": "docs/public/engineering/native-android-preparation.md",
@@ -2707,34 +4047,29 @@
       "sha256": "11435402323f32847d5fa54ab70e40d54e9c479eab1343090da191b84cb0ee83"
     },
     {
-      "path": "docs/public/event-relay.md",
-      "size": 1507,
-      "sha256": "35cd263813bdc502a25121478958281ae8be572982e79e6c1bd01d903b2d57d9"
-    },
-    {
       "path": "docs/public/file-management.md",
       "size": 5129,
       "sha256": "a1adb72612e038001a86e4468c8348e035ef787836d4a2b057fdd7922d3153b0"
     },
     {
       "path": "docs/public/getting-started.en.md",
-      "size": 3918,
-      "sha256": "8a2c3a283e67c49a4e5b0c367642f9668a58658f452b2264515f032a25cf27f3"
+      "size": 928,
+      "sha256": "b05316baca2b9105b5ab89c75571a4eb363c7c59997a8ecdfce518365c6733b6"
     },
     {
       "path": "docs/public/getting-started.zh-CN.md",
-      "size": 3663,
-      "sha256": "895a8e4fa5981a56c15ca8d19b188716a4835795446e601cd9b062180ad382a9"
+      "size": 853,
+      "sha256": "508c7c0a9a67d128680699ed620dca4c6f57d30bf22053ad48ba3a662cc802d0"
     },
     {
       "path": "docs/public/index.md",
-      "size": 1991,
-      "sha256": "5f2bb01415695db5ea0ce071a2f49bb975f10adbbab5593a249cb563e5786a19"
+      "size": 2033,
+      "sha256": "e97eb919083d5df1d3611bc752549f4ebc6d8225045c7b5bee9e7cd034d81ada"
     },
     {
       "path": "docs/public/integrated-hosts.md",
-      "size": 2885,
-      "sha256": "df9cd133f884db08f8c26acfd8bddbc4bcc08285feb6f697dc4c2f44c860715a"
+      "size": 1666,
+      "sha256": "7fffcf2ee3dd9547b252e25f0b67b0f611e57df915388895aaad2b981f7616c4"
     },
     {
       "path": "docs/public/languages.md",
@@ -3057,6 +4392,11 @@
       "sha256": "ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7"
     },
     {
+      "path": "docs/public/licenses/native/redb-LICENSE-MIT.txt",
+      "size": 1061,
+      "sha256": "9dc47584f810f4a0f88197b590bf428b154dc5a7f87237c06a39720241e0461f"
+    },
+    {
       "path": "docs/public/licenses/native/rhai-LICENSE-MIT.txt",
       "size": 1023,
       "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
@@ -3223,13 +4563,13 @@
     },
     {
       "path": "docs/public/native-client.en.md",
-      "size": 3922,
-      "sha256": "d8e58f1399ebb3fb8644b6a46be5e3a434ce0387caccd1fd485bc71f0332416d"
+      "size": 4448,
+      "sha256": "61b01332ee992fadc17dd886756fd688f8d6ed8af4fced91f8012825d5749940"
     },
     {
       "path": "docs/public/native-client.zh-CN.md",
-      "size": 3385,
-      "sha256": "42aadebedfd6bf0fb60fbe163c39886c5305b0a22c99c5434559051f74df17e6"
+      "size": 4166,
+      "sha256": "6ed240a8c8255b5f6550cd65a9f7dabd2cbe5336144bcd3bc759c488a3bccb48"
     },
     {
       "path": "docs/public/native-services-license-inventory.json",
@@ -3243,8 +4583,8 @@
     },
     {
       "path": "docs/public/network.md",
-      "size": 906,
-      "sha256": "27327c747068bf24bbef77c4e7aa67910a5f4bb4b2600e5870d17dfdc492adae"
+      "size": 1240,
+      "sha256": "803e9ea943fb9d62c23b3fccad4f819046a2b56c1bcd8fb1cb78306d7193f1e0"
     },
     {
       "path": "docs/public/notification-workflows.md",
@@ -3258,63 +4598,63 @@
     },
     {
       "path": "docs/public/readme.ar.md",
-      "size": 4571,
-      "sha256": "ab644d3be42ad484a0de344ba8ccaa2bb5971605ba03d60663272881fdd2d67b"
+      "size": 2608,
+      "sha256": "94c69f7ae15567ceaf90b4557e8f1ffd4875378ba5c5b8a4c21068da02ecb8fc"
     },
     {
       "path": "docs/public/readme.de.md",
-      "size": 3528,
-      "sha256": "c5fd346f93ecdbb8f81d2498e97e2053cb0dc30e51f160af0c35ff2377832ccf"
+      "size": 1883,
+      "sha256": "cfafb7b46c6e7a5db0ba943e8e8212bed72aa1fd28815fca7f84f727c4e04040"
     },
     {
       "path": "docs/public/readme.es.md",
-      "size": 3525,
-      "sha256": "b67277544efe7fb8797ce5e2d416da7926c9c94e0b7fcc717ce2c0d9abc747c2"
+      "size": 1902,
+      "sha256": "60ea67615fcabe695ec7606586460f4c896d0fbe7f2b04caa4e5d9b562a53e32"
     },
     {
       "path": "docs/public/readme.fr.md",
-      "size": 3812,
-      "sha256": "63725e5f98c5d6f98f42ade3216095cfbb7f6e595b52d54f76fe5bf2f3a4332d"
+      "size": 2027,
+      "sha256": "9f1e951b60d939a2c1dbebcfa28b0190e98f232d7970057a90c767f632456264"
     },
     {
       "path": "docs/public/readme.ja.md",
-      "size": 3708,
-      "sha256": "8340fbac4cd9fd6fbff82df2a07dfda7320f9350842ffc2e637fd023e556b021"
+      "size": 2087,
+      "sha256": "6e0b07084d510c0ad39b746b2e7c066fd21b633777e56e16e1d043461fee83ab"
     },
     {
       "path": "docs/public/readme.ko.md",
-      "size": 3613,
-      "sha256": "400c6e8da4dd374b09c34d856ae7e08be63b242a31f96b3f1b535cc00e51d25e"
+      "size": 2048,
+      "sha256": "7085bcabd6dcb0d4327d4c20cf744b60c2337db40024179316872bf2551b37d8"
     },
     {
       "path": "docs/public/readme.ru.md",
-      "size": 5381,
-      "sha256": "be93a26b20c8c4fee24034c713bbb6532e6e06391f29176df3b7bc5e4198bfed"
+      "size": 2994,
+      "sha256": "3fd995227f86c247a376ab284e76635154e815cdddae8d26ac4fe817ab884a97"
     },
     {
       "path": "docs/public/readme.zh-TW.md",
-      "size": 3052,
-      "sha256": "3926e9a893f4085530e8e201645a7e1e68fd475599041b0d471fd4c77cfd0c83"
+      "size": 1558,
+      "sha256": "dd8edc8fd626db9bef71de59b07efb6668588e06f1624bd72762991375c9928f"
     },
     {
       "path": "docs/public/release-roadmap.en.md",
-      "size": 4496,
-      "sha256": "8b5fb312daae92ba0dfaf78f1d46736bcdd35932d4526792408bc92e49afdbfc"
+      "size": 3736,
+      "sha256": "b5524cf45c61b65b2c82e4007f00408ad553931d92f80e988c90d9c2595ec229"
     },
     {
       "path": "docs/public/release-roadmap.zh-CN.md",
-      "size": 3671,
-      "sha256": "2f03ce0475b7e4ac899be31ac8e944879c3bf6150117d7243f7c6f406545ea30"
+      "size": 3176,
+      "sha256": "2bded0edcd7bf8747933073a931db2c1ff750c17e08c59eb6d886411e8e504f3"
     },
     {
       "path": "docs/public/release-status.md",
-      "size": 5881,
-      "sha256": "76205c598e5448a6758d723c3a6e2e3a917d160a671623434b6a4ae7202a8812"
+      "size": 8460,
+      "sha256": "6e8a3f6962aaf18e034673bd1f53dfd55deba466b8b57e8ab3f40da897ef0bc9"
     },
     {
       "path": "docs/public/runtime-bundles.md",
-      "size": 7744,
-      "sha256": "2f6f0fef2e838bcb5a45bed56483c127727c9cdd14e4155a5a8deebaaef5819b"
+      "size": 7762,
+      "sha256": "13f6bcac1f3dbc8134ddde4d28cae5c38e796fbea91f859494024f8a10b21282"
     },
     {
       "path": "docs/public/simulated-location.md",
@@ -3323,13 +4663,13 @@
     },
     {
       "path": "docs/public/source-release.en.md",
-      "size": 2706,
-      "sha256": "edc85a92888db5e17aee024608e4e9daf409eb4be1fd1603b3ee6a704c6bc119"
+      "size": 1934,
+      "sha256": "98cd937a995f1a15d813a77432baf6af9f49529aaf38b9cfe76c9db42b8a8091"
     },
     {
       "path": "docs/public/source-release.zh-CN.md",
-      "size": 2421,
-      "sha256": "0dcbba37c57e7b68b75c68580d7228edfef6823e2a85d39b970fc2be5cae399c"
+      "size": 1819,
+      "sha256": "f61178cd3e006221d54157c31747308745fdd11ad395166d74e3bde2bc916a3d"
     },
     {
       "path": "docs/public/task-recovery.md",
@@ -3348,8 +4688,8 @@
     },
     {
       "path": "docs/public/windows-backend-runtime.md",
-      "size": 3163,
-      "sha256": "a541eaa6ec5fb2b2711cc19c1e05f0c5a654affec7db56cca022c803dedc66c0"
+      "size": 3034,
+      "sha256": "15dcc74583355435e7cffd83e4d943fada77cfca4c525f832de8f8bf01391449"
     },
     {
       "path": "docs/public/windows-client-factory.md",
@@ -3468,8 +4808,8 @@
     },
     {
       "path": "infra/desktop/pulse.pa",
-      "size": 255,
-      "sha256": "ebe4538e10f8350fc682f203acdcfaabeb2005425edea1f4b22877f26b8312fe"
+      "size": 456,
+      "sha256": "b5581610d60ebbf6d5f105af89e072b40ca414ce6076070b6b8944b43c5dd486"
     },
     {
       "path": "infra/desktop/start.sh",
@@ -3488,8 +4828,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/assistant.proto",
-      "size": 3004,
-      "sha256": "1f7f82c06f9541b43ec3c99176b704405feebcea089bf677ea8817665b1e44a3"
+      "size": 3198,
+      "sha256": "3828bfdf0597e9dddfd25c2e4c8a865fe70b1aaee3b18ce466c51c7ebfc63b21"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/auth.proto",
@@ -3503,8 +4843,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/desktop.proto",
-      "size": 3916,
-      "sha256": "94eb0676a7161a9f022494439f87a5ad9af1be46d7a46d687131527d85e72ebc"
+      "size": 4943,
+      "sha256": "1dd63fd08929931d0be90218acb4efd7b8feeb43cd38e6f10669d50b09f67722"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/device_network.proto",
@@ -3518,8 +4858,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/host_bridge.proto",
-      "size": 2816,
-      "sha256": "8536e998bd8bdde8b234faf57919f193dca2bf50122120739d92053a32ffdd89"
+      "size": 2935,
+      "sha256": "73639138363f2e61ec1e8079c4037104c987e3901bb11f136b3dcd60e879781e"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/location.proto",
@@ -3538,13 +4878,13 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/proactive.proto",
-      "size": 1295,
-      "sha256": "6b69b659e4571ff8b878acd3d387beca11427c4b74bd5c2adc051335772f3322"
+      "size": 1316,
+      "sha256": "9c313eefa12e7125e83b374ff44f0215702d213d1436b5ceb9b81ef579d41ec8"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/registry.proto",
-      "size": 1946,
-      "sha256": "8678baebc1d6aa4929f299d34179a77339871e3ec4f706d45bc1ed614c61e8a6"
+      "size": 2504,
+      "sha256": "4a16b345335463191fb1f58e4e3fb2f00a3ca4a23f521c780c45df2cb82cefdc"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/settings.proto",
@@ -3568,8 +4908,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/workspace.proto",
-      "size": 1665,
-      "sha256": "733be8239bbe5151598e496da62ba970e65a50767fd236c24489dbc5fee059eb"
+      "size": 1624,
+      "sha256": "9b0711ecd1588659fb07284a55c4abb64a6a1ae0d0aa27ac2c6e0de094009cdd"
     },
     {
       "path": "packages/protocol/vendor/android-emulator/emulator_controller.proto",
@@ -3603,8 +4943,8 @@
     },
     {
       "path": "scripts/android-env.sh",
-      "size": 868,
-      "sha256": "4f0d53a9a4a7cd48effc8682ab6051d51cae2c51913b18e6f3b2d76aef2226b9"
+      "size": 858,
+      "sha256": "93c79825ef9d6fc14f3fe9ce3465c96d110218a3711a8a3e2898fa631d084ec5"
     },
     {
       "path": "scripts/android-install-curl.sh",
@@ -3658,8 +4998,8 @@
     },
     {
       "path": "scripts/check-linux-guests.sh",
-      "size": 2631,
-      "sha256": "d8d5904eb27e335d583a73cda6b0ae248819109d7efe9381962f04b309b4e1a8"
+      "size": 5004,
+      "sha256": "792962f984a63110772948e4499db728417002e804ce7c7b49bce091c0858baa"
     },
     {
       "path": "scripts/check-native-workspace.sh",
@@ -3668,8 +5008,8 @@
     },
     {
       "path": "scripts/check-source-services.sh",
-      "size": 5227,
-      "sha256": "ce5ebd84fbec474eb28d56b069ca262ed2cf7728ba5770193875666351c2c0af"
+      "size": 418,
+      "sha256": "4bd02d657661ed2f0926f8aa18ad85d5b89be152245b6492dec49cc5cd18ac25"
     },
     {
       "path": "scripts/device-stream-start.sh",
@@ -3677,9 +5017,34 @@
       "sha256": "e2b79fa9ecbdf2a80e96c3acb9e311b1ad97e945460e075c667322b56dc8d950"
     },
     {
+      "path": "scripts/mobile-android-images.sh",
+      "size": 2513,
+      "sha256": "e62ee8ae5b7bee35fc0cbaedaaab5c8304eb1169018bc7186ec2a1779d4e994c"
+    },
+    {
+      "path": "scripts/mobile-button-row.rs",
+      "size": 1360,
+      "sha256": "4d57fed9e763aa05df58517a18a5f5db835982157cb2022316c78c7234420649"
+    },
+    {
+      "path": "scripts/mobile-linux-avf.sh",
+      "size": 5327,
+      "sha256": "b098d45b78d40cf5a9adab318cff999e8c2d199c782d58e1fbc8a22fe528b9a9"
+    },
+    {
+      "path": "scripts/mobile-package.sh",
+      "size": 5357,
+      "sha256": "2ea5ad7f6854fa083eac6b568194d6b787a05248958c5969f07fece18d6b8ca7"
+    },
+    {
+      "path": "scripts/mobile-smoke.sh",
+      "size": 8564,
+      "sha256": "ffd7fdf2e16eec2d656ef2db8fdda28791284fea53fb6f321e5d260431aac5c7"
+    },
+    {
       "path": "scripts/native-host",
-      "size": 282,
-      "sha256": "78057b852f0e9182440bf7daa6ed898f2ac041f55d071f8bfa32721f917697f8"
+      "size": 272,
+      "sha256": "0af82636cf1d33aca81526b16fe8dfc2510d097db564629deb1b4eceb72f757a"
     },
     {
       "path": "scripts/phone-lab-start.sh",
@@ -3697,24 +5062,19 @@
       "sha256": "eac07a45f93381040f1fc445281ef52ef7b465e69f19c47e79a5c32be2ce7b8e"
     },
     {
-      "path": "scripts/qualify-windows-window.ps1",
-      "size": 4446,
-      "sha256": "24965a046cad942a3571cd3fa01e860dd0d8f890092747af35cf67e497fd43ca"
-    },
-    {
       "path": "scripts/stage-debian-keyring.sh",
       "size": 414,
       "sha256": "e719e07090a85eb537965dcd300498d5564f39597a98bb9086049c03a47175fb"
     },
     {
       "path": "scripts/stage-linux-tools.sh",
-      "size": 1897,
-      "sha256": "184b88939a2f9bdf1c0ba633d18f1e5f6e78ff1ea38ae626425db8dfcb14eab8"
+      "size": 2023,
+      "sha256": "59c616083415272c15c2d5803ded5b9996a51acd18aa7e170142b91f1149ce52"
     },
     {
       "path": "scripts/windows-release-layer.sh",
-      "size": 3369,
-      "sha256": "ab29b847fb73fa59a4f9f710c7e03867c5c80da73c2017fe1cc019a4f7dab838"
+      "size": 2700,
+      "sha256": "4f6f9a5afdadd91d6e231bed903c046c064cd4924720d4f956f583fb623a57c5"
     },
     {
       "path": "skills/builtin/animista/SKILL.md",
@@ -3793,8 +5153,8 @@
     },
     {
       "path": "skills/builtin/draw/SKILL.md",
-      "size": 3634,
-      "sha256": "674b4853b34ef4bd44aca35943b899f6abee5b54e058ca1f6b2d715014f6f288"
+      "size": 2947,
+      "sha256": "4b89580b76a90494d52a7b90cf43458e90abeac177be42fc31af2556552f943a"
     },
     {
       "path": "skills/builtin/files-android/SKILL.md",
@@ -4175,6 +5535,11 @@
       "path": "skills/builtin/xiaohongshu/SKILL.md",
       "size": 1786,
       "sha256": "bce292f91194d458cdb4267fc4acc5883f55a39a15b54cbb1540e8ebfc02b7ec"
+    },
+    {
+      "path": "skills/core.txt",
+      "size": 133,
+      "sha256": "89df9ec38394815a73eeec8f660ab2c83e3374b67e2ac4a02a79062e5c5b6fee"
     }
   ]
 }

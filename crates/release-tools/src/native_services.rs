@@ -18,15 +18,13 @@ use std::{
 };
 
 const ROLES: [(&str, &str); 3] = [
-    ("assistant", "ai-phone-assistant"),
+    ("host", "host-resources"),
     ("runner", "ai-phone-runner"),
     ("vision", "ai-phone-vision"),
 ];
-const CONTRACTS: [(&str, &str); 7] = [
-    ("device_setup", "ai-phone-device-setup-v2"),
+const CONTRACTS: [(&str, &str); 5] = [
     ("service_supervision", "ai-phone-linux-supervision-v2"),
     ("phone_input_setup", "ai-phone-input-setup-v2"),
-    ("database_prepare", "ai-phone-database-prepare-v1"),
     ("host_profile", "ai-phone-host-profile-v1"),
     ("managed_engine", "ai-phone-managed-engine-v1"),
     ("runtime_environment", "ai-phone-runtime-environment-v1"),
@@ -55,6 +53,7 @@ fn check_public(bytes: &[u8], role: &str, home: &str) -> Result<()> {
 fn host() -> Result<&'static str> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => Ok("macos-arm64"),
+        ("linux", "aarch64") => Ok("linux-arm64"),
         ("linux", "x86_64") => Ok("linux-x64"),
         _ => Err("Unsupported native service build host".into()),
     }
@@ -228,8 +227,12 @@ async fn build() -> Result<Value> {
         "--features",
         "ai-phone-vision/native",
     ]);
-    for (_, package) in ROLES {
-        command.args(["-p", package]);
+    for (package, binary) in [
+        ("ai-phone-host-runtime", "host-resources"),
+        ("ai-phone-runner", "ai-phone-runner"),
+        ("ai-phone-vision", "ai-phone-vision"),
+    ] {
+        command.args(["-p", package, "--bin", binary]);
     }
     if !command
         .env("CARGO_BUILD_JOBS", "2")
@@ -265,7 +268,7 @@ async fn build() -> Result<Value> {
         let flag = format!("--{}-contract", name.replace('_', "-"));
         let result = probe
             .run(
-                Path::new("target/release/ai-phone-assistant"),
+                Path::new("target/release/host-resources"),
                 &[&flag],
                 None,
                 false,
@@ -353,7 +356,7 @@ pub(super) fn package(linux_ocr: Option<&Path>, linux_rootfs: Option<Value>) -> 
     if let Some(bridge) = bridge {
         let bytes = fs::read(bridge)?;
         check_public(&bytes, "desktop-bridge", &std::env::var("HOME")?)?;
-        let architecture = if host == "macos-arm64" { 183u16 } else { 62 };
+        let architecture = if host.ends_with("-arm64") { 183u16 } else { 62 };
         if bytes.len() < 64
             || !bytes.starts_with(b"\x7fELF\x02\x01")
             || bytes[18..20] != architecture.to_le_bytes()
@@ -384,7 +387,7 @@ pub(super) fn package(linux_ocr: Option<&Path>, linux_rootfs: Option<Value>) -> 
     };
     let mut manifest = json!({
         "format": 1, "host": host, "source_sha256": receipt["source_sha256"], "compiler": receipt["compiler"],
-        "versions": {"assistant":receipt["checks"]["assistant"]["version"],"runner":receipt["checks"]["runner"]["version"]},
+        "versions": {"host":receipt["checks"]["host"]["version"],"runner":receipt["checks"]["runner"]["version"]},
         "vision": vision, "files": files.iter().map(Entry::inventory).collect::<Vec<_>>(),
     });
     if let Some(rootfs) = linux_rootfs {
@@ -447,4 +450,30 @@ pub(super) fn run(args: &[OsString]) -> Result<Value> {
         }
         _ => Err("native-services requires build, receipt, or verify DIRECTORY".into()),
     }
+}
+
+pub(super) fn android_guest(args: &[OsString]) -> Result<Value> {
+    let [output, image] = args else {
+        return Err("android-linux-context OUTPUT WORKSPACE-TAR".into());
+    };
+    if host()? != "linux-arm64" {
+        return Err("Android guest requires ARM64 Linux services".into());
+    }
+    let folder = Path::new(output);
+    fs::create_dir_all(folder)?;
+    let root = std::env::current_dir()?;
+    run(&["build".into()])?;
+    let image =
+        crate::client_payload::copy_payload(Some(image.into()), &folder.join("images.payload"))?
+            .ok_or("Missing Linux workspace")?;
+    let rootfs =
+        json!({"sha256":image,"size_bytes":folder.join("images.payload").metadata()?.len()});
+    let files = package(None, Some(rootfs))?;
+    let version = source::payload(&root, folder, files, vec!["native-services"])?;
+    fs::write(folder.join("source.sha256"), format!("{version}\n"))?;
+    fs::copy(
+        "target/release/host-resources",
+        folder.join("bootstrap.program"),
+    )?;
+    Ok(json!({"identity":version}))
 }

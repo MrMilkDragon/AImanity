@@ -283,7 +283,7 @@ mod tests {
             db: db.clone(),
             root: root.clone(),
             token: "test".into(),
-            phone_token: "unused".into(),
+            phone_token: Some("unused".into()),
             settings: settings::SettingsStore::test_configured(&root),
             local: reqwest::Client::new(),
             remote: reqwest::Client::new(),
@@ -295,7 +295,7 @@ mod tests {
             network_mutation: Mutex::new(()),
         });
         let result=AssertUnwindSafe(async{
-   sqlx::migrate!("./migrations").run(&db).await.unwrap();registry::initialize(&db,&app.settings).await.unwrap();
+   sqlx::migrate!("./migrations").run(&db).await.unwrap();registry::initialize(&app).await.unwrap();
    let mut tx=db.begin().await.unwrap();let a=Uuid::from_u128(3);
    sqlx::query("INSERT INTO agents(id,name,model_connection_id) VALUES($1,'电脑Agent',$2)").bind(a).bind(Uuid::from_u128(1)).execute(&mut *tx).await.unwrap();
    sqlx::query("INSERT INTO devices(id,name,kind,system,runtime_state,default_agent_id) VALUES('desktop-test','电脑','desktop','Debian','managed',$1)").bind(a).execute(&mut *tx).await.unwrap();
@@ -303,7 +303,7 @@ mod tests {
    sqlx::query("INSERT INTO device_runtimes(device_id,provider,instance_ref) VALUES('desktop-test','native-desktop','ai-phone-desktop')").execute(&mut *tx).await.unwrap();
    let conversation:Uuid=sqlx::query_scalar("SELECT id FROM conversations WHERE owner_id='local-user'").fetch_one(&mut *tx).await.unwrap();let mid=Uuid::now_v7();let source_run=Uuid::now_v7();
    sqlx::query("INSERT INTO messages(id,conversation_id,role,text) VALUES($1,$2,'assistant','phone work')").bind(mid).bind(conversation).execute(&mut *tx).await.unwrap();
-   sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status) VALUES($1,$2,$3,$1,'test','running')").bind(source_run).bind(conversation).bind(mid).execute(&mut *tx).await.unwrap();registry::pin_run(&mut tx,&app.settings,source_run).await.unwrap();tx.commit().await.unwrap();
+   sqlx::query("INSERT INTO runs(id,conversation_id,assistant_message_id,request_id,request_fingerprint,status,device_id) VALUES($1,$2,$3,$1,'test','running',$4)").bind(source_run).bind(conversation).bind(mid).bind(registry::PHONE).execute(&mut *tx).await.unwrap();registry::pin_run(&mut tx,&app.settings,source_run).await.unwrap();tx.commit().await.unwrap();
    assert!(desktop::file_authorized(&app,source_run,"desktop-test").await.is_err());
    desktop::link(&app,wire::DeviceLinkRequest{source_device_id:registry::PHONE.into(),target_device_id:"desktop-test".into(),connected:true}).await.unwrap();
    assert!(desktop::file_authorized(&app,source_run,"desktop-test").await.is_ok());assert!(desktop::authorized(&app,source_run,"desktop-test").await.is_err(),"data cable must not steal another Agent's GUI control");

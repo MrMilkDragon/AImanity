@@ -32,7 +32,7 @@ async fn listen(
     (address, tx, task)
 }
 async fn configure(app: &App, base_url: String) {
-    registry::initialize(&app.db, &app.settings).await.unwrap();
+    registry::initialize(&app).await.unwrap();
     sqlx::query("INSERT INTO admin_sessions(token_hash) VALUES($1)")
         .bind(format!("{:x}", Sha256::digest("b".repeat(64).as_bytes())))
         .execute(&app.db)

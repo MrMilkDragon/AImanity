@@ -559,12 +559,14 @@ pub async fn read_device_notifications(
     run: Uuid,
     requested: &str,
 ) -> Result<Value, String> {
-    let current: String = sqlx::query_scalar("SELECT device_id FROM runs WHERE id=$1")
-        .bind(run)
-        .fetch_one(&app.db)
-        .await
-        .map_err(|e| e.to_string())?;
+    let current: String;
     let device_id = if requested.is_empty() {
+        current = sqlx::query_scalar::<_, Option<String>>("SELECT device_id FROM runs WHERE id=$1")
+            .bind(run)
+            .fetch_one(&app.db)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("请指定已授权的设备")?;
         current.as_str()
     } else {
         requested
@@ -746,7 +748,7 @@ async fn schedule(app: &App, kinds: &[&str]) -> Result<(), sqlx::Error> {
         if app.settings.current() == 0 {
             return Ok(());
         }
-        crate::registry::initialize(&app.db, &app.settings).await?;
+        crate::registry::initialize(app).await?;
     }
     let devices: Vec<(String, String)> = sqlx::query_as(
         "SELECT d.id,d.kind FROM devices d
@@ -1012,6 +1014,9 @@ async fn deliver(app: &App) -> Result<(), String> {
     Ok(())
 }
 async fn attend_phone(app: &App) {
+    if app.phone_token.is_none() {
+        return;
+    }
     let mut interval = tokio::time::interval(Duration::from_secs(1));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
@@ -1197,7 +1202,7 @@ mod tests {
             db,
             root: root.clone(),
             token: "test".into(),
-            phone_token: "unused".into(),
+            phone_token: Some("unused".into()),
             settings: settings::SettingsStore::test_configured(&root),
             local: reqwest::Client::new(),
             remote: reqwest::Client::new(),

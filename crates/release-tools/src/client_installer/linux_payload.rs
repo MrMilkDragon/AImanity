@@ -106,8 +106,14 @@ pub(crate) fn prepare(args: &[OsString]) -> Result<Value> {
     {
         return Err("Invalid packaged speech model".into());
     }
+    let apps = published.join("source.payload");
+    if source::payload_components(&apps)? != json!(["phone-apps"]) {
+        return Err("The shared x86_64 payload must contain the Android guest applications".into());
+    }
+    fs::copy(&apps, host.join("source.payload"))?;
     let integrity = json!({
-        "source.payload": source::payload(&root, &host, vec![], vec![])?,
+        "source.payload": file_digest(&apps)?,
+        "mihomo": crate::assets::proxy_binary("linux-x64", &host.join("mihomo"))?,
         "android.payload": android["archive_sha256"], "qemu/manifest.json": file_digest(&manifest)?, model: speech["sha256"]
     });
     fs::write(

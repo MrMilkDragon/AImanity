@@ -70,7 +70,7 @@ mod tests {
     #[ignore = "uses isolated PostgreSQL"]
     async fn idle_screen_and_daily_review_use_the_shared_queue() {
         database_case(|app| async move {
-            registry::initialize(&app.db, &app.settings).await.unwrap();
+            registry::initialize(&app).await.unwrap();
             sqlx::query("UPDATE proactive_state SET exploring=false, notifications_since='epoch', wechat_quiet_until='epoch'")
                 .execute(&app.db).await.unwrap();
             let doc = Uuid::now_v7();

@@ -3,14 +3,20 @@ on:
   workflow_dispatch:
     inputs:
       signed_run:
-        description: Run containing europium-signed-linux
+        description: Run containing fluorine-signed-linux
         required: true
         type: string
+      exercise_guests:
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       signed_run:
         required: true
         type: string
+      exercise_guests:
+        type: boolean
+        default: false
 
 permissions:
   actions: read
@@ -24,7 +30,7 @@ jobs:
         include:
           - distro: debian:12
             package: deb
-          - distro: almalinux:10
+          - distro: fedora:43
             package: rpm
     name: Install ${{ matrix.package }} on ${{ matrix.distro }}
     runs-on: ubuntu-24.04
@@ -40,7 +46,7 @@ jobs:
         run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup "$ANDROID_HOME"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: europium-signed-linux
+          name: fluorine-signed-linux
           run-id: ${{ inputs.signed_run }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/signed
@@ -55,48 +61,72 @@ jobs:
           set -euo pipefail
           mapfile -t installer < <(find "$RUNNER_TEMP/signed" -type f -name "*.$PACKAGE")
           test "${#installer[@]}" -eq 1
+          rustc --edition 2024 -C target-feature=+crt-static -O scripts/mobile-button-row.rs -o "$RUNNER_TEMP/action-row"
           devices=()
-          if [[ "$PACKAGE" == deb && -c /dev/kvm ]]; then devices+=(--device=/dev/kvm); fi
+          if [[ "$PACKAGE" == deb && "${{ inputs.exercise_guests }}" == true ]]; then devices+=(--device=/dev/kvm); fi
           docker run --detach --name distro "${devices[@]}" \
             -v "${installer[0]}:/candidate.$PACKAGE:ro" \
-            -v "$RUNNER_TEMP/package-key/AImanity-Europium.asc:/package-key.asc:ro" \
+            -v "$RUNNER_TEMP/package-key/AImanity-Fluorine.asc:/package-key.asc:ro" \
+            -v "$RUNNER_TEMP/action-row:/action-row:ro" \
             -v "$PWD/scripts/check-linux-guests.sh:/check-linux-guests.sh:ro" "$DISTRO" sleep infinity
           if [[ "$PACKAGE" == deb ]]; then
-            gpg --batch --dearmor -o "$RUNNER_TEMP/package-key.gpg" "$RUNNER_TEMP/package-key/AImanity-Europium.asc"
+            gpg --batch --dearmor -o "$RUNNER_TEMP/package-key.gpg" "$RUNNER_TEMP/package-key/AImanity-Fluorine.asc"
             ar p "${installer[0]}" _gpgorigin > "$RUNNER_TEMP/deb-origin.sig"
             ar p "${installer[0]}" debian-binary control.tar.zst data.tar.zst |
               gpgv --keyring "$RUNNER_TEMP/package-key.gpg" "$RUNNER_TEMP/deb-origin.sig" -
             docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc '
               apt-get update -qq
-              apt-get install -y --no-install-recommends /candidate.deb
-              dpkg-query -W -f="\${Status} \${Version}\n" aimanity
+              apt-get install -y task-gnome-desktop
+              apt-get install -y --no-install-recommends xvfb xauth openbox wmctrl xdotool x11-utils imagemagick tesseract-ocr-eng tesseract-ocr mesa-vulkan-drivers libgl1-mesa-dri procps
+              useradd -m tester
+              if [ -e /dev/kvm ]; then
+                gid=$(stat -c %g /dev/kvm)
+                group=$(getent group "$gid" | cut -d: -f1)
+                if [ -z "$group" ]; then group=runner-kvm; groupadd -g "$gid" "$group"; fi
+                usermod -aG "$group" tester
+              fi
             '
           else
-            docker exec distro bash -euc 'rpm --import /package-key.asc && dnf --setopt=localpkg_gpgcheck=1 install -y /candidate.rpm && rpm -q aimanity && rpm -V aimanity'
+            docker exec distro bash -euc '
+              rpm --import /package-key.asc
+              dnf install -y @workstation-product-environment
+              dnf install -y xorg-x11-server-Xvfb openbox wmctrl xdotool xwininfo ImageMagick tesseract tesseract-langpack-eng mesa-vulkan-drivers mesa-dri-drivers procps-ng
+              useradd -m tester
+            '
           fi
-          docker exec distro aimanity --verify-bundled-host /usr/lib/aimanity/host
-          docker exec distro aimanity --android-session-contract
-          echo "- $DISTRO installed the signed $PACKAGE and verified its offline resources." >> "$GITHUB_STEP_SUMMARY"
-      - name: Boot both installed guests on the runner's KVM
-        if: matrix.package == 'deb'
-        run: |
-          set -euo pipefail
-          if [[ ! -c /dev/kvm ]]; then
-            echo "::warning::This runner did not expose /dev/kvm. Guest boot was not exercised."
-            echo "- Guest boot was not exercised because the runner did not expose /dev/kvm." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc '
-            apt-get install -y --no-install-recommends xvfb xauth openbox wmctrl mesa-vulkan-drivers libgl1-mesa-dri jq curl procps
-            gid=$(stat -c %g /dev/kvm)
-            group=$(getent group "$gid" | cut -d: -f1)
-            if [ -z "$group" ]; then group=runner-kvm; groupadd -g "$gid" "$group"; fi
-            useradd -m -G "$group" tester
-          '
           docker network disconnect bridge distro
-          docker exec -u tester -e HOME=/home/tester distro \
-            xvfb-run -a -s '-screen 0 1600x1000x24' bash /check-linux-guests.sh
-          echo "- With the network disconnected, the installed client booted Android and Linux, returned a root ADB screenshot, reached the Linux workbench, and shut down both QEMU guests." >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$PACKAGE" == deb ]]; then
+            docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc 'dpkg --install /candidate.deb && dpkg-query -W aimanity-workspace'
+          else
+            docker exec distro bash -euc 'dnf --disablerepo="*" --setopt=localpkg_gpgcheck=1 install -y /candidate.rpm && rpm -V aimanity-workspace'
+          fi
+          docker exec distro aimanity-workspace --verify-bundled-host /usr/lib/aimanity-workspace/host
+          docker exec distro aimanity-workspace --android-session-contract
+          docker exec distro bash -euc 'tools=/usr/lib/aimanity-workspace/host/tools; LD_LIBRARY_PATH="$tools/lib" "$tools/bin/espeak-ng" --path="$tools/share" -v cmn -w /tmp/voice.wav "你好"; test "$(stat -c %s /tmp/voice.wav)" -gt 1000; fc-scan --format "%{family}\n" /usr/share/fonts/opentype/aimanity/NotoSansCJK-Regular.ttc | grep -F "Noto Sans CJK SC"'
+          docker exec -u tester -e HOME=/home/tester -e DISPLAY=:99 distro bash -euc '
+            Xvfb :99 -screen 0 1600x1000x24 -nolisten tcp > "$HOME/xvfb.log" 2>&1 &
+            for i in {1..50}; do xwininfo -root >/dev/null 2>&1 && break; sleep 0.1; done
+            bash /check-linux-guests.sh workbench
+          '
+          echo "- $DISTRO: installed the signed $PACKAGE offline, opened an empty workspace, closed it, then reopened the same database." >> "$GITHUB_STEP_SUMMARY"
+      - name: Check on-demand guests with KVM
+        if: inputs.exercise_guests && matrix.package == 'deb'
+        run: |
+          docker exec -u tester -e HOME=/home/tester -e DISPLAY=:99 distro bash /check-linux-guests.sh guests
+      - name: Collect workbench screens and lifecycle log
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/linux-evidence"
+          for file in client.log reopen-ms.txt language.png current.png first-workbench.png reopened-workbench.png; do
+            docker cp "distro:/home/tester/cold-install/$file" "$RUNNER_TEMP/linux-evidence/" 2>/dev/null || continue
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: offline-${{ matrix.package }}-evidence
+          path: ${{ runner.temp }}/linux-evidence
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Remove the disposable installation
         if: always()
         run: if docker inspect distro >/dev/null 2>&1; then docker rm -f distro; fi

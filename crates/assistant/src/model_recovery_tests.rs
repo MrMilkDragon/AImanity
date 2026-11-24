@@ -511,9 +511,7 @@ async fn legacy_null_agent_fails_before_registry_lock_and_can_be_initialized_aft
         );
         assert_eq!(snapshot(&app, run.id).await, before);
         registry.rollback().await.unwrap();
-        crate::registry::initialize(&app.db, &app.settings)
-            .await
-            .unwrap();
+        crate::registry::initialize(&app).await.unwrap();
         assert_eq!(resume(&app, run.id).await.0, StatusCode::OK);
     })
     .await;

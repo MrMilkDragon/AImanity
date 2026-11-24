@@ -5,56 +5,47 @@ on:
       platform:
         description: Complete offline installer
         type: choice
-        options: [macos, windows]
+        options: [macos, windows, windows-guests, check-macos]
         required: true
-      android_draft_id:
-        description: Draft release ID in this private factory repository
+      candidate_run:
+        description: Mac factory run for installation and reopen
         type: string
-        required: true
-      android_payload_sha256:
-        description: SHA-256 of android-macos-arm64.payload or android-windows-x64.payload in the draft
+      guest_run:
+        description: Previous factory containing the prepared guests for this platform
         type: string
-        required: true
+      source_ref:
+        description: Product commit for the Windows guest and installer
+        type: string
 permissions:
   contents: read
   actions: read
-env:
-  AIMANITY_ANDROID_DRAFT_ID: ${{ inputs.android_draft_id }}
-  AIMANITY_ANDROID_PAYLOAD_SHA256: ${{ inputs.android_payload_sha256 }}
 concurrency:
   group: installer-${{ inputs.platform }}-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  admit:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Require a private build repository
-        env:
-          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
-        run: |
-          if [ "$REPOSITORY_PRIVATE" != true ]; then
-            echo "::error::Run the installer factory in a private repository."
-            exit 1
-          fi
-
   windows-qemu:
-    if: inputs.platform == 'windows'
-    needs: admit
+    if: (inputs.platform == 'windows' || inputs.platform == 'windows-guests') && inputs.guest_run == ''
     uses: ./.github/workflows/windows-qemu.yml
+    with:
+      source_ref: ${{ inputs.source_ref || github.sha }}
 
   windows-guest:
-    if: inputs.platform == 'windows'
-    needs: [admit, windows-qemu]
+    if: inputs.platform == 'windows' || inputs.platform == 'windows-guests'
+    needs: windows-qemu
     uses: ./.github/workflows/windows-guest.yml
     with:
-      baseline_artifact: ${{ needs.windows-qemu.outputs.baseline }}
+      kernel_artifact: ${{ needs.windows-qemu.outputs.kernel }}
+      source_ref: ${{ inputs.source_ref || github.sha }}
 
   windows-exe:
+    if: >-
+      !cancelled() && inputs.platform == 'windows' &&
+      (needs.windows-guest.result == 'success' || (needs.windows-guest.result == 'skipped' && inputs.guest_run != ''))
     needs: [windows-qemu, windows-guest]
     runs-on: windows-2022
     timeout-minutes: 90
     permissions:
-      contents: write
+      contents: read
       actions: read
     env:
       CARGO_BUILD_JOBS: '2'
@@ -64,12 +55,19 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          ref: ${{ inputs.source_ref || github.sha }}
       - name: Locked build tools
         shell: bash
         run: |
           cmake --version
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
+          rustup target add aarch64-linux-android x86_64-linux-android
+      - name: Android guest helper SDK
+        shell: pwsh
+        run: |
+          & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'platforms;android-35' 'build-tools;35.0.0'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prepare Authenticode tools
         shell: pwsh
         run: |
@@ -79,24 +77,41 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
-          artifact-ids: ${{ needs.windows-qemu.outputs.artifact }}
+          name: windows-qemu
+          run-id: ${{ inputs.guest_run || github.run_id }}
           path: dist/windows-qemu
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
-          artifact-ids: ${{ needs.windows-guest.outputs.artifact }}
+          name: windows-guest
+          run-id: ${{ inputs.guest_run || github.run_id }}
           path: dist/windows-guest
-      - name: Fetch the sealed offline Android component
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: cargo run --quiet --locked -p ai-phone-release-tools -- factory-android
+      - name: Extract the published Windows Android runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $previous = Join-Path $env:RUNNER_TEMP 'europium.exe'
+          curl.exe -fLsS --retry 3 -o $previous 'https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe'
+          if ((Get-FileHash $previous).Hash -ne '6fde29eb0fea8a8d7daab9d79a2163022c57d95eeb4b614b3fb14dbd0038937e') { throw 'Published EXE identity differs' }
+          $stage = Join-Path $env:RUNNER_TEMP 'shipped-aosp'
+          cargo run --quiet --locked -p ai-phone-release-tools -- windows-factory unpack . $previous $stage '{app}\host\android.payload'
+          $payload = Join-Path $stage 'host/android.payload'
+          "AIMANITY_ANDROID_PAYLOAD=$payload" >> $env:GITHUB_ENV
+          "AIMANITY_ANDROID_PAYLOAD_SHA256=23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce" >> $env:GITHUB_ENV
+          Remove-Item -LiteralPath $previous
       - name: Assemble and inspect the offline Windows EXE
         env:
           GH_TOKEN: ${{ github.token }}
-          QEMU_SHA256: ${{ needs.windows-qemu.outputs.identity }}
-          GUEST_SHA256: ${{ needs.windows-guest.outputs.identity }}
+          INPUT_RUN: ${{ inputs.guest_run }}
         run: |
-          cargo run --locked -p ai-phone-release-tools -- windows-factory build dist/windows-qemu $env:QEMU_SHA256 dist/windows-guest/windows-guest.payload $env:GUEST_SHA256
+          if ($env:INPUT_RUN) {
+            $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:INPUT_RUN" | ConvertFrom-Json
+            if ($run.path -ne '.github/workflows/client-factory.yml' -or $run.event -ne 'workflow_dispatch' -or $run.conclusion -ne 'success') { throw 'Select a completed guest factory' }
+          }
+          $qemu = (Get-Content -Raw dist/windows-qemu/identity.txt).Trim()
+          $guest = (Get-Content -Raw dist/windows-guest/identity.txt).Trim()
+          cargo run --locked -p ai-phone-release-tools -- windows-factory build dist/windows-qemu $qemu dist/windows-guest/windows-guest.payload $guest
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: complete-windows-installer
@@ -109,8 +124,7 @@ jobs:
           retention-days: 2
 
   native-arm-rootfs:
-    if: inputs.platform == 'macos'
-    needs: admit
+    if: inputs.platform == 'macos' && inputs.guest_run == ''
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     outputs:
@@ -155,10 +169,12 @@ jobs:
           retention-days: 2
 
   full-macos-arm64:
-    if: inputs.platform == 'macos'
+    if: >-
+      !cancelled() && inputs.platform == 'macos' &&
+      (needs.native-arm-rootfs.result == 'success' || (inputs.guest_run != '' && needs.native-arm-rootfs.result == 'skipped'))
     needs: native-arm-rootfs
     runs-on: macos-26
-    timeout-minutes: 120
+    timeout-minutes: 165
     permissions:
       contents: read
       actions: read
@@ -166,10 +182,22 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
       HOMEBREW_NO_AUTO_UPDATE: '1'
+      CMAKE_POLICY_VERSION_MINIMUM: '3.5'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Match the previous guest to its build inputs
+        if: inputs.guest_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUEST_RUN: ${{ inputs.guest_run }}
+        run: |
+          set -euo pipefail
+          source=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GUEST_RUN" --jq 'select(.path==".github/workflows/client-factory.yml")|.head_sha')
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GUEST_RUN/jobs" --jq '.jobs[]|select(.name=="native-arm-rootfs" and .conclusion=="success")|.id' | grep -Eq '^[0-9]+$'
+          git fetch --no-tags --depth=1 "https://github.com/$GITHUB_REPOSITORY.git" "$source"
+          git diff --exit-code "$source" HEAD -- Cargo.lock Cargo.toml infra/desktop crates/guest-runtime crates/adb-client crates/device-io crates/api crates/release-tools scripts/stage-debian-keyring.sh
       - name: Disposable Mac factory toolchain
         run: |
           set -euo pipefail
@@ -180,8 +208,11 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
           rustup target add --toolchain 1.96.0 aarch64-linux-android x86_64-linux-android
-          brew update
-          brew install --force-bottle tesseract
+          active=$(cd "$(xcode-select -p)/../.." && pwd -P)
+          for xcode in /Applications/Xcode*.app; do
+            if [ -d "$xcode" ] && [ "$(cd "$xcode" && pwd -P)" != "$active" ]; then sudo rm -rf "$xcode"; fi
+          done
+          if ! command -v tesseract >/dev/null; then brew install --force-bottle tesseract; fi
           cargo run --quiet --locked -p ai-phone-release-tools -- prepare-ocr-models --destination "$RUNNER_TEMP/aiphone-ocr-models"
           echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
           echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aiphone-ocr-models" >> "$GITHUB_ENV"
@@ -189,12 +220,27 @@ jobs:
           df -h .
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          artifact-ids: ${{ needs.native-arm-rootfs.outputs.artifact }}
+          name: macos-linux-runtime
+          run-id: ${{ inputs.guest_run || github.run_id }}
+          github-token: ${{ github.token }}
           path: ${{ runner.temp }}/mac-linux
-      - name: Fetch the sealed offline Android component
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: cargo run --quiet --locked -p ai-phone-release-tools -- factory-android
+      - name: Reuse the published Avo and AOSP runtime
+        run: |
+          set -euo pipefail
+          dmg="$RUNNER_TEMP/europium.dmg"
+          curl -fLsS --retry 3 -o "$dmg" https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg
+          echo "c33cf818b29ccfb4198e97052e0820c68d528e634003c35f249eb5e7618c434f  $dmg" | shasum -a 256 -c -
+          codesign --verify --strict "$dmg"
+          mount="$RUNNER_TEMP/europium-image"
+          mkdir "$mount"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg"
+          trap 'hdiutil detach "$mount" >/dev/null' EXIT
+          cp "$mount/AImanity.app/Contents/Resources/host/android.payload" "$RUNNER_TEMP/mac-linux/android.payload"
+          hdiutil detach "$mount"
+          trap - EXIT
+          rm "$dmg"
+          echo "AIMANITY_ANDROID_PAYLOAD=$RUNNER_TEMP/mac-linux/android.payload" >> "$GITHUB_ENV"
+          echo "AIMANITY_ANDROID_PAYLOAD_SHA256=5e99337bfaffc36edea006a5844f0befd39b7552e48dd0dcbcc40c9e7779afd2" >> "$GITHUB_ENV"
       - name: Build the complete Mac client
         env:
           GH_TOKEN: ${{ github.token }}
@@ -220,3 +266,59 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 2
+  check-macos:
+    if: inputs.platform == 'check-macos'
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      CARGO_BUILD_JOBS: '3'
+      CARGO_INCREMENTAL: '0'
+      CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: complete-macos-installer
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/installer
+      - name: Install the signed disk image in an empty Applications directory
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run }}
+        run: |
+          set -euo pipefail
+          source=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" --jq 'select(.path==".github/workflows/client-factory.yml" and .conclusion=="success")|.head_sha')
+          test -n "$source"
+          dmg="$RUNNER_TEMP/installer/AImanity-0.0.6-macos-arm64.dmg"
+          jq -e --arg source "$source" '.source_commit==$source and .complete_device_bundle' "$dmg.manifest.json"
+          test "$(shasum -a 256 "$dmg" | cut -d' ' -f1)" = "$(jq -r .sha256 "$dmg.manifest.json")"
+          codesign --verify --strict "$dmg"
+          mount="$RUNNER_TEMP/mounted"
+          installed="$RUNNER_TEMP/Applications/AImanity.app"
+          mkdir "$mount" "$RUNNER_TEMP/Applications" "$RUNNER_TEMP/acceptance"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          ditto "$mount/AImanity.app" "$installed"
+          hdiutil detach "$mount"
+          codesign --verify --deep --strict "$installed"
+          exe="$installed/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$installed/Contents/Info.plist")"
+          "$exe" --verify-bundled-host "$installed/Contents/Resources/host"
+          echo "AIMANITY_QA_ROOT=$RUNNER_TEMP/acceptance" >> "$GITHUB_ENV"
+          echo "AIMANITY_QA_CLIENT=$exe" >> "$GITHUB_ENV"
+      - name: Launch, close and reopen the installed app offline
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          cargo +1.96.0 test --locked --manifest-path apps/native/Cargo.toml --test installed_macos -- --ignored --nocapture
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: macos-offline-workbench
+          path: |
+            ${{ runner.temp }}/acceptance/*.log
+            ${{ runner.temp }}/acceptance/*.png
+          if-no-files-found: ignore
+          retention-days: 7

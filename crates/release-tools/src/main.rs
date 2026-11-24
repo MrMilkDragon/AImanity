@@ -19,7 +19,6 @@ mod macos_factory;
 mod native_services;
 mod phone_apps;
 mod source;
-mod update_feed;
 #[cfg(windows)]
 mod windows_factory;
 #[cfg(unix)]
@@ -38,6 +37,8 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(unix)]
         "windows-release" => windows_release::seal(rest).map(Some),
         #[cfg(unix)]
+        "android-linux-context" => native_services::android_guest(rest).map(Some),
+        #[cfg(unix)]
         "windows-release-context" => windows_release::prepare(rest).map(Some),
         #[cfg(unix)]
         "windows-guest-assets" => windows_release::assets::run(rest).map(Some),
@@ -51,7 +52,16 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         "client-payload" => client_payload::run(rest).map(Some),
         #[cfg(target_os = "macos")]
         "macos-factory" => macos_factory::run(rest).map(Some),
-        "sign-update" => update_feed::sign(rest).map(|()| None),
+        "workbench-proxy" => {
+            let [target, path] = rest else {
+                return Err("Expected workbench-proxy TARGET DESTINATION".into());
+            };
+            let hash = assets::proxy_binary(
+                target.to_str().ok_or("Invalid proxy target")?,
+                Path::new(path),
+            )?;
+            Ok(Some(serde_json::json!({"executable":hash})))
+        }
         "prepare-ocr-models" => assets::ocr(rest).map(Some),
         "prepare-speech-model" => assets::speech(rest).map(Some),
         #[cfg(unix)]
@@ -59,8 +69,9 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(unix)]
         "native-services" => native_services::run(rest).map(Some),
         "factory-android" => assets::factory_android().map(|()| None),
-        "fetch-windows-aosp" => assets::windows_aosp(rest).map(|()| None),
+        "fetch-aosp" => assets::aosp(rest).map(|()| None),
         "windows-cuttlefish" => cuttlefish::run(rest).map(|()| None),
+        "android-avf-boot" => cuttlefish::android_avf_boot(rest).map(|()| None),
         "android-component" => android_component::seal(rest).map(Some),
         "stage-windows-android-audio" => assets::windows_audio(rest).map(|()| None),
         #[cfg(windows)]
@@ -69,6 +80,8 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(unix)]
         "factory-images" => image_factory::run(rest).map(Some),
         "build-android-apk" => android_package::build(rest).map(Some),
+        "mobile-activity-dex" => android_package::mobile_dex(rest).map(|()| None),
+        "mobile-guest-apps" => phone_apps::mobile(rest).map(Some),
         "build-android-network" => android_package::network_dex::build(rest).map(|()| None),
         "phone-apps" => phone_apps::run(rest).map(Some),
         "decode-capsule" => {

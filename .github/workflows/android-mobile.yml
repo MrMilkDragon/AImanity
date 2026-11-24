@@ -1,0 +1,368 @@
+name: Android native workbench
+on:
+  pull_request:
+    paths:
+      - apps/android-client/**
+      - apps/android-host/**
+      - apps/native/**
+      - crates/**
+      - scripts/mobile-*
+      - .github/workflows/android-mobile.yml
+  push:
+    branches: [build/android-mobile, 'build/android-mobile-release/*']
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Release source to compile and sign with the current acceptance tools
+        required: false
+        type: string
+      signing:
+        description: Preview uses a disposable certificate. Release uses the retained Android certificate.
+        type: choice
+        options: [preview, release]
+        default: preview
+        required: true
+      preview_run:
+        description: Existing signed preview to test again
+        required: false
+        type: string
+      preview_sha256:
+        description: APK digest from that preview's package job
+        required: false
+        type: string
+      assets_run:
+        description: Successful Android and Linux AVF asset run IDs, separated by a hyphen
+        required: false
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: android-mobile-${{ github.ref }}-${{ inputs.preview_run || 'build' }}
+  cancel-in-progress: true
+env:
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_RELEASE_LTO: 'thin'
+jobs:
+  native:
+    if: inputs.preview_run == ''
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { abi: arm64-v8a, target: aarch64-linux-android }
+          - { abi: x86_64, target: x86_64-linux-android }
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.source_ref || github.sha }}
+      - name: Reuse qualified native code from this exact commit
+        id: previous
+        if: startsWith(github.ref, 'refs/heads/build/android-mobile-release/') || inputs.signing == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ABI: ${{ matrix.abi }}
+        run: |
+          set -euo pipefail
+          commit=$(git rev-parse HEAD)
+          run=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs" -f branch=build/android-mobile \
+            -f head_sha="$commit" -f status=success -f event=push -f per_page=30 | \
+            jq -r --arg sha "$commit" --arg repo "$GITHUB_REPOSITORY" \
+            'first(.workflow_runs[] | select(.path == ".github/workflows/android-mobile.yml" and .head_sha == $sha and .head_repository.full_name == $repo) | .id) // empty')
+          if [[ -n $run ]]; then
+            items=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts")
+            if jq -e --arg wanted "android-mobile-$ABI" '.artifacts | any(.[]; .name == $wanted and .expired == false)' <<< "$items" >/dev/null; then
+              echo "run=$run" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+      - if: steps.previous.outputs.run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-mobile-${{ matrix.abi }}
+          run-id: ${{ steps.previous.outputs.run }}
+          github-token: ${{ github.token }}
+          path: out/${{ matrix.abi }}
+      - name: Set up the Android toolchain
+        if: steps.previous.outputs.run == ''
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --target "${{ matrix.target }}"
+          rustup default 1.96.0
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$sdkmanager" "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: steps.previous.outputs.run == ''
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/bin/cargo-ndk
+          key: android-ndk28-cargo4.1.2-${{ matrix.abi }}-${{ hashFiles('apps/native/Cargo.lock', 'apps/android-host/Cargo.lock') }}
+          restore-keys: |
+            android-ndk28-cargo4.1.2-${{ matrix.abi }}-
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: compiled
+        if: steps.previous.outputs.run == ''
+        with:
+          path: apps/native/target
+          key: android-native-ndk28-rust196-${{ matrix.abi }}-${{ hashFiles('apps/native/Cargo.lock') }}-${{ inputs.source_ref || github.sha }}
+          restore-keys: |
+            android-native-ndk28-rust196-${{ matrix.abi }}-${{ hashFiles('apps/native/Cargo.lock') }}-
+            android-native-ndk28-rust196-${{ matrix.abi }}-
+      - name: Compile the Rust NativeActivity and AVF helper
+        if: steps.previous.outputs.run == ''
+        env:
+          TARGET: ${{ matrix.target }}
+          ABI: ${{ matrix.abi }}
+          RUSTFLAGS: '-C link-arg=-Wl,-z,max-page-size=16384'
+          CARGO_NDK_PLATFORM: '35'
+        run: |
+          if ! command -v cargo-ndk >/dev/null; then cargo install cargo-ndk --version 4.1.2 --locked; fi
+          ndk=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+          export CMAKE_TOOLCHAIN_FILE="$RUNNER_TEMP/android.cmake"
+          cat > "$CMAKE_TOOLCHAIN_FILE" <<'CMAKE'
+          set(ANDROID_ABI "$ENV{ANDROID_ABI}" CACHE STRING "")
+          set(ANDROID_PLATFORM "$ENV{ANDROID_PLATFORM}" CACHE STRING "")
+          include("$ENV{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake")
+          CMAKE
+          export ANDROID_PLATFORM=android-35 ANDROID_ABI="$ABI"
+          export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$ndk/sysroot --target=${TARGET}35"
+          cargo ndk -t "$ABI" build --locked --release --manifest-path apps/native/Cargo.toml --lib
+          cargo ndk -t "$ABI" build --locked --release --manifest-path apps/android-host/Cargo.toml --bin aimanity-android-host
+          mkdir -p "out/$ABI"
+          install -m 755 "apps/native/target/$TARGET/release/libaimanity_native.so" "out/$ABI"
+          install -m 755 "apps/android-host/target/$TARGET/release/aimanity-android-host" "out/$ABI/libaimanity_host.so"
+          "$ndk/bin/llvm-strip" --strip-unneeded "out/$ABI/"*.so
+          if "$ndk/bin/llvm-readelf" -d "out/$ABI/"*.so | grep -F 'Shared library: [libc++_shared.so]'; then
+            cp "$ndk/sysroot/usr/lib/$TARGET/libc++_shared.so" "out/$ABI/"
+          fi
+          case "$ABI" in arm64-v8a) proxy=android-arm64;; x86_64) proxy=android-x64;; esac
+          cargo run --quiet --locked -p ai-phone-release-tools -- workbench-proxy "$proxy" "out/$ABI/libaimanity_proxy.so"
+          "$ndk/bin/llvm-nm" --defined-only -D "out/$ABI/libaimanity_native.so" > "$RUNNER_TEMP/native-symbols"
+          grep -w ANativeActivity_onCreate "$RUNNER_TEMP/native-symbols"
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        if: "!cancelled() && steps.compiled.outputs.cache-hit != 'true' && hashFiles('apps/native/target/**/release/.cargo-lock') != ''"
+        with:
+          path: apps/native/target
+          key: ${{ steps.compiled.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: android-mobile-${{ matrix.abi }}
+          path: out/${{ matrix.abi }}/
+          if-no-files-found: error
+          retention-days: 5
+  package:
+    needs: native
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    outputs:
+      filename: ${{ steps.assemble.outputs.filename }}
+      digest: ${{ steps.assemble.outputs.digest }}
+      package_id: ${{ steps.assemble.outputs.package_id }}
+      signing: ${{ steps.mode.outputs.signing }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          fetch-depth: ${{ (inputs.assets_run != '' || startsWith(github.ref, 'refs/heads/build/android-mobile-release/')) && '0' || '1' }}
+          persist-credentials: false
+      - name: Select the requested signing mode and source assets
+        id: mode
+        env:
+          REQUESTED_SIGNING: ${{ inputs.signing || 'preview' }}
+          INPUT_ASSETS_RUN: ${{ inputs.assets_run }}
+        run: |
+          set -euo pipefail
+          signing="$REQUESTED_SIGNING"
+          assets="$INPUT_ASSETS_RUN"
+          if [[ $GITHUB_EVENT_NAME == push && $GITHUB_REF_NAME == build/android-mobile-release/* ]]; then
+            signing=release
+            assets=${GITHUB_REF_NAME##*/}
+          fi
+          [[ -z $assets || $assets =~ ^[0-9]+-[0-9]+$ ]]
+          [[ $signing == preview || ($signing == release && -n $assets) ]]
+          printf 'signing=%s\nassets_run=%s\n' "$signing" "$assets" >> "$GITHUB_OUTPUT"
+          if [[ -n $assets ]]; then
+            printf 'android_run=%s\nlinux_run=%s\n' "${assets%-*}" "${assets#*-}" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-mobile-arm64-v8a
+          path: build/apk/lib/arm64-v8a
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-mobile-x86_64
+          path: build/apk/lib/x86_64
+      - name: Verify the asset factories completed
+        if: steps.mode.outputs.assets_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANDROID_RUN: ${{ steps.mode.outputs.android_run }}
+          LINUX_RUN: ${{ steps.mode.outputs.linux_run }}
+        run: |
+          for pair in "$ANDROID_RUN:android-guest-inputs.yml" "$LINUX_RUN:android-linux-avf.yml"; do
+            guest_commit=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/${pair%%:*}" | \
+              jq -er --arg repo "$GITHUB_REPOSITORY" --arg workflow ".github/workflows/${pair#*:}" \
+              'select(.path == $workflow and .conclusion == "success" and .head_repository.full_name == $repo and (.event == "push" or .event == "workflow_dispatch")) | .head_sha')
+            git merge-base --is-ancestor "$guest_commit" HEAD
+            git diff --exit-code --name-only "$guest_commit" HEAD -- . \
+              ':(exclude)apps/native/src' ':(exclude)apps/native/tests' ':(exclude)crates/host-runtime/tests' ':(exclude)apps/native/vendor/iced_winit/src' \
+              ':(exclude).github/workflows/client.yml' ':(exclude).github/workflows/android-mobile.yml' \
+              ':(exclude)scripts/mobile-smoke.sh' ':(exclude)docs/public' ':(exclude)CHANGELOG.md' ':(exclude)SOURCE-MANIFEST.json' \
+              ':(exclude).github/workflows/client-factory.yml' ':(exclude)config/container-host-runtime.json'
+          done
+      - if: steps.mode.outputs.assets_run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-avf-assets
+          run-id: ${{ steps.mode.outputs.android_run }}
+          github-token: ${{ github.token }}
+          path: build/android-assets
+      - if: steps.mode.outputs.assets_run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: linux-avf-assets
+          run-id: ${{ steps.mode.outputs.linux_run }}
+          github-token: ${{ github.token }}
+          path: build/linux-assets
+      - if: steps.mode.outputs.assets_run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-guest-preparation-receipt
+          run-id: ${{ steps.mode.outputs.android_run }}
+          github-token: ${{ github.token }}
+          path: build/receipts
+      - if: steps.mode.outputs.assets_run != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: linux-guest-preparation-receipt
+          run-id: ${{ steps.mode.outputs.linux_run }}
+          github-token: ${{ github.token }}
+          path: build/receipts
+      - name: Inventory the two guest payloads
+        if: steps.mode.outputs.assets_run != ''
+        run: |
+          set -euo pipefail
+          dest=build/apk/assets/mobile-assets
+          mkdir -p "$dest"
+          mv build/android-assets/android build/android-assets/speech build/linux-assets/linux "$dest/"
+          cd "$dest"
+          sha256sum --check --strict ../../../receipts/{android,linux}-prepared.sha256
+          cat ../../../receipts/{android,linux}-prepared.sha256 | \
+            jq -Rn '{format:1, files: [inputs | capture("^(?<value>[a-f0-9]{64})  (?<key>.+)$")] | from_entries}' > manifest.json
+      - name: Prepare Android SDK and compile the activity
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;35.0.0" "platforms;android-35"
+          rustup toolchain install 1.96.0 --profile minimal
+          cargo +1.96.0 run --quiet --locked -p ai-phone-release-tools -- mobile-activity-dex build/apk/classes.dex
+      - name: Assemble and sign one APK for phone and tablet
+        id: assemble
+        env:
+          SIGNING: ${{ steps.mode.outputs.signing }}
+          ASSETS_RUN: ${{ steps.mode.outputs.assets_run }}
+          APK_KEYSTORE: ${{ steps.mode.outputs.signing == 'release' && secrets.ANDROID_APP_KEYSTORE_BASE64 || '' }}
+          APK_SIGN_PASS: ${{ steps.mode.outputs.signing == 'release' && secrets.ANDROID_APP_KEYSTORE_PASSWORD || '' }}
+          APK_CERT_SHA256: ${{ vars.ANDROID_APP_CERT_SHA256 }}
+        run: bash scripts/mobile-package.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: android-workbench-candidate
+          path: build/apk/${{ steps.assemble.outputs.filename }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+  screens:
+    name: Android 15 ${{ matrix.profile }} cold launch and input
+    needs: package
+    if: "!cancelled() && (needs.package.result == 'success' || inputs.preview_run != '')"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { profile: phone, device: pixel_5 }
+          - { profile: tablet, device: pixel_tablet }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-workbench-candidate
+          path: client
+          run-id: ${{ inputs.preview_run || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Exercise a clean Android Virtual Device
+        env:
+          PROFILE: ${{ matrix.profile }}
+          AVD_DEVICE: ${{ matrix.device }}
+          APK: client/${{ needs.package.outputs.filename || 'AImanity-workbench-preview.apk' }}
+          APK_SHA256: ${{ needs.package.outputs.digest || inputs.preview_sha256 }}
+          PACKAGE: ${{ needs.package.outputs.package_id || 'dev.aimanity.workspace.preview' }}
+        run: |
+          set -euo pipefail
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          mkdir -p evidence
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y tesseract-ocr tesseract-ocr-eng imagemagick
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          image='system-images;android-35;google_apis;x86_64'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" emulator platform-tools "$image"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/android-user"
+          export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
+          export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avd_path="$ANDROID_AVD_HOME/workbench.avd"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n workbench -k "$image" -d "$AVD_DEVICE" -p "$avd_path"
+          avd_config="$avd_path/config.ini"
+          test -s "$avd_config"
+          printf 'avd.ini.encoding=UTF-8\npath=%s\ntarget=android-35\n' "$avd_path" > "$ANDROID_AVD_HOME/workbench.ini"
+          emulator -list-avds | grep -Fx workbench
+          sed -i '/^disk.dataPartition.size[[:space:]]*=/d' "$avd_config"
+          echo 'disk.dataPartition.size=8G' >> "$avd_config"
+          emulator -avd workbench -no-window -no-audio -no-snapshot -wipe-data -no-boot-anim -accel on \
+            -gpu swiftshader_indirect -memory 4096 -cores 4 > evidence/emulator.log 2>&1 &
+          trap 'adb emu kill >/dev/null 2>&1 || true' EXIT
+          timeout 90 adb wait-for-device
+          timeout 300 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == 1 ]]; do sleep 2; done'
+          bash scripts/mobile-smoke.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: android-${{ matrix.profile }}-evidence
+          path: evidence/
+          if-no-files-found: ignore
+          retention-days: 14
+  deliver:
+    name: Retain the Android-tested APK
+    needs: [package, screens]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: android-workbench-candidate
+          path: client
+      - name: Match the bytes installed on both devices
+        env:
+          FILE: ${{ needs.package.outputs.filename }}
+          DIGEST: ${{ needs.package.outputs.digest }}
+        run: |
+          cd client
+          printf '%s  %s\n' "$DIGEST" "$FILE" | sha256sum --check --strict
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        id: deliver
+        with:
+          name: android-workbench-${{ needs.package.outputs.signing }}-apk
+          path: client/${{ needs.package.outputs.filename }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - name: Link the tested APK
+        env:
+          ARTIFACT_URL: ${{ steps.deliver.outputs.artifact-url }}
+          DIGEST: ${{ needs.package.outputs.digest }}
+        run: printf '[Download the tested APK](%s) · SHA-256 `%s`\n' "$ARTIFACT_URL" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"

@@ -47,6 +47,9 @@ async fn interrupted() -> Result<()> {
 
 async fn run(operation: &str) -> Result<()> {
     match operation {
+        "workspace-control" | "workspace-io" => {
+            return ai_phone_guest_runtime::workspace::serve(operation).await;
+        }
         "location" => {
             return emit(Response::Bytes(
                 ai_phone_guest_runtime::location::client().await,
@@ -124,7 +127,9 @@ async fn main() -> ExitCode {
     let stderr_only = operation.as_ref().is_ok_and(|value| {
         matches!(
             value.as_str(),
-            "capture"
+            "workspace-control"
+                | "workspace-io"
+                | "capture"
                 | "audio-supervise"
                 | "record-notification"
                 | "home-identity"

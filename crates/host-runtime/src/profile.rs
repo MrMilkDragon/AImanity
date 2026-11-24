@@ -26,7 +26,7 @@ pub(crate) struct Phone {
     pub(crate) memory_mb: u32,
     pub(crate) storage_gb: u32,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Desktop {
     pub(crate) cpus: u32,
@@ -39,12 +39,12 @@ pub(crate) struct Request {
     #[serde(default)]
     pub(crate) reconfigure: bool,
     locale: String,
-    pub(crate) phone: Phone,
+    pub(crate) phone: Option<Phone>,
     pub(crate) desktop: Desktop,
-    #[cfg(any(all(test, unix), all(target_os = "linux", target_arch = "x86_64")))]
+    #[cfg(any(all(test, unix), target_os = "linux"))]
     #[serde(default)]
     pub(crate) android_qemu: bool,
-    #[cfg(not(any(all(test, unix), all(target_os = "linux", target_arch = "x86_64"))))]
+    #[cfg(not(any(all(test, unix), target_os = "linux")))]
     #[serde(default, rename = "android_qemu")]
     _android_qemu: bool,
 }
@@ -66,19 +66,23 @@ pub(crate) fn phone_resources(
             storage_gb: value["phone"]["storage_gb"].as_u64().unwrap() as u32,
         });
     }
+    let phone = request
+        .phone
+        .as_ref()
+        .ok_or(Error::Invalid("host_phone_missing"))?;
     Ok(crate::android::Resources {
-        cpus: request.phone.cpus,
-        memory_mb: request.phone.memory_mb,
-        storage_gb: request.phone.storage_gb,
+        cpus: phone.cpus,
+        memory_mb: phone.memory_mb,
+        storage_gb: phone.storage_gb,
     })
 }
 
-fn resources(phone: &Phone, desktop: &Desktop) -> bool {
-    [phone.cpus, desktop.cpus]
-        .iter()
-        .all(|cpus| [1, 2, 4].contains(cpus))
-        && [1536, 2048, 3072, 4096].contains(&phone.memory_mb)
-        && [16, 24, 32].contains(&phone.storage_gb)
+fn resources(phone: Option<&Phone>, desktop: &Desktop) -> bool {
+    phone.is_none_or(|phone| {
+        [1, 2, 4].contains(&phone.cpus)
+            && [1536, 2048, 3072, 4096].contains(&phone.memory_mb)
+            && [16, 24, 32].contains(&phone.storage_gb)
+    }) && [1, 2, 4].contains(&desktop.cpus)
         && [2048, 2560, 3072, 4096].contains(&desktop.memory_mb)
         && desktop
             .storage_gb
@@ -129,13 +133,13 @@ fn validate(value: &Value, template: &str) -> Result<()> {
         || !LOCALES.contains(&header.locale.as_str())
         || phone.template != template
         || !matches!(template, "android35-arm64" | "android35-x86_64")
-        || desktop.template != "debian13-openbox"
+        || desktop.template != ai_phone_api::LINUX_DESKTOP_TEMPLATE
         || !resources(
-            &Phone {
+            Some(&Phone {
                 cpus: phone.cpus,
                 memory_mb: phone.memory_mb,
                 storage_gb: storage,
-            },
+            }),
             &Desktop {
                 cpus: desktop.cpus,
                 memory_mb: desktop.memory_mb,
@@ -157,35 +161,6 @@ fn validate(value: &Value, template: &str) -> Result<()> {
     Ok(())
 }
 
-fn credentials(root: &Path) -> Result<()> {
-    let path = root.join(".env");
-    if path.exists() {
-        return Ok(());
-    }
-    // Source staging deliberately links .env to the installation's persistent user directory.
-    let path = match fs::read_link(&path) {
-        Ok(target) => root.join(target),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => path,
-        Err(error) => return Err(error.into()),
-    };
-    let mut random = [0; 24];
-    getrandom::fill(&mut random).map_err(|_| Error::Invalid("host_profile_random"))?;
-    let password = random
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let bytes =
-        format!("POSTGRES_DB=ai_phone\nPOSTGRES_USER=ai_phone\nPOSTGRES_PASSWORD={password}\n");
-    filesystem::publish_private(
-        path.parent().ok_or(Error::Invalid("host_profile"))?,
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .ok_or(Error::Invalid("host_profile"))?,
-        bytes.as_bytes(),
-        true,
-    )
-}
-
 pub(crate) fn prepare(
     root: &Path,
     sdk: &Path,
@@ -202,7 +177,9 @@ pub(crate) fn parse_request(bytes: &[u8]) -> Result<Request> {
     }
     let request: Request =
         serde_json::from_slice(bytes).map_err(|_| Error::Invalid("host_profile_request"))?;
-    if !LOCALES.contains(&request.locale.as_str()) || !resources(&request.phone, &request.desktop) {
+    if !LOCALES.contains(&request.locale.as_str())
+        || !resources(request.phone.as_ref(), &request.desktop)
+    {
         return Err(Error::Invalid("host_profile_request"));
     }
     Ok(request)
@@ -215,6 +192,12 @@ pub(crate) fn prepare_request(
     request: Request,
     launch_path: &str,
 ) -> Result<()> {
+    let Some(phone) = request.phone else {
+        return persist(
+            root,
+            &json!({"locale": request.locale, "desktop": request.desktop}),
+        );
+    };
     if !matches!(template, "android35-arm64" | "android35-x86_64") {
         return Err(Error::Invalid("host_profile_request"));
     }
@@ -226,15 +209,15 @@ pub(crate) fn prepare_request(
         if !request.reconfigure {
             return Ok(());
         }
-        if value["phone"]["storage_gb"] != request.phone.storage_gb
+        if value["phone"]["storage_gb"] != phone.storage_gb
             || request.desktop.storage_gb.is_some_and(|gb| {
                 u64::from(gb) < value["desktop"]["storage_gb"].as_u64().unwrap_or(64)
             })
         {
             return Err(Error::Invalid("installed_device_storage"));
         }
-        value["phone"]["cpus"] = request.phone.cpus.into();
-        value["phone"]["memory_mb"] = request.phone.memory_mb.into();
+        value["phone"]["cpus"] = phone.cpus.into();
+        value["phone"]["memory_mb"] = phone.memory_mb.into();
         value["desktop"]["cpus"] = request.desktop.cpus.into();
         value["desktop"]["memory_mb"] = request.desktop.memory_mb.into();
         if let Some(gb) = request.desktop.storage_gb {
@@ -256,8 +239,8 @@ pub(crate) fn prepare_request(
         "launch_path":launch_path,
         "sdk_root":sdk,
         "host_proxy":"","container_proxy":"",
-        "phone":{"template":template,"cpus":request.phone.cpus,"memory_mb":request.phone.memory_mb,"storage_gb":request.phone.storage_gb},
-        "desktop":{"template":"debian13-openbox","cpus":request.desktop.cpus,"memory_mb":request.desktop.memory_mb}});
+        "phone":{"template":template,"cpus":phone.cpus,"memory_mb":phone.memory_mb,"storage_gb":phone.storage_gb},
+        "desktop":{"template":ai_phone_api::LINUX_DESKTOP_TEMPLATE,"cpus":request.desktop.cpus,"memory_mb":request.desktop.memory_mb}});
     if let Some(storage) = request.desktop.storage_gb {
         value["desktop"]["storage_gb"] = json!(storage);
     }
@@ -265,7 +248,6 @@ pub(crate) fn prepare_request(
 }
 
 fn persist(root: &Path, value: &Value) -> Result<()> {
-    credentials(root)?;
     let destination = root.join("data/deployment/profile.json");
     let folder = destination.parent().ok_or(Error::Invalid("host_profile"))?;
     filesystem::directory(folder, true)?;
@@ -352,7 +334,7 @@ mod resume_resources_tests {
         parse_request(&serde_json::to_vec(&json!({"locale":"en","phone":{"cpus":cpus,"memory_mb":memory,"storage_gb":16},"desktop":{"cpus":2,"memory_mb":2048}})).unwrap()).unwrap()
     }
     #[test]
-    fn first_run_defaults_cannot_resize_an_existing_phone_or_change_its_credentials() {
+    fn first_run_defaults_keep_existing_phone_resources() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
         prepare_request(
@@ -364,7 +346,6 @@ mod resume_resources_tests {
         )
         .unwrap();
         let before = fs::read(root.join("data/deployment/profile.json")).unwrap();
-        let credentials = fs::read(root.join(".env")).unwrap();
         let selected = phone_resources(root, "android35-arm64", &request(2, 2048)).unwrap();
         assert_eq!(
             (selected.cpus, selected.memory_mb, selected.storage_gb),
@@ -374,7 +355,6 @@ mod resume_resources_tests {
             fs::read(root.join("data/deployment/profile.json")).unwrap(),
             before
         );
-        assert_eq!(fs::read(root.join(".env")).unwrap(), credentials);
     }
     #[test]
     fn invalid_saved_resources_are_rejected_instead_of_being_replaced_by_defaults() {
@@ -406,7 +386,6 @@ mod resume_resources_tests {
         let mut initial = request(2, 2048);
         initial.desktop.storage_gb = Some(16);
         install(initial).unwrap();
-        let credentials = fs::read(root.join(".env")).unwrap();
         let profile = || {
             serde_json::from_slice::<Value>(
                 &fs::read(root.join("data/deployment/profile.json")).unwrap(),
@@ -424,7 +403,6 @@ mod resume_resources_tests {
         assert_eq!(updated["desktop"]["memory_mb"], 2560);
         assert_eq!(updated["desktop"]["storage_gb"], 32);
         assert_eq!(updated["sdk_root"], before["sdk_root"]);
-        assert_eq!(fs::read(root.join(".env")).unwrap(), credentials);
         let mut shrink = request(1, 1536);
         shrink.reconfigure = true;
         shrink.desktop.storage_gb = Some(16);

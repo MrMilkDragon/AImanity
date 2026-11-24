@@ -27,7 +27,7 @@ jobs:
           rustup default 1.96.0
           mkdir -p qualification/images qualification/sdk/platform-tools
           cargo build --locked -p ai-phone-release-tools --bin release-tools
-          target/debug/release-tools.exe fetch-windows-aosp qualification/android.zip &
+          target/debug/release-tools.exe fetch-aosp x86_64 qualification/android.zip &
           download=$!
           cargo build --locked --release -p ai-phone-host-runtime --bin host-resources &
           build=$!

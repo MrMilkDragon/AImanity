@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use std::sync::Mutex;
 use tokio::sync::{mpsc, oneshot};
 
-type Call = (
+pub(crate) type Call = (
     wire::DesktopActionRequest,
     oneshot::Sender<wire::HostDesktopReply>,
 );
@@ -66,27 +66,8 @@ impl DesktopSession {
     pub async fn perform(&self, run: Uuid, call: &Value, args: &Value) -> Result<Value, String> {
         let (session, sender) = self.sender(run).ok_or("本机桌面尚未为本次任务授权")?;
         let (send, reply) = oneshot::channel();
-        let pixel = |v: &Value| match v.as_i64() {
-            Some(n) => i32::try_from(n).map_err(|_| "无效的坐标或滚动距离"),
-            None if v.is_null() => Ok(-1),
-            _ => Err("无效的坐标或滚动距离"),
-        };
         let kind = args["kind"].as_str().ok_or("缺少桌面操作类型")?;
-        let action = wire::DesktopActionRequest {
-            action_id: call["local_action_id"]
-                .as_str()
-                .ok_or("缺少操作编号")?
-                .into(),
-            device_id: args["display"].as_str().unwrap_or_default().into(),
-            observation_id: args["observation_id"].as_str().unwrap_or_default().into(),
-            kind: kind.into(),
-            x: pixel(&args["x"])?,
-            y: pixel(&args["y"])?,
-            amount: pixel(&args["amount"])?,
-            text: args["text"].as_str().unwrap_or_default().into(),
-            key: args["key"].as_str().unwrap_or_default().into(),
-            ..Default::default()
-        };
+        let action = action_request(call, args)?;
         let id = action.action_id.clone();
         sender
             .send((action, send))
@@ -120,6 +101,35 @@ impl DesktopSession {
     }
 }
 
+pub(crate) fn action_request(
+    call: &Value,
+    args: &Value,
+) -> Result<wire::DesktopActionRequest, String> {
+    let pixel = |v: &Value| match v.as_i64() {
+        Some(n) => i32::try_from(n).map_err(|_| "无效的坐标或滚动距离"),
+        None if v.is_null() => Ok(-1),
+        _ => Err("无效的坐标或滚动距离"),
+    };
+    let kind = args["kind"].as_str().ok_or("缺少桌面操作类型")?;
+    Ok(wire::DesktopActionRequest {
+        action_id: call["local_action_id"]
+            .as_str()
+            .ok_or("缺少操作编号")?
+            .into(),
+        device_id: args["display"].as_str().unwrap_or_default().into(),
+        observation_id: args["observation_id"].as_str().unwrap_or_default().into(),
+        kind: kind.into(),
+        x: pixel(&args["x"])?,
+        y: pixel(&args["y"])?,
+        to_x: pixel(&args["to_x"])?,
+        to_y: pixel(&args["to_y"])?,
+        amount: pixel(&args["amount"])?,
+        text: args["text"].as_str().unwrap_or_default().into(),
+        key: args["key"].as_str().unwrap_or_default().into(),
+        ..Default::default()
+    })
+}
+
 pub async fn connect(
     State(app): State<Shared>,
     headers: HeaderMap,
@@ -136,9 +146,9 @@ pub async fn connect(
         .on_upgrade(move |socket| serve(app, request, socket))
 }
 
-async fn serve(app: Shared, request: Uuid, mut socket: WebSocket) {
+async fn serve(app: Shared, request: Uuid, socket: WebSocket) {
     let key = Uuid::now_v7();
-    let (tx, mut calls) = mpsc::channel(1);
+    let (tx, calls) = mpsc::channel(1);
     {
         let mut active = app.run_signals.host.0.lock().unwrap();
         if active.is_some() {
@@ -151,6 +161,20 @@ async fn serve(app: Shared, request: Uuid, mut socket: WebSocket) {
             calls: tx,
         });
     }
+    exchange(socket, calls, &CancellationToken::new()).await;
+    app.run_signals
+        .host
+        .0
+        .lock()
+        .unwrap()
+        .take_if(|g| g.key == key);
+}
+
+pub(crate) async fn exchange(
+    mut socket: WebSocket,
+    mut calls: mpsc::Receiver<Call>,
+    stop: &CancellationToken,
+) {
     if socket
         .send(Frame::Binary(
             wire::HostDesktopReply::default().encode_to_vec().into(),
@@ -161,6 +185,7 @@ async fn serve(app: Shared, request: Uuid, mut socket: WebSocket) {
         loop {
             let call = tokio::select! {
                 biased;
+                _ = stop.cancelled() => break,
                 _ = socket.recv() => break,
                 item = calls.recv() => item,
             };
@@ -178,9 +203,8 @@ async fn serve(app: Shared, request: Uuid, mut socket: WebSocket) {
             {
                 break;
             }
-            let Ok(Some(Ok(Frame::Binary(bytes)))) =
-                tokio::time::timeout(Duration::from_secs(20), socket.recv()).await
-            else {
+            let response = tokio::select! { biased; _ = stop.cancelled() => break, reply = tokio::time::timeout(Duration::from_secs(20), socket.recv()) => reply };
+            let Ok(Some(Ok(Frame::Binary(bytes)))) = response else {
                 break;
             };
             let Ok(receipt) = wire::HostDesktopReply::decode(bytes) else {
@@ -189,23 +213,54 @@ async fn serve(app: Shared, request: Uuid, mut socket: WebSocket) {
             let _ = answer.send(receipt);
         }
     }
-    app.run_signals
-        .host
-        .0
-        .lock()
-        .unwrap()
-        .take_if(|g| g.key == key);
 }
 
-pub(crate) fn schema() -> Value {
-    json!({"type":"function","name":"host_desktop",
-        "description":"本次获准使用的用户本机桌面。observe 得到屏幕、显示器列表、图像坐标和 observation_id。点击、双击、输入、按键和滚动使用刚取得的本机观察。文件交接继续用工作文件。操作后观察并核对应用内实际结果。",
-        "parameters":{"type":"object","properties":{
-            "kind":{"type":"string","enum":["observe","click","double_click","type","key","scroll"]},
-            "display":{"type":"string"},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},
-            "amount":{"type":"integer","description":"滚动行数，正值向下"},"text":{"type":"string"},
-            "key":{"type":"string","enum":["enter","tab","escape","backspace","left","right","up","down","select_all","save","undo","redo"]},
-            "intent":{"type":"string"}},"required":["kind","intent"],"additionalProperties":false}})
+pub(crate) fn schema(paired: bool) -> Value {
+    let mut kinds = vec!["observe", "click", "double_click", "type", "key", "scroll"];
+    let mut keys = vec![
+        "enter",
+        "tab",
+        "escape",
+        "backspace",
+        "left",
+        "right",
+        "up",
+        "down",
+        "select_all",
+        "save",
+        "undo",
+        "redo",
+    ];
+    let mut props = json!({
+        "observation_id":{"type":"string"}, "x":{"type":"integer"},"y":{"type":"integer"},
+        "amount":{"type":"integer","description":"滚动行数，正值向下"},"text":{"type":"string"}
+    });
+    let mut required = vec!["kind"];
+    let (name, description) = if paired {
+        kinds.extend(["long_press", "swipe"]);
+        keys.extend(["back", "home"]);
+        required.push("device_id");
+        props["device_id"] = json!({"type":"string"});
+        props["to_x"] = json!({"type":"integer"});
+        props["to_y"] = json!({"type":"integer"});
+        (
+            "device_interact",
+            "读取画面时只填 device_id 和 kind=observe。点击、输入、滚动和按键使用这台设备刚返回的画面。操作后再次 observe 核对结果。",
+        )
+    } else {
+        props["intent"] = json!({"type":"string"});
+        required.push("intent");
+        props["display"] = json!({"type":"string"});
+        (
+            "host_desktop",
+            "本次获准使用的用户本机桌面。observe 得到屏幕、显示器列表、图像坐标和 observation_id。点击、双击、输入、按键和滚动使用刚取得的本机观察。文件交接继续用工作文件。操作后观察并核对应用内实际结果。",
+        )
+    };
+    props["key"] = json!({"type":"string","enum":keys});
+    props["kind"] = json!({"type":"string","enum":kinds});
+    json!({"type":"function","name":name,"description":description,"parameters":{
+        "type":"object","properties":props,"required":required,"additionalProperties":false
+    }})
 }
 
 #[cfg(test)]

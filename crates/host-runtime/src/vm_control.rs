@@ -1,5 +1,5 @@
 //! Authenticated, loopback-forwarded control of the owned Linux VM.
-#[cfg(any(test, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, target_os = "linux"))]
 pub(crate) mod guest;
 
 use crate::{Error, Result, linux_vm, native_ipc};
@@ -13,7 +13,7 @@ use tokio::net::TcpStream;
 
 pub const GUEST_PORT: u16 = 17861;
 const LIMIT: usize = 16448;
-#[cfg(any(test, windows, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(test, windows, target_os = "android", target_os = "linux"))]
 const NATIVE_PORTS: [u16; 4] = [17862, 17863, 17864, 17865];
 
 pub async fn native_credentials(
@@ -35,7 +35,11 @@ pub async fn native_credentials(
 }
 
 /// Bind the four local data-plane sockets for the client lifetime.
-#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+#[cfg(any(
+    windows,
+    target_os = "android",
+    all(target_os = "linux", target_arch = "x86_64")
+))]
 pub async fn expose_native_services(key: &Path) -> Result<tokio::task::JoinSet<()>> {
     use ai_phone_api::wire::LinuxVmNativeService;
     use std::sync::Arc;
@@ -150,6 +154,36 @@ pub(crate) async fn version(port: u16, key: &Path) -> Result<Vec<u8>> {
     .await
     .map_err(|_| Error::Invalid("vm_control_timeout"))??;
     Ok(payload)
+}
+
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+pub async fn desktop_location(
+    home: &Path,
+    fix: &ai_phone_api::wire::LocationFix,
+) -> Result<Option<ai_phone_api::wire::LocationDevice>> {
+    let vm = home.join("user/qemu");
+    let Some(port) = crate::qemu_host::running_control(&vm)? else {
+        return Ok(None);
+    };
+    let key = crate::qemu_host::key_path(&vm);
+    let (_, reply) = tokio::time::timeout(
+        Duration::from_secs(14),
+        open(
+            port,
+            &key,
+            LinuxVmOperation::SetLocation,
+            fix.encode_to_vec(),
+        ),
+    )
+    .await
+    .map_err(|_| Error::Invalid("location_timeout"))??;
+    ai_phone_api::wire::LocationDevice::decode(reply.as_slice())
+        .map(Some)
+        .map_err(|_| Error::Invalid("location_receipt"))
+}
+#[cfg(target_os = "android")]
+pub async fn mobile_ready(port: u16, key: &Path) -> Result<()> {
+    empty(port, key, LinuxVmOperation::Ping).await
 }
 
 pub async fn shutdown(port: u16, key: &Path) -> Result<()> {

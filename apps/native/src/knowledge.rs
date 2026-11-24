@@ -376,7 +376,7 @@ impl Knowledge {
                                 None => Ok(None),
                             };
                         }
-                        let Some(file) = rfd::AsyncFileDialog::new()
+                        let Some(file) = crate::documents::AsyncFileDialog::new()
                             .add_filter("图片", &["png", "jpg", "jpeg", "webp"])
                             .pick_file()
                             .await
@@ -426,7 +426,7 @@ impl Knowledge {
             },
             Message::OpenLink(url) => {
                 if (url.starts_with("https://") || url.starts_with("http://"))
-                    && let Err(error) = open::that(url)
+                    && let Err(error) = crate::platform::open_link(url)
                 {
                     self.document_error = error.to_string();
                 }
@@ -731,40 +731,45 @@ impl Knowledge {
                     .push(
                         column![
                             text(locale.tr("正文")).size(12).style(style::muted_text),
-                            text_editor(&draft.body)
-                                .size(14)
-                                .padding(12)
-                                .height(272)
-                                .on_action(Message::Body)
-                                .key_binding(move |key| {
-                                    let binding = text_editor::Binding::<Message>::from_key_press(
-                                        key.clone(),
-                                    );
-                                    if key.modifiers.command()
-                                        && key.key
-                                            == keyboard::Key::Named(keyboard::key::Named::Enter)
-                                    {
-                                        return (can_save
-                                            && matches!(
-                                                key.status,
-                                                text_editor::Status::Focused { .. }
-                                            ))
-                                        .then_some(text_editor::Binding::Custom(Message::Save));
-                                    }
-                                    if matches!(binding, Some(text_editor::Binding::Paste)) {
-                                        return can_paste.then_some(text_editor::Binding::Custom(
-                                            Message::Paste,
-                                        ));
-                                    }
-                                    binding
-                                })
-                                .style(|theme, status| {
-                                    let mut appearance = text_editor::default(theme, status);
-                                    appearance.background = style::CONTROL_FILL.into();
-                                    appearance.border.width = style::BORDER_WIDTH;
-                                    appearance.border.radius = style::CONTROL_RADIUS.into();
-                                    appearance
-                                }),
+                            crate::touch_editor::editor(
+                                text_editor(&draft.body)
+                                    .size(14)
+                                    .padding(12)
+                                    .height(272)
+                                    .on_action(Message::Body)
+                                    .key_binding(move |key| {
+                                        let binding =
+                                            text_editor::Binding::<Message>::from_key_press(
+                                                key.clone(),
+                                            );
+                                        if key.modifiers.command()
+                                            && key.key
+                                                == keyboard::Key::Named(keyboard::key::Named::Enter)
+                                        {
+                                            return (can_save
+                                                && matches!(
+                                                    key.status,
+                                                    text_editor::Status::Focused { .. }
+                                                ))
+                                            .then_some(text_editor::Binding::Custom(
+                                                Message::Save,
+                                            ));
+                                        }
+                                        if matches!(binding, Some(text_editor::Binding::Paste)) {
+                                            return can_paste.then_some(
+                                                text_editor::Binding::Custom(Message::Paste),
+                                            );
+                                        }
+                                        binding
+                                    })
+                                    .style(|theme, status| {
+                                        let mut appearance = text_editor::default(theme, status);
+                                        appearance.background = style::CONTROL_FILL.into();
+                                        appearance.border.width = style::BORDER_WIDTH;
+                                        appearance.border.radius = style::CONTROL_RADIUS.into();
+                                        appearance
+                                    })
+                            ),
                         ]
                         .spacing(6),
                     );

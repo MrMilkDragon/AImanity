@@ -1,27 +1,36 @@
 [package]
 name = "aimanity-native"
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 publish = false
 license = "Apache-2.0"
+
+[lib]
+name = "aimanity_native"
+crate-type = ["cdylib"]
 
 [workspace]
 
 [patch.crates-io]
 cryoglyph = { path = "vendor/cryoglyph" }
+iced_winit = { path = "vendor/iced_winit" }
+winit = { path = "vendor/winit" }
 
 [dependencies]
+aimanity-workbench-proxy = { path = "../../crates/workbench-proxy" }
+aimanity-device-io = { path = "../../crates/device-io" }
 iced = { version = "=0.14.0", default-features = false, features = ["wgpu", "tokio", "image-without-codecs", "advanced", "advanced-shaping", "svg", "markdown", "canvas", "x11", "wayland"] }
 ai-phone-api = { path = "../../crates/api" }
+ai-phone-adb = { path = "../../crates/adb-client" }
 ai-phone-host-runtime = { path = "../../crates/host-runtime" }
 ai-phone-local-speech = { path = "../../crates/local-speech" }
-arboard = "3"
 cpal = "=0.16.0"
 rodio = { version = "=0.21.1", default-features = false, features = ["playback"] }
 prost = "=0.14.4"
+aimanity-model = { path = "../../crates/model" }
+tokio-util = { version = "0.7", features = ["io"] }
+redb = "=5.0.0"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "multipart"] }
-rfd = { version = "0.15", default-features = false, features = ["tokio", "xdg-portal"] }
-open = "5"
 bytes = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -33,12 +42,12 @@ sha2 = "0.11"
 hex = "0.4"
 base64 = "0.22"
 ring = "=0.17.14"
-semver = "1"
 tempfile = "3"
-tokio-tungstenite = "0.28"
+tokio-tungstenite = "0.29"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
 bytemuck = { version = "1", features = ["derive"] }
-uuid = { version = "1", features = ["v7"] }
+uuid = { version = "1", features = ["v4", "v7"] }
 
 [profile.dev]
 debug = 0
@@ -52,18 +61,23 @@ lto = "thin"
 strip = "debuginfo"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "=0.10.1"
 dispatch2 = "=0.3.1"
 core-graphics = { version = "=0.25.0", features = ["highsierra"] }
 libc = "=0.2.191"
 block2 = "0.6"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["NSAccessibility", "NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSView", "NSWindow", "NSWorkspace"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSAccessibility", "NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSRunningApplication", "libc", "NSView", "NSWindow", "NSWorkspace"] }
 objc2-av-foundation = { version = "0.3", default-features = false, features = ["AVCaptureDevice", "AVMediaFormat", "block2"] }
 objc2-avf-audio = { version = "0.3", default-features = false, features = ["AVSpeechSynthesis"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSGeometry", "NSString", "NSThread"] }
 
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
 [target.'cfg(windows)'.dependencies]
-windows = { version = "=0.61.3", features = ["Win32_Media_Speech", "Win32_System_Com", "Win32_System_Variant"] }
+windows-future = { version = "=0.2.1", features = ["std"] }
+windows = { version = "=0.61.3", features = ["Win32_Media_Speech", "Security_Authorization_AppCapabilityAccess", "Win32_UI_Accessibility", "Win32_System_Com", "Win32_System_Variant"] }
 windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -75,3 +89,15 @@ enigo = { version = "=0.6.1", default-features = false }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 xcap = { version = "=0.9.10", default-features = false }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+arboard = "3"
+rfd = { version = "0.15", default-features = false, features = ["tokio", "xdg-portal"] }
+open = "5"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android-activity = { version = "=0.6.1", features = ["native-activity"] }
+iced_winit = { version = "=0.14.1", default-features = false }
+jni = "=0.21.1"
+libc = "=0.2.191"
+xz2 = { version = "=0.1.7", features = ["static"] }

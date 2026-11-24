@@ -109,7 +109,7 @@ fn prepare_guest() -> Result<()> {
     Ok(())
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(target_os = "linux")]
 pub(crate) fn grow_root() -> Result<()> {
     let root = fs::File::open("/")?;
     let block_size = rustix::fs::fstatvfs(&root)
@@ -184,4 +184,28 @@ pub(crate) async fn guest(arguments: &[OsString]) -> Result<()> {
     .await?;
     drop(stream);
     crate::vm_control::guest::run(initialization?, key).await
+}
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+pub(crate) async fn avf_guest() -> Result<()> {
+    use std::io::Read;
+
+    let mut disk = fs::File::open("/dev/vdb")?;
+    let mut header = [0; 44];
+    disk.read_exact(&mut header)?;
+    let size = u32::from_le_bytes(header[40..].try_into().unwrap()) as usize;
+    if &header[..8] != b"AIMAVF01" || !(1..=4096 - 44).contains(&size) {
+        return Err(Error::Invalid("avf_control_disk"));
+    }
+    let key = hmac::Key::new(hmac::HMAC_SHA256, &header[8..40]);
+    let mut profile = vec![0; size];
+    disk.read_exact(&mut profile)?;
+    crate::wsl::backend::initialize_request(&profile).await?;
+
+    let listener = tokio::net::TcpListener::bind((
+        std::net::Ipv4Addr::LOCALHOST,
+        crate::vm_control::GUEST_PORT,
+    ))
+    .await?;
+    crate::vm_control::guest::run(listener, key).await
 }

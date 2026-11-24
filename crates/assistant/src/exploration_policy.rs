@@ -19,8 +19,9 @@ pub fn context(phone: bool, reply: bool, install: bool, experience: &str) -> Vec
     let skill = if phone { "phone-use" } else { "computer-use" };
     vec![
         json!({"role":"system","content":[{"type":"input_text","text":format!(
-            "{LIBERTY_PREFIX}{device}开启。没有预设应用、目标或产出。先读 {skill} 并观察当前状态，自行决定行动、改向或休息。值得持续的目标用 task_plan 记录；醒来后根据新观察接着做。\n按需用 device_list 和 device_link 协作，device_message 可交接任务，device_transfer 传文件。依据真实回执继续。可以调用工作区、Skill、知识库和位置工具。只保存可复用且已核验的经验。\n自主回复={reply}，自主安装={install}。遵守主人授权，语音、用户新指令、通知和手动接管优先。真实停顿时用 task_finish 结束本轮。\n{experience}"
+            "{LIBERTY_PREFIX}{device}开启。没有预设应用或目标。读 {skill} 并观察当前状态，自行决定下一步、改向或休息。可按需操作工作区、选择已授权设备、交接任务和文件，保存已核验的经验。\n自主回复={reply}，自主安装={install}。语音、用户新指令、通知和手动接管优先。真实停顿时用 task_finish 结束本轮。"
         )}]}),
+        crate::model_context::environment(experience),
         json!({"role":"user","content":[{"type":"input_text","text":"Liberty。下一步和休息时机由你决定。"}]}),
     ]
 }

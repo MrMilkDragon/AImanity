@@ -38,7 +38,7 @@ where
         db: db.clone(),
         root: root.clone(),
         token: "steering-fixture-token".into(),
-        phone_token: "unused".into(),
+        phone_token: Some("unused".into()),
         settings: settings::SettingsStore::test_configured(&root),
         local: reqwest::Client::new(),
         remote: reqwest::Client::new(),
@@ -1109,7 +1109,7 @@ async fn terminal_unknown_side_effects_keep_new_input_queued() {
 #[ignore = "real disposable PostgreSQL; no device actions or model requests"]
 async fn completion_waits_for_owned_handoffs_but_does_not_block_ordinary_completion() {
     database_case(|app|async move {
-        registry::initialize(&app.db,&app.settings).await.unwrap();
+        registry::initialize(&app).await.unwrap();
         let accepted=accept(&app,&request("Keep this task open until its delegated work returns")).await;
         let run=Uuid::parse_str(&accepted.run_id).unwrap();
         let message:Uuid=sqlx::query_scalar("SELECT assistant_message_id FROM runs WHERE id=$1").bind(run).fetch_one(&app.db).await.unwrap();

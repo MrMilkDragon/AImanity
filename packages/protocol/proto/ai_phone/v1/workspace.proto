@@ -51,7 +51,7 @@ message SkillDescriptor {
   bool enabled = 6;
 }
 
-// Server allocates monotonically increasing sequence per run in PostgreSQL.
+// Sequence increases within a run.
 // Deltas are flushed as durable chunks before broadcast; reconnect uses after_seq.
 message RunEvent {
   string run_id = 1;

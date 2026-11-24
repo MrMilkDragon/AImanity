@@ -272,7 +272,7 @@ fn traversal_private_names_duplicates_and_nonregular_tar_entries_are_rejected() 
         ".git/config",
         "a\\b",
         ".env",
-        "runtime/services/bin/assistant",
+        "runtime/services/bin/host",
         "a/./b",
     ]
     .iter()
@@ -380,7 +380,7 @@ fn staged_runtime_records_belong_to_declared_components() {
     let root = temporary.path();
     let files = [
         ("runtime/services/manifest.json", b"{}".as_slice()),
-        ("runtime/services/bin/assistant", b"assistant".as_slice()),
+        ("runtime/services/bin/host", b"assistant".as_slice()),
         ("runtime/phone-apps/manifest.json", b"{}".as_slice()),
         ("runtime/container-host/manifest.json", b"{}".as_slice()),
     ];

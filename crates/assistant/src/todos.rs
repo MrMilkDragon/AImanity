@@ -30,6 +30,7 @@ pub(crate) async fn list(app: &App) -> Result<wire::TodoList, sqlx::Error> {
         items: rows
             .into_iter()
             .map(|row| wire::TodoItem {
+                device: String::new(),
                 id: row.get::<Uuid, _>("id").to_string(),
                 title: row.get("title"),
                 source: row.get("source"),
