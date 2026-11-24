@@ -53,8 +53,8 @@
     },
     {
       "path": ".github/workflows/android-mobile.yml",
-      "size": 16975,
-      "sha256": "3590b411c054ca5ea3d7db968e5bb5d9768397e9ba8d679672631ad91bc0511f"
+      "size": 17013,
+      "sha256": "321db52c7ed70918a280e2d382c40898fcd448e8f90cc70fe4fec1b44c845d0c"
     },
     {
       "path": ".github/workflows/client-factory.yml",
@@ -423,8 +423,8 @@
     },
     {
       "path": "apps/native/src/android_keyboard.rs",
-      "size": 12475,
-      "sha256": "c40588fcb7d2d4d599041224e799a9a86726cd651f0b3e1568abe609b430f129"
+      "size": 12506,
+      "sha256": "c88b583647e01b68bdd7f2677523d123cbf71f1f1a1008d078a4dd05a1f6d80a"
     },
     {
       "path": "apps/native/src/android_os.rs",

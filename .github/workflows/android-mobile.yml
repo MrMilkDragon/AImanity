@@ -191,7 +191,7 @@ jobs:
               'select(.path == $workflow and .conclusion == "success" and .head_repository.full_name == $repo and (.event == "push" or .event == "workflow_dispatch")) | .head_sha')
             git merge-base --is-ancestor "$guest_commit" HEAD
             git diff --exit-code --name-only "$guest_commit" HEAD -- . \
-              ':(exclude)apps/native/src' ':(exclude)apps/native/tests' ':(exclude)apps/native/vendor/iced_winit/src' \
+              ':(exclude)apps/native/src' ':(exclude)apps/native/tests' ':(exclude)crates/host-runtime/tests' ':(exclude)apps/native/vendor/iced_winit/src' \
               ':(exclude).github/workflows/client.yml' ':(exclude).github/workflows/android-mobile.yml' \
               ':(exclude)scripts/mobile-smoke.sh' ':(exclude)docs/public/native-client.*.md' ':(exclude)SOURCE-MANIFEST.json'
           done

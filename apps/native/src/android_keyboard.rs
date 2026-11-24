@@ -48,15 +48,6 @@ pub fn show(purpose: Option<input_method::Purpose>) {
     let Some(app) = ACTIVITY.lock().unwrap().clone() else {
         return;
     };
-    GENERATION.fetch_add(1, Ordering::Relaxed);
-    INPUT_TYPE.store(
-        if purpose == Some(input_method::Purpose::Secure) {
-            0x81
-        } else {
-            1
-        },
-        Ordering::Relaxed,
-    );
     app.run_on_java_main_thread(Box::new(move || {
         let result = crate::android_os::with(|env, activity| {
             env.with_local_frame(24, |env| {
@@ -70,7 +61,9 @@ pub fn show(purpose: Option<input_method::Purpose>) {
                     )?
                     .l()?;
                 let mut slot = VIEW.lock().unwrap();
-                if purpose.is_some() {
+                if let Some(purpose) = purpose {
+                    let input_type = if purpose == input_method::Purpose::Secure { 0x81 } else { 1 };
+                    let type_changed = INPUT_TYPE.swap(input_type, Ordering::Relaxed) != input_type;
                     if slot.is_none() {
                         let class = app_class(env, activity, "dev.aimanity.mobile.KeyboardView")?;
                         let view = env.new_object(
@@ -101,15 +94,15 @@ pub fn show(purpose: Option<input_method::Purpose>) {
                         *slot = Some(env.new_global_ref(view)?);
                     }
                     let view = slot.as_ref().unwrap().as_obj();
-                    if env.call_method(view, "hasFocus", "()Z", &[])?.z()? {
+                    if !env.call_method(view, "hasFocus", "()Z", &[])?.z()? {
+                        env.call_method(view, "requestFocus", "()Z", &[])?;
+                    } else if type_changed {
                         env.call_method(
                             &imm,
                             "restartInput",
                             "(Landroid/view/View;)V",
                             &[view.into()],
                         )?;
-                    } else {
-                        env.call_method(view, "requestFocus", "()Z", &[])?;
                     }
                     env.call_method(
                         &imm,
@@ -177,7 +170,7 @@ extern "system" fn Java_dev_aimanity_mobile_KeyboardView_onCreateInputConnection
             &connection,
             "generation",
             "I",
-            GENERATION.load(Ordering::Relaxed).into(),
+            GENERATION.fetch_add(1, Ordering::Relaxed).wrapping_add(1).into(),
         )?;
         iced_winit::android_input(Event::InputMethod(input_method::Event::Opened));
         Ok(connection.into_raw())
