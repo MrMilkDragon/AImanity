@@ -84,5 +84,6 @@ jobs:
           path: |
             ${{ env.AIMANITY_QA_ROOT }}/*.png
             ${{ env.AIMANITY_QA_ROOT }}/*.log
+            ${{ env.AIMANITY_QA_ROOT }}/*.tsv
           if-no-files-found: ignore
           retention-days: 7

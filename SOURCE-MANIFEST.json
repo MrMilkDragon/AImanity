@@ -113,8 +113,8 @@
     },
     {
       "path": ".github/workflows/windows-installer-acceptance.yml",
-      "size": 3943,
-      "sha256": "e64632151c961783d7accedebe143ff02e3c043c4744954cd00bf4fcd26b6b97"
+      "size": 3989,
+      "sha256": "69850811f27ed46f0256a47758b5059a7f14dad0ebaedcc64f96c68950929d1c"
     },
     {
       "path": ".github/workflows/windows-qemu.yml",
@@ -798,8 +798,8 @@
     },
     {
       "path": "apps/native/tests/installed/window.rs",
-      "size": 14146,
-      "sha256": "28878ad034355aeaa7637e08a9fa6a9c0dcdac6900f8b5f680c99886b32f9164"
+      "size": 14258,
+      "sha256": "c4a86b28ce1d6b94e9fe9dafe746eb7bee9b25a09d830924d6b80dcb7ae7b78d"
     },
     {
       "path": "apps/native/tests/installed/windows.rs",

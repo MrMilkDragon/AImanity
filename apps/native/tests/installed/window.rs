@@ -330,8 +330,10 @@ impl Client {
     #[cfg(windows)]
     pub async fn create_guest(&mut self, kind: &str) -> Result<()> {
         self.word("Add", true).await?;
-        self.word("Name", false).await?;
-        self.type_name(kind)?;
+        self.word("Discard", false).await?;
+        let name = if kind == "Phone" { "Juniper" } else { "Cedar" };
+        self.type_name(name)?;
+        self.word(name, false).await?;
         if kind == "Desktop" {
             self.word("Android", true).await?;
             self.word("Linux", true).await?;
