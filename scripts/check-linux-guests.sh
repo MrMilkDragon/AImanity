@@ -22,11 +22,13 @@ close_client() {
 }
 reopen() {
     local database="$XDG_DATA_HOME/dev.aimanity.workspace/host/workspace.redb"
-    local identity
+    local identity start_ms
     identity=$(stat -c '%d:%i' "$database")
+    start_ms=$(date +%s%3N)
     start_client
     timeout 60 xdotool search --sync --onlyvisible --pid "$app" --name '^AImanity$' >/dev/null
     word Message
+    echo "$(( $(date +%s%3N) - start_ms ))" > "$work/reopen-ms.txt"
     import -window "$window" "$work/reopened-workbench.png"
     test "$(stat -c '%d:%i' "$database")" = "$identity"
     close_client
@@ -40,7 +42,7 @@ word() {
         kill -0 "$app"
         import -window "$window" -resize '200%' "$work/current.png"
         where=$(tesseract "$work/current.png" stdout -l eng --psm 11 tsv 2>/dev/null |
-            awk -F '\t' -v w="$wanted" '$1==5 && tolower($12)==tolower(w) && (!seen || $8<best) {
+            awk -F '\t' -v w="$wanted" '$1==5 { label=$12; sub(/[[:punct:]]+$/, "", label); if (tolower(label)!=tolower(w) || (seen && $8>=best)) next;
                 seen=1;best=$8;x=int(($7+$9/2)/2);y=int(($8+$10/2)/2)
             } END {if (seen) print x,y}')
         if [[ -n $where && $where == "$previous" ]]; then read -r x y <<< "$where"; return; fi
@@ -53,7 +55,11 @@ word() {
 click_word() { word "$1"; xdotool mousemove --window "$window" "$x" "$y" sleep 0.1 mousedown 1 sleep 0.1 mouseup 1; }
 qemu_pids() { ps -u "$(id -u)" -o pid=,comm= | awk '$2 ~ /qemu-system-x86/ {print $1}'; }
 click_word English
-click_word Continue
+word Choose
+import -window "$window" "$work/language.png"
+read -r width height < <(identify -format '%w %h\n' "$work/language.png")
+button_y=$(convert "$work/language.png" -colorspace Gray -threshold '25%' -depth 8 gray:- | /action-row "$width" "$height")
+xdotool mousemove --window "$window" "$((width / 2))" "$button_y" mousedown 1 sleep 0.1 mouseup 1
 timeout 60 xdotool search --sync --onlyvisible --pid "$app" --name '^AImanity$' >/dev/null
 word Message
 import -window "$window" "$work/first-workbench.png"

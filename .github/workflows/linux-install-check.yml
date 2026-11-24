@@ -6,11 +6,17 @@ on:
         description: Run containing fluorine-signed-linux
         required: true
         type: string
+      exercise_guests:
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       signed_run:
         required: true
         type: string
+      exercise_guests:
+        type: boolean
+        default: false
 
 permissions:
   actions: read
@@ -55,11 +61,13 @@ jobs:
           set -euo pipefail
           mapfile -t installer < <(find "$RUNNER_TEMP/signed" -type f -name "*.$PACKAGE")
           test "${#installer[@]}" -eq 1
+          rustc --edition 2024 -C target-feature=+crt-static -O scripts/mobile-button-row.rs -o "$RUNNER_TEMP/action-row"
           devices=()
-          if [[ "$PACKAGE" == deb ]]; then devices+=(--device=/dev/kvm); fi
+          if [[ "$PACKAGE" == deb && "${{ inputs.exercise_guests }}" == true ]]; then devices+=(--device=/dev/kvm); fi
           docker run --detach --name distro "${devices[@]}" \
             -v "${installer[0]}:/candidate.$PACKAGE:ro" \
             -v "$RUNNER_TEMP/package-key/AImanity-Fluorine.asc:/package-key.asc:ro" \
+            -v "$RUNNER_TEMP/action-row:/action-row:ro" \
             -v "$PWD/scripts/check-linux-guests.sh:/check-linux-guests.sh:ro" "$DISTRO" sleep infinity
           if [[ "$PACKAGE" == deb ]]; then
             gpg --batch --dearmor -o "$RUNNER_TEMP/package-key.gpg" "$RUNNER_TEMP/package-key/AImanity-Fluorine.asc"
@@ -70,10 +78,13 @@ jobs:
               apt-get update -qq
               apt-get install -y task-gnome-desktop
               apt-get install -y --no-install-recommends xvfb xauth openbox wmctrl xdotool x11-utils imagemagick tesseract-ocr-eng tesseract-ocr mesa-vulkan-drivers libgl1-mesa-dri procps
-              gid=$(stat -c %g /dev/kvm)
-              group=$(getent group "$gid" | cut -d: -f1)
-              if [ -z "$group" ]; then group=runner-kvm; groupadd -g "$gid" "$group"; fi
-              useradd -m -G "$group" tester
+              useradd -m tester
+              if [ -e /dev/kvm ]; then
+                gid=$(stat -c %g /dev/kvm)
+                group=$(getent group "$gid" | cut -d: -f1)
+                if [ -z "$group" ]; then group=runner-kvm; groupadd -g "$gid" "$group"; fi
+                usermod -aG "$group" tester
+              fi
             '
           else
             docker exec distro bash -euc '
@@ -99,18 +110,14 @@ jobs:
           '
           echo "- $DISTRO: installed the signed $PACKAGE offline, opened an empty workspace, closed it, then reopened the same database." >> "$GITHUB_STEP_SUMMARY"
       - name: Check on-demand guests with KVM
-        if: matrix.package == 'deb'
-        continue-on-error: true
+        if: inputs.exercise_guests && matrix.package == 'deb'
         run: |
-          if ! docker exec -u tester -e HOME=/home/tester -e DISPLAY=:99 distro bash /check-linux-guests.sh guests; then
-            echo "Optional KVM guest creation did not complete." >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
+          docker exec -u tester -e HOME=/home/tester -e DISPLAY=:99 distro bash /check-linux-guests.sh guests
       - name: Collect workbench screens and lifecycle log
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/linux-evidence"
-          for file in client.log first-workbench.png reopened-workbench.png; do
+          for file in client.log reopen-ms.txt language.png current.png first-workbench.png reopened-workbench.png; do
             docker cp "distro:/home/tester/cold-install/$file" "$RUNNER_TEMP/linux-evidence/" 2>/dev/null || continue
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
