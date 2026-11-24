@@ -18,8 +18,8 @@
 适用于另一台 Windows、macOS 或 Linux X11 电脑。两台电脑都打开 AImanity。以下将发出任务的一端称为工作区电脑。
 
 1. **在工作区电脑上**，打开「设备 → 添加设备 → 远程电脑」，填写名称，点击「生成配对码」。配对码一次有效，五分钟内使用。
-2. **在被控电脑上**，确认能通过 SSH 密钥登录工作区。工作区是 Mac 时开启「远程登录」，是 Windows 时启用 OpenSSH Server。可以填写已信任的 SSH 别名或 `用户名@主机`。首次连接可在被控电脑运行 `ssh my-workspace`，核对工作区主机指纹，登录成功后退出。
-3. **在被控电脑上**，打开「设备 → 共享设备」，选择「这台电脑」，填写工作区 SSH 主机和配对码，点击「共享屏幕与文件」。若希望 Agent 收到该 Mac 或 Windows 电脑上的可见通知，可勾选「共享可见通知」。
+2. **在被控电脑上**，确认能通过 SSH 密钥登录工作区。工作区是 Mac 时开启「远程登录」，是 Windows 时启用 OpenSSH Server。可以填写已信任的 SSH 别名或 `用户名@主机`。首次连接可在被控电脑运行 `ssh my-workspace`，核对工作区主机指纹，登录成功后退出。首次设置可参考 [Mac 远程登录](https://support.apple.com/guide/mac-help/allow-a-remote-computer-to-access-your-mac-mchlp1066/mac)、[Windows OpenSSH 服务](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse)及[密钥登录](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement)。
+3. **在被控电脑上**，打开「设备 → 共享设备」，选择「这台电脑」，填写工作区 SSH 主机和配对码，点击「共享屏幕与文件」。被控电脑是 Mac 时，在这台 Mac 上按提示授予 AImanity 屏幕录制和辅助功能权限。若希望 Agent 收到该 Mac 或 Windows 电脑上的可见通知，可勾选「共享可见通知」。
 4. **回到工作区电脑**，点选已连接设备。可以先让 Agent 在打开的文稿中输入一行字并保存，再到「文件管理」选中该设备，把文稿复制到工作文件。
 5. 在被控端点击「停止共享」，或在工作区点击「断开」即可结束访问。重连时生成新码。「移除设备」会删除工作区内的配对记录。
 

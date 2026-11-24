@@ -4553,13 +4553,13 @@
     },
     {
       "path": "docs/public/native-client.en.md",
-      "size": 3922,
-      "sha256": "358f2f7092a7705b73cac83fce3f02d971d3426347d69a11d95a13d6ec2bfa1e"
+      "size": 4448,
+      "sha256": "61b01332ee992fadc17dd886756fd688f8d6ed8af4fced91f8012825d5749940"
     },
     {
       "path": "docs/public/native-client.zh-CN.md",
-      "size": 3683,
-      "sha256": "8ba28a568b15d2d765cb59ca65790d8c9c2179407eeae20c9dde24c1a57e93fa"
+      "size": 4166,
+      "sha256": "6ed240a8c8255b5f6550cd65a9f7dabd2cbe5336144bcd3bc759c488a3bccb48"
     },
     {
       "path": "docs/public/native-services-license-inventory.json",
