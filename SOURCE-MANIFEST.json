@@ -878,8 +878,8 @@
     },
     {
       "path": "apps/native/vendor/iced_winit/src/lib.rs",
-      "size": 80124,
-      "sha256": "0087d40f81e96360a56488a685512300437cfae0588281a502d0a4008900f4c7"
+      "size": 79800,
+      "sha256": "887dfaad6ed645c74ecd73db97358336f9ba8dfeaa986fa1346bc78e057f279a"
     },
     {
       "path": "apps/native/vendor/iced_winit/src/proxy.rs",
@@ -893,8 +893,8 @@
     },
     {
       "path": "apps/native/vendor/iced_winit/src/window.rs",
-      "size": 13732,
-      "sha256": "9f6740e21dbba5f7dfcea8ab1e4a9909c02d9849c3f273a5fb2bbb7243ddaa07"
+      "size": 13749,
+      "sha256": "2ddf8e9e0d7798a712be01c2383f97c259a6ecdc44a4daf8719a9c012a8e0841"
     },
     {
       "path": "apps/native/vendor/winit/Cargo.toml",
@@ -5013,8 +5013,8 @@
     },
     {
       "path": "scripts/mobile-smoke.sh",
-      "size": 7686,
-      "sha256": "c39b6c7f9be44a4caf556ceee40765e2751adab2360cf8187fe7c88b47be7684"
+      "size": 7540,
+      "sha256": "2a425869f39ce87b9c90975b9277c6bde13bd145d9c3c0bd587a9a554b34859a"
     },
     {
       "path": "scripts/native-host",

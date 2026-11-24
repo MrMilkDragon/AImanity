@@ -83,7 +83,7 @@ where
                 preedit: None,
                 ime_state: None,
                 #[cfg(target_os = "android")]
-                ime_dismissed: false,
+                ime_tapped: false,
             },
         );
 
@@ -176,7 +176,7 @@ where
     preedit: Option<Preedit<P::Renderer>>,
     ime_state: Option<(Rectangle, input_method::Purpose)>,
     #[cfg(target_os = "android")]
-    pub(crate) ime_dismissed: bool,
+    pub(crate) ime_tapped: bool,
 }
 
 impl<P, C> Window<P, C>
@@ -284,9 +284,8 @@ where
         purpose: input_method::Purpose,
     ) {
         #[cfg(target_os = "android")]
-        if self
-            .ime_state
-            .is_none_or(|(_, previous)| previous != purpose)
+        if std::mem::take(&mut self.ime_tapped)
+            || self.ime_state.is_none_or(|(_, previous)| previous != purpose)
         {
             crate::ANDROID_KEYBOARD.get()(Some(purpose));
         }
@@ -309,7 +308,7 @@ where
     pub(crate) fn disable_ime(&mut self) {
         #[cfg(target_os = "android")]
         {
-            self.ime_dismissed = false;
+            self.ime_tapped = false;
         }
         if self.ime_state.is_some() {
             #[cfg(target_os = "android")]

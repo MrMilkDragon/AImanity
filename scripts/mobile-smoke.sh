@@ -8,7 +8,7 @@ printf '%s  %s\n' "$APK_SHA256" "$APK" | sha256sum --check --strict
 adb shell input keyevent KEYCODE_WAKEUP
 adb shell wm dismiss-keyguard
 adb shell settings put secure immersive_mode_confirmations confirmed
-adb shell settings put secure show_ime_with_hard_keyboard 0
+adb shell settings put secure show_ime_with_hard_keyboard 1
 adb install "$APK"
 apk_path=$(adb shell pm path "$PACKAGE" | tr -d '\r' | sed -n 's/^package://p')
 installed_sha=$(adb shell sha256sum "$apk_path" | awk '{print $1}')
@@ -112,9 +112,6 @@ grep -Fq 'connection=dev.aimanity.mobile.KeyboardConnection@' evidence/composer-
 adb shell 'input text O && input keyevent KEYCODE_R KEYCODE_B KEYCODE_I KEYCODE_T'
 hide_keyboard hardware
 wait_word typed Orbit
-read -r x y w h < <(word_box typed Orbit)
-adb shell input tap "$((x+w/2))" "$((y/2))"
-adb shell settings put secure show_ime_with_hard_keyboard 1
 tap_word typed Orbit
 adb shell input keyevent KEYCODE_MOVE_END
 key_location() {

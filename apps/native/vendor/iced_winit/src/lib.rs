@@ -832,12 +832,6 @@ async fn run_instance<P>(
             #[cfg(target_os = "android")]
             Event::AndroidInput(event) => {
                 if let Some((id, window)) = window_manager.iter_mut().next() {
-                    if matches!(
-                        event,
-                        core::Event::InputMethod(core::input_method::Event::Closed)
-                    ) {
-                        window.ime_dismissed = true;
-                    }
                     events.push((id, event));
                     window.raw.request_redraw();
                 }
@@ -1229,10 +1223,9 @@ async fn run_instance<P>(
                         match window_event {
                             #[cfg(target_os = "android")]
                             winit::event::WindowEvent::Touch(ref touch)
-                                if touch.phase == winit::event::TouchPhase::Started
-                                    && std::mem::take(&mut window.ime_dismissed) =>
+                                if touch.phase == winit::event::TouchPhase::Started =>
                             {
-                                window.disable_ime();
+                                window.ime_tapped = true;
                             }
                             winit::event::WindowEvent::Resized(_) => {
                                 window.raw.request_redraw();
