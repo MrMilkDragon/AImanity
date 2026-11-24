@@ -78,8 +78,8 @@
     },
     {
       "path": ".github/workflows/linux-install-check.yml",
-      "size": 6537,
-      "sha256": "df5c5055e959736a844b2f559597d3dd9c1ad9768f919cdd57f15e60a1bdc6a4"
+      "size": 6519,
+      "sha256": "6bf4d1e92de9a5150f71ef0fc069d9585ef6aa921e0cd67d45309bc3d0b86256"
     },
     {
       "path": ".github/workflows/linux-packages.yml",
@@ -893,8 +893,8 @@
     },
     {
       "path": "apps/native/vendor/iced_winit/src/lib.rs",
-      "size": 79800,
-      "sha256": "887dfaad6ed645c74ecd73db97358336f9ba8dfeaa986fa1346bc78e057f279a"
+      "size": 80077,
+      "sha256": "8feda851aa0b1ebcee6f86174f68048f9f84bab194f9f7d667ab7f35b99b6aea"
     },
     {
       "path": "apps/native/vendor/iced_winit/src/proxy.rs",
@@ -4648,8 +4648,8 @@
     },
     {
       "path": "docs/public/release-status.md",
-      "size": 7565,
-      "sha256": "244d1a5e9877eaa75bbc49ec5709fe53b2e53af6c21007dc14364c9253f6063a"
+      "size": 7568,
+      "sha256": "7116568e650f1004f8616447f4ce4ec8b9a583b63e79f6a59b993a0ff87e28fe"
     },
     {
       "path": "docs/public/runtime-bundles.md",
@@ -4998,8 +4998,8 @@
     },
     {
       "path": "scripts/check-linux-guests.sh",
-      "size": 4170,
-      "sha256": "46344ed7c6e97948d671527b57fdb01d5fb88e1f942b7af275efb1058a7f9e71"
+      "size": 5004,
+      "sha256": "792962f984a63110772948e4499db728417002e804ce7c7b49bce091c0858baa"
     },
     {
       "path": "scripts/check-native-workspace.sh",

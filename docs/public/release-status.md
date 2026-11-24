@@ -50,7 +50,7 @@ In your download directory run the command for your distribution. The packages i
 **Debian 12+ / Ubuntu 24.04+**
 
 ```sh
-sudo apt install ./AImanity-0.0.6-linux-amd64.deb
+sudo dpkg --install ./AImanity-0.0.6-linux-amd64.deb
 ```
 
 **Fedora / Enterprise Linux 10**

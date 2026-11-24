@@ -1667,6 +1667,12 @@ fn run_action<'a, P, C>(
             }
             window::Action::GetSize(id, channel) => {
                 if let Some(window) = window_manager.get_mut(id) {
+                    #[cfg(target_os = "linux")]
+                    let size = window
+                        .raw
+                        .inner_size()
+                        .to_logical::<f32>(window.raw.scale_factor());
+                    #[cfg(not(target_os = "linux"))]
                     let size = window.logical_size();
                     let _ = channel.send(Size::new(size.width, size.height));
                 }
