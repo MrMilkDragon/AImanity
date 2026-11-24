@@ -56,6 +56,7 @@ pub struct Issue {
     pub reason: String,
     pub retry: Option<Startup>,
 }
+#[derive(Default)]
 pub struct Devices {
     pub issues: std::collections::HashMap<String, Issue>,
     starting: std::collections::HashSet<String>,
@@ -73,22 +74,6 @@ fn defaults(kind: &str) -> wire::VirtualDeviceProfile {
         cpus: 2,
         memory_mb: if kind == "desktop" { 2560 } else { 2048 },
         storage_gb: if kind == "desktop" { 32 } else { 16 },
-    }
-}
-impl Default for Devices {
-    fn default() -> Self {
-        Self {
-            selected: String::new(),
-            issues: Default::default(),
-            starting: Default::default(),
-            invitation: None,
-            draft: None,
-            busy: false,
-            delete: None,
-            error: String::new(),
-            registry: None,
-            resources: Default::default(),
-        }
     }
 }
 impl Devices {

@@ -143,6 +143,8 @@ impl Endpoint {
         let mut entries = Vec::new();
         #[cfg(windows)]
         if matches!(self, Self::Desktop) && absolute(path)?.trim_matches('/').is_empty() {
+            // GetLogicalDrives takes no pointers and returns its drive mask by value.
+            #[allow(unsafe_code)]
             let drives = unsafe { windows_sys::Win32::Storage::FileSystem::GetLogicalDrives() };
             if drives == 0 {
                 return Err(std::io::Error::last_os_error().into());

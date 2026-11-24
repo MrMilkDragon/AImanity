@@ -78,6 +78,7 @@ jobs:
         run: |
           sudo chroot "$BUILD_ROOT" /bin/bash -euc '
             cd /work
+            test "$(cat .tools/linux-guest-inputs/source-commit)" = "$(git rev-parse HEAD)"
             target/release/release-tools linux-payload "$PWD/.tools/linux-guest-inputs" /factory/tools
             export AIMANITY_BUNDLE_INTEGRITY=$PWD/apps/native/gen/host/integrity.json
             cargo build --release --locked --manifest-path apps/native/Cargo.toml --bin aimanity-native

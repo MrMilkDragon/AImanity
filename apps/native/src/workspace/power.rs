@@ -119,7 +119,7 @@ impl Workspace {
                 s.devices[i].instance_slot = Some(slot);
             }
             let d = &mut s.devices[i];
-            d.resources = Some(profile.clone());
+            d.resources = Some(profile);
             d.runtime_state = "starting".into();
             d.start_error.clear();
             Ok(())

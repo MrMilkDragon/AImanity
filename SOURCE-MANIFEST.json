@@ -73,8 +73,8 @@
     },
     {
       "path": ".github/workflows/linux-guest-inputs.yml",
-      "size": 2182,
-      "sha256": "7db84a701f17543533eaf90b1292b1a69f8133a572ee666ed99a8c562291a341"
+      "size": 2534,
+      "sha256": "02bf8ab58698da6d0a7e32fca0635eaa1b67eee97480b6d22eface9d78667b39"
     },
     {
       "path": ".github/workflows/linux-install-check.yml",
@@ -83,8 +83,8 @@
     },
     {
       "path": ".github/workflows/linux-packages.yml",
-      "size": 4531,
-      "sha256": "bbdf20b3a5cdb071c106de2fb537b654f25c41236528f4b7227bedc8c46915cc"
+      "size": 4623,
+      "sha256": "aca87737cab1ff97dd62da5f501792783623ee77094a0c046157f95b85f5cff8"
     },
     {
       "path": ".github/workflows/linux-publish.yml",
@@ -483,8 +483,8 @@
     },
     {
       "path": "apps/native/src/devices.rs",
-      "size": 30851,
-      "sha256": "c81cd42af8efaa50eb632878793e5b7368dc5e1344379ef390409ad5fbb22425"
+      "size": 30453,
+      "sha256": "a56b47c6799ee9fd528e72b1aeba213e3207dac37a8bec1a7f0aac937343502a"
     },
     {
       "path": "apps/native/src/documents/android.rs",
@@ -748,8 +748,8 @@
     },
     {
       "path": "apps/native/src/workspace/power.rs",
-      "size": 7969,
-      "sha256": "0e5586ed9c732cce478bca136684766adb2a901d3a9af721222a4347d446b920"
+      "size": 7961,
+      "sha256": "a621f63328c85a595d7b56b2cd8271ef57046c382e60fe83a4ad343e49c20b70"
     },
     {
       "path": "apps/native/src/workspace/records.rs",
@@ -2818,8 +2818,8 @@
     },
     {
       "path": "crates/device-io/src/files.rs",
-      "size": 10689,
-      "sha256": "f02eed538d005e68f5d5c0160f75a46f1bfbdab89ca7190be65d83f600a7675d"
+      "size": 10810,
+      "sha256": "1ed4968f6c592693f39ab77e515bf450d5c474003586920e146149005026eece"
     },
     {
       "path": "crates/device-io/src/lib.rs",
@@ -3683,8 +3683,8 @@
     },
     {
       "path": "crates/release-tools/src/client_installer/linux_payload.rs",
-      "size": 4117,
-      "sha256": "b805614f47dea26af9e357ac9819636314145015b69f07deb8fb611cf472da72"
+      "size": 4365,
+      "sha256": "78b816d8ebc696220722e7a17b9f370c436f1840cff154387b53621eef9e360a"
     },
     {
       "path": "crates/release-tools/src/client_installer/notices.rs",
@@ -4643,8 +4643,8 @@
     },
     {
       "path": "docs/public/windows-backend-runtime.md",
-      "size": 3163,
-      "sha256": "a541eaa6ec5fb2b2711cc19c1e05f0c5a654affec7db56cca022c803dedc66c0"
+      "size": 3034,
+      "sha256": "15dcc74583355435e7cffd83e4d943fada77cfca4c525f832de8f8bf01391449"
     },
     {
       "path": "docs/public/windows-client-factory.md",

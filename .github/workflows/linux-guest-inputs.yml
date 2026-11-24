@@ -37,9 +37,12 @@ jobs:
           $version = (Get-Content -Raw config/release-policy.json | ConvertFrom-Json).version
           $installer = Join-Path $env:RUNNER_TEMP "factory/AImanity-$version-windows-x64-setup.exe"
           $dest = Join-Path $env:RUNNER_TEMP 'guest-inputs'
-          $items = @('{app}\host\android.payload','{app}\host\qemu\guest\*','{app}\host\qemu\manifest.json','{app}\host\speech\*')
+          $commit = (Get-Content -Raw "$installer.manifest.json" | ConvertFrom-Json).source_commit
+          if ($commit -ne $env:GITHUB_SHA) { throw 'The Windows guest inputs belong to a different commit.' }
+          $items = @('{app}\host\source.payload','{app}\host\android.payload','{app}\host\qemu\guest\*','{app}\host\qemu\manifest.json','{app}\host\speech\*')
           cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory unpack . $installer $dest @items
-          foreach ($p in @('android.payload','qemu/guest/bzImage','qemu/guest/guest.qcow2','qemu/guest/release.ext4','qemu/guest/release-init.cpio.gz','qemu/manifest.json','speech/ggml-tiny-q5_1.bin')) {
+          Set-Content -NoNewline -Encoding ascii (Join-Path "$dest/host" 'source-commit') $commit
+          foreach ($p in @('source.payload','android.payload','qemu/guest/bzImage','qemu/guest/guest.qcow2','qemu/guest/release.ext4','qemu/guest/release-init.cpio.gz','qemu/manifest.json','speech/ggml-tiny-q5_1.bin')) {
             if (!(Test-Path -PathType Leaf (Join-Path "$dest/host" $p))) { throw "Missing $p" }
           }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
