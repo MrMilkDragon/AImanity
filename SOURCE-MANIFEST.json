@@ -63,8 +63,8 @@
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 4895,
-      "sha256": "7e604dba3bd69d1cd12f5ef0a9ec5ab824fad4cff83c8b3dd1778e294f4a56db"
+      "size": 5358,
+      "sha256": "461dce4ff84898bd97ff896900ae837950cff5b9d18caa66ffec7d88a8dedfe2"
     },
     {
       "path": ".github/workflows/linux-backend.yml",
@@ -113,8 +113,8 @@
     },
     {
       "path": ".github/workflows/windows-installer-acceptance.yml",
-      "size": 3085,
-      "sha256": "64e8772d0586ca292dc846eb4eb7d62e917fd27d83ce0b285db1a95b4f7868c3"
+      "size": 3024,
+      "sha256": "62e6bcfd6e65021ecd062097511e55f40c17185affe97221acd9ebe770628fe5"
     },
     {
       "path": ".github/workflows/windows-qemu.yml",
@@ -313,13 +313,13 @@
     },
     {
       "path": "apps/native/Cargo.lock",
-      "size": 170435,
-      "sha256": "a8b21daea4098fcaf0797aa2b404c4a2f0d4aa90951ea18e9fb25746d60a2533"
+      "size": 170460,
+      "sha256": "ed821838a7102f650522e17948b51eede76d09781c13052970d4b93d3b78e6be"
     },
     {
       "path": "apps/native/Cargo.toml",
-      "size": 4175,
-      "sha256": "f4ef641551e63b653a936b03601e839965619362c4c23cf1fbeab8464c3a0c7b"
+      "size": 4235,
+      "sha256": "c544b51a28819401ef3b2ba38aceaffbbc6873e2aec9f50ff15f06a468e6435b"
     },
     {
       "path": "apps/native/Info.plist",
@@ -398,8 +398,8 @@
     },
     {
       "path": "apps/native/src/agent_details.rs",
-      "size": 30339,
-      "sha256": "9fb7658aed2ce97e5393787fe8344bed21aa8b98de5de7c79fcb8feca30bddf6"
+      "size": 30669,
+      "sha256": "65d452ce7fb5b46bc910ef1e4683764732177e47f1b291133700c98145d88c39"
     },
     {
       "path": "apps/native/src/agents.rs",
@@ -443,8 +443,8 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 61062,
-      "sha256": "ad1207194b996ce8299200bbf87eb8a4fac5000a4dc0fc66433c295e1c2bbfbd"
+      "size": 61117,
+      "sha256": "5627771e48fcdedc38c0a1720334dc24c0494dc9b9bbf69ee415efc893f16ec8"
     },
     {
       "path": "apps/native/src/connection.rs",
@@ -508,8 +508,8 @@
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 26079,
-      "sha256": "23317cfbb29df329241b4d791086b850c0e7e97ac3e0bfbb82331868f4a4fc1f"
+      "size": 26164,
+      "sha256": "0967effeddbf0934df16de0c204d9e42a20035fce4aa769a8fc67cee2b9b03f5"
     },
     {
       "path": "apps/native/src/host_desktop_mobile.rs",
@@ -528,8 +528,8 @@
     },
     {
       "path": "apps/native/src/knowledge.rs",
-      "size": 37407,
-      "sha256": "8d50dce24cfc87823335d70296ebc171d93835025f0521f3dba12ee7ebe725f2"
+      "size": 37777,
+      "sha256": "edfcc65ed2efb977d0bd2231508f78fe4da2f4eb6692b41c8c495e6b44df4c77"
     },
     {
       "path": "apps/native/src/layout.rs",
@@ -583,8 +583,8 @@
     },
     {
       "path": "apps/native/src/modes.rs",
-      "size": 18165,
-      "sha256": "1e1da9d6c7c5c8f03e18df8643638c6562ede99136c80803f787d48c7a90aa86"
+      "size": 18194,
+      "sha256": "deba645702669c62e24e842e69ec6883c79491ee52087318fae4749b3cbab847"
     },
     {
       "path": "apps/native/src/occlude.rs",
@@ -672,6 +672,11 @@
       "sha256": "bc78dbc7f723f801aec1be62713735c24a2a913b532c669915917431e548b5e5"
     },
     {
+      "path": "apps/native/src/touch_editor.rs",
+      "size": 4010,
+      "sha256": "6053a8b4c8e2e60697770ddfc1fc0b962476bce1e68670f9734dd8f5fc4cd37a"
+    },
+    {
       "path": "apps/native/src/uninstall/linux.rs",
       "size": 2332,
       "sha256": "02c4f2a33a25d9f70520c4200a83e1bb3a02a675736d77d4928f273dc71cf259"
@@ -698,8 +703,8 @@
     },
     {
       "path": "apps/native/src/workbench.rs",
-      "size": 105089,
-      "sha256": "8400941bb2b7380c9571aa76f58f19e0c965050693b255e2483fa76aaf4d2913"
+      "size": 105199,
+      "sha256": "3109f7be8f9bd975499d014e627355418f28548e806a56fcf53ae654b7631bc6"
     },
     {
       "path": "apps/native/src/workspace/conversation.rs",
@@ -775,6 +780,21 @@
       "path": "apps/native/src/workspace.rs",
       "size": 23473,
       "sha256": "aafcb60e320b1ca4a7d0550c17ea60b7a6e3f173f1ab8d6ecc6cc1f3a30ac6c8"
+    },
+    {
+      "path": "apps/native/tests/installed/guests.rs",
+      "size": 9802,
+      "sha256": "5417e90b40f1e4592505cbcc0a1dab04ec096aa7c3d84783769882cdef17a15d"
+    },
+    {
+      "path": "apps/native/tests/installed/window.rs",
+      "size": 7004,
+      "sha256": "e4e4eb863ba9299b579449f20adb9751221fe75c3eae8acfa24d1e84e79ae72f"
+    },
+    {
+      "path": "apps/native/tests/installed/windows.rs",
+      "size": 3847,
+      "sha256": "145a0a715f73bb073afd1c26dcd49f566b81f80b2782f87b96cdee6da50112b3"
     },
     {
       "path": "apps/native/vendor/cryoglyph/Cargo.toml",
@@ -3143,8 +3163,8 @@
     },
     {
       "path": "crates/host-runtime/src/bin/qualify-windows-installer.rs",
-      "size": 33827,
-      "sha256": "389e3055c7e5bf1bec20d91775bc28c3f30cacb2d5c2c294a498313157ec4bd4"
+      "size": 4044,
+      "sha256": "dcf27bf6453bc0b074289c13d6d005de13d533ed41de3f41101eefa0026c87c5"
     },
     {
       "path": "crates/host-runtime/src/capsule.rs",
@@ -4993,8 +5013,8 @@
     },
     {
       "path": "scripts/mobile-smoke.sh",
-      "size": 7167,
-      "sha256": "bd7fd47eea8c3110f2223b8babf64a4f137751f7e1f621810909adc4291d99f9"
+      "size": 7550,
+      "sha256": "37578141a75d207d7dc5cc99da8ccbe8fdf3fc94c9262bc1c4ac9f29a4667a51"
     },
     {
       "path": "scripts/native-host",
@@ -5015,11 +5035,6 @@
       "path": "scripts/phone-runner-start.sh",
       "size": 168,
       "sha256": "eac07a45f93381040f1fc445281ef52ef7b465e69f19c47e79a5c32be2ce7b8e"
-    },
-    {
-      "path": "scripts/qualify-windows-window.ps1",
-      "size": 4446,
-      "sha256": "24965a046cad942a3571cd3fa01e860dd0d8f890092747af35cf67e497fd43ca"
     },
     {
       "path": "scripts/stage-debian-keyring.sh",

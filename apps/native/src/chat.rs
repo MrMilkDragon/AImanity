@@ -1284,7 +1284,9 @@ impl Chat {
                 );
             }
         }
-        composer = composer.push(editor).push(actions);
+        composer = composer
+            .push(crate::touch_editor::editor(editor))
+            .push(actions);
         column![
             scrollable(container(messages).padding([12, 2]))
                 .direction(scrollable::Direction::Vertical(

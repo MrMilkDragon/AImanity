@@ -625,8 +625,12 @@ mod tests {
     async fn windows_notepad_receives_host_input() -> Result<()> {
         use crate::{peer_connection, workspace::Workspace};
         use ai_phone_api::wire::{DevicePairRequest, FileLocation};
+        use prost::Message as _;
         use std::{net::TcpListener, process::Command, sync::Arc, time::Duration};
-        use tokio::time::{sleep, timeout};
+        use tokio::{
+            sync::oneshot,
+            time::{sleep, timeout},
+        };
         use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
 
         let dir = tempfile::tempdir()?;

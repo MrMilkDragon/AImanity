@@ -472,7 +472,7 @@ impl Modes {
         } else {
             &self.goal_error
         };
-        let mut body = column![editor].spacing(14);
+        let mut body = column![crate::touch_editor::editor(editor)].spacing(14);
         if !error.is_empty() {
             body = body.push(text(error).size(12).style(style::error_text));
         }

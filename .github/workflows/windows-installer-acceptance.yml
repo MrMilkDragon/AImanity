@@ -20,7 +20,7 @@ permissions:
 jobs:
   exact-exe:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -38,19 +38,8 @@ jobs:
           $drives | ForEach-Object { 'Free on {0}: {1:N1} GiB' -f $_.Root, ($_.Free / 1GB) }
           $os = Get-CimInstance Win32_OperatingSystem
           '{0} build {1}, RAM {2:N1} GiB' -f $os.Caption, $os.BuildNumber, ($os.TotalVisibleMemorySize / 1MB)
-          $root = Join-Path $drives[0].Root "Dysprosium-QA-$env:GITHUB_RUN_ID"
-          $profile = Join-Path $root 'profile'
-          New-Item -ItemType Directory -Path $profile -Force | Out-Null
-          Add-Type -Name ShellFolders -Namespace Acceptance -MemberDefinition @'
-          [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, ExactSpelling = true)]
-          public static extern int SHSetKnownFolderPath(ref System.Guid folder, uint flags, System.IntPtr token, string path);
-          '@
-          $roaming = [Guid]'3eb685db-65f9-4cf6-a03a-e3ef65729f3d'
-          $redirect = [Acceptance.ShellFolders]::SHSetKnownFolderPath([ref] $roaming, 0, [IntPtr]::Zero, $profile)
-          if ($redirect -ne 0) { throw "Cannot redirect the runner's RoamingAppData: $redirect" }
-          if ([Environment]::GetFolderPath('ApplicationData') -ne $profile) {
-            throw 'The isolated Windows profile did not become the RoamingAppData known folder.'
-          }
+          $root = Join-Path $drives[0].Root "AImanity-QA-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory -Path (Join-Path $root 'profile') | Out-Null
           "AIMANITY_QA_ROOT=$root" >> $env:GITHUB_ENV
       - name: Get the signed native Windows candidate
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -59,8 +48,25 @@ jobs:
           artifact-ids: ${{ inputs.candidate_artifact }}
           github-token: ${{ github.token }}
           path: ${{ env.AIMANITY_QA_ROOT }}/candidate
-      - name: Install and drive the real first-run desktop client
+      - name: Install the exact signed EXE
         env:
           AIMANITY_QA_SOURCE: ${{ inputs.source_sha }}
         shell: pwsh
-        run: cargo run --release --locked -p ai-phone-host-runtime --bin qualify-windows-installer
+        run: cargo run --locked -p ai-phone-host-runtime --bin qualify-windows-installer
+      - name: Locate native controls on the Windows desktop
+        shell: pwsh
+        run: |
+          choco install tesseract --yes --no-progress
+          "AIMANITY_QA_OCR=$env:ProgramFiles\Tesseract-OCR\tesseract.exe" >> $env:GITHUB_ENV
+      - name: Exercise the empty workbench, on-demand guests and cold reopen
+        run: cargo test --locked --manifest-path apps/native/Cargo.toml --bin aimanity-native windows_installed_guests -- --ignored --nocapture
+      - name: Retain isolated workbench evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: installed-windows-workbench
+          path: |
+            ${{ env.AIMANITY_QA_ROOT }}/*.png
+            ${{ env.AIMANITY_QA_ROOT }}/*.log
+          if-no-files-found: ignore
+          retention-days: 7

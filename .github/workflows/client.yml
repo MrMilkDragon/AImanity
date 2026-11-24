@@ -44,6 +44,14 @@ jobs:
         run: cargo build --locked
       - name: Test native workbench
         run: cargo test --locked
+      - name: Open and reopen a fresh zero-device Windows workbench
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install tesseract --yes --no-progress
+          $env:AIMANITY_QA_OCR = "$env:ProgramFiles\Tesseract-OCR\tesseract.exe"
+          $env:AIMANITY_QA_CLIENT = (Resolve-Path target/debug/aimanity-native.exe).Path
+          cargo test --locked --bin aimanity-native windows_empty_workbench -- --ignored --nocapture
       - name: Exercise local and paired Windows desktops in Notepad
         if: runner.os == 'Windows'
         run: cargo test --locked windows_notepad_receives_host_input -- --ignored --nocapture

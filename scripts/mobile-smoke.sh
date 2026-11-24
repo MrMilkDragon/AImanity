@@ -102,9 +102,17 @@ adb shell dumpsys package "$PACKAGE" > evidence/package.txt
 grep -F 'android.permission.RECORD_AUDIO: granted=false' evidence/package.txt
 
 tap_word workspace Message
+for attempt in {1..20}; do
+  adb shell dumpsys input_method > evidence/composer-focus.txt
+  if grep -Fq 'mServedView=dev.aimanity.mobile.KeyboardView' evidence/composer-focus.txt; then break; fi
+  sleep 0.25
+done
+grep -Fq 'mServedView=dev.aimanity.mobile.KeyboardView' evidence/composer-focus.txt
 adb shell input text Orbit
 hide_keyboard hardware
 wait_word typed Orbit
+read -r x y w h < <(word_box typed Orbit)
+adb shell input tap "$((x+w/2))" "$((y/2))"
 adb shell settings put secure show_ime_with_hard_keyboard 1
 tap_word typed Orbit
 adb shell input keyevent KEYCODE_MOVE_END

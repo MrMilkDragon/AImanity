@@ -21,6 +21,9 @@ mod files;
 mod host;
 #[cfg_attr(target_os = "android", path = "host_desktop_mobile.rs")]
 mod host_desktop;
+#[cfg(all(windows, test))]
+#[path = "../tests/installed/windows.rs"]
+mod installed_windows;
 mod knowledge;
 mod layout;
 mod loading;
@@ -44,6 +47,7 @@ mod stage;
 mod style;
 mod surface;
 mod todos;
+mod touch_editor;
 mod uninstall;
 mod workspace;
 use ai_phone_api::wire;

@@ -432,30 +432,35 @@ impl Details {
                     let changed = !content.trim().is_empty() && content != memory.saved.content;
                     body = body.push(
                         column![
-                            text_editor(&memory.draft)
-                                .on_action(move |a| Message::MemoryEdit(i, a))
-                                .key_binding(move |press| {
-                                    if press.key
-                                        == keyboard::Key::Named(keyboard::key::Named::Enter)
-                                        && press.modifiers.command()
-                                    {
-                                        (changed && !self.memory_busy).then_some(
-                                            text_editor::Binding::Custom(Message::SaveMemory(i)),
-                                        )
-                                    } else {
-                                        text_editor::Binding::from_key_press(press)
-                                    }
-                                })
-                                .height(100)
-                                .size(14)
-                                .padding(10)
-                                .style(|theme, status| {
-                                    let mut s = text_editor::default(theme, status);
-                                    s.background = iced::Color::from_rgba(1., 1., 1., 0.35).into();
-                                    s.border.radius = style::CONTROL_RADIUS.into();
-                                    s.border.width = style::BORDER_WIDTH;
-                                    s
-                                }),
+                            crate::touch_editor::editor(
+                                text_editor(&memory.draft)
+                                    .on_action(move |a| Message::MemoryEdit(i, a))
+                                    .key_binding(move |press| {
+                                        if press.key
+                                            == keyboard::Key::Named(keyboard::key::Named::Enter)
+                                            && press.modifiers.command()
+                                        {
+                                            (changed && !self.memory_busy).then_some(
+                                                text_editor::Binding::Custom(Message::SaveMemory(
+                                                    i,
+                                                )),
+                                            )
+                                        } else {
+                                            text_editor::Binding::from_key_press(press)
+                                        }
+                                    })
+                                    .height(100)
+                                    .size(14)
+                                    .padding(10)
+                                    .style(|theme, status| {
+                                        let mut s = text_editor::default(theme, status);
+                                        s.background =
+                                            iced::Color::from_rgba(1., 1., 1., 0.35).into();
+                                        s.border.radius = style::CONTROL_RADIUS.into();
+                                        s.border.width = style::BORDER_WIDTH;
+                                        s
+                                    })
+                            ),
                             row![
                                 space::horizontal(),
                                 icon_button(
