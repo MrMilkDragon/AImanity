@@ -58,8 +58,8 @@
     },
     {
       "path": ".github/workflows/client-factory.yml",
-      "size": 14840,
-      "sha256": "a3fd7f40a85d1af3b90f2bf1c355610f1214465d9561f193fa6c232ff958d985"
+      "size": 15864,
+      "sha256": "cc613281731bfb6b21f90118b13287686e0790276e865e596835f650140a1dae"
     },
     {
       "path": ".github/workflows/client.yml",
@@ -108,8 +108,8 @@
     },
     {
       "path": ".github/workflows/windows-guest.yml",
-      "size": 3901,
-      "sha256": "0e7c4fd77358a405f90b4b6f7b5578c047774c0b018938131c8d9f5a35b0f62d"
+      "size": 4130,
+      "sha256": "99b31da4723835ed9d8e4091d2b35acf18042212e94580abfae989f6908e3fad"
     },
     {
       "path": ".github/workflows/windows-installer-acceptance.yml",
@@ -118,8 +118,8 @@
     },
     {
       "path": ".github/workflows/windows-qemu.yml",
-      "size": 2207,
-      "sha256": "76540629158eedf0fb861c45e9b26d94d3f5c0fb6a5c106145f52483887db44c"
+      "size": 2445,
+      "sha256": "58f4a3c52fc9d0fc50e2002b19dda4f41a0fd30fddc3dc70350f4e3365f7ecf4"
     },
     {
       "path": ".gitignore",

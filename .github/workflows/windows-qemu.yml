@@ -2,6 +2,9 @@ name: Windows QEMU component
 on:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      source_ref:
+        type: string
     outputs:
       artifact:
         description: Windows QEMU artifact ID
@@ -26,6 +29,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          ref: ${{ inputs.source_ref || github.sha }}
       - name: Install the pinned Rust toolchain
         shell: bash
         run: rustup toolchain install 1.96.0 --profile minimal
@@ -36,6 +40,7 @@ jobs:
           cargo +1.96.0 run --locked -p ai-phone-release-tools -- windows-factory qemu . dist/windows-qemu
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $identity = (Get-FileHash dist/windows-qemu/windows-qemu.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -NoNewline -Encoding ascii dist/windows-qemu/identity.txt $identity
           "sha256=$identity" >> $env:GITHUB_OUTPUT
       - name: Transfer the runtime and source receipt
         id: handoff
@@ -46,6 +51,7 @@ jobs:
             dist/windows-qemu/runtime/
             dist/windows-qemu/licenses/
             dist/windows-qemu/windows-qemu.json
+            dist/windows-qemu/identity.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 7

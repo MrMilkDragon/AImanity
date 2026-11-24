@@ -5,13 +5,16 @@ on:
       platform:
         description: Complete offline installer
         type: choice
-        options: [macos, windows, check-macos]
+        options: [macos, windows, windows-guests, check-macos]
         required: true
       candidate_run:
         description: Mac factory run for installation and reopen
         type: string
       guest_run:
-        description: Previous Mac factory with a completed ARM64 Linux guest
+        description: Previous factory containing the prepared guests for this platform
+        type: string
+      source_ref:
+        description: Product commit for the Windows guest and installer
         type: string
 permissions:
   contents: read
@@ -21,17 +24,23 @@ concurrency:
   cancel-in-progress: false
 jobs:
   windows-qemu:
-    if: inputs.platform == 'windows'
+    if: (inputs.platform == 'windows' || inputs.platform == 'windows-guests') && inputs.guest_run == ''
     uses: ./.github/workflows/windows-qemu.yml
+    with:
+      source_ref: ${{ inputs.source_ref || github.sha }}
 
   windows-guest:
-    if: inputs.platform == 'windows'
+    if: inputs.platform == 'windows' || inputs.platform == 'windows-guests'
     needs: windows-qemu
     uses: ./.github/workflows/windows-guest.yml
     with:
       kernel_artifact: ${{ needs.windows-qemu.outputs.kernel }}
+      source_ref: ${{ inputs.source_ref || github.sha }}
 
   windows-exe:
+    if: >-
+      !cancelled() && inputs.platform == 'windows' &&
+      (needs.windows-guest.result == 'success' || (needs.windows-guest.result == 'skipped' && inputs.guest_run != ''))
     needs: [windows-qemu, windows-guest]
     runs-on: windows-2022
     timeout-minutes: 90
@@ -46,6 +55,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          ref: ${{ inputs.source_ref || github.sha }}
       - name: Locked build tools
         shell: bash
         run: |
@@ -67,12 +77,14 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
-          artifact-ids: ${{ needs.windows-qemu.outputs.artifact }}
+          name: windows-qemu
+          run-id: ${{ inputs.guest_run || github.run_id }}
           path: dist/windows-qemu
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
-          artifact-ids: ${{ needs.windows-guest.outputs.artifact }}
+          name: windows-guest
+          run-id: ${{ inputs.guest_run || github.run_id }}
           path: dist/windows-guest
       - name: Extract the published Windows Android runtime
         shell: pwsh
@@ -91,10 +103,15 @@ jobs:
       - name: Assemble and inspect the offline Windows EXE
         env:
           GH_TOKEN: ${{ github.token }}
-          QEMU_SHA256: ${{ needs.windows-qemu.outputs.identity }}
-          GUEST_SHA256: ${{ needs.windows-guest.outputs.identity }}
+          INPUT_RUN: ${{ inputs.guest_run }}
         run: |
-          cargo run --locked -p ai-phone-release-tools -- windows-factory build dist/windows-qemu $env:QEMU_SHA256 dist/windows-guest/windows-guest.payload $env:GUEST_SHA256
+          if ($env:INPUT_RUN) {
+            $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:INPUT_RUN" | ConvertFrom-Json
+            if ($run.path -ne '.github/workflows/client-factory.yml' -or $run.event -ne 'workflow_dispatch' -or $run.conclusion -ne 'success') { throw 'Select a completed guest factory' }
+          }
+          $qemu = (Get-Content -Raw dist/windows-qemu/identity.txt).Trim()
+          $guest = (Get-Content -Raw dist/windows-guest/identity.txt).Trim()
+          cargo run --locked -p ai-phone-release-tools -- windows-factory build dist/windows-qemu $qemu dist/windows-guest/windows-guest.payload $guest
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: complete-windows-installer

@@ -2,6 +2,8 @@ name: Windows Linux guest
 on:
   workflow_call:
     inputs:
+      source_ref:
+        type: string
       kernel_artifact:
         description: Pinned guest kernel and its license
         required: true
@@ -31,6 +33,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          ref: ${{ inputs.source_ref || github.sha }}
       - name: Set up the disposable Linux x64 builder
         run: |
           test "$RUNNER_ENVIRONMENT" = github-hosted
@@ -74,13 +77,16 @@ jobs:
           target/debug/release-tools windows-release \
             "$RUNNER_TEMP/windows-guest-kernel" "$RUNNER_TEMP/windows-release-context" "$guest"
           guest_hash=$(sha256sum "$guest")
+          printf '%s\n' "${guest_hash%% *}" > dist/windows-guest/identity.txt
           printf 'sha256=%s\n' "${guest_hash%% *}" >> "$GITHUB_OUTPUT"
       - name: Transfer the sealed guest to the Windows builder
         id: handoff
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-guest
-          path: dist/windows-guest/windows-guest.payload
+          path: |
+            dist/windows-guest/windows-guest.payload
+            dist/windows-guest/identity.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 2
