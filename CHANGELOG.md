@@ -5,6 +5,7 @@
 - Start an empty workspace with embedded storage. Add and disconnect individual guests from Device Manager.
 - Share one conversation and task queue across authorized devices. Parallel tasks can use separate devices and audio streams.
 - Grant one task access to the workspace computer, or pair a remote Windows, macOS or Linux X11 desktop over SSH. Share an authorized Android phone through its ADB host. End access from either computer.
+- Route the default model through a saved workspace proxy subscription and keep per-model overrides.
 - Browse paired device files in the workspace. On Windows and macOS, desktop owners can also share visible notifications.
 - Plan fresh installations for Apple Silicon macOS, Windows 11 x64, Debian/RPM Linux and Android. Android phones and tablets share one landscape APK. The universal iPhone and iPad client is scheduled for 0.0.7.
 

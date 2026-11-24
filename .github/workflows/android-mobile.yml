@@ -133,6 +133,8 @@ jobs:
           if "$ndk/bin/llvm-readelf" -d "out/$ABI/"*.so | grep -F 'Shared library: [libc++_shared.so]'; then
             cp "$ndk/sysroot/usr/lib/$TARGET/libc++_shared.so" "out/$ABI/"
           fi
+          case "$ABI" in arm64-v8a) proxy=android-arm64;; x86_64) proxy=android-x64;; esac
+          cargo run --quiet --locked -p ai-phone-release-tools -- workbench-proxy "$proxy" "out/$ABI/libaimanity_proxy.so"
           "$ndk/bin/llvm-nm" --defined-only -D "out/$ABI/libaimanity_native.so" > "$RUNNER_TEMP/native-symbols"
           grep -w ANativeActivity_onCreate "$RUNNER_TEMP/native-symbols"
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830

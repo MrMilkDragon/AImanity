@@ -12,6 +12,7 @@ mod files;
 mod lifecycle;
 mod location;
 mod modes;
+mod network;
 #[cfg(any(
     target_os = "macos",
     windows,
@@ -64,6 +65,7 @@ pub(crate) struct Workspace {
     verified: std::sync::Mutex<std::collections::HashMap<String, (String, u64, wire::ModelDraft)>>,
     worker: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
     clients: std::sync::Mutex<std::collections::HashMap<String, reqwest::Client>>,
+    proxy: std::sync::OnceLock<aimanity_workbench_proxy::HarnessProxy>,
 }
 
 impl std::fmt::Debug for Workspace {
@@ -151,9 +153,11 @@ impl Workspace {
             shutdown,
             run: Default::default(),
             clients: Default::default(),
+            proxy: Default::default(),
             verified: Default::default(),
             worker: Default::default(),
         });
+        if this.files.with_file_name("proxy").join("profile.json").is_file() { this.network_proxy()?; }
         Ok(this)
     }
 
@@ -181,6 +185,10 @@ impl Workspace {
         ));
         let worker = tokio::spawn(async move {
             if let Some(workspace) = weak.upgrade() {
+                if let Some(proxy) = workspace.proxy.get()
+                    && proxy.enabled() && let Err(e) = proxy.restore().await {
+                    eprintln!("Workspace proxy: {e}");
+                }
                 workspace.finish_device_changes().await;
                 #[cfg(any(
                     target_os = "macos",
@@ -253,6 +261,7 @@ impl Workspace {
         ))]
         self.stop_power(None).await;
         self.peers.close().await;
+        if let Some(proxy) = self.proxy.get() { proxy.stop().await; }
         let worker = self.worker.lock().unwrap().take();
         if let Some(worker) = worker {
             let _ = worker.await;
@@ -322,6 +331,9 @@ impl Workspace {
         self.changes.send_modify(|rev| *rev = rev.wrapping_add(1));
     }
     fn client(&self, proxy: &str) -> Result<reqwest::Client> {
+        let proxy = if proxy.is_empty() && self.proxy.get().is_some_and(|p| p.enabled()) {
+            aimanity_workbench_proxy::ADDRESS
+        } else { proxy };
         let mut pool = self.clients.lock().unwrap();
         if let Some(client) = pool.get(proxy) {
             return Ok(client.clone());
@@ -357,6 +369,9 @@ impl Workspace {
                 .await
                 .map(|r| r.encode_to_vec())
                 .map_err(|e| e.to_string());
+        }
+        if let Some(operation) = name.strip_prefix("proxy/") {
+            return self.proxy_request(operation, bytes).await.map_err(|e| e.to_string());
         }
         if name == "files/list" || name == "files/manage" {
             let result: Result<Vec<u8>> = async {
@@ -498,6 +513,16 @@ fn put(tx: &WriteTransaction, key: &str, value: &impl Message) -> Result<()> {
 mod tests {
     use super::*;
     use redb::ReadableTableMetadata;
+
+    #[tokio::test]
+    async fn unconfigured_proxy_opens_without_starting_a_service() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let workspace = Workspace::open(dir.path())?;
+        let bytes = workspace.rpc("proxy/state", Vec::new()).await?;
+        assert_eq!(wire::HarnessProxyState::decode(bytes.as_slice())?, wire::HarnessProxyState::default());
+        assert!(!dir.path().join("proxy").exists());
+        Ok(())
+    }
 
     #[tokio::test]
     async fn host_action_only_accepts_the_authorized_task() -> Result<()> {

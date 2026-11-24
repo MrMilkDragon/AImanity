@@ -7,6 +7,7 @@ publish = false
 license = "Apache-2.0"
 
 [dependencies]
+aimanity-workbench-proxy = { path = "../workbench-proxy" }
 aimanity-model = { path = "../model" }
 ai-phone-vision = { path = "../vision" }
 ai-phone-api = { path = "../api" }
@@ -46,7 +47,6 @@ async-channel = "=2.5.0"
 anyhow = "=1.0.104"
 qrcode = { version = "=0.14.1", default-features = false, features = ["image"] }
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg"] }
-serde_yaml_ng = "=0.10.0"
 
 [lints.rust]
 unsafe_code = "forbid"

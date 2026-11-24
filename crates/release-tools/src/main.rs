@@ -52,6 +52,16 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         "client-payload" => client_payload::run(rest).map(Some),
         #[cfg(target_os = "macos")]
         "macos-factory" => macos_factory::run(rest).map(Some),
+        "workbench-proxy" => {
+            let [target, path] = rest else {
+                return Err("Expected workbench-proxy TARGET DESTINATION".into());
+            };
+            let hash = assets::proxy_binary(
+                target.to_str().ok_or("Invalid proxy target")?,
+                Path::new(path),
+            )?;
+            Ok(Some(serde_json::json!({"executable":hash})))
+        }
         "prepare-ocr-models" => assets::ocr(rest).map(Some),
         "prepare-speech-model" => assets::speech(rest).map(Some),
         #[cfg(unix)]

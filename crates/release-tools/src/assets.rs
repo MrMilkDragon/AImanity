@@ -120,6 +120,55 @@ where
     Ok(())
 }
 
+pub(super) fn proxy_binary(target: &str, destination: &Path) -> Result<String> {
+    let policy: Value = serde_json::from_reader(File::open("config/mihomo-release.json")?)?;
+    let asset = &policy["assets"][target];
+    let url = asset["url"].as_str().ok_or("Unknown proxy target")?;
+    let digest = asset["binary_sha256"]
+        .as_str()
+        .ok_or("Missing proxy executable identity")?;
+    let cache = Path::new(".tools/mihomo-harness").join(url.rsplit('/').next().unwrap());
+    stage_pin::<Sha256>(
+        url,
+        &cache,
+        None,
+        asset["sha256"]
+            .as_str()
+            .ok_or("Missing proxy archive identity")?,
+    )?;
+    let mut binary =
+        tempfile::NamedTempFile::new_in(destination.parent().ok_or("Missing proxy destination")?)?;
+    let input = File::open(&cache)?;
+    let valid = if target == "windows-x64" {
+        let mut archive = zip::ZipArchive::new(input)?;
+        verify_stream::<Sha256>(
+            archive.by_name("mihomo-windows-amd64-compatible.exe")?,
+            &mut binary,
+            None,
+            digest,
+        )?
+    } else {
+        verify_stream::<Sha256>(
+            flate2::read::GzDecoder::new(input),
+            &mut binary,
+            None,
+            digest,
+        )?
+    };
+    if !valid {
+        return Err("Proxy executable differs from the pinned release".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        binary
+            .as_file()
+            .set_permissions(fs::Permissions::from_mode(0o755))?;
+    }
+    binary.persist(destination)?;
+    Ok(digest.to_owned())
+}
+
 pub(super) fn ocr(arguments: &[OsString]) -> Result<Value> {
     let [flag, destination] = arguments else {
         return Err("prepare-ocr-models requires --destination DIRECTORY".into());

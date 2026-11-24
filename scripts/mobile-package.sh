@@ -9,6 +9,7 @@ trap 'rm -rf "$work"' EXIT
 cd build/apk
 mkdir -p assets/notices/vendor/{iced_winit,cryoglyph,winit}
 cp "$repo/LICENSE" "$repo/NOTICE" "$repo/THIRD_PARTY_NOTICES.md" "$repo/docs/public/dependency-licenses.json" assets/notices/
+cp "$repo/docs/public/vendor/clash-meta-license.txt" assets/notices/
 cp "$repo/apps/native/vendor/iced_winit/LICENSE" assets/notices/vendor/iced_winit/
 cp "$repo/apps/native/vendor/winit/LICENSE" assets/notices/vendor/winit/
 cp "$repo/apps/native/vendor/cryoglyph"/LICENSE-* assets/notices/vendor/cryoglyph/
@@ -17,7 +18,7 @@ cp -R "$repo/docs/public/licenses/native-ui" "$repo/docs/public/licenses/native"
 if [[ -n ${ASSETS_RUN:-} ]]; then
   cp -R "$repo/docs/public/licenses/guest-apps" "$repo/docs/public/licenses/whisper" "$repo/docs/public/licenses/tesseract-models" "$repo/docs/public/licenses/musl" assets/notices/
   cp "$repo/docs/public/native-services-licenses.txt" "$repo/docs/public/native-services-license-inventory.json" assets/notices/
-  cp "$repo/docs/public/engineering/android-corresponding-source.md" "$repo/docs/public/vendor/clash-meta-license.txt" assets/notices/
+  cp "$repo/docs/public/engineering/android-corresponding-source.md" assets/notices/
   (
     cd assets/mobile-assets
     test -z "$(find . -type l -print -quit)"
@@ -62,6 +63,7 @@ test -s classes.dex
 for abi in arm64-v8a x86_64; do
   test -s "lib/$abi/libaimanity_native.so"
   test -s "lib/$abi/libaimanity_host.so"
+  test -s "lib/$abi/libaimanity_proxy.so"
 done
 "$sdk/aapt2" compile --dir "$app/res" -o "$work/resources.zip"
 "$sdk/aapt2" link -I "$ANDROID_HOME/platforms/android-35/android.jar" --manifest "$app/AndroidManifest.xml" \

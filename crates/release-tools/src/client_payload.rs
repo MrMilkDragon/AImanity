@@ -174,6 +174,17 @@ pub(super) fn run(args: &[OsString]) -> Result<Value> {
         .as_str()
         .ok_or("Missing speech resource name")?;
     integrity.insert(speech_file.into(), speech["sha256"].clone());
+    if android.is_some() && (cfg!(target_os = "macos") || cfg!(windows)) {
+        let (target, name) = if cfg!(windows) {
+            ("windows-x64", "mihomo.exe")
+        } else {
+            ("macos-arm64", "mihomo")
+        };
+        integrity.insert(
+            name.into(),
+            json!(assets::proxy_binary(target, &folder.join(name))?),
+        );
+    }
     if let Some(digest) = copy_payload(android, &folder.join("android.payload"))? {
         integrity.insert("android.payload".into(), json!(digest));
     }

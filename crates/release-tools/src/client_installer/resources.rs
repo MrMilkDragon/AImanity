@@ -43,7 +43,9 @@ impl Plan {
                 | "android.payload"
                 | "images.payload"
                 | "speech/ggml-tiny-q5_1.bin"
-                | "qemu/manifest.json" => {}
+                | "qemu/manifest.json"
+                | "mihomo"
+                | "mihomo.exe" => {}
                 _ => return Err(format!("Unknown host resource: {name}").into()),
             }
             let path = format!("{HOST}/{name}");

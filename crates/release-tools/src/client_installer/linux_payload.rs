@@ -113,6 +113,7 @@ pub(crate) fn prepare(args: &[OsString]) -> Result<Value> {
     fs::copy(&apps, host.join("source.payload"))?;
     let integrity = json!({
         "source.payload": file_digest(&apps)?,
+        "mihomo": crate::assets::proxy_binary("linux-x64", &host.join("mihomo"))?,
         "android.payload": android["archive_sha256"], "qemu/manifest.json": file_digest(&manifest)?, model: speech["sha256"]
     });
     fs::write(

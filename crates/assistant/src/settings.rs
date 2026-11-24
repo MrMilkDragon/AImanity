@@ -101,8 +101,11 @@ impl SettingsStore {
         }
         let store = Self {
             dir,
-            harness_proxy: crate::harness_proxy::HarnessProxy::new(root)
-                .map_err(|_| "无法创建代理下载连接")?,
+            harness_proxy: crate::harness_proxy::HarnessProxy::new(
+                root.join("data/harness-proxy"),
+                root.join("runtime/services/bin/mihomo"),
+            )
+            .map_err(|_| "无法创建代理下载连接")?,
             model_clients: SyncMutex::new(BTreeMap::new()),
             state: SyncMutex::new(State {
                 current,

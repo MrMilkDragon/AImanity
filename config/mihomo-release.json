@@ -3,6 +3,16 @@
   "source": "https://github.com/MetaCubeX/mihomo",
   "license": "GPL-3.0-only",
   "assets": {
+    "windows-x64": {
+      "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-windows-amd64-compatible-v1.19.33.zip",
+      "sha256": "7aaf636a4f2172dcd8ec34ac4f52797b059195e5afd6409508c963e545f8864d",
+      "binary_sha256": "926bfea2ce48a247d6a7ce4cf641980e416202d5e40fe4ee5c949089ace0e197"
+    },
+    "android-x64": {
+      "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-android-amd64-v1.19.33.gz",
+      "sha256": "14181cdc0c1e77d7a751ea851a93c2c086557af5cd69433004c9644f04eb9249",
+      "binary_sha256": "fd1fb2773a0b723dbdc7d5f7e81aec8358b43d2674f689edc8f87d453e8687c7"
+    },
     "android-arm64": {
       "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-android-arm64-v8-v1.19.33.gz",
       "sha256": "2ddbd3aaa884f52b4568f406876ec81dddeef9f1bb67b90d4004d356e2c6a708",
