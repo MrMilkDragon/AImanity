@@ -49,6 +49,12 @@ jobs:
           cmake --version
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
+          rustup target add aarch64-linux-android x86_64-linux-android
+      - name: Android guest helper SDK
+        shell: pwsh
+        run: |
+          & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'platforms;android-35' 'build-tools;35.0.0'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prepare Authenticode tools
         shell: pwsh
         run: |

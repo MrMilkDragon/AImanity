@@ -58,8 +58,8 @@
     },
     {
       "path": ".github/workflows/client-factory.yml",
-      "size": 13299,
-      "sha256": "f8e2eaecdc8fc87847d0a5e35cccf00a7b22558c920482f399d2ae9d070a27f3"
+      "size": 13618,
+      "sha256": "2da51d4854857c4d47ee21d03d7bb619dcbcbbecd17dd2df60c87a8a8b1e9a2c"
     },
     {
       "path": ".github/workflows/client.yml",
