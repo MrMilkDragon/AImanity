@@ -63,7 +63,7 @@ impl Peers {
         })
     }
 
-    pub(super) async fn listen(self: &Arc<Self>, port: u16) -> Result<SocketAddr> {
+    pub(super) async fn listen(&self, workspace: &Arc<Workspace>, port: u16) -> Result<SocketAddr> {
         let mut listener = self.listener.lock().await;
         if let Some(server) = listener.as_ref() {
             return Ok(server.address);
@@ -73,7 +73,7 @@ impl Peers {
         let app = Router::new()
             .route("/v1/peer/share", get(accept).head(identity))
             .route("/v1/peer/io", get(accept_io))
-            .with_state(Arc::downgrade(self));
+            .with_state(Arc::downgrade(workspace));
         let stop = self.stop.child_token();
         *listener = Some(Listener {
             address: addr,
@@ -309,7 +309,7 @@ impl Drop for PendingLane<'_> {
     }
 }
 async fn accept_io(
-    State(state): State<Weak<Peers>>,
+    State(state): State<Weak<Workspace>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
@@ -321,10 +321,11 @@ async fn accept_io(
     if headers.contains_key("origin") {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let Some((peers, key)) = state.upgrade().zip(key) else {
+    let Some((workspace, key)) = state.upgrade().zip(key) else {
         return StatusCode::FORBIDDEN.into_response();
     };
-    let grant = peers
+    let grant = workspace
+        .peers
         .entries
         .lock()
         .unwrap()
@@ -342,24 +343,25 @@ async fn accept_io(
         None => StatusCode::FORBIDDEN.into_response(),
     }
 }
-async fn identity(State(state): State<Weak<Peers>>) -> Response {
+async fn identity(State(state): State<Weak<Workspace>>) -> Response {
     match state.upgrade() {
-        Some(peers) => (
+        Some(workspace) => (
             StatusCode::NO_CONTENT,
-            [("x-aimanity-workspace", peers.id.to_string())],
+            [("x-aimanity-workspace", workspace.peers.id.to_string())],
         )
             .into_response(),
         None => StatusCode::GONE.into_response(),
     }
 }
 async fn accept(
-    State(state): State<Weak<Peers>>,
+    State(state): State<Weak<Workspace>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    let Some(peers) = state.upgrade() else {
+    let Some(workspace) = state.upgrade() else {
         return StatusCode::GONE.into_response();
     };
+    let peers = workspace.peers.clone();
     let header = |name| headers.get(name).and_then(|v| v.to_str().ok());
     let Some(code) = header("authorization")
         .and_then(|h| h.strip_prefix("Bearer "))
@@ -368,6 +370,18 @@ async fn accept(
         return StatusCode::FORBIDDEN.into_response();
     };
     let kind = header("x-aimanity-device");
+    let Some(system) = header("x-aimanity-system").and_then(ai_phone_api::platform_name) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    if kind
+        != Some(if system == "Android" {
+            "phone"
+        } else {
+            "desktop"
+        })
+    {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
     if headers.contains_key("origin")
         || (kind == Some("desktop")
             && header("x-aimanity-origin").and_then(|s| s.parse::<Uuid>().ok()) == Some(peers.id))
@@ -385,6 +399,18 @@ async fn accept(
         }
         let Some((id, slot)) = entries.iter_mut().find(|(_, slot)| matches!(slot, Peer::Invitation {code: expected, kind: k, issued}
             if *expected == code && kind == Some(k.as_str()) && issued.elapsed() < Duration::from_secs(300))) else { return StatusCode::FORBIDDEN.into_response(); };
+        if let Err(error) = workspace.write_registry(|state, _| {
+            let device = state
+                .devices
+                .iter_mut()
+                .find(|device| device.id == *id)
+                .ok_or("设备不存在")?;
+            device.system = system.into();
+            Ok(())
+        }) {
+            eprintln!("Device registration: {error}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
         *slot = Peer::Connected {
             session,
             closed: closed.clone(),
@@ -498,11 +524,24 @@ mod tests {
             .insert("authorization", format!("Bearer {}", invite.code).parse()?);
         req.headers_mut()
             .insert("x-aimanity-device", "phone".parse()?);
+        req.headers_mut()
+            .insert("x-aimanity-system", "android".parse()?);
+        let mut mismatched = req.clone();
+        mismatched
+            .headers_mut()
+            .insert("x-aimanity-system", "windows".parse()?);
+        let err = tokio_tungstenite::connect_async(mismatched)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err,tokio_tungstenite::tungstenite::Error::Http(response) if response.status()==StatusCode::BAD_REQUEST)
+        );
         let (mut socket, _) = tokio_tungstenite::connect_async(req).await?;
         socket.next().await.unwrap()?;
         let registry = work.registry()?;
         assert_eq!(registry.devices.len(), 1);
         assert!(registry.devices[0].connected);
+        assert_eq!(registry.devices[0].system_name(), "Android");
         let mut changed = work.registry_changes();
         socket
             .close(Some(tokio_tungstenite::tungstenite::protocol::CloseFrame {
@@ -523,7 +562,7 @@ mod tests {
     async fn closing_an_open_workspace_revokes_the_upgraded_socket() -> Result<()> {
         let root = tempfile::tempdir()?;
         let w = Workspace::open(root.path())?;
-        let addr = w.peers.listen(0).await?;
+        let addr = w.peers.listen(&w, 0).await?;
         let invite = w.peers.invite(
             &w,
             wire::DevicePairRequest {
@@ -537,6 +576,8 @@ mod tests {
             .insert("authorization", format!("Bearer {}", invite.code).parse()?);
         req.headers_mut()
             .insert("x-aimanity-device", "phone".parse()?);
+        req.headers_mut()
+            .insert("x-aimanity-system", "android".parse()?);
         let (mut socket, _) = tokio_tungstenite::connect_async(req).await?;
         assert!(socket.next().await.unwrap()?.is_binary());
         assert!(w.registry()?.devices[0].connected);
@@ -550,7 +591,7 @@ mod tests {
     async fn three_authorized_peers_share_routes_without_a_link_command() -> Result<()> {
         let root = tempfile::tempdir()?;
         let work = Workspace::open(root.path())?;
-        let address = work.peers.listen(0).await?;
+        let address = work.peers.listen(&work, 0).await?;
         let ids = ["phone-a", "phone-b", "desktop"];
         let mut clients = Vec::new();
         for id in ids {
@@ -569,6 +610,15 @@ mod tests {
                 format!("Bearer {}", invitation.code).parse()?,
             );
             req.headers_mut().insert("x-aimanity-device", kind.parse()?);
+            req.headers_mut().insert(
+                "x-aimanity-system",
+                if kind == "phone" {
+                    "android"
+                } else {
+                    "windows"
+                }
+                .parse()?,
+            );
             let (mut stream, _) = tokio_tungstenite::connect_async(req).await?;
             assert!(stream.next().await.unwrap()?.is_binary());
             clients.push(tokio::spawn(async move {
@@ -662,7 +712,7 @@ mod tests {
         use crate::{device_files::Endpoint, device_io::Services, host_desktop, peer_connection};
         let root = tempfile::tempdir()?;
         let work = Workspace::open(root.path())?;
-        let address = work.peers.listen(0).await?;
+        let address = work.peers.listen(&work, 0).await?;
         let mut shares = Vec::new();
         let share = async |id: &str| {
             let dir = root.path().join(id);
@@ -679,6 +729,14 @@ mod tests {
                 .insert("authorization", format!("Bearer {}", invite.code).parse()?);
             req.headers_mut()
                 .insert("x-aimanity-device", "desktop".parse()?);
+            let os = if id == "a" {
+                "windows"
+            } else if id == "b" {
+                "macos"
+            } else {
+                "linux"
+            };
+            req.headers_mut().insert("x-aimanity-system", os.parse()?);
             let target = address.port().to_string();
             let (ws, _) = peer_connection::dial(&target, req).await?;
             let services = Services {
@@ -698,6 +756,12 @@ mod tests {
             std::fs::create_dir(&dir)?;
             std::fs::write(dir.join("origin"), id)?;
             shares.push(share(id).await?);
+        }
+        let devices = work.registry()?.devices;
+        for (id, system) in [("a", "Windows"), ("b", "macOS"), ("c", "Linux")] {
+            let device = devices.iter().find(|d| d.id == id).unwrap();
+            assert!(device.connected);
+            assert_eq!(device.system_name(), system);
         }
         let loc = |device: &str, path: &str| wire::FileLocation {
             device_id: device.into(),

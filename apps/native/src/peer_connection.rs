@@ -45,6 +45,9 @@ pub(super) async fn share(
         "x-aimanity-device",
         HeaderValue::from_static(if phone.is_some() { "phone" } else { "desktop" }),
     );
+    req.headers_mut().insert("x-aimanity-system", HeaderValue::from_static(
+        if phone.is_some() { "android" } else { std::env::consts::OS }
+    ));
     let guest_audio = phone.is_none() && crate::device_io::has_guest_audio().await;
     if guest_audio {
         req.headers_mut()
@@ -54,9 +57,7 @@ pub(super) async fn share(
         tokio::select! {biased; _=stop.changed()=>return Ok(()), result=dial(target,req)=>result?};
     let files = match &phone {
         Some(p) => crate::device_files::Endpoint::Android(p.client.clone()),
-        None => crate::device_files::Endpoint::Directory(
-            std::path::PathBuf::from(std::path::MAIN_SEPARATOR_STR).canonicalize()?,
-        ),
+        None => crate::device_files::Endpoint::Desktop,
     };
     let services = crate::device_io::Services {
         target: target.to_owned(),
@@ -89,8 +90,10 @@ pub(super) async fn dial(
         {
             return Err("SSH 主机无效".into());
         }
-        let mut child = Command::new("ssh")
-            .args([
+        let mut command = Command::new("ssh");
+        #[cfg(windows)]
+        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+        let mut child = command.args([
                 "-T",
                 "-o",
                 "BatchMode=yes",

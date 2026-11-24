@@ -235,13 +235,13 @@ impl Workspace {
         read(&self.db.begin_read()?.open_table(RECORDS)?, key)
     }
 
-    async fn start_pairing(
-        &self,
+    pub(super) async fn start_pairing(
+        self: &Arc<Self>,
         request: wire::DevicePairRequest,
         port: u16,
     ) -> Result<wire::DeviceInvitation> {
         let invitation = self.peers.invite(self, request)?;
-        self.peers.listen(port).await?;
+        self.peers.listen(self, port).await?;
         Ok(invitation)
     }
     pub(crate) async fn rpc(

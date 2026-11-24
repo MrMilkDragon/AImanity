@@ -68,8 +68,8 @@
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 4589,
-      "sha256": "4b40cea7fc076ad605da7fc02828c43d845148a630c0099223b10635f663cfd3"
+      "size": 4895,
+      "sha256": "7e604dba3bd69d1cd12f5ef0a9ec5ab824fad4cff83c8b3dd1778e294f4a56db"
     },
     {
       "path": ".github/workflows/linux-backend.yml",
@@ -438,13 +438,13 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 58351,
-      "sha256": "1df407e4b294e4c70613c3beca3c1a201222c68158f575251084e17104fde18c"
+      "size": 58441,
+      "sha256": "d224da880e86269fcf70c0372c781e535a6dac6afdcbad35c8b6214e70d3528e"
     },
     {
       "path": "apps/native/src/connection.rs",
-      "size": 25463,
-      "sha256": "3d66b14cd7fee75270e2a66bb6aa5b189aa92b364671a429841207425a2831a6"
+      "size": 25315,
+      "sha256": "2ccc7e6e996c8dc042205e71f18a652183d75c649bac11729ce0b2d6e5456d95"
     },
     {
       "path": "apps/native/src/controls.rs",
@@ -458,8 +458,8 @@
     },
     {
       "path": "apps/native/src/device_files.rs",
-      "size": 8839,
-      "sha256": "57b014be078acba4ad8613e623496435f6eb581ff447104fb9c915a2fcc16472"
+      "size": 10750,
+      "sha256": "608cbb775fc2be6f2dc6415b20812da91e1ad7f43f6d211e1eaa965c4e846c76"
     },
     {
       "path": "apps/native/src/device_io.rs",
@@ -468,8 +468,8 @@
     },
     {
       "path": "apps/native/src/devices.rs",
-      "size": 32695,
-      "sha256": "260c1102b95ad80e21e68c20d4d2cab19ba5736f57e1f37644eba4dbccd338df"
+      "size": 33093,
+      "sha256": "7064e6d633d957b50937df793504480f7d2067f9191f3567bd0320da06d9c76c"
     },
     {
       "path": "apps/native/src/documents/android.rs",
@@ -493,8 +493,8 @@
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 26885,
-      "sha256": "03e21201b2f1129e3d553a5c3cdd91c6a6bfa346a3be2da4e7c24d4501a7aeed"
+      "size": 30279,
+      "sha256": "875ac50dbf9366497102ae8aaf47c5ddf6886adc62bce7a3f7ccb139e9728ece"
     },
     {
       "path": "apps/native/src/host_desktop_mobile.rs",
@@ -583,8 +583,8 @@
     },
     {
       "path": "apps/native/src/peer_connection.rs",
-      "size": 5000,
-      "sha256": "f6be9a9cc193485b12c23162648d60b0a33887b4faa356b033515d5fcb52113a"
+      "size": 5192,
+      "sha256": "9e8f5b8a412ebea7c135bce26a16cc21a8c15f1875af8dce5a542f4bb778ed89"
     },
     {
       "path": "apps/native/src/platform.rs",
@@ -613,8 +613,8 @@
     },
     {
       "path": "apps/native/src/sharing.rs",
-      "size": 7277,
-      "sha256": "ea7f751b5aa9bba875237b0303707e4256aa1d3385ea62a10ee650818df861a3"
+      "size": 7373,
+      "sha256": "98cb207d1d811e9cb160eca8a47ce5048f8b661f695069a298554bf8d5073627"
     },
     {
       "path": "apps/native/src/skills.rs",
@@ -673,8 +673,8 @@
     },
     {
       "path": "apps/native/src/workbench.rs",
-      "size": 106628,
-      "sha256": "3fa2339f2191f954ef05c00521db6dcc7494cacf3e37591e9f8b83c612209ffb"
+      "size": 106548,
+      "sha256": "31d3bf3f599a5376c0a69c0ceeda3c1efe26e82e023474ef64e24b75de964c56"
     },
     {
       "path": "apps/native/src/workspace/conversation.rs",
@@ -683,8 +683,8 @@
     },
     {
       "path": "apps/native/src/workspace/device_run.rs",
-      "size": 9039,
-      "sha256": "3990329320d07e9312f388cf5a552ea2f8ae330974959410c3cc42031f5c1978"
+      "size": 9751,
+      "sha256": "0338e723978b092d27416dfda0fea5c318fae00919ea0380133e9fc00e7a12c7"
     },
     {
       "path": "apps/native/src/workspace/documents.rs",
@@ -703,13 +703,13 @@
     },
     {
       "path": "apps/native/src/workspace/peers.rs",
-      "size": 31736,
-      "sha256": "206a6a4f00aaa96b148f67cfb991076396c847404d9da56466cc08e3e80768ef"
+      "size": 34140,
+      "sha256": "4445c2634ee0a9b49fa9d2584c6f468ebdad98ac01ad6dbd73875fe81fa51517"
     },
     {
       "path": "apps/native/src/workspace/records.rs",
-      "size": 16039,
-      "sha256": "a9635b4fc0eb924426e8161065cd30a74703f92ba9bc8d4932bdea73d03780d9"
+      "size": 16074,
+      "sha256": "069e5c61b661916a75916597ea9fa3bfab1e46bf12c3422ba4dac63d1aa0d5e6"
     },
     {
       "path": "apps/native/src/workspace/skills.rs",
@@ -718,13 +718,13 @@
     },
     {
       "path": "apps/native/src/workspace/worker.rs",
-      "size": 17926,
-      "sha256": "484a74da72058788faa3ead828a0c85d80e0fdecfbaabfc02bcc1cae60145f22"
+      "size": 18065,
+      "sha256": "8f534c240b4ee5f740d4bb92eb94e2e8c8816c54b9200d645c4347637e63bc9f"
     },
     {
       "path": "apps/native/src/workspace.rs",
-      "size": 18720,
-      "sha256": "f384bd558433930fc23b1fb9ae896273227a587cdaae2c45ed10683a0d3d385f"
+      "size": 18748,
+      "sha256": "39d54979081ff1239a17c2396c415e7d6319f146546968da7c9abd7cb6fb7e73"
     },
     {
       "path": "apps/native/vendor/cryoglyph/Cargo.toml",
@@ -1918,8 +1918,8 @@
     },
     {
       "path": "crates/api/src/lib.rs",
-      "size": 234,
-      "sha256": "84770b00bc5263a01eb7983337517c5ed278ac0726e32be1848987f76daa807e"
+      "size": 936,
+      "sha256": "cb6622e5e19c96e0ca145e6ae640b13b5447652b917e539a2bb9043c1a41c09f"
     },
     {
       "path": "crates/api/tests/smoke_protocol.rs",
@@ -2393,8 +2393,8 @@
     },
     {
       "path": "crates/assistant/src/desktop.rs",
-      "size": 90925,
-      "sha256": "1c6e32f95166e76d98b48f1daf6291e035fcf50615db539dba98997bc3a31cf7"
+      "size": 90943,
+      "sha256": "a30e7ce00e573584fd63098f13e47ffcec7bdbfb29b22da50991ea8602c26457"
     },
     {
       "path": "crates/assistant/src/device_exchange/kafka.rs",
@@ -2438,8 +2438,8 @@
     },
     {
       "path": "crates/assistant/src/device_setup.rs",
-      "size": 10117,
-      "sha256": "c309ed29425f775105f7e73a6bc7e29f0d9312135d04cde8b9ee9e3054286a83"
+      "size": 10153,
+      "sha256": "ee1f82b69549788f5fbbb4e0051ce3f92b02323a3b9f4eb0d3b4d3e7574fb221"
     },
     {
       "path": "crates/assistant/src/execution_tests.rs",
@@ -3183,13 +3183,13 @@
     },
     {
       "path": "crates/host-runtime/src/profile.rs",
-      "size": 13880,
-      "sha256": "225d9181a99070ba6989da09bcd83f9291dedc4d579e0438ebe872ecbb253943"
+      "size": 13916,
+      "sha256": "1b93d5f8127afb811546023f0e46c0f9dd6f004bb101afff0e2b989f17607c9c"
     },
     {
       "path": "crates/host-runtime/src/project_command.rs",
-      "size": 8400,
-      "sha256": "39af729de683543e6432110d4c15e7a50fa59752d7922d9ab8a0a0353fa93194"
+      "size": 8418,
+      "sha256": "18b8646d6592d8176768b1c171ba9a868c4c693aca1cc8ca5c2abfa5b3d63b81"
     },
     {
       "path": "crates/host-runtime/src/qemu_native.rs",
@@ -4423,8 +4423,8 @@
     },
     {
       "path": "docs/public/native-client.zh-CN.md",
-      "size": 4903,
-      "sha256": "cf2c638d03d47e43ea5ab94f0d62a770a23e197ef225ea9b8e68715bf1f6fef9"
+      "size": 5066,
+      "sha256": "b3b57a085d8255258262ff3fba87e301b19ad9dd5117f1264dc4348f2a6de300"
     },
     {
       "path": "docs/public/native-services-license-inventory.json",

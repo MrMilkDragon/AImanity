@@ -461,20 +461,17 @@ impl Connection {
                             "click"
                         }
                         _ if device.kind == "phone" => "long_press",
-                        _ => return Err("共享电脑暂不支持此鼠标按键".into()),
+                        _ => "right_click",
                     }
                 }
                 DeviceInput::Drag {
                     x, y, to_x, to_y, ..
                 } => {
-                    if device.kind != "phone" {
-                        return Err("共享电脑暂不支持拖动".into());
-                    }
                     action.x = x as i32;
                     action.y = y as i32;
                     action.to_x = to_x as i32;
                     action.to_y = to_y as i32;
-                    "swipe"
+                    if device.kind == "phone" { "swipe" } else { "drag" }
                 }
                 DeviceInput::Text(v) => {
                     action.text = v;

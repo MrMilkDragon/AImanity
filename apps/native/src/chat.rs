@@ -378,7 +378,7 @@ impl Chat {
                 self.draft = text_editor::Content::new();
                 let request = wire::ChatSendRequest {
                     conversation_id: self.state.conversation_id.clone(),
-                    device_id: device_id.into(),
+                    device_id: if matches!(self.host, crate::host_desktop::Permission::Armed) { String::new() } else { device_id.into() },
                     text: text.clone(),
                     attachment_ids: attachments.iter().map(|a| a.id.clone()).collect(),
                     request_id: id.clone(),

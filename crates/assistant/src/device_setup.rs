@@ -193,7 +193,7 @@ async fn provision(rpc: &Rpc, store: &Store, intent: &Intent) -> Result<()> {
                     request_id: intent.request_id.clone(),
                     cpus: intent.resources.cpus,
                     memory_mb: intent.resources.memory_mb,
-                    template_id: "debian13-openbox".into(),
+                    template_id: ai_phone_api::LINUX_DESKTOP_TEMPLATE.into(),
                 },
             )
             .await?;
@@ -229,7 +229,7 @@ fn check_job(job: &wire::DesktopProvisionJob, intent: &Intent) -> Result<()> {
         || job.device_id != intent.device_id
         || job.cpus != intent.resources.cpus
         || job.memory_mb != intent.resources.memory_mb
-        || job.template_id != "debian13-openbox"
+        || job.template_id != ai_phone_api::LINUX_DESKTOP_TEMPLATE
     {
         return Err(Error("device_setup_provision_conflict"));
     }

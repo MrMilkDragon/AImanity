@@ -228,7 +228,15 @@ fn mouse_event(
         geometry::CGPoint,
     };
     let p = CGPoint::new(f64::from(point.0), f64::from(point.1));
-    let event = CGEvent::new_mouse_event(source.clone(), kind, p, CGMouseButton::Left)
+    let button = if matches!(
+        kind,
+        CGEventType::RightMouseDown | CGEventType::RightMouseUp
+    ) {
+        CGMouseButton::Right
+    } else {
+        CGMouseButton::Left
+    };
+    let event = CGEvent::new_mouse_event(source.clone(), kind, p, button)
         .map_err(|_| "无法创建鼠标事件")?;
     event.set_integer_value_field(EventField::MOUSE_EVENT_CLICK_STATE, clicks);
     if matches!(kind, CGEventType::LeftMouseDragged) {
@@ -264,14 +272,19 @@ fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
         event.post(CGEventTapLocation::HID);
     } else {
         let clicks = if action.kind == "double_click" { 2 } else { 1 };
+        let (down, up) = if action.kind == "right_click" {
+            (CGEventType::RightMouseDown, CGEventType::RightMouseUp)
+        } else {
+            (CGEventType::LeftMouseDown, CGEventType::LeftMouseUp)
+        };
         for n in 1..=clicks {
             let n = if action.kind == "click" && action.clicks == 2 {
                 2
             } else {
                 n
             };
-            post(CGEventType::LeftMouseDown, n)?;
-            post(CGEventType::LeftMouseUp, n)?;
+            post(down, n)?;
+            post(up, n)?;
         }
     }
     Ok(())
@@ -290,7 +303,12 @@ fn pointer(action: &DesktopActionRequest, x: i32, y: i32) -> Result<()> {
     if action.kind == "scroll" {
         input.scroll(action.amount.clamp(-30, 30), Axis::Vertical)?;
     } else {
-        input.button(Button::Left, Direction::Click)?;
+        let button = if action.kind == "right_click" {
+            Button::Right
+        } else {
+            Button::Left
+        };
+        input.button(button, Direction::Click)?;
         if action.kind == "double_click" {
             input.button(Button::Left, Direction::Click)?;
         }
@@ -341,6 +359,14 @@ fn paint_strokes(
                 .collect::<Result<Vec<_>>>()
         })
         .collect::<Result<Vec<_>>>()?;
+    drag_paths(current, paths, live)
+}
+
+fn drag_paths(
+    current: &View,
+    paths: impl IntoIterator<Item = Vec<(i32, i32)>>,
+    live: &watch::Receiver<()>,
+) -> Result<()> {
     #[cfg(target_os = "macos")]
     let pen = {
         use core_graphics::{
@@ -466,9 +492,15 @@ fn execute(
         return Err("本机授权已结束".into());
     }
     match action.kind.as_str() {
-        "click" | "double_click" | "scroll" => {
+        "click" | "double_click" | "right_click" | "scroll" => {
             let (x, y) = current.point(action.x, action.y)?;
             pointer(action, x, y)?;
+        }
+        "drag" => {
+            let start = current.point(action.x, action.y)?;
+            let end = current.point(action.to_x, action.to_y)?;
+            let middle = (start.0.midpoint(end.0), start.1.midpoint(end.1));
+            drag_paths(&current, [vec![start, middle, end]], live)?;
         }
         "stroke" => paint_strokes(&current, action, live)?,
         "type" | "key" => {
@@ -724,64 +756,112 @@ mod tests {
     }
 
     #[cfg(windows)]
-    #[test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "opens Notepad on an isolated Windows desktop"]
-    fn windows_notepad_receives_host_input() -> Result<()> {
-        use std::{process::Command, thread, time::Duration};
+    async fn windows_notepad_receives_host_input() -> Result<()> {
+        use crate::{peer_connection, workspace::Workspace};
+        use ai_phone_api::wire::{DevicePairRequest, FileLocation};
+        use std::{net::TcpListener, process::Command, sync::Arc, time::Duration};
+        use tokio::time::{sleep, timeout};
         use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
 
         let dir = tempfile::tempdir()?;
-        let file = dir.path().join("Europium desktop QA.txt");
-        fs::write(&file, [])?;
-        let mut editor = Command::new("notepad.exe").arg(&file).spawn()?;
-        let result = (|| -> Result<()> {
-            let start = Instant::now();
-            let window = loop {
-                if let Some(window) = xcap::Window::all()?
-                    .into_iter()
-                    .find(|w| w.pid().ok() == Some(editor.id()))
-                {
-                    break window;
-                }
-                if start.elapsed() > Duration::from_secs(12) {
-                    return Err("Notepad did not open".into());
-                }
-                thread::sleep(Duration::from_millis(100));
-            };
-            let id = window.id()? as usize;
-            unsafe {
-                SetForegroundWindow(id as _);
-            }
-            let (_grant, live) = watch::channel(());
-            let expected = format!("Europium 中文 {}", uuid::Uuid::now_v7());
-            for (kind, text, key) in [("type", expected.as_str(), ""), ("key", "", "save")] {
-                let (view, frame) = observe("")?;
-                assert_eq!(view.focus, Some(id));
-                assert!(frame.jpeg.len() > 1000 && frame.width > 0);
-                let action = DesktopActionRequest {
-                    kind: kind.into(),
-                    text: text.into(),
-                    key: key.into(),
-                    observation_id: frame.observation_id,
-                    ..Default::default()
+        let workspace = Workspace::open(dir.path())?;
+        let port = TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port();
+        let invitation = workspace
+            .start_pairing(
+                DevicePairRequest {
+                    id: "remote".into(),
+                    name: "Windows".into(),
+                    kind: "desktop".into(),
+                },
+                port,
+            )
+            .await?;
+        let (ready, connected) = oneshot::channel();
+        let (revoke_share, share_stop) = watch::channel(());
+        let peer = tokio::spawn(async move {
+            peer_connection::share(&port.to_string(), &invitation.code, None, ready, share_stop)
+                .await
+        });
+        connected.await?;
+        let device = workspace.registry()?.devices.remove(0);
+        assert!(device.connected);
+        assert_eq!(device.system_name(), "Windows");
+        let drives = workspace
+            .file_list(FileLocation {
+                device_id: device.id.clone(),
+                path: "/".into(),
+            })
+            .await?;
+        let volume = dir
+            .path()
+            .components()
+            .next()
+            .unwrap()
+            .as_os_str()
+            .to_string_lossy();
+        assert!(
+            drives
+                .entries
+                .iter()
+                .any(|d| d.directory && d.name.eq_ignore_ascii_case(&volume))
+        );
+
+        let (revoke_host, live) = watch::channel(());
+        *workspace.host.lock().unwrap() = Some(("local".into(), Arc::new(Grant::new(live))));
+        for remote in [false, true] {
+            let label = if remote { "paired" } else { "local" };
+            let file = dir.path().join(format!("Fluorine-{label}.txt"));
+            fs::write(&file, [])?;
+            let mut editor = Command::new("notepad.exe").arg(&file).spawn()?;
+            let result: Result<()> = async {
+                let win = timeout(Duration::from_secs(12),async {
+                    loop {
+                        if let Some(win)=xcap::Window::all()?.into_iter().find(|w|
+                             w.pid().ok()==Some(editor.id()) || w.title().is_ok_and(|title| title.contains(&format!("Fluorine-{label}")))) {
+                            return Result::Ok(win);
+                        }
+                        sleep(Duration::from_millis(60)).await;
+                    }
+                }).await??;
+                let hwnd=win.id()? as usize;
+                unsafe { SetForegroundWindow(hwnd as _); }
+                let expected=format!("Fluorine 中文 {label}");
+                let call=async |mut action: DesktopActionRequest| -> Result<HostDesktopReply> {
+                    action.action_id=uuid::Uuid::now_v7().to_string();
+                    let expected_id=action.action_id.clone();
+                    let result=if remote {
+                        action.device_id=device.id.clone();
+                        workspace.manual_input(action).await?
+                    }else{
+                        action.control_session="local".into();
+                        workspace.host_action(action).await?
+                    };
+                    assert_eq!(result.action_id,expected_id);
+                    Ok(result)
                 };
-                execute(&mut Some(view), &action, &live)?;
-            }
-            let saved = Instant::now();
-            while fs::read_to_string(&file)?.trim_start_matches('\u{feff}') != expected {
-                if saved.elapsed() > Duration::from_secs(5) {
-                    return Err("Notepad did not save the text".into());
+                for (kind,text,key) in [("type", expected.as_str(), ""), ("key", "", "save")] {
+                    assert_eq!(focused_window(),Some(hwnd));
+                    let frame=call(DesktopActionRequest{kind:"observe".into(),..Default::default()}).await?;
+                    assert!(!frame.jpeg.is_empty() && frame.width > 0);
+                    call(DesktopActionRequest{ kind:kind.into(),observation_id:frame.observation_id,text:text.into(),key:key.into(),..Default::default()}).await?;
                 }
-                thread::sleep(Duration::from_millis(50));
-            }
-            println!(
-                "Observed the real Windows desktop, entered Chinese in Notepad and read the saved file ({} ms).",
-                start.elapsed().as_millis()
-            );
-            Ok(())
-        })();
-        let _ = editor.kill();
-        let _ = editor.wait();
-        result
+                timeout(Duration::from_secs(5),async {
+                    while fs::read_to_string(&file)?.trim_start_matches('\u{feff}')!=expected {sleep(Duration::from_millis(45)).await;}
+                    Result::Ok(())
+                }).await??;
+                println!("{label}: observed Windows, entered Chinese in Notepad and verified the saved file.");
+                Ok(())
+            }.await;
+            let _ = editor.kill();
+            let _ = editor.wait();
+            result?;
+        }
+        drop(revoke_host);
+        drop(revoke_share);
+        peer.await??;
+        workspace.stop().await;
+        Ok(())
     }
 }

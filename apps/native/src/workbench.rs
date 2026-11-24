@@ -946,11 +946,7 @@ impl App {
                 let Some(frame) = self.devices[index].frame.clone() else {
                     return Task::none();
                 };
-                let kind = if self.devices[index].phone() {
-                    "Android"
-                } else {
-                    "Linux"
-                };
+                let system = self.devices[index].info.system_name().to_owned();
                 self.capture = Some((device_id.clone(), None));
                 return Task::perform(
                     async move {
@@ -969,7 +965,7 @@ impl App {
                             let image = image::Handle::from_bytes(png.clone());
                             let name = format!(
                                 "{}-{}.png",
-                                kind,
+                                system,
                                 chrono::Local::now().format("%Y%m%d-%H%M%S%.3f")
                             );
                             Ok(Capture { png, image, name })

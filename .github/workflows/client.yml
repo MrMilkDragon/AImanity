@@ -3,6 +3,12 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Native checks to run
+        type: choice
+        options: [all, windows]
+        default: all
 permissions:
   contents: read
 concurrency:
@@ -13,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-26, windows-2022]
+        os: ${{ fromJSON(inputs.platform == 'windows' && '["windows-2022"]' || '["macos-26","windows-2022"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     env:
@@ -38,13 +44,14 @@ jobs:
         run: cargo build --locked
       - name: Test native workbench
         run: cargo test --locked
-      - name: Exercise Windows desktop input in Notepad
+      - name: Exercise local and paired Windows desktops in Notepad
         if: runner.os == 'Windows'
         run: cargo test --locked windows_notepad_receives_host_input -- --ignored --nocapture
       - name: Test native host runtime
         working-directory: .
         run: cargo test -p ai-phone-host-runtime --lib --locked
   macos-arm64:
+    if: inputs.platform != 'windows'
     runs-on: macos-26
     timeout-minutes: 45
     env:
@@ -94,6 +101,7 @@ jobs:
           retention-days: 14
 
   android-arm64:
+    if: inputs.platform != 'windows'
     # Phone-control helpers run inside the virtual Android guest.
     runs-on: ubuntu-24.04
     timeout-minutes: 60

@@ -1681,7 +1681,7 @@ async fn provision(
     app: Shared,
     r: wire::DesktopProvisionRequest,
 ) -> Result<wire::DesktopProvisionJob> {
-    if r.template_id != "debian13-openbox"
+    if r.template_id != ai_phone_api::LINUX_DESKTOP_TEMPLATE
         || !(1..=4).contains(&r.cpus)
         || !(1536..=4096).contains(&r.memory_mb)
     {

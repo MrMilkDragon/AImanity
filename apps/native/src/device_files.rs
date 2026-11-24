@@ -12,6 +12,7 @@ use tokio::{
 #[derive(Clone)]
 pub(crate) enum Endpoint {
     Directory(PathBuf),
+    Desktop,
     Android(ai_phone_adb::Client),
 }
 
@@ -39,6 +40,10 @@ fn root_path(root: &Path, path: &str) -> Result<PathBuf> {
         let Component::Normal(name) = component else {
             return Err("文件路径无效".into());
         };
+        #[cfg(windows)]
+        if name.as_encoded_bytes().contains(&b':') {
+            return Err("文件路径无效".into());
+        }
         result.push(name);
         if result.is_symlink() {
             return Err("不能通过符号链接执行文件操作".into());
@@ -116,13 +121,49 @@ impl Endpoint {
     pub(crate) fn local_path(&self, path: &str) -> Result<PathBuf> {
         match self {
             Self::Directory(root) => root_path(root, path),
+            #[cfg(not(windows))]
+            Self::Desktop => root_path(Path::new("/"), path),
+            #[cfg(windows)]
+            Self::Desktop => {
+                let relative = absolute(path)?.trim_start_matches('/');
+                let (volume, rest) = relative.split_once('/').unwrap_or((relative, ""));
+                let [letter, b':'] = volume.as_bytes() else {
+                    return Err("Windows 驱动器路径无效".into());
+                };
+                if !letter.is_ascii_alphabetic() {
+                    return Err("Windows 驱动器路径无效".into());
+                }
+                root_path(Path::new(&format!("{volume}\\")), &format!("/{rest}"))
+            }
             Self::Android(_) => Err("设备远端路径".into()),
         }
     }
     pub(crate) async fn list(&self, path: &str) -> Result<FileListing> {
         let mut entries = Vec::new();
+        #[cfg(windows)]
+        if matches!(self, Self::Desktop) && absolute(path)?.trim_matches('/').is_empty() {
+            let drives = unsafe { windows_sys::Win32::Storage::FileSystem::GetLogicalDrives() };
+            if drives == 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+            for index in 0..26 {
+                if drives & (1 << index) != 0 {
+                    let name = format!("{}:", char::from(b'A' + index));
+                    entries.push(FileEntry {
+                        path: format!("/{name}"),
+                        name,
+                        directory: true,
+                        ..Default::default()
+                    });
+                }
+            }
+            return Ok(FileListing {
+                entries,
+                location: None,
+            });
+        }
         match self {
-            Self::Directory(_) => {
+            Self::Desktop | Self::Directory(_) => {
                 let mut dir = fs::read_dir(self.local_path(path)?).await?;
                 while let Some(item) = dir.next_entry().await? {
                     let stat = fs::symlink_metadata(item.path()).await?;
@@ -167,7 +208,7 @@ impl Endpoint {
     }
     pub(crate) async fn read(&self, path: &str, out: &mut (impl AsyncWrite + Unpin)) -> Result<()> {
         match self {
-            Self::Directory(_) => {
+            Self::Desktop | Self::Directory(_) => {
                 let mut f = fs::File::open(self.local_path(path)?).await?;
                 tokio::io::copy(&mut f, out).await?;
             }
@@ -183,7 +224,7 @@ impl Endpoint {
         input: &mut (impl AsyncRead + Unpin),
     ) -> Result<()> {
         match self {
-            Self::Directory(_) => {
+            Self::Desktop | Self::Directory(_) => {
                 let dst = self.local_path(path)?;
                 let staged = tempfile::NamedTempFile::new_in(dst.parent().ok_or("文件名无效")?)?;
                 let mut out = fs::File::from_std(staged.reopen()?);
@@ -226,8 +267,11 @@ impl Endpoint {
             return Err("不能更改根目录".into());
         }
         match self {
-            Self::Directory(_) => {
+            Self::Desktop | Self::Directory(_) => {
                 let src = self.local_path(path)?;
+                if src.parent().is_none() {
+                    return Err("不能更改根目录".into());
+                }
                 match op {
                     Op::Mkdir => fs::create_dir(src).await?,
                     Op::Remove => {

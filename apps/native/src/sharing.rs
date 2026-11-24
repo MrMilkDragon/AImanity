@@ -148,7 +148,8 @@ impl Sharing {
     fn view(&self) -> Element<'_, Msg> {
         let tr = |s: &'static str| self.locale.tr(s);
         let idle = self.stop.is_none();
-        let local = tr("这台电脑").to_owned();
+        let os = std::env::consts::OS;
+        let local = format!("{} · {}", tr("这台电脑"), ai_phone_api::platform_name(os).unwrap_or(os));
         let choices = std::iter::once(local.clone())
             .chain(self.phones.iter().map(|(_, l)| l.clone()))
             .collect::<Vec<_>>();

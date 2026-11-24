@@ -1,5 +1,5 @@
 use super::device_run::{
-    DesktopInput, DeviceRun, add_stroke, device_info, device_output, retire_image,
+    DesktopInput, DeviceRun, add_desktop_actions, device_info, device_output, retire_image,
 };
 use super::*;
 use aimanity_model::model_timing::Timing;
@@ -88,7 +88,9 @@ impl Workspace {
                 tools.push(json!({"type":"function","name":"device_audio_input","description":"Feed a WAV work file into the selected device microphone.","parameters":{"type":"object","properties":{"device_id":{"type":"string","enum":microphones},"path":{"type":"string"}},"required":["device_id","path"]}}));
             }
         }
-        let first_device = if !target.is_empty() {
+        let first_device = if host {
+            None
+        } else if !target.is_empty() {
             Some(target.to_owned())
         } else if input_pending && device_run.devices.len() == 1 {
             Some(device_run.devices[0].id.clone())
@@ -114,8 +116,8 @@ impl Workspace {
                 .extend(output.as_array().unwrap().iter().cloned());
         }
         if host {
-            let mut tool = json!({"type":"function","name":"host_desktop","description":"Observe the authorized display or act using the observation ID from that display. Coordinates use screenshot pixels.","parameters":{"type":"object","properties":{"kind":{"type":"string","enum":["observe","click","double_click","scroll","type","key"]},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"},"key":{"type":"string"}},"required":["kind"]}});
-            add_stroke(&mut tool);
+            let mut tool = json!({"type":"function","name":"host_desktop","description":format!("Operate the authorized local {} desktop. Use the observation ID and screenshot pixels from this display.",ai_phone_api::platform_name(std::env::consts::OS).unwrap_or(std::env::consts::OS)),"parameters":{"type":"object","properties":{"kind":{"type":"string","enum":["observe","click","double_click","scroll","type","key"]},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"},"key":{"type":"string"}},"required":["kind"]}});
+            add_desktop_actions(&mut tool);
             tools.push(tool);
         }
         loop {

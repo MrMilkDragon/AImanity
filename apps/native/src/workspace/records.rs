@@ -99,10 +99,8 @@ impl Workspace {
             "registry/device-save" => self
                 .edit_registry(|state, _| {
                     let q = req!(DeviceSaveRequest);
-                    if q.name.trim().is_empty()
-                        || q.id.is_empty()
-                        || !matches!(q.kind.as_str(), "phone" | "desktop")
-                    {
+                    let system = ai_phone_api::guest_system(&q.kind).ok_or("设备类型无效")?;
+                    if q.name.trim().is_empty() || q.id.is_empty() {
                         return Err("设备名称或类型无效".into());
                     }
                     let existing = state.devices.iter_mut().find(|d| d.id == q.id);
@@ -123,6 +121,7 @@ impl Workspace {
                                 revision: 1,
                                 name: q.name,
                                 kind: q.kind,
+                                system: system.into(),
                                 runtime_state: "configured".into(),
                                 ..Default::default()
                             });

@@ -67,17 +67,20 @@ impl DesktopInput {
     }
 }
 
-pub(super) fn add_stroke(tool: &mut Value) {
+pub(super) fn add_desktop_actions(tool: &mut Value) {
     let props = &mut tool["parameters"]["properties"];
-    props["kind"]["enum"]
-        .as_array_mut()
-        .unwrap()
-        .push(json!("stroke"));
+    props["kind"]["enum"].as_array_mut().unwrap().extend([
+        json!("right_click"),
+        json!("drag"),
+        json!("stroke"),
+    ]);
+    props["to_x"] = json!({"type":"integer"});
+    props["to_y"] = json!({"type":"integer"});
     props["strokes"] = json!({"type":"array","description":"On a computer, draw each path with the active brush held down, in observed screenshot pixels. Lift between paths.","minItems":1,"maxItems":32,"items":{"type":"array","minItems":2,"maxItems":128,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"integer"}}}});
 }
 
 pub(super) fn device_info(device: &wire::RegisteredDevice) -> Value {
-    json!({"id":device.id,"name":device.name,"kind":device.kind,"connected":device.connected})
+    json!({"id":device.id,"name":device.name,"kind":device.kind,"system":device.system_name(),"source":if device.paired {"remote"}else{"virtual"},"connected":crate::connection::reachable(device)})
 }
 
 pub(super) fn device_output(info: &Value, reply: wire::HostDesktopReply) -> Value {
@@ -123,9 +126,15 @@ impl DeviceRun {
         let ids: Vec<_> = self.devices.iter().map(|d| &d.id).collect();
         let roster: Vec<_> = self.devices.iter().map(device_info).collect();
         let mut tool = json!({"type":"function","name":"device_interact","description":format!("Operate a connected device. For system navigation or a named key use kind=key and the key parameter. For a visible control observe, then use screenshot pixels. Devices: {}",json!(roster)),
-            "parameters":{"type":"object","properties":{"device_id":{"type":"string","enum":ids},"kind":{"type":"string","enum":["foreground","observe","key","click","double_click","scroll","long_press","swipe","type"]},"key":{"type":"string","enum":["home","back","enter","tab","escape","backspace","left","right","up","down","save","select_all","undo","redo"],"description":"Phone navigation includes home and back. Desktop shortcuts include save, select_all, undo, redo."},"x":{"type":"integer"},"y":{"type":"integer"},"to_x":{"type":"integer"},"to_y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"}},"required":["device_id","kind"]}});
-        if self.devices.iter().any(|d| d.kind != "phone") {
-            add_stroke(&mut tool);
+            "parameters":{"type":"object","properties":{"device_id":{"type":"string","enum":ids},"kind":{"type":"string","enum":["foreground","observe","key","click","double_click","scroll","type"]},"key":{"type":"string","enum":["home","back","enter","tab","escape","backspace","left","right","up","down","save","select_all","undo","redo"],"description":"Phone navigation includes home and back. Desktop shortcuts include save, select_all, undo, redo."},"x":{"type":"integer"},"y":{"type":"integer"},"to_x":{"type":"integer"},"to_y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"}},"required":["device_id","kind"]}});
+        if self.devices.iter().any(|d| d.kind == "phone") {
+            tool["parameters"]["properties"]["kind"]["enum"]
+                .as_array_mut()
+                .unwrap()
+                .extend([json!("long_press"), json!("swipe")]);
+        }
+        if self.devices.iter().any(|d| d.kind == "desktop") {
+            add_desktop_actions(&mut tool);
         }
         tool
     }
@@ -159,9 +168,16 @@ impl DeviceRun {
                 };
                 if (matches!(
                     action.kind.as_str(),
-                    "click" | "double_click" | "long_press" | "swipe" | "scroll"
+                    "click"
+                        | "double_click"
+                        | "right_click"
+                        | "long_press"
+                        | "drag"
+                        | "swipe"
+                        | "scroll"
                 ) && !inside(action.x, action.y))
-                    || (action.kind == "swipe" && !inside(action.to_x, action.to_y))
+                    || (matches!(action.kind.as_str(), "drag" | "swipe")
+                        && !inside(action.to_x, action.to_y))
                 {
                     info["executed"] = json!(false);
                     info["reason"] = json!(format!(

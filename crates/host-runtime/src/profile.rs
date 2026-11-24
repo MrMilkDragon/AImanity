@@ -129,7 +129,7 @@ fn validate(value: &Value, template: &str) -> Result<()> {
         || !LOCALES.contains(&header.locale.as_str())
         || phone.template != template
         || !matches!(template, "android35-arm64" | "android35-x86_64")
-        || desktop.template != "debian13-openbox"
+        || desktop.template != ai_phone_api::LINUX_DESKTOP_TEMPLATE
         || !resources(
             &Phone {
                 cpus: phone.cpus,
@@ -228,7 +228,7 @@ pub(crate) fn prepare_request(
         "sdk_root":sdk,
         "host_proxy":"","container_proxy":"",
         "phone":{"template":template,"cpus":request.phone.cpus,"memory_mb":request.phone.memory_mb,"storage_gb":request.phone.storage_gb},
-        "desktop":{"template":"debian13-openbox","cpus":request.desktop.cpus,"memory_mb":request.desktop.memory_mb}});
+        "desktop":{"template":ai_phone_api::LINUX_DESKTOP_TEMPLATE,"cpus":request.desktop.cpus,"memory_mb":request.desktop.memory_mb}});
     if let Some(storage) = request.desktop.storage_gb {
         value["desktop"]["storage_gb"] = json!(storage);
     }

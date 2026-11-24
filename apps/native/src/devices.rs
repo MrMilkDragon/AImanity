@@ -418,7 +418,7 @@ impl Devices {
                     request_id: String::new(),
                     cpus: self.cpus,
                     memory_mb: self.memory,
-                    template_id: "debian13-openbox".into(),
+                    template_id: ai_phone_api::LINUX_DESKTOP_TEMPLATE.into(),
                 };
                 return self.launch(Startup::Desktop(request), client);
             }
@@ -573,7 +573,15 @@ impl Devices {
             } else {
                 Icon::Screen
             };
-            let mut line = row![container(icon.view()).width(30.).align_x(iced::Center)]
+            let glyph = container(icon.view()).width(30.).align_x(iced::Center);
+            let system = device.system_name();
+            let glyph: Element<'_, M> = if system.is_empty() {
+                glyph.into()
+            } else {
+                iced::widget::tooltip(glyph, text(system).size(12), iced::widget::tooltip::Position::Bottom)
+                    .gap(4).style(container::rounded_box).into()
+            };
+            let mut line = row![glyph]
                 .align_y(iced::Center)
                 .spacing(6);
             if let Some(d) = editing {
