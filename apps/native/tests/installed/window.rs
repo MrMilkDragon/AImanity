@@ -10,7 +10,10 @@ use tokio::{
     process::{Child, Command},
     time::{Instant, sleep, timeout},
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, SetForegroundWindow, WM_CLOSE};
+use windows_sys::Win32::{
+    System::Threading::CREATE_NO_WINDOW,
+    UI::WindowsAndMessaging::{PostMessageW, SetForegroundWindow, WM_CLOSE},
+};
 use xcap::{Monitor, Window};
 
 pub(super) struct Client {
@@ -23,6 +26,7 @@ pub(super) struct Client {
 impl Client {
     pub async fn launch(exe: &Path, profile: &Path, evidence: &Path, log: &Path) -> Result<Self> {
         let mut child = Command::new(exe)
+            .creation_flags(CREATE_NO_WINDOW)
             .env("AIMANITY_DATA_DIR", profile)
             .stderr(File::create(log)?)
             .stdout(Stdio::null())
@@ -95,6 +99,7 @@ impl Client {
             )
             .save(&image)?;
             let output = Command::new(&ocr)
+                .creation_flags(CREATE_NO_WINDOW)
                 .arg(&image)
                 .args(["stdout", "-l", "eng", "--psm", "11", "tsv"])
                 .output()
@@ -103,6 +108,7 @@ impl Client {
                 return Err(String::from_utf8_lossy(&output.stderr).into_owned().into());
             }
             let tsv = std::str::from_utf8(&output.stdout)?;
+            std::fs::write(self.evidence.join("window.tsv"), tsv)?;
             let target = tsv
                 .lines()
                 .filter_map(|line| {

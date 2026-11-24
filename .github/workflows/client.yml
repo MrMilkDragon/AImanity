@@ -49,9 +49,17 @@ jobs:
         shell: pwsh
         run: |
           choco install tesseract --yes --no-progress
+          $env:AIMANITY_QA_ROOT = Join-Path $env:RUNNER_TEMP 'empty-workbench'
           $env:AIMANITY_QA_OCR = "$env:ProgramFiles\Tesseract-OCR\tesseract.exe"
           $env:AIMANITY_QA_CLIENT = (Resolve-Path target/debug/aimanity-native.exe).Path
           cargo test --locked --bin aimanity-native windows_empty_workbench -- --ignored --nocapture
+      - name: Save the Windows workbench screen and log
+        if: failure() && runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows-empty-workbench
+          path: ${{ runner.temp }}/empty-workbench
+          if-no-files-found: ignore
       - name: Exercise local and paired Windows desktops in Notepad
         if: runner.os == 'Windows'
         run: cargo test --locked windows_notepad_receives_host_input -- --ignored --nocapture

@@ -30,15 +30,17 @@ async fn onboarding(client: &mut Client, home: &Path) -> Result<()> {
 #[tokio::test]
 #[ignore = "opens the native workbench on a disposable Windows desktop"]
 async fn windows_empty_workbench() -> Result<()> {
+    let evidence = PathBuf::from(env::var("AIMANITY_QA_ROOT")?);
+    fs::create_dir_all(&evidence)?;
     let root = tempfile::tempdir()?;
     let dir = root.path();
     let exe =
         PathBuf::from(env::var_os("AIMANITY_QA_CLIENT").ok_or("Missing workbench executable")?);
     let home = dir.join("dev.aimanity.workspace/host");
-    let mut client = Client::launch(&exe, dir, dir, &dir.join("fresh.log")).await?;
+    let mut client = Client::launch(&exe, dir, &evidence, &evidence.join("fresh.log")).await?;
     onboarding(&mut client, &home).await?;
     client.close().await?;
-    let mut reopened = Client::launch(&exe, dir, dir, &dir.join("reopened.log")).await?;
+    let mut reopened = Client::launch(&exe, dir, &evidence, &evidence.join("reopened.log")).await?;
     reopened.word("Message", false).await?;
     reopened.close().await?;
     Ok(())
