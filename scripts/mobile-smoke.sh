@@ -148,19 +148,20 @@ for attempt in {1..8}; do
   capture symbols
   symbols=$(key_location symbols '123')
   if [[ -n $symbols ]]; then continue; fi
-  digit=$(key_location symbols '^2$')
-  if [[ -z $digit && -n $(key_location symbols '^ABC$') ]]; then
-    # Infer a missing numeral only from two visible keys on the same row.
-    three=$(key_location symbols '^3$')
-    four=$(key_location symbols '^4$')
-    if [[ -n $three && -n $four ]]; then
-      read -r x3 y3 <<< "$three"
-      read -r x4 y4 <<< "$four"
-      if (( x4 > x3 && x4-x3 > width/16 && x4-x3 < width/8 && y3-y4 < 8 && y4-y3 < 8 )); then
-        digit="$((2*x3-x4)) $y3"
-      fi
-    fi
-  fi
+  [[ -n $(key_location symbols '^ABC$') ]] || continue
+  digit=$(awk -F '\t' -v top="$keyboard_top" -v width="$width" '
+    $1 == 5 && $8 > top && $12 ~ /^[1-9]$/ {
+      y=$8+$10/2
+      if (!row || y < row-8) {delete x; row=y}
+      if (y <= row+8) x[$12]=$7+$9/2
+    }
+    END {
+      if (2 in x) {print int(x[2]),int(row); exit}
+      for (a=1;a<9;a++) for (b=a+1;b<=9;b++) if (a in x && b in x) {
+        pitch=(x[b]-x[a])/(b-a)
+        if (pitch>width/16 && pitch<width/8) {print int(x[a]+(2-a)*pitch),int(row); exit}
+      }
+    }' evidence/symbols.tsv)
   if [[ -n $digit ]]; then break; fi
 done
 [[ -n ${digit:-} ]] || { echo "System IME did not expose its 2 key" >&2; exit 1; }
