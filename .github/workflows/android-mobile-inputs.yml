@@ -1,6 +1,7 @@
 name: Android mobile ARM64 offline inputs
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     branches: [build/android-mobile-inputs]
 permissions:

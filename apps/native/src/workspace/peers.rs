@@ -34,6 +34,7 @@ enum Peer {
         session: Uuid,
         lanes: Arc<Mutex<HashMap<Uuid, oneshot::Sender<WebSocket>>>>,
         guest_audio: bool,
+        microphone: Arc<tokio::sync::Semaphore>,
         closed: CancellationToken,
         tx: mpsc::Sender<Call>,
         stop: CancellationToken,
@@ -146,6 +147,7 @@ impl Peers {
     #[cfg(any(
         target_os = "macos",
         windows,
+        all(target_os = "android", target_arch = "aarch64"),
         all(target_os = "linux", target_arch = "x86_64")
     ))]
     pub(super) fn owned_ticket(&self, w: &Workspace, id: &str) -> Result<Uuid> {
@@ -180,6 +182,7 @@ impl Peers {
     #[cfg(any(
         target_os = "macos",
         windows,
+        all(target_os = "android", target_arch = "aarch64"),
         all(target_os = "linux", target_arch = "x86_64")
     ))]
     pub(super) fn owned_failure(&self, w: &Workspace, id: &str, reason: String) {
@@ -307,9 +310,28 @@ impl Peers {
         request: wire::DeviceIoRequest,
         expected: Option<&CancellationToken>,
     ) -> Result<crate::device_io::Lane> {
-        let (lanes, stop) = match self.entries.lock().unwrap().get(id) {
-            Some(Peer::Connected { lanes, stop, .. }) if expected.is_none_or(|s| s == stop) => {
-                (lanes.clone(), stop.clone())
+        let (lanes, stop, microphone) = match self.entries.lock().unwrap().get(id) {
+            Some(Peer::Connected {
+                lanes,
+                stop,
+                microphone,
+                guest_audio,
+                ..
+            }) if expected.is_none_or(|s| s == stop) => {
+                let permit = if request.operation == wire::DeviceIoOperation::AudioInput as i32 {
+                    if !guest_audio {
+                        return Err("设备没有独立麦克风".into());
+                    }
+                    Some(
+                        microphone
+                            .clone()
+                            .try_acquire_owned()
+                            .map_err(|_| "这台设备的麦克风正在使用")?,
+                    )
+                } else {
+                    None
+                };
+                (lanes.clone(), stop.clone(), permit)
             }
             _ => return Err("设备已断开".into()),
         };
@@ -334,7 +356,11 @@ impl Peers {
             _ = stop.cancelled() => return Err("设备已断开".into()),
             result = tokio::time::timeout(Duration::from_secs(10), open) => result??,
         };
-        Ok(crate::device_io::Lane { socket, stop })
+        Ok(crate::device_io::Lane {
+            socket,
+            stop,
+            _microphone: microphone,
+        })
     }
     pub(super) async fn perform(
         &self,
@@ -495,8 +521,9 @@ async fn accept(
         *slot = Peer::Connected {
             session,
             closed: closed.clone(),
-            guest_audio: kind == Some("desktop") && header("x-aimanity-audio") == Some("guest-pcm"),
+            guest_audio: header("x-aimanity-audio") == Some("guest-pcm"),
             lanes: Default::default(),
+            microphone: Arc::new(tokio::sync::Semaphore::new(1)),
             tx,
             stop: stop.clone(),
             frames: watch::channel(None).0,
@@ -804,7 +831,7 @@ mod tests {
     #[tokio::test]
     async fn file_transfers_use_selected_peers_and_lifecycle_preserves_the_other_devices()
     -> Result<()> {
-        use crate::{device_files::Endpoint, device_io::Services, host_desktop, peer_connection};
+        use crate::{device_files::Endpoint, device_io::Services, peer_connection, peer_session};
         let root = tempfile::tempdir()?;
         let work = Workspace::open(root.path())?;
         let address = work.peers.listen(&work, 0).await?;
@@ -843,7 +870,7 @@ mod tests {
             };
             let (ready, opened) = oneshot::channel();
             let (keep, stop) = watch::channel(());
-            let task = tokio::spawn(host_desktop::serve_socket(ws, None, services, ready, stop));
+            let task = tokio::spawn(peer_session::serve_socket(ws, None, services, ready, stop));
             opened.await?;
             Result::Ok((keep, task))
         };

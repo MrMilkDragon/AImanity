@@ -7,25 +7,23 @@ permissions:
   contents: read
   actions: read
 jobs:
+  partitions:
+    uses: ./.github/workflows/android-mobile-inputs.yml
   android:
+    needs: partitions
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Fetch the pinned Europium ARM64 Android source images
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          work="$RUNNER_TEMP/europium-input"
-          mkdir -p "$work"
-          cd "$work"
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/14739028529/zip" > input.zip
-          echo '15508fd26acad9aed3ec6cfe69a8090e10e65977af0872d1626f4a044517ae69  input.zip' | sha256sum -c -
-          unzip -p input.zip android-arm64-inputs.tar.xz | tar --sparse -xJf -
-          rm input.zip
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: europium-mobile-android-arm64-inputs
+          path: ${{ runner.temp }}/europium-input
+      - name: Unpack the offline Android partitions
+        working-directory: ${{ runner.temp }}/europium-input
+        run: tar --sparse -xJf android-arm64-inputs.tar.xz
       - name: Prepare and validate ARM64 boot and partition assets
         run: |
           set -euo pipefail
@@ -33,9 +31,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends lz4 android-sdk-libsparse-utils
           rustup toolchain install 1.96.0 --profile minimal
           export RUSTUP_TOOLCHAIN=1.96.0
+          rustup target add aarch64-linux-android x86_64-linux-android
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
           bash scripts/mobile-android-images.sh "$RUNNER_TEMP/europium-input" "$RUNNER_TEMP/avf-inputs"
           cd "$RUNNER_TEMP/avf-inputs"
-          sha256sum android/* speech/* > "$RUNNER_TEMP/android-prepared.sha256"
+          find android speech -type f -print0 | sort -z | xargs -0 sha256sum > "$RUNNER_TEMP/android-prepared.sha256"
           sha256sum --check "$RUNNER_TEMP/android-prepared.sha256"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:

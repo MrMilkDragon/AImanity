@@ -1,4 +1,6 @@
 {
+  "接入本机麦克风": "Connect host microphone",
+  "断开本机麦克风": "Disconnect host microphone",
   "启动设备": "Start device",
   "应用并重启": "Apply and restart",
   "共享可见通知": "Share visible notifications",

@@ -31,7 +31,7 @@ printf 'MODULES=list\nCOMPRESS=gzip\n' > "$root/etc/initramfs-tools/conf.d/avf"
 chroot "$root" apt-get update -qq
 chroot "$root" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   systemd-sysv systemd-resolved udev linux-image-arm64 initramfs-tools kmod e2fsprogs \
-  busybox-static ca-certificates adb iproute2 bubblewrap slirp4netns zstd xz-utils util-linux \
+  busybox-static ca-certificates iproute2 bubblewrap slirp4netns zstd xz-utils util-linux \
   tesseract-ocr tesseract-ocr-eng \
   tesseract-ocr-chi-sim libtesseract-dev libleptonica-dev tzdata
 version=$(chroot "$root" sh -c 'ls -1 /lib/modules | sort -V | tail -n 1')
@@ -56,7 +56,7 @@ test "$(od -An -tx1 -j56 -N4 "$out/Image" | tr -d ' \n')" = 41524d64
 install -m 0644 "$root/boot/initrd.img-$version" "$out/initrd.img"
 
 prefix="$root/opt/aiphone"
-mkdir -p "$prefix"/{bundle,engine/bin,linux/bin,native-phone-bridge/platform-tools} \
+mkdir -p "$prefix"/{bundle,engine/bin,linux/bin} \
   "$root"/{var/lib/aiphone,usr/local/libexec,etc/systemd/network}
 install -m 0755 "$compiled/bootstrap.program" "$root/usr/local/libexec/aiphone-bootstrap"
 install -m 0755 "$relay" "$root/usr/local/libexec/aimanity-avf-guest-relay"
@@ -64,7 +64,6 @@ install -m 0644 "$compiled"/{source.payload,source.sha256,images.payload} "$pref
 (cd "$prefix/bundle" && echo "$(cat source.sha256)  source.payload" | sha256sum -c -)
 ln -s /usr/share/zoneinfo "$prefix/linux/zoneinfo"
 ln -s /usr/bin/busybox "$prefix/engine/bin/busybox"
-ln -s /usr/bin/adb "$prefix/native-phone-bridge/platform-tools/adb"
 for app in bwrap slirp4netns zstd; do ln -s "/usr/bin/$app" "$prefix/linux/bin/$app"; done
 printf '/dev/vda / ext4 defaults 0 1\n' > "$root/etc/fstab"
 printf 'aimanity\n' > "$root/etc/hostname"
@@ -111,7 +110,6 @@ chroot "$root" systemctl enable aimanity-avf-relay aimanity-avf-backend systemd-
 for command in /opt/aiphone/linux/bin/bwrap /opt/aiphone/linux/bin/zstd /usr/local/libexec/aiphone-bootstrap; do
   chroot "$root" "$command" --version
 done
-chroot "$root" /opt/aiphone/native-phone-bridge/platform-tools/adb version
 chroot "$root" /opt/aiphone/engine/bin/busybox --list | grep -x 'poweroff'
 chroot "$root" apt-get clean
 rm -f "$root/usr/sbin/policy-rc.d"

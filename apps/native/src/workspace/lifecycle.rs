@@ -56,6 +56,7 @@ impl Workspace {
         #[cfg(any(
             target_os = "macos",
             windows,
+            all(target_os = "android", target_arch = "aarch64"),
             all(target_os = "linux", target_arch = "x86_64")
         ))]
         self.stop_power(Some(id)).await;
@@ -73,6 +74,7 @@ impl Workspace {
             return Err("设备数据目录不是独立目录".into());
         }
         if !device.paired && home.try_exists()? {
+            #[cfg(not(all(target_os = "android", target_arch = "aarch64")))]
             let home = home.canonicalize()?;
             #[cfg(target_os = "macos")]
             {
@@ -97,6 +99,7 @@ impl Workspace {
             #[cfg(not(any(
                 target_os = "macos",
                 windows,
+                all(target_os = "android", target_arch = "aarch64"),
                 all(target_os = "linux", target_arch = "x86_64")
             )))]
             if home.join("user").exists() {

@@ -1,6 +1,5 @@
-use serde::Deserialize;
+use ai_phone_api::wire::VirtualDeviceProfile as Guest;
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     fs::{self, File},
     io::{self, Read, Seek, SeekFrom, Write},
@@ -8,24 +7,11 @@ use std::{
 };
 use tempfile::NamedTempFile;
 
-#[derive(Deserialize)]
-struct Guest {
-    cpus: u8,
-    memory_mb: u16,
-    storage_gb: u8,
-}
-
-#[derive(Deserialize)]
-struct Request {
-    phone: Guest,
-    desktop: Guest,
-}
-
 fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
 
-fn seed(source: &Path, destination: &Path, cancelled: &AtomicBool) -> io::Result<()> {
+fn seed(source: &Path, destination: &Path, cancelled: &dyn Fn() -> bool) -> io::Result<()> {
     if destination.is_file() {
         return Ok(());
     }
@@ -36,7 +22,7 @@ fn seed(source: &Path, destination: &Path, cancelled: &AtomicBool) -> io::Result
     let mut buf = vec![0; 256 * 1024];
     let mut size = 0;
     loop {
-        if cancelled.load(Ordering::Relaxed) {
+        if cancelled() {
             return Err(io::Error::new(
                 io::ErrorKind::Interrupted,
                 "Installation cancelled",
@@ -64,8 +50,8 @@ fn image(
     source: &Path,
     state: &Path,
     writable: bool,
-    gb: u8,
-    cancelled: &AtomicBool,
+    gb: u32,
+    cancelled: &dyn Fn() -> bool,
 ) -> io::Result<()> {
     let path = value.as_str().ok_or_else(|| invalid("AVF image path"))?;
     let name = path.replace("{storage_gb}", &gb.to_string());
@@ -111,7 +97,7 @@ fn configure(
     state: &Path,
     guest: &Guest,
     control: Option<&Path>,
-    cancelled: &AtomicBool,
+    cancelled: &dyn Fn() -> bool,
 ) -> io::Result<PathBuf> {
     fs::create_dir_all(state)?;
     let mut vm: Value = serde_json::from_reader(File::open(source.join("avf.json"))?)?;
@@ -175,67 +161,36 @@ fn configure(
 pub fn prepare(
     resources: &Path,
     state: &Path,
-    request: &Path,
-    cancelled: &AtomicBool,
-) -> io::Result<[PathBuf; 2]> {
-    let resources = resources.canonicalize()?;
+    kind: &str,
+    guest: &Guest,
+    locale: &str,
+    key: &[u8; 32],
+    cancelled: &dyn Fn() -> bool,
+) -> io::Result<PathBuf> {
+    let seed = match kind {
+        "phone" => "android",
+        "desktop" => "linux",
+        _ => return Err(invalid("Unknown guest system")),
+    };
+    let source = resources.join(seed).canonicalize()?;
+    fs::create_dir_all(state)?;
     let state = state.canonicalize()?;
-    let request_bytes = fs::read(request)?;
-    let request: Request = serde_json::from_slice(&request_bytes)?;
-    for (guest, memory, storage) in [
-        (
-            &request.phone,
-            &[1536u16, 2048, 3072, 4096][..],
-            &[16u8, 24, 32][..],
-        ),
-        (
-            &request.desktop,
-            &[2048u16, 2560, 3072, 4096][..],
-            &[16u8, 32, 64][..],
-        ),
-    ] {
-        if ![1, 2, 4].contains(&guest.cpus)
-            || !memory.contains(&guest.memory_mb)
-            || !storage.contains(&guest.storage_gb)
-        {
-            return Err(invalid("Invalid AVF device resources"));
-        }
-    }
-    let key: [u8; 32] = fs::read(state.join("control.key"))?
-        .try_into()
-        .map_err(|_| invalid("Invalid AVF control key"))?;
-    let block = state.join("control.raw");
-    let mut file = NamedTempFile::new_in(&state)?;
-    file.write_all(b"AIMAVF01")?;
-    file.write_all(&key)?;
-    file.write_all(
-        &u32::try_from(request_bytes.len())
-            .map_err(invalid_size)?
-            .to_le_bytes(),
-    )?;
-    file.write_all(&request_bytes)?;
-    let length = file.stream_position()?.next_multiple_of(4096);
-    file.as_file().set_len(length)?;
-    file.as_file().sync_all()?;
-    file.persist(&block)?;
-    Ok([
-        configure(
-            &resources.join("android"),
-            &state.join("android"),
-            &request.phone,
-            None,
-            cancelled,
-        )?,
-        configure(
-            &resources.join("linux"),
-            &state.join("linux"),
-            &request.desktop,
-            Some(&block),
-            cancelled,
-        )?,
-    ])
-}
-
-fn invalid_size(_: std::num::TryFromIntError) -> io::Error {
-    invalid("Device profile too large")
+    let block = if kind == "desktop" {
+        let request = serde_json::to_vec(&json!({"locale":locale,"desktop":{
+            "cpus":guest.cpus,"memory_mb":guest.memory_mb,"storage_gb":guest.storage_gb
+        }}))?;
+        let path = state.join("control.raw");
+        let mut file = NamedTempFile::new_in(&state)?;
+        file.write_all(b"AIMAVF01")?;
+        file.write_all(key)?;
+        file.write_all(&(request.len() as u32).to_le_bytes())?;
+        file.write_all(&request)?;
+        file.as_file().set_len(4096)?;
+        file.as_file().sync_all()?;
+        file.persist(&path)?;
+        Some(path)
+    } else {
+        None
+    };
+    configure(&source, &state, guest, block.as_deref(), cancelled)
 }

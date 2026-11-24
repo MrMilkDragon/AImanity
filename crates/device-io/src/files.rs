@@ -52,7 +52,7 @@ fn root_path(root: &Path, path: &str) -> Result<PathBuf> {
     Ok(result)
 }
 const TRANSFER: Duration = Duration::from_secs(3600);
-fn quoted(value: &str) -> String {
+pub(super) fn quoted(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 async fn shell(adb: &ai_phone_adb::Client, command: String) -> Result<()> {

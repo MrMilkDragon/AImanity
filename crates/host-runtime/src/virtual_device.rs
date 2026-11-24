@@ -66,7 +66,7 @@ impl Instance {
                 )?,
             };
             let root = self.home.join("user");
-            phone_apps(&root, &self.bundle, &stop)?;
+            phone_apps(&root, &self.bundle, self.identity("source.payload")?, &stop)?;
             drop(install);
             return android::session::workspace(phone, &root, self.slot, stop, ready).await;
         }
@@ -109,10 +109,16 @@ impl Instance {
     }
 }
 
-fn phone_apps(root: &Path, bundle: &Path, stop: &watch::Receiver<bool>) -> Result<()> {
+fn phone_apps(
+    root: &Path,
+    bundle: &Path,
+    identity: &str,
+    stop: &watch::Receiver<bool>,
+) -> Result<()> {
     let runtime = root.join("runtime");
     let dest = runtime.join("phone-apps");
-    if dest.is_dir() {
+    let stamp = dest.join("bundle-version");
+    if fs::read_to_string(&stamp).is_ok_and(|s| s == identity) {
         return Ok(());
     }
     fs::create_dir_all(&runtime)?;
@@ -137,6 +143,10 @@ fn phone_apps(root: &Path, bundle: &Path, stop: &watch::Receiver<bool>) -> Resul
     if count != 3 {
         return Err(Error::Invalid("phone_apps_missing"));
     }
-    fs::rename(dir.path(), dest)?;
+    fs::create_dir_all(&dest)?;
+    for name in ["input.apk", "browser.apk", "home.apk"] {
+        fs::rename(dir.path().join(name), dest.join(name))?;
+    }
+    fs::write(stamp, identity)?;
     Ok(())
 }

@@ -4,13 +4,16 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use image::codecs::jpeg::JpegEncoder;
 use std::time::{Duration, Instant};
 
+#[cfg(not(target_os = "android"))]
 pub(super) const ADB_PORT: u16 = 5037;
 pub(super) const DEADLINE: Duration = Duration::from_secs(8);
 pub(super) struct Phone {
     pub(super) client: Client,
-    observations: crate::host_desktop::Views<(u32, u32, Instant)>,
+    pub(super) guest_audio: bool,
+    observations: ai_phone_api::observations::Views<(u32, u32, Instant)>,
 }
 impl Phone {
+    #[cfg(not(target_os = "android"))]
     pub async fn open(serial: &str) -> Result<Self, String> {
         let device = ai_phone_adb::devices(ADB_PORT, DEADLINE)
             .await
@@ -25,7 +28,14 @@ impl Phone {
     pub fn attached(client: Client) -> Self {
         Self {
             client,
+            guest_audio: false,
             observations: Default::default(),
+        }
+    }
+    pub fn owned(client: Client) -> Self {
+        Self {
+            guest_audio: true,
+            ..Self::attached(client)
         }
     }
     pub async fn perform(

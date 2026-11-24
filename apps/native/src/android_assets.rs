@@ -9,10 +9,7 @@ use std::{
     io::{self, Read, Seek, SeekFrom, Write},
     os::unix::ffi::OsStrExt,
     path::{Component, Path, PathBuf},
-    sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Mutex,
 };
 
 static ACTIVITY: Mutex<Option<AndroidApp>> = Mutex::new(None);
@@ -101,18 +98,8 @@ pub(super) fn manifest() -> io::Result<Option<(String, BTreeMap<String, String>)
         return Err(io::Error::other("Android asset manifest too large"));
     }
     let manifest: Manifest = serde_json::from_slice(&bytes)?;
-    if manifest.format != 1
-        || ![
-            "android/avf.json",
-            "linux/avf.json",
-            "speech/ggml-tiny-q5_1.bin",
-        ]
-        .iter()
-        .all(|key| manifest.files.contains_key(*key))
-    {
-        return Err(io::Error::other(
-            "Incomplete Android offline guest manifest",
-        ));
+    if manifest.format != 1 {
+        return Err(io::Error::other("Unknown offline asset manifest format"));
     }
     let mut destinations = BTreeSet::new();
     for (name, hash) in &manifest.files {
@@ -153,7 +140,7 @@ impl<R: Read> Read for HashReader<R> {
     }
 }
 
-pub(crate) fn stage(root: &Path, cancelled: &AtomicBool) -> io::Result<()> {
+pub(crate) fn stage(root: &Path, group: &str, cancelled: &dyn Fn() -> bool) -> io::Result<()> {
     let app = activity()?;
     let (identity, files) = manifest()?.ok_or_else(|| {
         io::Error::other("Offline Android and Linux guest assets are missing from this APK")
@@ -164,7 +151,36 @@ pub(crate) fn stage(root: &Path, cancelled: &AtomicBool) -> io::Result<()> {
         ));
     }
     fs::create_dir_all(root)?;
-    let receipt = root.join(".complete");
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(root.join(format!(".{group}.lock")))?;
+    fs2::FileExt::lock_exclusive(&lock)?;
+    let files: BTreeMap<_, _> = files
+        .into_iter()
+        .filter(|(name, _)| name.split('/').next() == Some(group))
+        .collect();
+    let required: &[&str] = match group {
+        "android" => &[
+            "android/avf.json",
+            "android/apps/input.apk",
+            "android/apps/home.apk",
+            "android/apps/browser.apk",
+        ],
+        "linux" => &["linux/avf.json"],
+        "speech" => &["speech/ggml-tiny-q5_1.bin"],
+        _ => return Err(io::Error::other("Unknown offline asset group")),
+    };
+    for name in required {
+        if !files.contains_key(*name) && !files.contains_key(&format!("{name}.xz")) {
+            return Err(io::Error::other(format!(
+                "Missing offline component: {name}"
+            )));
+        }
+    }
+    let receipt = root.join(format!(".{group}.complete"));
     if receipt.is_file()
         && files
             .keys()
@@ -189,7 +205,7 @@ pub(crate) fn stage(root: &Path, cancelled: &AtomicBool) -> io::Result<()> {
         };
         let mut size = 0u64;
         loop {
-            if cancelled.load(Ordering::Relaxed) {
+            if cancelled() {
                 return Err(io::Error::new(
                     io::ErrorKind::Interrupted,
                     "Installation cancelled",

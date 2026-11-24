@@ -37,7 +37,7 @@ truncate -s 64M "$guest/metadata.img"
 # partitions are seeded once, so Android keeps its data across restarts.
 jq -n --arg params "$params bootconfig console=hvc0" '{
   name:"AImanity Android", kernel:"Image", initrd:"initrd.img", $params,
-  protected:false, memory_mib:4096, cpu_topology:"match_host", platform_version:"~1.0",
+  console_input_device:"hvc0", protected:false, memory_mib:4096, cpu_topology:"match_host", platform_version:"~1.0",
   disks:[
     {writable:false, partitions:(
       [("boot","init_boot","vendor_boot","vbmeta","vbmeta_system","vbmeta_system_dlkm","vbmeta_vendor_dlkm") as $p |
@@ -55,4 +55,5 @@ jq -n --arg params "$params bootconfig console=hvc0" '{
       xz -3 -T2 "$name"
     done
 )
+cargo run --quiet --locked -p ai-phone-release-tools -- mobile-guest-apps "$PWD" "$guest/apps"
 cp "$src/speech/ggml-tiny-q5_1.bin" "$out/speech/"

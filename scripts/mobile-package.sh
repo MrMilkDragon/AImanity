@@ -22,7 +22,7 @@ if [[ -n ${ASSETS_RUN:-} ]]; then
     cd assets/mobile-assets
     test -z "$(find . -type l -print -quit)"
     jq -e '.format == 1 and (.files | type == "object") and
-      (.files | has("android/avf.json") and has("linux/avf.json") and has("speech/ggml-tiny-q5_1.bin")) and
+      (.files | has("android/avf.json") and has("android/apps/input.apk") and has("android/apps/home.apk") and has("android/apps/browser.apk") and has("linux/avf.json") and has("speech/ggml-tiny-q5_1.bin")) and
       (.files | to_entries | all(.[]; (.key | test("^([A-Za-z0-9_-][A-Za-z0-9_.-]*/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*$")) and
         (.value | test("^[a-f0-9]{64}$"))))' manifest.json >/dev/null
     jq -r '.files | to_entries[] | "\(.value)  \(.key)"' manifest.json > "$work/checksums"

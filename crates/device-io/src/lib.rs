@@ -1,3 +1,4 @@
+mod android_audio;
 pub mod files;
 pub mod notices;
 use ai_phone_api::wire::{
@@ -150,6 +151,9 @@ impl StorageMedia {
             }
             Op::AudioInput | Op::AudioOutput if self.guest_audio => {
                 let capture = op == Op::AudioOutput;
+                if let Endpoint::Android(adb) = &self.files {
+                    return android_audio::transfer(adb, ws, capture, q.wav_input).await;
+                }
                 let mut cmd = Command::new(if capture {
                     "parec"
                 } else if q.wav_input {

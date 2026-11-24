@@ -1,9 +1,10 @@
 use super::*;
+#[cfg(target_os = "android")]
+use crate::android_host::attached_client;
 use crate::{paired_phone, peer_connection};
-use ai_phone_host_runtime::{
-    android::session::attached_client,
-    guest_channel::{self, Service},
-};
+#[cfg(not(target_os = "android"))]
+use ai_phone_host_runtime::android::session::attached_client;
+use ai_phone_host_runtime::guest_channel::{self, Service};
 use futures_util::{SinkExt, StreamExt};
 use std::{
     collections::HashMap,
@@ -116,7 +117,7 @@ async fn attach(w: &Arc<Workspace>, id: &str, kind: &str, home: &Path) -> Result
         let peer = peer_connection::share_device(
             &port,
             &ticket,
-            Some(paired_phone::Phone::attached(adb)),
+            Some(paired_phone::Phone::owned(adb)),
             true,
             ready,
             stop,

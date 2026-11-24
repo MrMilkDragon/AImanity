@@ -11,6 +11,8 @@ mod connection;
 mod controls;
 mod deployment;
 use aimanity_device_io::files as device_files;
+#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+mod android_host;
 mod device_io;
 mod device_notices;
 mod devices;
@@ -26,10 +28,10 @@ mod locale;
 mod location;
 mod modes;
 mod occlude;
-#[cfg(not(target_os = "android"))]
 mod paired_phone;
-#[cfg(not(target_os = "android"))]
 mod peer_connection;
+mod peer_session;
+mod physical_mic;
 mod platform;
 mod proxy;
 mod scene;
@@ -1618,6 +1620,28 @@ impl App {
                 container(volume).width(3. * style::TOOL_CONTROL),
                 shot
             ]
+            .extend(device.info.guest_audio.then(|| {
+                Element::from(
+                    iced::widget::tooltip(
+                        surface::tool_action(
+                            if device.audio.mic_active() {
+                                controls::Icon::Mic
+                            } else {
+                                controls::Icon::MicOff
+                            },
+                            Some(Message::Audio(id.clone(), audio::Message::Microphone)),
+                        ),
+                        text(self.locale.tr(if device.audio.mic_active() {
+                            "断开本机麦克风"
+                        } else {
+                            "接入本机麦克风"
+                        }))
+                        .size(12),
+                        iced::widget::tooltip::Position::Bottom,
+                    )
+                    .style(container::rounded_box),
+                )
+            }))
             .spacing(6)
             .align_y(iced::Center)
             .into(),
@@ -2214,7 +2238,11 @@ impl App {
             self.error.as_str(),
             self.modes.voice_error(),
             self.modes.proactive_error(),
-            self.devices.get(self.focus).map_or("", |d| d.audio.error()),
+            self.devices
+                .iter()
+                .map(|d| d.audio.error())
+                .find(|e| !e.is_empty())
+                .unwrap_or(""),
             self.chat.error.as_str(),
             self.chat_connection_error.as_str(),
         ]

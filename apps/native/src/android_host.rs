@@ -1,318 +1,223 @@
-use super::{Event, Host};
 use crate::deployment::android_assets;
-use ai_phone_host_runtime::vm_control;
-use futures_util::{SinkExt, StreamExt};
+use ai_phone_api::wire::{NativeAndroidInputSetup, VirtualDeviceProfile};
+use ai_phone_host_runtime::{android::input, guest_channel, vm_control};
 use ring::rand::{SecureRandom, SystemRandom};
 use std::{
-    fs,
-    io::{self, Write},
+    fs, io,
     path::{Path, PathBuf},
     process::Stdio,
-    sync::{
-        Arc, LazyLock,
-        atomic::{AtomicBool, Ordering},
-    },
     time::Duration,
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, BufReader},
-    process::{Child, Command},
+    process::Command,
     sync::{oneshot, watch},
 };
-
-#[path = "../../android-host/src/profile.rs"]
 mod profile;
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-type Output = iced::futures::channel::mpsc::Sender<Event>;
-static SHUTDOWN: LazyLock<watch::Sender<u64>> = LazyLock::new(|| watch::channel(0).0);
-
-struct InstallationCancel(Arc<AtomicBool>);
-impl Drop for InstallationCancel {
-    fn drop(&mut self) {
-        self.0.store(true, Ordering::Relaxed);
-    }
+pub(crate) fn attached_client(home: &Path) -> Result<Option<ai_phone_adb::Client>> {
+    let Some((port, key)) = guest_channel::mobile_endpoint(home)? else {
+        return Ok(None);
+    };
+    Ok(Some(ai_phone_adb::Client::new(
+        port,
+        hex::encode(fs::read(key)?),
+    )?))
 }
 
-fn state(home: &Path) -> PathBuf {
-    home.join("user/avf")
+fn quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\"'\"'"))
 }
 
-pub(super) fn key(home: &Path) -> PathBuf {
-    state(home).join("control.key")
-}
-
-fn prepare(host: &Host, cancelled: &AtomicBool) -> io::Result<[PathBuf; 2]> {
-    if !cfg!(target_arch = "aarch64") {
-        return Err(io::Error::other(
-            "Offline guests require an ARM64 Android device",
-        ));
-    }
+pub(crate) async fn run(
+    home: PathBuf,
+    bundle: PathBuf,
+    kind: &str,
+    id: &str,
+    resources: VirtualDeviceProfile,
+    locale: &str,
+    mut stop: watch::Receiver<bool>,
+    ready: oneshot::Sender<()>,
+) -> Result<()> {
     if !Path::new("/apex/com.android.virt/bin/vm").is_file() {
-        return Err(io::Error::other(
-            "Android Virtualization Framework CLI unavailable on this device",
-        ));
+        return Err("This Android host does not provide the AVF virtual machine service".into());
     }
-    let has_su = std::env::var_os("PATH").is_some_and(|path| {
-        std::env::split_paths(&path).any(|directory| directory.join("su").is_file())
-    });
-    if !has_su {
-        return Err(io::Error::other(
-            "The Android AVF workbench requires an installed root manager with su",
-        ));
-    }
-    android_assets::stage(&host.resource, cancelled)?;
-    let state = state(&host.home);
+    let group = if kind == "phone" { "android" } else { "linux" };
+    let user = home.join("user");
+    let state = user.join("avf");
     fs::create_dir_all(&state)?;
-    let key = key(&host.home);
-    if !key.try_exists()? {
-        let mut bytes = [0; 32];
-        SystemRandom::new()
-            .fill(&mut bytes)
-            .map_err(|_| io::Error::other("AVF control key generation failed"))?;
-        let mut pending = tempfile::NamedTempFile::new_in(&state)?;
-        pending.write_all(&bytes)?;
-        pending.as_file().sync_all()?;
-        pending.persist_noclobber(&key)?;
+    let lease = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(state.join("session.lock"))?;
+    fs2::FileExt::try_lock_exclusive(&lease)?;
+    let endpoint = state.join("port");
+    if endpoint.try_exists()? {
+        fs::remove_file(&endpoint)?;
     }
-    profile::prepare(&host.resource, &state, &host.request, cancelled)
-}
-
-fn quote(path: &Path) -> io::Result<String> {
-    let raw = path
-        .to_str()
-        .ok_or_else(|| io::Error::other("Invalid Android installation path"))?;
-    Ok(format!("'{}'", raw.replace('\'', "'\\''")))
-}
-
-fn start(configs: &[PathBuf; 2]) -> io::Result<Child> {
-    let helper = android_assets::helper()?;
+    let keyfile = state.join("control.key");
+    if !keyfile.try_exists()? {
+        let mut secret = [0; 32];
+        SystemRandom::new()
+            .fill(&mut secret)
+            .map_err(|_| "Instance key generation failed")?;
+        crate::deployment::write_atomic(&keyfile, &secret)?;
+    }
+    let key: [u8; 32] = fs::read(&keyfile)?
+        .try_into()
+        .map_err(|_| "Invalid instance key")?;
+    let cancelled = || *stop.borrow();
+    android_assets::stage(&bundle, group, &cancelled)?;
+    let config = profile::prepare(&bundle, &state, kind, &resources, locale, &key, &cancelled)?;
+    let apps = bundle.join("android/apps");
+    if kind == "phone" {
+        let runtime = user.join("runtime");
+        fs::create_dir_all(&runtime)?;
+        let link = runtime.join("phone-apps");
+        if fs::read_link(&link).ok().as_ref() != Some(&apps) {
+            let swap = tempfile::tempdir_in(&runtime)?;
+            let staged = swap.path().join("apps");
+            std::os::unix::fs::symlink(&apps, &staged)?;
+            fs::rename(staged, &link)?;
+        }
+    }
+    if cancelled() {
+        return Ok(());
+    }
     let command = format!(
-        "exec {} {} {}",
-        quote(&helper)?,
-        quote(&configs[0])?,
-        quote(&configs[1])?
+        "exec {} {} {} {}",
+        quote(
+            android_assets::helper()?
+                .to_str()
+                .ok_or("Invalid helper path")?
+        ),
+        kind,
+        quote(config.to_str().ok_or("Invalid instance path")?),
+        quote(&format!("aimanity-{id}"))
     );
-    // Superuser managers mediate approval for the app UID. The paths come from app-private installation state.
-    Command::new("su")
+    let mut child = Command::new("su")
         .args(["-c", &command])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| io::Error::other(format!("Android root authorization (su) unavailable: {e}")))
-}
-
-fn cids(line: &str) -> Option<(u32, u32)> {
-    let (phone, linux) = line
-        .strip_prefix("Android AVF CID=")?
-        .split_once(" Linux AVF CID=")?;
-    let phone: u32 = phone.parse().ok()?;
-    let linux: u32 = linux.parse().ok()?;
-    (phone != linux && [phone, linux].iter().all(|c| (3..u32::MAX).contains(c)))
-        .then_some((phone, linux))
-}
-
-async fn observe_devices(home: &str) -> Result<(), String> {
-    let session = crate::connection::Connection::connect(home.to_owned()).await?;
-    let frame = |kind: &'static str| {
-        let device = session
-            .registry
-            .devices
-            .iter()
-            .find(|device| device.kind == kind && device.runtime_state == "managed")
-            .cloned();
-        let client = session.client.clone();
-        async move {
-            let device = device.ok_or_else(|| format!("Missing managed {kind}"))?;
-            let frames = client.frames(device);
-            futures_util::pin_mut!(frames);
-            let frame = frames
-                .next()
-                .await
-                .and_then(|pending| pending.take())
-                .ok_or_else(|| format!("Missing {kind} screen frame"))??;
-            if frame.width == 0 || frame.height == 0 {
-                return Err(format!("Empty {kind} screen frame"));
-            }
-            Ok(())
-        }
-    };
-    tokio::try_join!(frame("phone"), frame("desktop"))?;
-    Ok(())
-}
-
-async fn serve(host: &Host, output: &mut Output, child: &mut Child) -> Result<(), String> {
-    let stderr = child.stderr.take().ok_or("Missing AVF error pipe")?;
+        .map_err(|e| io::Error::other(format!("Android root authorization (su): {e}")))?;
+    let owner = child
+        .stdin
+        .take()
+        .ok_or("AVF supervisor input unavailable")?;
+    let mut lines = BufReader::new(
+        child
+            .stdout
+            .take()
+            .ok_or("AVF supervisor output unavailable")?,
+    )
+    .lines();
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or("AVF supervisor stderr unavailable")?;
     let errors = tokio::spawn(async move {
         let mut tail = Vec::new();
-        let mut chunk = [0; 1024];
-        let mut stderr = stderr;
-        while let Ok(n) = stderr.read(&mut chunk).await {
-            if n == 0 {
-                break;
-            }
-            tail.extend_from_slice(&chunk[..n]);
-            if tail.len() > 2048 {
-                tail.drain(..tail.len() - 2048);
+        let mut buf = [0; 1024];
+        while let Ok(n @ 1..) = stderr.read(&mut buf).await {
+            tail.extend_from_slice(&buf[..n]);
+            if tail.len() > 4096 {
+                tail.drain(..tail.len() - 4096);
             }
         }
         String::from_utf8_lossy(&tail).trim().to_owned()
     });
-    let mut lines = BufReader::new(child.stdout.take().ok_or("Missing AVF startup pipe")?).lines();
-    let receipt = tokio::time::timeout(Duration::from_secs(125), lines.next_line())
-        .await
-        .map_err(|_| "Timed out waiting for Android root authorization and AVF startup")?
-        .map_err(|e| e.to_string())?;
-    if receipt.as_deref().and_then(cids).is_none() {
-        let details = tokio::time::timeout(Duration::from_secs(2), errors)
-            .await
-            .ok()
-            .and_then(Result::ok)
-            .unwrap_or_default();
-        return Err(format!("Android root/AVF startup failed. {details}"));
-    }
-    output
-        .send(Event::Phase("services".into()))
-        .await
-        .map_err(|e| e.to_string())?;
-    let key = key(&host.home);
-    let services = vm_control::expose_native_services(&key)
-        .await
-        .map_err(|e| e.to_string())?;
-    let home = host.home.to_string_lossy().into_owned();
-    let ready = async {
-        loop {
-            // A saved registry is insufficient on resume. Require a decoded frame from each live guest.
-            if tokio::time::timeout(Duration::from_secs(25), observe_devices(&home))
-                .await
-                .is_ok_and(|r| r.is_ok())
-            {
-                return;
+    let up = async {
+        let line = lines
+            .next_line()
+            .await?
+            .ok_or("AVF supervisor exited before assigning a device endpoint")?;
+        let mut fields = line.split_whitespace();
+        if fields.next() != Some("READY")
+            || fields.next().and_then(|s| s.parse::<u32>().ok()).is_none()
+        {
+            return Err("Unexpected AVF supervisor reply".into());
+        }
+        let port = fields
+            .next()
+            .ok_or("Missing instance endpoint")?
+            .parse::<u16>()?;
+        if kind == "phone" {
+            let serial = hex::encode(key);
+            let adb = ai_phone_adb::Client::new(port, serial.clone())?;
+            loop {
+                if let Ok(status) = adb
+                    .shell(
+                        "getprop sys.boot_completed",
+                        ai_phone_adb::Limits {
+                            stdout: 64,
+                            stderr: 256,
+                        },
+                        Duration::from_secs(4),
+                    )
+                    .await
+                    && status.code == 0
+                    && status.stdout.trim_ascii() == b"1"
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(350)).await;
             }
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            input::setup_at(
+                port,
+                NativeAndroidInputSetup {
+                    version: 1,
+                    project_root: user.to_str().ok_or("Invalid guest path")?.into(),
+                    serial,
+                    apk_path: apps
+                        .join("input.apk")
+                        .to_str()
+                        .ok_or("Invalid APK path")?
+                        .into(),
+                    offline_apps: true,
+                    ..Default::default()
+                },
+                stop.clone(),
+            )
+            .await?;
+        } else {
+            while vm_control::mobile_ready(port, &keyfile).await.is_err() {
+                tokio::time::sleep(Duration::from_millis(350)).await;
+            }
+        }
+        crate::deployment::write_atomic(&endpoint, port.to_string().as_bytes())?;
+        let _ = ready.send(());
+        Result::Ok(())
+    };
+    let mut cancelled = stop.clone();
+    let outcome = tokio::select! {biased;
+        _=cancelled.wait_for(|v|*v)=>Ok(()),
+        status=child.wait()=>Err(format!("AVF supervisor exited: {}",status?).into()),
+        started=tokio::time::timeout(Duration::from_secs(600),up)=>match started{
+            Err(_)=>Err("Guest startup timed out".into()),Ok(Err(e))=>Err(e),
+            Ok(Ok(()))=>tokio::select!{biased; _=stop.wait_for(|v|*v)=>Ok(()), status=child.wait()=>Err(format!("Guest stopped: {}",status?).into())}
         }
     };
-    tokio::select! {
-        exit = child.wait() => return Err(format!("AVF session ended during guest startup ({})", exit.map_err(|e| e.to_string())?)),
-        result = tokio::time::timeout(Duration::from_secs(900),ready) =>
-            result.map_err(|_| "Timed out waiting for authenticated Android and Linux workbench services")?,
-    }
-    output
-        .send(Event::Ready(home))
+    drop(owner);
+    if tokio::time::timeout(Duration::from_secs(8), child.wait())
         .await
-        .map_err(|e| e.to_string())?;
-    let status = child.wait().await.map_err(|e| e.to_string())?;
-    drop(services);
-    Err(format!("AVF guest session ended ({status})"))
-}
-
-async fn stop_child(child: &mut Child, home: &Path) -> Result<(), String> {
-    if child.try_wait().map_err(|e| e.to_string())?.is_some() {
-        return Ok(());
-    }
-    // The guest acknowledges before invoking poweroff. Keep both Binder handles alive until
-    // Linux actually exits; EOF releases the session on a failed or timed-out shutdown.
-    let acknowledged = tokio::time::timeout(
-        Duration::from_secs(4),
-        vm_control::shutdown(vm_control::GUEST_PORT, &key(home)),
-    )
-    .await
-    .is_ok_and(|r| r.is_ok());
-    if acknowledged
-        && tokio::time::timeout(Duration::from_secs(18), child.wait())
-            .await
-            .is_ok_and(|r| r.is_ok())
+        .is_err()
     {
-        return Ok(());
+        child.kill().await?;
     }
-    drop(child.stdin.take());
-    match tokio::time::timeout(Duration::from_secs(10), child.wait()).await {
-        Ok(result) => result.map(|_| ()).map_err(|e| e.to_string()),
-        Err(_) => child.kill().await.map_err(|e| e.to_string()),
+    let details = errors.await?;
+    if endpoint.try_exists()? {
+        fs::remove_file(&endpoint)?;
     }
-}
-
-fn lease(home: &Path) -> io::Result<fs::File> {
-    fs::create_dir_all(home)?;
-    let lease = fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(home.join("avf-session.lock"))?;
-    fs2::FileExt::try_lock_exclusive(&lease)?;
-    Ok(lease)
-}
-
-impl Host {
-    pub fn events(
-        self,
-        mut stop: oneshot::Receiver<()>,
-    ) -> impl futures_util::Stream<Item = Event> {
-        iced::stream::channel(8, async move |mut output: Output| {
-            let mut external = SHUTDOWN.subscribe();
-            let stopping = async {
-                tokio::select! { _ = &mut stop => {}, _ = external.changed() => {} }
-            };
-            tokio::pin!(stopping);
-            let mut child = None;
-            let mut lock = None;
-            let result = async {
-                let installation = lease(&self.home).map_err(|e| format!("AVF installation is busy or unavailable: {e}"))?;
-                output.send(Event::Phase("source".into())).await.map_err(|e| e.to_string())?;
-                let cancel = InstallationCancel(Arc::new(AtomicBool::new(false)));
-                let preparing = self.clone();
-                let worker_cancel = Arc::clone(&cancel.0);
-                // Activity teardown can drop this future while a disk is still being written.
-                // The blocking writer retains the lease until it observes cancellation.
-                let mut worker = tokio::task::spawn_blocking(move || {
-                    prepare(&preparing, &worker_cancel).map(|configs| (installation,configs))
-                });
-                let (installation,configs) = tokio::select! { biased;
-                    _ = &mut stopping => {
-                        cancel.0.store(true, Ordering::Relaxed);
-                        let _ = worker.await;
-                        return Ok(());
-                    }
-                    result = &mut worker => result.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?,
-                };
-                lock = Some(installation);
-                output.send(Event::Phase("android".into())).await.map_err(|e| e.to_string())?;
-                child = Some(start(&configs).map_err(|e| e.to_string())?);
-                tokio::select! { biased;
-                    _ = &mut stopping => Ok(()),
-                    result = serve(&self, &mut output, child.as_mut().unwrap()) => result,
-                }
-            }.await;
-            let shutdown = if let Some(mut child) = child {
-                stop_child(&mut child, &self.home).await
-            } else {
-                Ok(())
-            };
-            drop(lock);
-            if let Err(error) = result {
-                let _ = output.send(Event::Failed(error)).await;
-                stopping.await;
-            }
-            let _ = output.send(Event::Stopped(shutdown)).await;
-        })
+    if !details.is_empty()
+        && let Err(error) = outcome
+    {
+        return Err(format!("{error}: {details}").into());
     }
-}
-
-pub(super) async fn stop(home: &Path) -> Result<(), String> {
-    SHUTDOWN.send_modify(|generation| *generation = generation.wrapping_add(1));
-    tokio::time::timeout(Duration::from_secs(35), async {
-        loop {
-            match lease(home) {
-                Ok(_) => return Ok(()),
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    tokio::time::sleep(Duration::from_millis(80)).await
-                }
-                Err(e) => return Err(e.to_string()),
-            }
-        }
-    })
-    .await
-    .map_err(|_| "Timed out stopping the AVF guest session".to_owned())?
+    outcome
 }

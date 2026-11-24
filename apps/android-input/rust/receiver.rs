@@ -25,6 +25,7 @@ macro_rules! jni {
 }
 
 mod attention;
+mod audio;
 mod feed;
 mod hierarchy;
 mod ime;

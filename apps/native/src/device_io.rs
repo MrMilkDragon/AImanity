@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 pub(crate) struct Lane {
     pub(super) socket: WebSocket,
     pub(super) stop: CancellationToken,
+    pub(crate) _microphone: Option<tokio::sync::OwnedSemaphorePermit>,
 }
 impl Lane {
     pub(crate) async fn next(&mut self) -> Result<Option<Bytes>> {
@@ -50,9 +51,7 @@ impl Lane {
     }
 }
 
-#[cfg(not(target_os = "android"))]
 pub(crate) use remote::*;
-#[cfg(not(target_os = "android"))]
 mod remote {
     use super::*;
     use crate::{device_files::Endpoint, peer_connection};

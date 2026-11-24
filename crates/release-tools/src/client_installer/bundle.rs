@@ -64,7 +64,7 @@ pub(super) fn assemble(
 <key>CFBundleVersion</key><string>{version}</string>
 <key>CFBundleShortVersionString</key><string>{version}</string>
 <key>LSMinimumSystemVersion</key><string>{minimum}</string>
-<key>NSMicrophoneUsageDescription</key><string>Copilot transcribes your speech locally.</string>
+<key>NSMicrophoneUsageDescription</key><string>Use the microphone for Copilot or send your voice to the virtual device you select.</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>"#
         ),

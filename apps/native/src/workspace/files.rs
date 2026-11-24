@@ -75,18 +75,27 @@ impl Workspace {
         session: Option<&CancellationToken>,
     ) -> Result<()> {
         let mut f = tokio::fs::File::open(self.work_files().local_path(path)?).await?;
+        self.microphone_lane(id, true, session)
+            .await?
+            .upload(&mut f)
+            .await
+    }
+    pub(crate) async fn microphone_lane(
+        &self,
+        id: &str,
+        wav_input: bool,
+        session: Option<&CancellationToken>,
+    ) -> Result<crate::device_io::Lane> {
         self.peers
             .io(
                 id,
                 wire::DeviceIoRequest {
                     operation: Io::AudioInput.into(),
-                    wav_input: true,
+                    wav_input,
                     ..Default::default()
                 },
                 session,
             )
-            .await?
-            .upload(&mut f)
             .await
     }
     pub(crate) async fn file_list(&self, loc: Location) -> Result<wire::FileListing> {

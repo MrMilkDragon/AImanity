@@ -191,7 +191,7 @@ impl Setup {
         write_atomic(&user.join("native-locale"), self.language.code().as_bytes())
     }
 }
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let parent = path.parent().ok_or("安装目录不存在")?;
     let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
     temp.write_all(bytes).map_err(|e| e.to_string())?;

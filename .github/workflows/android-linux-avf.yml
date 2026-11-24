@@ -7,36 +7,7 @@ permissions:
   contents: read
   actions: read
 jobs:
-  phone-apps:
-    runs-on: macos-15
-    timeout-minutes: 40
-    steps:
-      - name: Extract the Europium guest applications from the published ARM64 DMG
-        run: |
-          set -euo pipefail
-          dmg="$RUNNER_TEMP/europium.dmg"
-          mount="$RUNNER_TEMP/europium"
-          output="$RUNNER_TEMP/extracted"
-          mkdir -p "$mount" "$output"
-          curl --fail --location --retry 3 'https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg' --output "$dmg"
-          echo "c33cf818b29ccfb4198e97052e0820c68d528e634003c35f249eb5e7618c434f  $dmg" | shasum -a 256 -c -
-          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
-          trap 'hdiutil detach "$mount"' EXIT
-          source="$mount/AImanity.app/Contents/Resources/host/source.payload"
-          tar -tf "$source" > "$RUNNER_TEMP/source-members"
-          awk '/^runtime\/phone-apps\// {print}' "$RUNNER_TEMP/source-members" > "$RUNNER_TEMP/mobile-members"
-          test -s "$RUNNER_TEMP/mobile-members"
-          tar -xf "$source" -C "$output" -T "$RUNNER_TEMP/mobile-members"
-          for asset in manifest.json input.apk home.apk; do test -s "$output/runtime/phone-apps/$asset"; done
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: europium-avf-guest-phone-apps
-          path: ${{ runner.temp }}/extracted/runtime/phone-apps/
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 3
   linux:
-    needs: phone-apps
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 150
     env:
@@ -49,10 +20,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          name: europium-avf-guest-phone-apps
-          path: ${{ runner.temp }}/mobile-phone-apps
       - name: Prepare the disposable ARM64 runner
         run: |
           set -euo pipefail
@@ -79,7 +46,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AI_PHONE_RELEASE_DESKTOP_BRIDGE: ${{ github.workspace }}/target/aarch64-unknown-linux-musl/release/desktop-bridge
-          AI_PHONE_RELEASE_PHONE_APPS: ${{ runner.temp }}/mobile-phone-apps
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: rust-lld
         run: |
           set -euo pipefail

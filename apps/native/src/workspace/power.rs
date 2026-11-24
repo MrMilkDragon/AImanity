@@ -1,4 +1,5 @@
 use super::*;
+#[cfg(not(target_os = "android"))]
 use ai_phone_host_runtime::virtual_device::Instance;
 use tokio::sync::oneshot;
 
@@ -102,19 +103,22 @@ impl Workspace {
             if matches!(s.devices[i].runtime_state.as_str(), "deleting" | "stopping") {
                 return Err("设备正在关闭".into());
             }
-            let kind = &s.devices[i].kind;
-            let slot = match s.devices[i].instance_slot {
-                Some(slot) => slot,
-                None => (0..if kind == "phone" { 65 } else { 46000 })
-                    .find(|slot| {
-                        !s.devices
-                            .iter()
-                            .any(|d| d.kind == *kind && d.instance_slot == Some(*slot))
-                    })
-                    .ok_or("设备端口已用尽")?,
-            };
+            #[cfg(not(target_os = "android"))]
+            {
+                let kind = &s.devices[i].kind;
+                let slot = match s.devices[i].instance_slot {
+                    Some(slot) => slot,
+                    None => (0..if kind == "phone" { 65 } else { 46000 })
+                        .find(|slot| {
+                            !s.devices
+                                .iter()
+                                .any(|d| d.kind == *kind && d.instance_slot == Some(*slot))
+                        })
+                        .ok_or("设备端口已用尽")?,
+                };
+                s.devices[i].instance_slot = Some(slot);
+            }
             let d = &mut s.devices[i];
-            d.instance_slot = Some(slot);
             d.resources = Some(profile.clone());
             d.runtime_state = "starting".into();
             d.start_error.clear();
@@ -125,7 +129,8 @@ impl Workspace {
             .into_iter()
             .find(|d| d.id == id)
             .ok_or("设备不存在")?;
-        let slot = d.instance_slot.ok_or("设备端口未分配")?.try_into()?;
+        #[cfg(not(target_os = "android"))]
+        let slot: u16 = d.instance_slot.ok_or("设备端口未分配")?.try_into()?;
         let (end, stop) = watch::channel(false);
         let done = CancellationToken::new();
         owners.insert(
@@ -145,18 +150,32 @@ impl Workspace {
             let home = w.device_home(&id);
             let mut job = tokio::task::spawn_blocking(move || -> Result<()> {
                 let setup = crate::deployment::Setup::load()?;
-                let spec = Instance {
-                    home,
-                    bundle: setup.resource,
-                    inventory: crate::deployment::component_versions()?,
-                    profile,
-                    slot,
-                    locale: setup.language.code().into(),
-                };
-                tokio::runtime::Builder::new_current_thread()
+                let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
-                    .build()?
-                    .block_on(spec.run(&d.kind, stop, ready))?;
+                    .build()?;
+                #[cfg(target_os = "android")]
+                runtime.block_on(crate::android_host::run(
+                    home,
+                    setup.resource,
+                    &d.kind,
+                    &d.id,
+                    profile,
+                    setup.language.code(),
+                    stop,
+                    ready,
+                ))?;
+                #[cfg(not(target_os = "android"))]
+                {
+                    let spec = Instance {
+                        home,
+                        bundle: setup.resource,
+                        inventory: crate::deployment::component_versions()?,
+                        profile,
+                        slot,
+                        locale: setup.language.code().into(),
+                    };
+                    runtime.block_on(spec.run(&d.kind, stop, ready))?;
+                }
                 Ok(())
             });
             let outcome = tokio::select! {biased;

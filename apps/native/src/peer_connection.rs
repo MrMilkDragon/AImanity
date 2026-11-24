@@ -1,4 +1,6 @@
-use crate::{host_desktop, paired_phone};
+#[cfg(not(target_os = "android"))]
+use crate::host_desktop;
+use crate::paired_phone;
 use std::{error::Error, net::Ipv4Addr, process::Stdio};
 use tokio::{
     net::TcpStream,
@@ -9,6 +11,7 @@ use tokio_tungstenite::tungstenite::{client::IntoClientRequest, http::HeaderValu
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
+#[cfg(not(target_os = "android"))]
 pub(super) async fn share(
     target: &str,
     code: &str,
@@ -60,7 +63,10 @@ pub(super) async fn share_device(
     ready: oneshot::Sender<()>,
     mut stop: watch::Receiver<()>,
 ) -> Result<()> {
-    let guest_audio = phone.is_none() && crate::device_io::has_guest_audio().await;
+    let guest_audio = match &phone {
+        Some(phone) => phone.guest_audio,
+        None => crate::device_io::has_guest_audio().await,
+    };
     let mut req = registration(
         code,
         if phone.is_some() {
@@ -99,7 +105,7 @@ pub(super) async fn share_device(
         notices,
         pulse_server: std::env::var("PULSE_SERVER").ok(),
     };
-    host_desktop::serve_socket(ws, phone, services, ready, stop).await
+    crate::peer_session::serve_socket(ws, phone, services, ready, stop).await
 }
 pub(super) trait Transport:
     tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send
@@ -166,6 +172,7 @@ pub(super) async fn dial(
     Ok((ws, child))
 }
 
+#[cfg(not(target_os = "android"))]
 pub(super) fn android_cli(target: &str, serial: &str) -> i32 {
     let run = || -> Result<()> {
         let mut code = String::new();

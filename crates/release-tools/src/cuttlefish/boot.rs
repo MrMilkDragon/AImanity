@@ -161,7 +161,10 @@ pub(super) fn stage(root: &Path, out: &Path, target: Target) -> Result<()> {
         .replace("{vbmeta.digest}", &digest);
     let entries = if target == Target::Arm64Avf {
         let (_, platform) = entries.split_once('\n').ok_or("Missing boot devices")?;
-        format!("androidboot.boot_devices=10000.pci\n{platform}")
+        format!(
+            "androidboot.boot_devices=10000.pci\n{}",
+            platform.replace("androidboot.console=hvc1", "androidboot.console=hvc0")
+        )
     } else {
         entries
     };

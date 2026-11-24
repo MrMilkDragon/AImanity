@@ -22,6 +22,8 @@ const QUEUE_LIMIT: usize = 350 * SAMPLES_PER_MS;
 #[derive(Clone, Debug)]
 pub enum Message {
     Toggle,
+    Microphone,
+    MicrophoneEnded(u64, String),
     Volume(u8),
     Stream(u64, StreamState),
     PreferenceFailed(String),
@@ -39,6 +41,8 @@ pub struct Playback {
     preference: Option<watch::Sender<u8>>,
     active: Option<Active>,
     generation: u64,
+    microphone: Option<iced::task::Handle>,
+    mic_generation: u64,
     error: String,
 }
 
@@ -55,6 +59,8 @@ impl Playback {
             preference: None,
             active: None,
             generation: 0,
+            microphone: None,
+            mic_generation: 0,
             error: String::new(),
         }
     }
@@ -86,7 +92,16 @@ impl Playback {
         });
         Task::batch([persist, self.start(Some(client), &device.id)])
     }
+    pub fn mic_active(&self) -> bool {
+        self.microphone.is_some()
+    }
+    pub fn stop_mic(&mut self) {
+        if let Some(job) = self.microphone.take() {
+            job.abort();
+        }
+    }
     pub fn disconnect(&mut self) {
+        self.stop_mic();
         self.stop();
         self.preference = None;
     }
@@ -122,6 +137,36 @@ impl Playback {
         device_id: &str,
     ) -> Task<Message> {
         match message {
+            Message::Microphone => {
+                if self.mic_active() {
+                    self.stop_mic();
+                    return Task::none();
+                }
+                let Some(client) = client else {
+                    return Task::none();
+                };
+                self.error.clear();
+                self.mic_generation += 1;
+                let generation = self.mic_generation;
+                let (task, handle) = Task::perform(
+                    crate::physical_mic::route(client.workspace.clone(), device_id.to_owned()),
+                    move |r| {
+                        Message::MicrophoneEnded(
+                            generation,
+                            r.err().map_or_else(String::new, |e| e.to_string()),
+                        )
+                    },
+                )
+                .abortable();
+                self.microphone = Some(handle);
+                return task;
+            }
+            Message::MicrophoneEnded(generation, error) => {
+                if generation == self.mic_generation && self.microphone.take().is_some() {
+                    self.error = error;
+                }
+                return Task::none();
+            }
             Message::Toggle => {
                 if self.active.is_some() && self.volume > 0 {
                     self.change_volume(0);

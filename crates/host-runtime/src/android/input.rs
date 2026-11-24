@@ -50,7 +50,7 @@ pub async fn run(arguments: &[OsString]) -> Result<()> {
 pub async fn setup(request: NativeAndroidInputSetup, stop: watch::Receiver<bool>) -> Result<bool> {
     setup_at(15037, request, stop).await
 }
-pub(super) async fn setup_at(
+pub async fn setup_at(
     port: u16,
     request: NativeAndroidInputSetup,
     stop: watch::Receiver<bool>,
@@ -65,13 +65,7 @@ pub(super) async fn setup_at(
         .map_err(|_| Error::Invalid("phone_input_serial"))?;
     let state = State::lock(Path::new(&request.project_root), &request.serial)?;
     let pending = state.load()?;
-    let mut adb = device::Adb {
-        program: request.adb_program.into(),
-        port,
-        client,
-        serial: request.serial,
-        stop,
-    };
+    let mut adb = device::Adb { client, stop };
     let apps = if request.offline_apps {
         Some(applications::Applications::load(
             Path::new(&request.project_root),

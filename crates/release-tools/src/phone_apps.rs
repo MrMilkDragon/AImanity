@@ -94,7 +94,13 @@ fn verify(folder: &Path, identity: &str) -> Result<Manifest> {
     Ok(value)
 }
 
-fn build(root: &Path, cache: &Path, destination: &Path, identity: String) -> Result<Manifest> {
+fn build(
+    root: &Path,
+    cache: &Path,
+    destination: &Path,
+    identity: String,
+    abi: &str,
+) -> Result<Manifest> {
     fs::create_dir_all(cache)?;
     let work = tempfile::tempdir_in(cache)?;
     let mut apps = BTreeMap::new();
@@ -104,11 +110,6 @@ fn build(root: &Path, cache: &Path, destination: &Path, identity: String) -> Res
         apps.insert(role.into(), receipt);
     }
     let policy: Browser = serde_json::from_reader(File::open(root.join(BROWSER))?)?;
-    let abi = if cfg!(target_arch = "aarch64") {
-        "arm64-v8a"
-    } else {
-        "x86_64"
-    };
     let browser = policy.abis[abi].stage(&cache.join("phone-browser"))?;
     android_package::verify_package(&browser, &policy.package)?;
     fs::hard_link(browser, work.path().join("browser.apk"))?;
@@ -120,8 +121,35 @@ fn build(root: &Path, cache: &Path, destination: &Path, identity: String) -> Res
         files: inventory(work.path())?,
     };
     serde_json::to_writer_pretty(File::create(work.path().join("manifest.json"))?, &manifest)?;
-    fs::rename(work.path(), destination)?;
+    if destination.try_exists()? {
+        let retired = tempfile::tempdir_in(cache)?;
+        let previous = retired.path().join("previous");
+        fs::rename(destination, &previous)?;
+        if let Err(error) = fs::rename(work.path(), destination) {
+            fs::rename(previous, destination)?;
+            return Err(error.into());
+        }
+    } else {
+        fs::rename(work.path(), destination)?;
+    }
     Ok(manifest)
+}
+
+pub(super) fn mobile(resources: &[OsString]) -> Result<Value> {
+    let [root, output] = resources else {
+        return Err("mobile-guest-apps ROOT OUTPUT".into());
+    };
+    let root = std::path::absolute(root)?;
+    let cache = root.join(".tools");
+    fs::create_dir_all(&cache)?;
+    let stage = tempfile::tempdir_in(&cache)?;
+    let files = stage.path().join("apps");
+    build(&root, &cache, &files, fingerprint(&root)?, "arm64-v8a")?;
+    fs::create_dir_all(output)?;
+    for name in FILES {
+        fs::copy(files.join(name), Path::new(output).join(name))?;
+    }
+    Ok(json!({"files":FILES}))
 }
 
 pub(super) fn component(root: &Path) -> Result<Vec<crate::source::Entry>> {
@@ -139,10 +167,22 @@ pub(super) fn run(arguments: &[OsString]) -> Result<Value> {
     let destination = cache.join("phone-apps");
     let identity = fingerprint(&root)?;
     let manifest = match operation.to_str() {
-        Some("build") if !destination.try_exists()? => {
-            build(&root, &cache, &destination, identity)?
+        Some("build") => {
+            if destination.try_exists()? {
+                let old: Manifest =
+                    serde_json::from_reader(File::open(destination.join("manifest.json"))?)?;
+                if old.source_sha256 == identity {
+                    return Ok(serde_json::to_value(verify(&destination, &identity)?)?);
+                }
+            }
+            let abi = if cfg!(target_arch = "aarch64") {
+                "arm64-v8a"
+            } else {
+                "x86_64"
+            };
+            build(&root, &cache, &destination, identity, abi)?
         }
-        Some("build" | "verify") => verify(&destination, &identity)?,
+        Some("verify") => verify(&destination, &identity)?,
         _ => return Err("phone-apps requires build or verify".into()),
     };
     Ok(serde_json::to_value(manifest)?)

@@ -26,14 +26,30 @@ pub fn events(
     cancel: Arc<AtomicBool>,
 ) -> impl Stream<Item = Event> {
     iced::stream::channel(12, async move |mut output| {
-        #[cfg(target_os="android")]
-        if let Err(error)=crate::android_os::microphone().await { let _=output.send(Event::Error(error)).await; return; }
+        if let Err(error) = crate::physical_mic::permission().await {
+            let _ = output.send(Event::Error(error)).await;
+            return;
+        }
         let (sender, mut events) = tokio::sync::mpsc::channel(12);
         let (levels, mut updates) = watch::channel(MicrophoneLevels::default());
         let consumer = cancel.clone();
         let spawn = std::thread::Builder::new()
             .name("aimanity-microphone".into())
             .spawn(move || {
+                #[cfg(target_os = "android")]
+                if let Err(e) = model
+                    .parent()
+                    .and_then(|d| d.parent())
+                    .ok_or_else(|| std::io::Error::other("Missing voice assets"))
+                    .and_then(|resources| {
+                        crate::deployment::android_assets::stage(resources, "speech", &|| {
+                            consumer.load(Ordering::Acquire)
+                        })
+                    })
+                {
+                    let _ = sender.blocking_send(Event::Error(e.to_string()));
+                    return;
+                }
                 if let Err(error) = capture(model, &language, &consumer, &sender, levels) {
                     let _ = sender.blocking_send(Event::Error(error));
                 }
@@ -69,30 +85,6 @@ fn capture(
     events: &tokio::sync::mpsc::Sender<Event>,
     levels: watch::Sender<MicrophoneLevels>,
 ) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        use block2::RcBlock;
-        use objc2::runtime::Bool;
-        use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
-        let media = unsafe { AVMediaTypeAudio }.expect("macOS audio media type");
-        let granted = match unsafe { AVCaptureDevice::authorizationStatusForMediaType(media) } {
-            AVAuthorizationStatus::Authorized => true,
-            AVAuthorizationStatus::NotDetermined => {
-                let (answer, result) = mpsc::channel();
-                let reply = RcBlock::new(move |allowed: Bool| {
-                    let _ = answer.send(allowed.as_bool());
-                });
-                unsafe {
-                    AVCaptureDevice::requestAccessForMediaType_completionHandler(media, &reply)
-                };
-                result.recv().map_err(|e| e.to_string())?
-            }
-            _ => false,
-        };
-        if !granted {
-            return Err("麦克风权限未开启".into());
-        }
-    }
     if cancel.load(Ordering::Acquire) {
         return Ok(());
     }

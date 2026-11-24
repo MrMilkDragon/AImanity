@@ -32,7 +32,17 @@ impl Class {
     }
 }
 
+const AUDIO: Name = "Ldev/aiphone/input/VirtualAudio;";
+const AUDIO_LIB: Name = "aimanity.audio.library";
 const CLASSES: &[Class] = &[
+    Class {
+        name: AUDIO,
+        parent: "Ljava/lang/Object;",
+        constructor_args: &[],
+        interfaces: &[],
+        fields: &[],
+        natives: &[("main", ("V", &["[Ljava/lang/String;"]), 9)],
+    },
     Class {
         name: "Ldev/aiphone/input/PhoneNotifications;",
         parent: "Landroid/service/notification/NotificationListenerService;",
@@ -195,6 +205,12 @@ pub(super) fn emit_for(schema: &[Class], library: Name) -> Vec<u8> {
     let mut classes: Vec<_> = schema.iter().collect();
     classes.sort_unstable_by_key(|class| class.name);
     let mut methods = BTreeSet::from([load]);
+    let absolute: Method = (SYSTEM, "load", ("V", &[STRING]));
+    let property: Method = (SYSTEM, "getProperty", (STRING, &[STRING]));
+    let audio = classes.iter().any(|c| c.name == AUDIO);
+    if audio {
+        methods.extend([absolute, property]);
+    }
     let mut fields = BTreeSet::new();
     let mut types = BTreeSet::new();
     let mut lists = BTreeSet::new();
@@ -236,6 +252,9 @@ pub(super) fn emit_for(schema: &[Class], library: Name) -> Vec<u8> {
         })
         .collect();
     let mut strings = BTreeSet::from([library]);
+    if audio {
+        strings.insert(AUDIO_LIB);
+    }
     for &(class, name, (result, params)) in &methods {
         types.extend([class, result]);
         types.extend(params.iter().copied());
@@ -333,18 +352,37 @@ pub(super) fn emit_for(schema: &[Class], library: Name) -> Vec<u8> {
         .iter()
         .map(|class| {
             // <clinit> loads our JNI library. <init> calls the framework constructor.
-            let load = code(
-                &mut dex,
-                0,
-                &[
-                    0x001a,
-                    string(library) as u16,
-                    0x1071,
-                    method(load) as u16,
+            let load = if class.name == AUDIO {
+                code(
+                    &mut dex,
                     0,
-                    0x000e,
-                ],
-            );
+                    &[
+                        0x001a,
+                        string(AUDIO_LIB) as u16,
+                        0x1071,
+                        method(property) as u16,
+                        0,
+                        0x000c,
+                        0x1071,
+                        method(absolute) as u16,
+                        0,
+                        0x000e,
+                    ],
+                )
+            } else {
+                code(
+                    &mut dex,
+                    0,
+                    &[
+                        0x001a,
+                        string(library) as u16,
+                        0x1071,
+                        method(load) as u16,
+                        0,
+                        0x000e,
+                    ],
+                )
+            };
             let registers = 1 + class.constructor_args.len() as u32;
             // Retain the original bytecode of the existing Home and Unicode IME APKs.
             // A range invokes the keyboard connection's three-register superclass constructor.

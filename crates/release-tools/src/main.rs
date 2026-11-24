@@ -71,6 +71,7 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         "factory-images" => image_factory::run(rest).map(Some),
         "build-android-apk" => android_package::build(rest).map(Some),
         "mobile-activity-dex" => android_package::mobile_dex(rest).map(|()| None),
+        "mobile-guest-apps" => phone_apps::mobile(rest).map(Some),
         "build-android-network" => android_package::network_dex::build(rest).map(|()| None),
         "phone-apps" => phone_apps::run(rest).map(Some),
         "decode-capsule" => {

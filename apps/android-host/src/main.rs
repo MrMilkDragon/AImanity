@@ -1,36 +1,24 @@
 use std::{
-    env,
+    env, fs,
     io::{self, BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::mpsc::{self, Sender},
+    sync::mpsc,
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
-
+#[cfg(target_os = "android")]
+mod adb;
 #[cfg(target_os = "android")]
 mod relay;
-
 const AVF: &str = "/apex/com.android.virt/bin/vm";
-const GUESTS: [&str; 2] = ["android", "linux"];
-
-enum Event {
-    Started(usize, u32),
-    Ended(usize),
-    #[cfg(target_os = "android")]
-    RelayEnded,
-    Stop,
-}
-
 struct Machine(Child);
-
 impl Drop for Machine {
     fn drop(&mut self) {
         let _ = self.0.kill();
         let _ = self.0.wait();
     }
 }
-
 fn started_cid(receipt: &str) -> Option<u32> {
     let details = receipt
         .strip_prefix("Created VM from ")
@@ -43,155 +31,148 @@ fn started_cid(receipt: &str) -> Option<u32> {
     cid.parse().ok().filter(|cid| (3..u32::MAX).contains(cid))
 }
 
-fn start(vm: &Path, config: &Path, slot: usize, events: Sender<Event>) -> io::Result<Machine> {
-    let profile: serde_json::Value = serde_json::from_reader(std::fs::File::open(config)?)?;
-    let topology = match profile["cpu_topology"].as_str() {
-        Some("match_host") => "match_host",
-        Some("one_cpu") | None => "one_cpu",
-        _ => return Err(io::Error::other("Invalid AVF CPU topology")),
+#[cfg(target_os = "android")]
+fn supervise(kind: &str, config: &Path, name: &str) -> io::Result<()> {
+    use std::os::unix::process::CommandExt;
+    let dir = config
+        .parent()
+        .ok_or_else(|| io::Error::other("Missing AVF state"))?;
+    let phone = match kind {
+        "phone" => true,
+        "desktop" => false,
+        _ => return Err(io::Error::other("Unknown AVF system")),
     };
-    let mut command = Command::new(vm);
-    command
-        .args([
-            "run",
-            "--cpu-topology",
-            topology,
-            "--name",
-            GUESTS[slot],
-            "--console",
-            "/dev/null",
-            "--console-in",
-            "/dev/null",
-            "--log",
-            "/dev/null",
-        ])
-        .arg(config)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped());
-    #[cfg(target_os = "android")]
-    {
-        use std::os::unix::process::CommandExt;
-        let owner = unsafe { libc::getpid() };
-        // Dropping the vm client releases its AVF Binder handle, including on owner death.
-        unsafe {
-            command.pre_exec(move || {
-                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) < 0 {
-                    return Err(io::Error::last_os_error());
-                }
-                if libc::getppid() != owner {
-                    return Err(io::Error::from_raw_os_error(libc::ESRCH));
-                }
-                Ok(())
-            });
-        }
+    let token: [u8; 32] = fs::read(dir.join("control.key"))?
+        .try_into()
+        .map_err(|_| io::Error::other("Invalid instance key"))?;
+    let credential: String = token.iter().map(|b| format!("{b:02x}")).collect();
+    let bootstrap = if phone {
+        Some(adb::Bootstrap::open(dir)?)
+    } else {
+        None
+    };
+    let profile: serde_json::Value = serde_json::from_reader(fs::File::open(config)?)?;
+    let topology = profile["cpu_topology"]
+        .as_str()
+        .ok_or_else(|| io::Error::other("Missing CPU topology"))?;
+    let mut cmd = Command::new(AVF);
+    cmd.args([
+        "run",
+        "--cpu-topology",
+        topology,
+        "--name",
+        name,
+        "--console",
+        "/dev/null",
+        "--console-in",
+    ])
+    .arg(
+        bootstrap
+            .as_ref()
+            .map_or(Path::new("/dev/null"), |b| b.console_path.as_path()),
+    )
+    .args(["--log", "/dev/null"])
+    .arg(config)
+    .stdin(Stdio::null())
+    .stdout(Stdio::piped());
+    let parent = unsafe { libc::getpid() };
+    unsafe {
+        cmd.pre_exec(move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if libc::getppid() != parent {
+                return Err(io::ErrorKind::Interrupted.into());
+            }
+            Ok(())
+        });
     }
-    let mut machine = Machine(command.spawn()?);
-    let mut output = BufReader::new(machine.0.stdout.take().unwrap());
+    let mut vm = Machine(cmd.spawn()?);
+    enum Event {
+        Cid(u32),
+        Stop,
+        Exit,
+    }
+    let (send, events) = mpsc::channel();
+    let terminal = send.clone();
+    thread::spawn(move || {
+        let _ = io::stdin().read(&mut [0]);
+        let _ = terminal.send(Event::Stop);
+    });
+    let mut output = BufReader::new(vm.0.stdout.take().unwrap());
     thread::spawn(move || {
         let mut line = String::new();
-        if output.read_line(&mut line).is_ok()
-            && let Some(cid) = started_cid(&line)
-            && events.send(Event::Started(slot, cid)).is_ok()
-        {
-            let _ = io::copy(&mut output, &mut io::sink());
+        while output.read_line(&mut line).is_ok_and(|n| n > 0) {
+            if let Some(cid) = started_cid(&line) {
+                let _ = send.send(Event::Cid(cid));
+                let _ = io::copy(&mut output, &mut io::sink());
+                break;
+            }
+            line.clear();
         }
-        let _ = events.send(Event::Ended(slot));
+        let _ = send.send(Event::Exit);
     });
-    Ok(machine)
-}
-
-fn run(
-    vm: &Path,
-    configs: [PathBuf; 2],
-    mut owner: impl Read + Send + 'static,
-    report: impl FnOnce([u32; 2]) -> io::Result<()>,
-) -> io::Result<()> {
-    let (tx, rx) = mpsc::channel();
-    let _phone = start(vm, &configs[0], 0, tx.clone())?;
-    let _linux = start(vm, &configs[1], 1, tx.clone())?;
-    let owner_events = tx.clone();
+    let cid = match events
+        .recv_timeout(Duration::from_secs(90))
+        .map_err(io::Error::other)?
+    {
+        Event::Cid(cid) => cid,
+        Event::Stop => return Ok(()),
+        Event::Exit => return Err(io::Error::other("AVF guest exited at startup")),
+    };
+    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
+    let port = listener.local_addr()?.port();
     thread::spawn(move || {
-        let _ = owner.read(&mut [0]);
-        let _ = owner_events.send(Event::Stop);
+        for socket in listener.incoming().map_while(Result::ok) {
+            if let Some(keys) = bootstrap.as_ref() {
+                let keys = keys.clone();
+                let token = credential.clone();
+                thread::spawn(move || {
+                    let _ = adb::serve(socket, cid, &keys, &token);
+                });
+            } else {
+                thread::spawn(move || {
+                    if let Ok(peer) = relay::connect(cid, 17861) {
+                        relay::forward(std::os::fd::OwnedFd::from(socket).into(), peer);
+                    }
+                });
+            }
+        }
     });
-    let deadline = Instant::now() + Duration::from_secs(60);
-    let mut cids = [None; 2];
-    let mut report = Some(report);
-    loop {
-        let event = if report.is_some() {
-            rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
-                .map_err(|_| {
-                    io::Error::new(io::ErrorKind::TimedOut, "AVF startup receipt timed out")
-                })?
-        } else {
-            rx.recv().map_err(io::Error::other)?
-        };
-        match event {
-            Event::Stop if report.is_some() => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Interrupted,
-                    "owner closed before both guests started",
-                ));
-            }
-            Event::Stop => return Ok(()),
-            #[cfg(target_os = "android")]
-            Event::RelayEnded => return Err(io::Error::other("AVF relay listener closed")),
-            Event::Ended(slot) => {
-                return Err(io::Error::other(format!(
-                    "{} AVF session ended",
-                    GUESTS[slot]
-                )));
-            }
-            Event::Started(slot, cid) => cids[slot] = Some(cid),
-        }
-        if let [Some(phone), Some(linux)] = cids {
-            if phone == linux {
-                return Err(io::Error::other(
-                    "AVF returned the same CID for both guests",
-                ));
-            }
-            if let Some(started) = report.take() {
-                #[cfg(target_os = "android")]
-                {
-                    let events = tx.clone();
-                    relay::start(phone, linux, move || {
-                        let _ = events.send(Event::RelayEnded);
-                    })?;
-                }
-                started([phone, linux])?;
-            }
-        }
+    writeln!(io::stdout().lock(), "READY {cid} {port}")?;
+    io::stdout().flush()?;
+    match events.recv() {
+        Ok(Event::Stop) => Ok(()),
+        _ => Err(io::Error::other("AVF guest exited")),
     }
 }
 
 fn main() -> io::Result<()> {
-    let mut args = env::args_os().skip(1);
-    let (Some(phone), Some(linux), None) = (args.next(), args.next(), args.next()) else {
+    let args: Vec<_> = env::args_os().skip(1).collect();
+    let [kind, config, name] = args.as_slice() else {
         return Err(io::Error::other(
-            "usage: aimanity-android-host ANDROID_VM.json LINUX_VM.json",
+            "usage: aimanity-android-host KIND CONFIG NAME",
         ));
     };
-    let configs = [std::fs::canonicalize(phone)?, std::fs::canonicalize(linux)?];
-    if configs[0] == configs[1] {
-        return Err(io::Error::other(
-            "Android and Linux require separate AVF configurations",
-        ));
+    #[cfg(target_os = "android")]
+    return supervise(
+        kind.to_str().ok_or(io::ErrorKind::InvalidInput)?,
+        &PathBuf::from(config).canonicalize()?,
+        name.to_str().ok_or(io::ErrorKind::InvalidInput)?,
+    );
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (kind, config, name);
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "AVF requires Android",
+        ))
     }
-    run(Path::new(AVF), configs, io::stdin(), |[phone, linux]| {
-        writeln!(
-            io::stdout().lock(),
-            "Android AVF CID={phone} Linux AVF CID={linux}"
-        )
-    })
 }
-
-#[cfg(test)]
-mod profile;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn a_cid_receipt_only_identifies_a_running_vm_session() {
         assert_eq!(
@@ -201,104 +182,5 @@ mod tests {
         assert!(started_cid("Created VM from cfg with CID 2, state is READY.").is_none());
         assert!(started_cid("Created VM from cfg with CID 9, state is DEAD.").is_none());
         assert!(started_cid("vm is ready").is_none());
-    }
-
-    #[cfg(all(unix, not(target_os = "android")))]
-    #[test]
-    fn stopping_supervisor_reaps_both_owned_cli_processes() -> io::Result<()> {
-        use std::{
-            fs,
-            os::unix::{fs::PermissionsExt, net::UnixStream},
-        };
-        let directory = tempfile::tempdir()?;
-        let cli = directory.path().join("vm-test");
-        let script = r#"#!/bin/sh
-for argument; do cfg=$argument; done
-echo $$ > "$cfg.pid"
-case "$cfg" in *android.json) cid=41;; *) cid=47;; esac
-echo "Created VM from "$cfg" with CID $cid, state is STARTING."
-exec sleep 40
-"#;
-        fs::write(&cli, script)?;
-        fs::set_permissions(&cli, fs::Permissions::from_mode(0o700))?;
-        let configs = GUESTS.map(|name| directory.path().join(format!("{name}.json")));
-        for config in &configs {
-            fs::write(config, b"{}")?;
-        }
-        let (owner, input) = UnixStream::pair()?;
-        run(&cli, configs.clone(), input, move |cids| {
-            assert_eq!(cids, [41, 47]);
-            drop(owner);
-            Ok(())
-        })?;
-        for config in configs {
-            let pid = fs::read_to_string(config.with_extension("json.pid"))?;
-            let status = Command::new("/bin/kill")
-                .args(["-0", pid.trim()])
-                .stderr(Stdio::null())
-                .status()?;
-            assert!(!status.success());
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn prepare_preserves_guest_data_and_limits_control_disk_to_linux() -> io::Result<()> {
-        use serde_json::{Value, json};
-        use std::{fs, sync::atomic::AtomicBool};
-        let root = tempfile::tempdir()?;
-        let state = root.path().join("state");
-        let assets = root.path().join("assets");
-        fs::create_dir(&state)?;
-        let profile = root.path().join("request.json");
-        let chosen = json!({
-            "phone":{"cpus":1,"memory_mb":1536,"storage_gb":16},
-            "desktop":{"cpus":2,"memory_mb":2048,"storage_gb":16}
-        });
-        fs::write(&profile, chosen.to_string())?;
-        fs::write(state.join("control.key"), [7u8; 32])?;
-        for (name, disk) in [("android", "userdata.img"), ("linux", "rootfs.img")] {
-            let guest = assets.join(name);
-            fs::create_dir_all(&guest)?;
-            fs::write(guest.join("Image"), b"kernel-fixture")?;
-            fs::write(guest.join(disk), b"seed")?;
-            let disk = if name == "android" {
-                json!({"writable":true, "partitions":[{"label":"userdata","path":disk,"writable":true}]})
-            } else {
-                json!({"writable":true,"image":disk})
-            };
-            fs::write(
-                guest.join("avf.json"),
-                json!({"kernel":"Image","disks":[disk]}).to_string(),
-            )?;
-        }
-        let cancelled = AtomicBool::new(false);
-        let [phone, linux] = profile::prepare(&assets, &state, &profile, &cancelled)?;
-        let json = |path: &Path| -> io::Result<Value> {
-            Ok(serde_json::from_reader(fs::File::open(path)?)?)
-        };
-        assert_eq!(json(&phone)?["disks"].as_array().unwrap().len(), 1);
-        let linux_config = json(&linux)?;
-        assert_eq!(linux_config["disks"].as_array().unwrap().len(), 2);
-        assert_eq!(linux_config["params"], "nr_cpus=2");
-        let control = fs::read(state.join("control.raw"))?;
-        assert_eq!(&control[..8], b"AIMAVF01");
-        assert_eq!(&control[8..40], &[7u8; 32]);
-        let len = u32::from_le_bytes(control[40..44].try_into().unwrap()) as usize;
-        assert_eq!(
-            serde_json::from_slice::<Value>(&control[44..44 + len])?,
-            chosen
-        );
-        let disk = state.join("android/userdata.img");
-        assert_eq!(fs::metadata(&disk)?.len(), 16u64 << 30);
-        fs::OpenOptions::new()
-            .write(true)
-            .open(&disk)?
-            .write_all(b"customer")?;
-        profile::prepare(&assets, &state, &profile, &cancelled)?;
-        let mut bytes = [0; 8];
-        fs::File::open(&disk)?.read_exact(&mut bytes)?;
-        assert_eq!(&bytes, b"customer");
-        Ok(())
     }
 }

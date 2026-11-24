@@ -15,6 +15,7 @@ mod modes;
 #[cfg(any(
     target_os = "macos",
     windows,
+    all(target_os = "android", target_arch = "aarch64"),
     all(target_os = "linux", target_arch = "x86_64")
 ))]
 mod owned;
@@ -22,6 +23,7 @@ mod peers;
 #[cfg(any(
     target_os = "macos",
     windows,
+    all(target_os = "android", target_arch = "aarch64"),
     all(target_os = "linux", target_arch = "x86_64")
 ))]
 mod power;
@@ -41,11 +43,13 @@ const BLOBS: TableDefinition<&str, &[u8]> = TableDefinition::new("attachments");
 
 pub(crate) struct Workspace {
     pub(crate) host: std::sync::Mutex<Option<(String, Arc<crate::host_desktop::Grant>)>>,
+    pub(crate) host_microphone: Arc<tokio::sync::Semaphore>,
     db: Database,
     peers: Arc<peers::Peers>,
     #[cfg(any(
         target_os = "macos",
         windows,
+        all(target_os = "android", target_arch = "aarch64"),
         all(target_os = "linux", target_arch = "x86_64")
     ))]
     power: std::sync::Mutex<std::collections::BTreeMap<String, power::Owner>>,
@@ -132,11 +136,13 @@ impl Workspace {
             #[cfg(any(
                 target_os = "macos",
                 windows,
+                all(target_os = "android", target_arch = "aarch64"),
                 all(target_os = "linux", target_arch = "x86_64")
             ))]
             power: Default::default(),
             files,
             host: Default::default(),
+            host_microphone: Arc::new(tokio::sync::Semaphore::new(1)),
             changes: watch::channel(0).0,
             live: Default::default(),
             ready: Default::default(),
@@ -165,6 +171,7 @@ impl Workspace {
         #[cfg(any(
             target_os = "macos",
             windows,
+            all(target_os = "android", target_arch = "aarch64"),
             all(target_os = "linux", target_arch = "x86_64")
         ))]
         let watch_owned = tokio::spawn(owned::watch(
@@ -178,6 +185,7 @@ impl Workspace {
                 #[cfg(any(
                     target_os = "macos",
                     windows,
+                    all(target_os = "android", target_arch = "aarch64"),
                     all(target_os = "linux", target_arch = "x86_64")
                 ))]
                 workspace.resume_devices();
@@ -227,6 +235,7 @@ impl Workspace {
             #[cfg(any(
                 target_os = "macos",
                 windows,
+                all(target_os = "android", target_arch = "aarch64"),
                 all(target_os = "linux", target_arch = "x86_64")
             ))]
             let _ = watch_owned.await;
@@ -239,6 +248,7 @@ impl Workspace {
         #[cfg(any(
             target_os = "macos",
             windows,
+            all(target_os = "android", target_arch = "aarch64"),
             all(target_os = "linux", target_arch = "x86_64")
         ))]
         self.stop_power(None).await;
@@ -384,6 +394,7 @@ impl Workspace {
         #[cfg(any(
             target_os = "macos",
             windows,
+            all(target_os = "android", target_arch = "aarch64"),
             all(target_os = "linux", target_arch = "x86_64")
         ))]
         if name == "registry/device-start" {

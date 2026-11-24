@@ -292,7 +292,7 @@ pub extern "system" fn Java_dev_aimanity_mobile_WorkbenchActivity_onActivityResu
     let _ = tx.send(result.map_err(|e| e.to_string()));
 }
 
-static MIC: Mutex<Option<oneshot::Sender<bool>>> = Mutex::new(None);
+static MIC: Mutex<Vec<oneshot::Sender<bool>>> = Mutex::new(Vec::new());
 pub(crate) async fn microphone() -> Result<()> {
     let (tx, rx) = oneshot::channel();
     let permission = "android.permission.RECORD_AUDIO";
@@ -310,13 +310,23 @@ pub(crate) async fn microphone() -> Result<()> {
             return Ok(false);
         }
         let perms = e.new_object_array(1, "java/lang/String", &permission)?;
-        *MIC.lock().unwrap() = Some(tx);
-        e.call_method(
+        {
+            let mut pending = MIC.lock().unwrap();
+            let waiting = !pending.is_empty();
+            pending.push(tx);
+            if waiting {
+                return Ok(true);
+            }
+        }
+        if let Err(error) = e.call_method(
             a,
             "requestPermissions",
             "([Ljava/lang/String;I)V",
             &[(&perms).into(), 1402.into()],
-        )?;
+        ) {
+            MIC.lock().unwrap().clear();
+            return Err(error);
+        }
         Ok(true)
     })?;
     if launched && !rx.await.map_err(|e| e.to_string())? {
@@ -334,9 +344,9 @@ pub extern "system" fn Java_dev_aimanity_mobile_WorkbenchActivity_onRequestPermi
 ) {
     if request == 1402 {
         let mut first = [-1];
-        if let Some(tx) = MIC.lock().unwrap().take() {
-            let _ =
-                tx.send(e.get_int_array_region(&results, 0, &mut first).is_ok() && first[0] == 0);
+        let allowed = e.get_int_array_region(&results, 0, &mut first).is_ok() && first[0] == 0;
+        for tx in MIC.lock().unwrap().drain(..) {
+            let _ = tx.send(allowed);
         }
     }
 }
@@ -580,7 +590,7 @@ pub(crate) fn detach(app: &android_activity::AndroidApp) {
         return;
     }
     PICK.lock().unwrap().take();
-    MIC.lock().unwrap().take();
+    MIC.lock().unwrap().clear();
     INIT.lock().unwrap().take();
     PHRASE.lock().unwrap().take();
     if let Some(session) = ENGINE.lock().unwrap().take()

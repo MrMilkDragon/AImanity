@@ -468,17 +468,8 @@ pub(super) fn android_guest(args: &[OsString]) -> Result<Value> {
             .ok_or("Missing Linux workspace")?;
     let rootfs =
         json!({"sha256":image,"size_bytes":folder.join("images.payload").metadata()?.len()});
-    let mut files = package(None, Some(rootfs))?;
-    let apps = PathBuf::from(
-        std::env::var_os("AI_PHONE_RELEASE_PHONE_APPS")
-            .ok_or("Missing ARM64 guest applications")?,
-    );
-    let inventory: Value = serde_json::from_reader(File::open(apps.join("manifest.json"))?)?;
-    if inventory["browser"]["abi"] != "arm64-v8a" {
-        return Err("Expected ARM64 Android browser".into());
-    }
-    files.extend(source::component(&apps, "runtime/phone-apps", &inventory)?);
-    let version = source::payload(&root, folder, files, vec!["native-services", "phone-apps"])?;
+    let files = package(None, Some(rootfs))?;
+    let version = source::payload(&root, folder, files, vec!["native-services"])?;
     fs::write(folder.join("source.sha256"), format!("{version}\n"))?;
     fs::copy(
         "target/release/host-resources",

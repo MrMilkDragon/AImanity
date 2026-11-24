@@ -180,6 +180,7 @@ impl Devices {
         if !cfg!(any(
             target_os = "macos",
             windows,
+            all(target_os = "android", target_arch = "aarch64"),
             all(target_os = "linux", target_arch = "x86_64")
         )) {
             return Vec::new();

@@ -181,6 +181,11 @@ pub async fn desktop_location(
         .map(Some)
         .map_err(|_| Error::Invalid("location_receipt"))
 }
+#[cfg(target_os = "android")]
+pub async fn mobile_ready(port: u16, key: &Path) -> Result<()> {
+    empty(port, key, LinuxVmOperation::Ping).await
+}
+
 pub async fn shutdown(port: u16, key: &Path) -> Result<()> {
     empty(port, key, LinuxVmOperation::Shutdown).await
 }
