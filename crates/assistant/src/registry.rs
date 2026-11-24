@@ -400,6 +400,7 @@ async fn state(app: &App) -> Result<wire::RegistryState> {
                 runtime_state: r.get("runtime_state"),
                 paired: r.get("paired"),
                 connected: app.run_signals.peers.connected(r.get("id")),
+                ..Default::default()
             })
             .collect(),
         agents: agents

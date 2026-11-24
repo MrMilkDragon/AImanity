@@ -12,6 +12,7 @@ mod controls;
 mod deployment;
 mod device_files;
 mod device_io;
+mod device_notices;
 mod devices;
 mod documents;
 mod files;
@@ -2095,7 +2096,10 @@ impl App {
                     locale,
                 )
                 .map(|m| Message::Files(Box::new(m))),
-            Panel::Location => self.location.view(locale).map(Message::Location),
+            Panel::Location => self
+                .location
+                .view(locale, &self.agents.registry.devices)
+                .map(Message::Location),
             Panel::Proxy => self.proxy.view(locale).map(Message::Proxy),
             Panel::Goal => self.modes.goal_view().map(Message::Modes),
             Panel::Language => column(locale::Locale::all().map(|l| {

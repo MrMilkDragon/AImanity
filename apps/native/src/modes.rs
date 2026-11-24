@@ -142,11 +142,7 @@ impl Modes {
                     } else {
                         value.trim().to_owned()
                     },
-                    device_id: if state.goal_active {
-                        state.goal_device_id.clone()
-                    } else {
-                        device_id.into()
-                    },
+                    device_id: String::new(),
                 };
                 self.saving = true;
                 self.goal_error.clear();

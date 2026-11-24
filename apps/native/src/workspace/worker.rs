@@ -16,7 +16,12 @@ impl Workspace {
     ) -> Result<(String, Vec<wire::HarnessEvent>)> {
         let config = Self::model(job.model.clone().ok_or("任务缺少模型")?)?;
         let client = self.client(&config.proxy_url)?;
-        let (mut input, mut input_pending) = self.context(n, &job.instructions)?;
+        let is_child = self.run.lock().unwrap().get(id).is_some_and(|a| a.child);
+        let (mut input, mut input_pending) = self.context(
+            n,
+            &job.instructions,
+            is_child || job.source == "notification",
+        )?;
         let host = job.request.as_ref().is_some_and(|q| q.use_host_desktop);
         if host
             && !self
@@ -30,7 +35,8 @@ impl Workspace {
         }
         let target = job.request.as_ref().map_or("", |q| q.device_id.as_str());
         let registry = self.registry()?;
-        if target.is_empty() {
+        let workspace_only = !job.parent.is_empty() && target.is_empty();
+        if target.is_empty() && !workspace_only {
             let roster: Vec<_> = registry.devices.iter().map(device_info).collect();
             input.insert(
                 1,
@@ -39,10 +45,9 @@ impl Workspace {
         }
         let mut device_run = DeviceRun::for_devices(
             &self.peers,
-            registry
-                .devices
-                .into_iter()
-                .filter(|d| d.paired && d.connected && (target.is_empty() || d.id == target)),
+            registry.devices.into_iter().filter(|d| {
+                !workspace_only && d.paired && d.connected && (target.is_empty() || d.id == target)
+            }),
         );
         let previous: wire::HarnessEventList = self.get(&format!("events/{id}"))?;
         if previous
@@ -74,6 +79,22 @@ impl Workspace {
             json!({"type":"function","name":"skill_read","description":"Read an enabled guide when its topic matches the task.","parameters":{"type":"object","properties":{"id":{"type":"string","enum":skills}},"required":["id"]}}),
             json!({"type":"function","name":"search_knowledge","description":"Find documents in this workspace by title or content.","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}),
         ];
+        let location: wire::LocationState = self.get("location")?;
+        if location.enabled
+            && let Some(point) = location.point
+        {
+            input.insert(1,json!({"role":"system","content":format!("Workspace simulated location for all devices: {}, {}. Operating-system delivery status by device: {:?}",point.latitude,point.longitude,location.devices.iter().map(|d|(&d.device_id,&d.status)).collect::<Vec<_>>())}));
+        }
+        if job.source == "goal" {
+            tools.push(json!({"type":"function","name":"complete_goal","description":"Close the current workspace goal only after checking its deliverables. Provide the verified outcome.","parameters":{"type":"object","properties":{"outcome":{"type":"string"}},"required":["outcome"]}}));
+        }
+        if !is_child && job.parent.is_empty() && job.source != "notification" {
+            tools.push(json!({"type":"function","name":"workspace_todos","description":"Read the shared queue or move an item before another item. Omit before_id to move it to the end.","parameters":{"type":"object","properties":{"id":{"type":"string"},"before_id":{"type":"string"}}}}));
+            tools.push(json!({"type":"function","name":"set_workspace_location","description":"Set or switch off one simulated location for all workspace devices when requested. Returns each device's delivery result.","parameters":{"type":"object","properties":{"enabled":{"type":"boolean"},"latitude":{"type":"number"},"longitude":{"type":"number"}},"required":["enabled"]}}));
+        }
+        if !is_child && job.parent.is_empty() {
+            tools.push(json!({"type":"function","name":"delegate_tasks","description":"Delegate genuinely independent work in parallel when it benefits the task. Use a different connected device for each device task, or omit the device for workspace work. Returns completed results.","parameters":{"type":"object","properties":{"tasks":{"type":"array","minItems":1,"maxItems":8,"items":{"type":"object","properties":{"task":{"type":"string"},"device_id":{"type":"string"}},"required":["task"]}}},"required":["tasks"]}}));
+        }
         let mut events = Vec::new();
         let mut host_image = None;
         if !device_run.devices.is_empty() {
@@ -132,6 +153,7 @@ impl Workspace {
                             t["name"].as_str(),
                             Some(
                                 "device_interact"
+                                    | "delegate_tasks"
                                     | "device_audio_input"
                                     | "skill_read"
                                     | "host_desktop"
@@ -151,7 +173,7 @@ impl Workspace {
                 token,
                 &mut timing,
                 |delta| {
-                    if !input_pending {
+                    if !is_child && !input_pending {
                         self.show_text(id, delta)
                     }
                 },
@@ -204,6 +226,99 @@ impl Workspace {
                         )
                         .into());
                     }
+                    "complete_goal" if job.source == "goal" && !input_pending => {
+                        let value: Value = serde_json::from_str(args)?;
+                        let outcome = value["outcome"]
+                            .as_str()
+                            .filter(|s| !s.trim().is_empty())
+                            .ok_or("缺少目标结果")?;
+                        event.kind = "goal_complete".into();
+                        event.content = outcome.into();
+                        events.push(event);
+                        return Ok((outcome.into(), events));
+                    }
+                    "delegate_tasks" if !is_child && job.parent.is_empty() => {
+                        #[derive(Deserialize)]
+                        struct Task {
+                            task: String,
+                            #[serde(default)]
+                            device_id: String,
+                        }
+                        #[derive(Deserialize)]
+                        struct Batch {
+                            tasks: Vec<Task>,
+                        }
+                        let batch: Batch = serde_json::from_str(args)?;
+                        let result = self
+                            .delegate(
+                                id,
+                                call["call_id"].as_str().ok_or("缺少工具编号")?,
+                                batch
+                                    .tasks
+                                    .into_iter()
+                                    .map(|t| (t.device_id, t.task))
+                                    .collect(),
+                                token,
+                            )
+                            .await
+                            .unwrap_or_else(|error| json!({"error":error.to_string()}));
+                        if result.as_array().is_some_and(|parts| {
+                            parts
+                                .iter()
+                                .any(|p| p["receipts"].as_u64().unwrap_or_default() > 0)
+                        }) {
+                            input_pending = false;
+                        }
+                        if result.get("error").is_some() {
+                            event.status = "failed".into();
+                        }
+                        event.content = result.to_string();
+                        Value::String(event.content.clone())
+                    }
+                    "workspace_todos" if !is_child && job.source != "notification" => {
+                        let args: Value = serde_json::from_str(args)?;
+                        let list = if let Some(id) = args["id"].as_str() {
+                            self.move_todo(wire::TodoMove {
+                                id: id.into(),
+                                before_id: args["before_id"].as_str().unwrap_or_default().into(),
+                            })?
+                        } else {
+                            self.todos()?
+                        };
+                        Value::String(json!(list.items.iter().map(|t|json!({"id":t.id,"title":t.title,"source":t.source,"device":t.device,"status":t.status})).collect::<Vec<_>>()).to_string())
+                    }
+                    "set_workspace_location" if !is_child && job.source != "notification" => {
+                        #[derive(Deserialize)]
+                        struct Update {
+                            enabled: bool,
+                            latitude: Option<f64>,
+                            longitude: Option<f64>,
+                        }
+                        let a: Update = serde_json::from_str(args)?;
+                        let state: wire::LocationState = self.get("location")?;
+                        let point = a.latitude.zip(a.longitude).map(|(latitude, longitude)| {
+                            wire::GeoPoint {
+                                latitude,
+                                longitude,
+                                accuracy_m: 5.,
+                            }
+                        });
+                        let changed = self
+                            .set_location(wire::LocationUpdate {
+                                expected_revision: state.revision,
+                                request_id: format!("{id}/{}", event.id),
+                                enabled: a.enabled,
+                                point,
+                                speed_kph: if state.speed_kph > 0. {
+                                    state.speed_kph
+                                } else {
+                                    5.
+                                },
+                                ..Default::default()
+                            })
+                            .await?;
+                        Value::String(json!({"enabled":changed.enabled,"devices":changed.devices.iter().map(|d|json!({"id":d.device_id,"status":d.status,"error":d.error})).collect::<Vec<_>>()}).to_string())
+                    }
                     "skill_read" => {
                         #[derive(Deserialize)]
                         struct Read {
@@ -250,6 +365,7 @@ impl Workspace {
                         {
                             return Err("设备麦克风未授权".into());
                         }
+                        self.claim_device(id, &feed.device_id, "device_audio_input")?;
                         let session = device_run.session(&feed.device_id)?;
                         tokio::select! {
                             biased;
@@ -330,7 +446,7 @@ impl Workspace {
         let tx = self.db.begin_write()?;
         let mut table = tx.open_table(MESSAGES)?;
         let mut reply = wire::ChatMessage::decode(table.get(n + 1)?.ok_or("消息不存在")?.value())?;
-        if let Some(live) = self.live.lock().unwrap().take() {
+        if let Some(live) = self.live.lock().unwrap().take_if(|live| live.run == id) {
             if !reply.text.is_empty() {
                 reply.text.push_str("\n\n");
             }

@@ -84,6 +84,10 @@ pub(super) fn device_info(device: &wire::RegisteredDevice) -> Value {
 }
 
 pub(super) fn device_output(info: &Value, reply: wire::HostDesktopReply) -> Value {
+    let mut info = info.clone();
+    if let Some(point) = reply.location.and_then(|fix| fix.point) {
+        info["location"] = json!({"scope":reply.location_scope,"latitude":point.latitude,"longitude":point.longitude});
+    }
     if reply.jpeg.is_empty() {
         return Value::String(info.to_string());
     }
@@ -149,6 +153,7 @@ impl DeviceRun {
     ) -> Result<Value> {
         let id = data.device_id.clone();
         let session = self.session(&id)?;
+        workspace.claim_device(run, &id, &data.kind)?;
         if session.is_cancelled() {
             return Err("设备已断开".into());
         }

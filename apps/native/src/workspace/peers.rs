@@ -278,7 +278,10 @@ impl Peers {
         };
         let expected = action.action_id.clone();
         let observe = action.kind == "observe";
-        let input = !observe && action.kind != "foreground" && action.io.is_none();
+        let input = !observe
+            && action.kind != "foreground"
+            && action.io.is_none()
+            && action.location.is_none();
         let (sender, receiver) = oneshot::channel();
         tokio::select! {
             biased;
@@ -425,12 +428,16 @@ async fn accept(
     let failed = peers.clone();
     let reserved = id.clone();
     let done = closed.drop_guard();
+    let workspace = Arc::downgrade(&workspace);
     ws.max_message_size(5 * 1024 * 1024)
         .on_failed_upgrade(move |e: axum::Error| failed.finished(&reserved, session, e.to_string()))
         .on_upgrade(move |socket| async move {
             let _done = done;
             peers.signal();
-            if let Err(error) = exchange(socket, rx, stop).await {
+            if let Some(w) = workspace.upgrade() {
+                w.ready.notify_one();
+            }
+            if let Err(error) = exchange(socket, rx, stop, &workspace, &id).await {
                 peers.finished(&id, session, error.to_string());
             }
         })
@@ -451,6 +458,8 @@ async fn exchange(
     mut socket: WebSocket,
     mut calls: mpsc::Receiver<Call>,
     stop: CancellationToken,
+    workspace: &Weak<Workspace>,
+    device: &str,
 ) -> Result<()> {
     socket.send(Frame::Binary(bytes::Bytes::new())).await?;
     loop {
@@ -458,6 +467,10 @@ async fn exchange(
             biased;
             _ = stop.cancelled() => return close_session(&mut socket).await,
             inbound = socket.recv() => match inbound.transpose()? {
+                Some(Frame::Binary(bytes)) => {
+                    if let Some(notice)=wire::HostDesktopReply::decode(bytes)?.notification{workspace.upgrade().ok_or("工作区已关闭")?.receive_notice(device,notice)?;continue;}
+                    return Err("设备返回了未请求的回执".into());
+                }
                 Some(Frame::Ping(_) | Frame::Pong(_)) => continue,
                 Some(Frame::Close(Some(close))) if !close.reason.is_empty() => return Err(close.reason.to_string().into()),
                 _ => return Err("共享端已关闭连接".into()),
@@ -478,7 +491,11 @@ async fn exchange(
             received = tokio::time::timeout(Duration::from_secs(20), async {
                 loop {
                     match socket.recv().await.transpose()? {
-                        Some(Frame::Binary(bytes)) => return Result::Ok(wire::HostDesktopReply::decode(bytes)?),
+                        Some(Frame::Binary(bytes)) => {
+                            let reply=wire::HostDesktopReply::decode(bytes)?;
+                            if let Some(notice)=reply.notification {workspace.upgrade().ok_or("工作区已关闭")?.receive_notice(device,notice)?; continue;}
+                            return Result::Ok(reply);
+                        },
                         Some(Frame::Ping(_) | Frame::Pong(_)) => continue,
                         Some(Frame::Close(Some(close))) if !close.reason.is_empty() => return Err(close.reason.to_string().into()),
                         _ => return Err("设备在返回回执前断开连接".into()),

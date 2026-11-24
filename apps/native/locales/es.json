@@ -543,5 +543,10 @@
   "本次任务可跨应用操作你的整个桌面。屏幕画面会发给当前模型，并保存在本地任务记录中。": "Esta tarea puede operar en varias aplicaciones de todo tu escritorio. Las capturas se envían al modelo actual y se guardan en el historial local de la tarea.",
   "移除设备共享？": "¿Quitar este dispositivo compartido?",
   "删除设备及其数据？": "¿Eliminar el dispositivo y sus datos?",
-  "删除": "Eliminar"
+  "删除": "Eliminar",
+  "工作区已同步": "Sincronizada en el espacio de trabajo",
+  "工作区": "Espacio de trabajo",
+  "读取画面": "Leyendo la pantalla",
+  "操作设备": "Controlando el dispositivo",
+  "{n} 个子 Agent 正在处理中": "Subagentes en curso · {n}"
 }

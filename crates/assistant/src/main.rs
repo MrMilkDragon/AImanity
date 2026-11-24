@@ -40,7 +40,6 @@ mod host_desktop;
 mod http;
 mod location;
 mod location_devices;
-mod location_motion;
 mod model_adapter;
 mod model_context;
 use aimanity_model::model_timing;

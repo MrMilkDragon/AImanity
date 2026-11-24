@@ -65,6 +65,14 @@ enum RunNoticeKind {
   RUN_NOTICE_KIND_SYSTEM_FAILURE = 1;
   RUN_NOTICE_KIND_NEEDS_INPUT = 2;
 }
+message RunningAgent {
+  string run_id = 1;
+  string title = 2;
+  string device = 3;
+  string source = 4;
+  string step = 5;
+  uint64 started_at_ms = 6;
+}
 message ChatState {
   string conversation_id = 1;
   repeated ChatMessage messages = 2;
@@ -79,6 +87,7 @@ message ChatState {
   RunNoticeKind notice_kind = 11;
   ChatMessageWindow message_window = 12;
   bool can_pause = 13;
+  repeated RunningAgent children = 14;
 }
 message ChatSendRequest {
   string conversation_id = 1;

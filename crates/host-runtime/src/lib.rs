@@ -5,7 +5,7 @@ mod archive;
 mod capsule;
 pub mod component;
 mod control;
-#[cfg(unix)]
+#[cfg(any(unix, test))]
 pub mod desktop_bridge;
 pub mod device_bridge;
 mod filesystem;

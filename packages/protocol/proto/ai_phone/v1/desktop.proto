@@ -1,5 +1,7 @@
 syntax = "proto3";
 package ai_phone.v1;
+import "ai_phone/v1/phone_runtime.proto";
+import "ai_phone/v1/location.proto";
 message DesktopRequest { string device_id = 1; }
 // Length-delimited prefix before the final frame when an Agent requests input progress.
 message DesktopInputReceipt { string action_id = 1; }
@@ -64,6 +66,7 @@ message DesktopActionRequest {
   string control_session = 17;
   repeated BrushStroke strokes = 18;
   DeviceIoRequest io = 19;
+  LocationFix location = 20;
 }
 enum DeviceIoOperation {
   DEVICE_IO_OPERATION_UNSPECIFIED = 0;
@@ -126,4 +129,7 @@ message HostDesktopReply {
   repeated string displays = 7;
   string display = 8;
   string foreground = 9;
+  PhoneNotification notification = 10;
+  LocationFix location = 11;
+  string location_scope = 12;
 }

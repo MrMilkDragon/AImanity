@@ -195,9 +195,17 @@ impl Workspace {
                     req!(HarnessEventRequest).run_id
                 ))?
                 .encode_to_vec(),
-            "proactive/state" => self
-                .get::<wire::ProactiveState>("proactive")?
-                .encode_to_vec(),
+            "location/state" => {
+                let mut s: wire::LocationState = self.get("location")?;
+                if s.speed_kph == 0. {
+                    s.speed_kph = 5.;
+                }
+                s.encode_to_vec()
+            }
+            "proactive/todos" => self.todos()?.encode_to_vec(),
+            "proactive/move-todo" => self.move_todo(req!(TodoMove))?.encode_to_vec(),
+            "proactive/state" => self.proactive_state()?.encode_to_vec(),
+            "proactive/update" | "proactive/goal" => self.set_mode(name, bytes)?.encode_to_vec(),
             "workbench/knowledge"
             | "workbench/knowledge-related"
             | "workbench/knowledge-read"
@@ -227,6 +235,7 @@ impl Workspace {
     ) -> Result<wire::RegistryState> {
         let state = self.write_registry(edit)?;
         self.peers.signal();
+        self.ready.notify_one();
         Ok(self.peers.available(state))
     }
     pub(super) fn write_registry(

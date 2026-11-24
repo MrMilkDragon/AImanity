@@ -10,8 +10,11 @@ mod device_run;
 mod documents;
 mod files;
 mod lifecycle;
+mod location;
+mod modes;
 mod peers;
 mod records;
+mod scheduling;
 mod skills;
 mod worker;
 
@@ -21,6 +24,7 @@ const MESSAGES: TableDefinition<u64, &[u8]> = TableDefinition::new("messages");
 const IDS: TableDefinition<&str, u64> = TableDefinition::new("message_ids");
 const JOBS: TableDefinition<u64, &[u8]> = TableDefinition::new("jobs");
 const PENDING: TableDefinition<&str, &[u8]> = TableDefinition::new("pending");
+const INBOX: TableDefinition<&str, &[u8]> = TableDefinition::new("notice_inbox");
 const BLOBS: TableDefinition<&str, &[u8]> = TableDefinition::new("attachments");
 
 pub(crate) struct Workspace {
@@ -31,8 +35,10 @@ pub(crate) struct Workspace {
     changes: watch::Sender<u64>,
     live: std::sync::Mutex<Option<conversation::LiveReply>>,
     ready: Arc<Notify>,
+    location: tokio::sync::Mutex<std::collections::HashMap<String, CancellationToken>>,
+    location_changed: Arc<Notify>,
     shutdown: CancellationToken,
-    run: std::sync::Mutex<Option<(String, CancellationToken)>>,
+    run: std::sync::Mutex<std::collections::BTreeMap<String, scheduling::Active>>,
     verified: std::sync::Mutex<std::collections::HashMap<String, (String, u64, wire::ModelDraft)>>,
     worker: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
     clients: std::sync::Mutex<std::collections::HashMap<String, reqwest::Client>>,
@@ -83,6 +89,7 @@ impl Workspace {
         tx.open_table(JOBS)?;
         tx.open_table(PENDING)?;
         tx.open_table(BLOBS)?;
+        tx.open_table(INBOX)?;
         tx.open_table(documents::DOCUMENTS)?;
         tx.open_table(skills::ENABLED)?;
         {
@@ -109,6 +116,8 @@ impl Workspace {
             changes: watch::channel(0).0,
             live: Default::default(),
             ready: Default::default(),
+            location: Default::default(),
+            location_changed: Default::default(),
             shutdown,
             run: Default::default(),
             clients: Default::default(),
@@ -123,32 +132,58 @@ impl Workspace {
         let stop = self.shutdown.clone();
         let ready = self.ready.clone();
         ready.notify_one();
+        let watch_location = tokio::spawn(Self::watch_location(
+            weak.clone(),
+            stop.clone(),
+            self.location_changed.clone(),
+            self.registry_changes(),
+        ));
         let worker = tokio::spawn(async move {
             if let Some(workspace) = weak.upgrade() {
                 workspace.finish_device_changes().await;
             }
+            let mut tasks = tokio::task::JoinSet::new();
             loop {
-                tokio::select! {biased; _=stop.cancelled()=>break,_=ready.notified()=>{}}
-                while let Some(workspace) = weak.upgrade() {
-                    if stop.is_cancelled() {
-                        return;
+                let delay = weak.upgrade().and_then(|w| w.mode_wait());
+                let timer = async {
+                    match delay {
+                        Some(d) => tokio::time::sleep(d).await,
+                        None => std::future::pending().await,
                     }
-                    match workspace.next_job() {
-                        Ok(Some(job)) => {
-                            let result = workspace.execute(job).await;
-                            if let Err(error) = result {
-                                eprintln!("Workspace task: {error}");
-                                break;
-                            }
-                        }
-                        Ok(None) => break,
-                        Err(error) => {
-                            eprintln!("Workspace queue: {error}");
-                            break;
+                };
+                tokio::select! {biased;
+                    _ = stop.cancelled() => break,
+                    _ = timer => {},
+                    Some(done) = tasks.join_next(), if !tasks.is_empty() => { if let Err(e) = done { eprintln!("Workspace task: {e}"); } }
+                    _ = ready.notified() => {}
+                }
+                let Some(workspace) = weak.upgrade() else {
+                    break;
+                };
+                if let Err(e) = workspace.schedule_mode() {
+                    eprintln!("Workspace mode: {e}");
+                }
+                if let Err(e) = workspace.flush_notices() {
+                    eprintln!("Workspace inbox: {e}");
+                }
+                match workspace.claim_jobs() {
+                    Ok(jobs) => {
+                        for (n, job, id, token, child) in jobs {
+                            let w = workspace.clone();
+                            tasks.spawn(async move {
+                                if let Err(e) = w.execute(n, job, &token, child).await {
+                                    eprintln!("Workspace task: {e}");
+                                }
+                                w.run.lock().unwrap().remove(&id);
+                                w.changed();
+                            });
                         }
                     }
+                    Err(e) => eprintln!("Workspace queue: {e}"),
                 }
             }
+            while tasks.join_next().await.is_some() {}
+            let _ = watch_location.await;
         });
         *self.worker.lock().unwrap() = Some(worker);
     }
@@ -273,6 +308,14 @@ impl Workspace {
             }
             .await;
             return result.map_err(|e| e.to_string());
+        }
+        if name == "location/update" {
+            let q = wire::LocationUpdate::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
+            return self
+                .set_location(q)
+                .await
+                .map(|s| s.encode_to_vec())
+                .map_err(|e| e.to_string());
         }
         if name == "host-desktop/action" {
             let action =

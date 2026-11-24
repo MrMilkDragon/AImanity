@@ -1,4 +1,4 @@
-//! Pure, WGS84 route interpolation. Motion advances only after device receipts.
+//! WGS84 route interpolation.
 use crate::wire::GeoPoint;
 pub fn valid(p: &GeoPoint) -> bool {
     p.latitude.is_finite()

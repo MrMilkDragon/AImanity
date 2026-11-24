@@ -201,6 +201,7 @@ pub(crate) fn chat_state(
             .unwrap_or_default(),
         next_wake_at_ms: run.map(|r| r.get("next_wake_at_ms")).unwrap_or(0),
         can_pause: run.is_some_and(|r| r.get("can_pause")),
+        children: Vec::new(),
     }
 }
 fn history_response(result: Result<wire::ChatState, sqlx::Error>) -> Response {

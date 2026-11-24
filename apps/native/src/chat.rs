@@ -32,6 +32,7 @@ const REPLY_TEXT_INSET: f32 = button::DEFAULT_PADDING.left + ICON_SIZE + DISCLOS
 #[derive(Clone, Debug)]
 pub enum Message {
     Todos(bool),
+    Children,
     Goal(bool),
     HostToggle,
     HostAllow,
@@ -94,6 +95,7 @@ struct Trace {
 }
 pub struct Chat {
     display_after: Option<u64>,
+    children_open: bool,
     pub state: wire::ChatState,
     draft: text_editor::Content,
     pending: Vec<Pending>,
@@ -116,6 +118,7 @@ impl Chat {
     pub fn new() -> Self {
         Self {
             display_after: None,
+            children_open: false,
             state: Default::default(),
             draft: text_editor::Content::new(),
             pending: Vec::new(),
@@ -241,6 +244,9 @@ impl Chat {
             self.state.messages.sort_by_key(|m| m.ordinal);
         }
         if snapshot && next.revision >= self.state.revision {
+            if next.children.is_empty() {
+                self.children_open = false;
+            }
             next.messages = std::mem::take(&mut self.state.messages);
             self.state = next;
             if self.state.notice_kind() == wire::RunNoticeKind::SystemFailure {
@@ -362,6 +368,7 @@ impl Chat {
                 self.display_after = self.state.messages.last().map(|m| m.ordinal);
                 self.following = true;
             }
+            Message::Children => self.children_open = !self.children_open,
             Message::Mode(_) | Message::Todos(_) | Message::Goal(_) => {}
             Message::Edit(action) => self.draft.perform(action),
             Message::Send => {
@@ -378,7 +385,11 @@ impl Chat {
                 self.draft = text_editor::Content::new();
                 let request = wire::ChatSendRequest {
                     conversation_id: self.state.conversation_id.clone(),
-                    device_id: if matches!(self.host, crate::host_desktop::Permission::Armed) { String::new() } else { device_id.into() },
+                    device_id: if matches!(self.host, crate::host_desktop::Permission::Armed) {
+                        String::new()
+                    } else {
+                        device_id.into()
+                    },
                     text: text.clone(),
                     attachment_ids: attachments.iter().map(|a| a.id.clone()).collect(),
                     request_id: id.clone(),
@@ -1220,6 +1231,58 @@ impl Chat {
         }
         if !modes.transcript().is_empty() {
             composer = composer.push(container(text(modes.transcript()).size(13)).padding([6, 10]));
+        }
+        if !self.state.children.is_empty() {
+            let count = self.state.children.len().to_string();
+            let label = locale
+                .tr("{n} 个子 Agent 正在处理中")
+                .replace("{n}", &count);
+            let details = || {
+                let mut rows = column![].spacing(8);
+                for agent in &self.state.children {
+                    let place = if agent.device.is_empty() {
+                        locale.tr("工作区")
+                    } else {
+                        &agent.device
+                    };
+                    let step = match agent.step.as_str() {
+                        "observe" | "foreground" => "读取画面",
+                        "key" | "type" | "device_audio_input" => "输入",
+                        "执行中" => "执行中",
+                        _ => "操作设备",
+                    };
+                    rows = rows.push(
+                        column![
+                            text(&agent.title).size(13).wrapping(text::Wrapping::Word),
+                            text(format!("{} · {}", place, locale.tr(step)))
+                                .size(12)
+                                .style(style::muted_text)
+                        ]
+                        .spacing(2),
+                    );
+                }
+                container(rows)
+                    .max_width(330)
+                    .padding([9, 12])
+                    .style(container::rounded_box)
+            };
+            let chip = button(text(label).size(12).wrapping(text::Wrapping::None))
+                .padding([4, 12])
+                .style(|theme, status| {
+                    let mut b = style::quiet(theme, status);
+                    b.background = Some(iced::Color::from_rgb8(240, 242, 244).into());
+                    b.border.radius = 24.0.into();
+                    b
+                })
+                .on_press(Message::Children);
+            if self.children_open {
+                composer = composer.push(details()).push(chip);
+            } else {
+                composer = composer.push(
+                    iced::widget::tooltip(chip, details(), iced::widget::tooltip::Position::Top)
+                        .gap(4),
+                );
+            }
         }
         composer = composer.push(editor).push(actions);
         column![

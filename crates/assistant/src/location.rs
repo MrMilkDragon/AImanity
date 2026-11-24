@@ -1,6 +1,6 @@
 //! One owner for location configuration, motion and device receipts. Disabled means no lookup.
 use super::location_devices::apply;
-use super::location_motion as motion;
+use ai_phone_api::location_motion as motion;
 use crate::*;
 use axum::extract::{Path, State};
 use serde::Deserialize;

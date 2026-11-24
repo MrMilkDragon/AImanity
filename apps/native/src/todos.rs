@@ -160,7 +160,8 @@ impl Todos {
                 "copilot" => "Copilot",
                 "user" => "主线任务",
                 "notification" => "通知",
-                "device-handoff" => "设备协作",
+                "device-handoff" | "delegate" => "设备协作",
+                "goal" => "Task & Goal",
                 _ => "Liberty",
             };
             let name = item
@@ -195,7 +196,14 @@ impl Todos {
             let content = container(
                 row![
                     title,
-                    text(locale.tr(detail)).size(12).style(style::muted_text),
+                    text(if item.device.is_empty() {
+                        locale.tr(detail).to_owned()
+                    } else {
+                        format!("{} · {}", item.device, locale.tr(detail))
+                    })
+                    .wrapping(text::Wrapping::None)
+                    .size(12)
+                    .style(style::muted_text),
                     grip
                 ]
                 .align_y(iced::Center),

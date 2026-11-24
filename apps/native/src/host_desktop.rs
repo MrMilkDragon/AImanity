@@ -620,11 +620,22 @@ pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
     let (authority, live) = watch::channel(());
     let mut views = Views::default();
     let mut streams = tokio::task::JoinSet::new();
+    let (send_notice, mut notices) = tokio::sync::mpsc::channel(16);
+    streams.spawn(crate::device_notices::watch(
+        phone.as_ref().map(|p| p.client.clone()),
+        send_notice,
+    ));
+    let mut notices_open = true;
+    let mut session_location = None;
     loop {
         let received = tokio::select! {
             biased;
             _ = stop.changed() => break,
             _ = streams.join_next(), if !streams.is_empty() => continue,
+            n=notices.recv(),if notices_open=>{if let Some(notification)=n{
+                let item=HostDesktopReply{notification:Some(notification),..Default::default()};
+                socket.send(Frame::Binary(item.encode_to_vec().into())).await?;
+            }else{notices_open=false;}continue;},
             received = socket.next() => received,
         };
         let Some(msg) = received else {
@@ -637,6 +648,7 @@ pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
         };
         let action = DesktopActionRequest::decode(bytes)?;
         let id = action.action_id.clone();
+        let observing = action.kind == "observe";
         let result = if let Some(io) = action.io {
             let services = services.clone();
             let token = id.clone();
@@ -650,6 +662,42 @@ pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
             let execute_input = async {
                 if let Some(phone) = phone.as_mut() {
                     Ok(phone.perform(&action).await)
+                } else if let Some(fix) = &action.location {
+                    #[cfg(target_os = "linux")]
+                    {
+                        let result = async {
+                            let response = reqwest::Client::new()
+                                .post("http://127.0.0.1:17867/fix")
+                                .body(fix.encode_to_vec())
+                                .send()
+                                .await?
+                                .error_for_status()?
+                                .bytes()
+                                .await?;
+                            let ack = ai_phone_api::wire::LocationDevice::decode(response)?;
+                            if !ack.error.is_empty() {
+                                return Err(ack.error.into());
+                            }
+                            if ack.status != if fix.enabled { "applied" } else { "disabled" } {
+                                return Err("设备未确认定位".into());
+                            }
+                            Result::Ok(HostDesktopReply {
+                                location: Some(*fix),
+                                location_scope: "browser".into(),
+                                ..Default::default()
+                            })
+                        }
+                        .await;
+                        Ok(result.map_err(|e| e.to_string()))
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        Ok(Ok(HostDesktopReply {
+                            location: Some(*fix),
+                            location_scope: "workspace".into(),
+                            ..Default::default()
+                        }))
+                    }
                 } else {
                     let live = live.clone();
                     let mut view = if action.kind == "observe" {
@@ -685,6 +733,12 @@ pub(super) async fn serve_socket<S: tokio::io::AsyncRead + tokio::io::AsyncWrite
             error,
             ..Default::default()
         });
+        if let Some(fix) = reply.location {
+            session_location = fix.enabled.then(|| (fix, reply.location_scope.clone()));
+        } else if observing && let Some((fix, scope)) = &session_location {
+            reply.location = Some(*fix);
+            reply.location_scope.clone_from(scope);
+        }
         reply.action_id = id;
         if stop.has_changed().is_err() {
             break;
@@ -788,6 +842,23 @@ mod tests {
         let device = workspace.registry()?.devices.remove(0);
         assert!(device.connected);
         assert_eq!(device.system_name(), "Windows");
+        let point = ai_phone_api::wire::GeoPoint {
+            latitude: 32.,
+            longitude: 118.,
+            accuracy_m: 5.,
+        };
+        let update = ai_phone_api::wire::LocationUpdate {
+            enabled: true,
+            point: Some(point),
+            speed_kph: 5.,
+            request_id: "shared-position".into(),
+            ..Default::default()
+        };
+        let received = workspace
+            .rpc("location/update", update.encode_to_vec())
+            .await?;
+        let location = ai_phone_api::wire::LocationState::decode(received.as_slice())?;
+        assert_eq!(location.devices[0].status, "workspace");
         let drives = workspace
             .file_list(FileLocation {
                 device_id: device.id.clone(),
@@ -845,6 +916,7 @@ mod tests {
                     assert_eq!(focused_window(),Some(hwnd));
                     let frame=call(DesktopActionRequest{kind:"observe".into(),..Default::default()}).await?;
                     assert!(!frame.jpeg.is_empty() && frame.width > 0);
+                    if remote { assert_eq!(frame.location.and_then(|fix|fix.point),Some(point)); }
                     call(DesktopActionRequest{ kind:kind.into(),observation_id:frame.observation_id,text:text.into(),key:key.into(),..Default::default()}).await?;
                 }
                 timeout(Duration::from_secs(5),async {
