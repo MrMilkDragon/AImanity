@@ -10,11 +10,16 @@ use std::{
     process::Command,
 };
 
-const TARGETS: [&str; 4] = [
+const ANDROID_ARM64: &str = "aarch64-linux-android";
+const ANDROID_X64: &str = "x86_64-linux-android";
+const ARM64_RELAY: &str = "aarch64-unknown-linux-musl";
+const MOBILE: [&str; 3] = [ANDROID_ARM64, ANDROID_X64, ARM64_RELAY];
+const CLIENTS: [&str; 5] = [
     "aarch64-apple-darwin",
-    "aarch64-unknown-linux-gnu",
-    "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    ANDROID_ARM64,
+    ANDROID_X64,
 ];
 
 fn graph(manifest: &str, target: &str) -> Result<BTreeSet<String>> {
@@ -50,6 +55,10 @@ fn graph(manifest: &str, target: &str) -> Result<BTreeSet<String>> {
 }
 
 pub(super) fn run(arguments: &[OsString]) -> Result<()> {
+    let targets: Vec<_> = CLIENTS
+        .into_iter()
+        .chain(["aarch64-unknown-linux-gnu", ARM64_RELAY])
+        .collect();
     let (file, target) = match arguments {
         [option, file] if option == "--output" => (file, None),
         [select, target, option, file] | [option, file, select, target]
@@ -57,7 +66,7 @@ pub(super) fn run(arguments: &[OsString]) -> Result<()> {
         {
             let target = target
                 .to_str()
-                .filter(|target| TARGETS.contains(target))
+                .filter(|target| targets.contains(target))
                 .ok_or("Unknown dependency audit target")?;
             (file, Some(target))
         }
@@ -68,13 +77,25 @@ pub(super) fn run(arguments: &[OsString]) -> Result<()> {
         }
     };
     let mut rust = BTreeMap::new();
-    let mut blocked: BTreeMap<_, Vec<String>> = TARGETS
-        .into_iter()
+    let mut blocked: BTreeMap<_, Vec<String>> = targets
+        .iter()
+        .copied()
         .map(|target| (target, Vec::new()))
         .collect();
-    for (name, manifest, lock) in [
-        ("server", "Cargo.toml", "Cargo.lock"),
-        ("client", "apps/native/Cargo.toml", "apps/native/Cargo.lock"),
+    for (name, manifest, lock, built_for) in [
+        ("server", "Cargo.toml", "Cargo.lock", targets.as_slice()),
+        (
+            "client",
+            "apps/native/Cargo.toml",
+            "apps/native/Cargo.lock",
+            CLIENTS.as_slice(),
+        ),
+        (
+            "android-host",
+            "apps/android-host/Cargo.toml",
+            "apps/android-host/Cargo.lock",
+            MOBILE.as_slice(),
+        ),
     ] {
         let output = Command::new("cargo")
             .args(["audit", "--file", lock, "--json"])
@@ -103,9 +124,9 @@ pub(super) fn run(arguments: &[OsString]) -> Result<()> {
             .filter(|(_, rows)| !rows.is_empty())
             .peekable();
         let reachable = if advisories.peek().is_some() {
-            TARGETS
-                .into_iter()
-                .filter(|target| name == "server" || !target.contains("linux"))
+            built_for
+                .iter()
+                .copied()
                 .map(|target| Ok((target, graph(manifest, target)?)))
                 .collect::<Result<Vec<_>>>()?
         } else {

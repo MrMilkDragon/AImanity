@@ -1,7 +1,7 @@
 use crate::relay;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use rsa::{
-    BigUint, Pkcs1v15Sign, RsaPrivateKey,
+    PrivateKey,
     pkcs8::{DecodePrivateKey, EncodePrivateKey},
     traits::PublicKeyParts,
 };
@@ -32,7 +32,7 @@ const MAX: usize = 256 * 1024;
 #[derive(Clone)]
 pub(super) struct Bootstrap {
     pub console_path: PathBuf,
-    key: Arc<RsaPrivateKey>,
+    key: Arc<PrivateKey>,
     public: Arc<str>,
     console: Arc<Mutex<(File, Option<Instant>)>>,
 }
@@ -40,10 +40,9 @@ impl Bootstrap {
     pub fn open(home: &Path) -> io::Result<Self> {
         let path = home.join("adb.pk8");
         let key = match fs::read(&path) {
-            Ok(bytes) => RsaPrivateKey::from_pkcs8_der(&bytes).map_err(io::Error::other)?,
+            Ok(bytes) => PrivateKey::from_pkcs8_der(&bytes).map_err(io::Error::other)?,
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                let k =
-                    RsaPrivateKey::new(&mut rand::rngs::OsRng, 2048).map_err(io::Error::other)?;
+                let k = PrivateKey::new(&mut getrandom::SysRng, 2048).map_err(io::Error::other)?;
                 let mut f = tempfile::NamedTempFile::new_in(home)?;
                 f.write_all(k.to_pkcs8_der().map_err(io::Error::other)?.as_bytes())?;
                 f.as_file().sync_all()?;
@@ -52,21 +51,13 @@ impl Bootstrap {
             }
             Err(e) => return Err(e),
         };
-        let n = key.n().to_bytes_le();
-        let low = u32::from_le_bytes(n[..4].try_into().unwrap());
-        let mut inverse = 1u32;
-        for _ in 0..5 {
-            inverse = inverse.wrapping_mul(2u32.wrapping_sub(low.wrapping_mul(inverse)));
-        }
+        let montgomery = key.n_params().as_ref();
         let mut public = Vec::with_capacity(524);
         public.extend(64u32.to_le_bytes());
-        public.extend(inverse.wrapping_neg().to_le_bytes());
-        public.extend(n);
-        public.resize(264, 0);
-        let rr = (BigUint::from(1u8) << 4096usize) % key.n();
-        public.extend(rr.to_bytes_le());
-        public.resize(520, 0);
-        public.extend(65537u32.to_le_bytes());
+        public.extend_from_slice(&montgomery.mod_neg_inv().to_le_bytes()[..4]);
+        public.extend_from_slice(&key.n().to_le_bytes());
+        public.extend_from_slice(&montgomery.r2().to_le_bytes());
+        public.extend_from_slice(&key.e().to_le_bytes()[..4]);
         let public: Arc<str> = format!("{} aimanity", STANDARD.encode(public)).into();
         let console_path = home.join("guest-console");
         let c = std::ffi::CString::new(console_path.as_os_str().as_bytes())?;
@@ -202,7 +193,7 @@ pub(super) fn serve(
                     if auth == 0 {
                         let sig = keys
                             .key
-                            .sign(Pkcs1v15Sign::new::<sha1::Sha1>(), &p.data)
+                            .pkcs1v15_sign_prehash::<sha1::Sha1>(&p.data)
                             .map_err(io::Error::other)?;
                         wire(&mut guest, AUTH, 2, 0, &sig)?;
                     } else {

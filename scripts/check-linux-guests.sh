@@ -6,7 +6,7 @@ work="$HOME/cold-install"
 export XDG_RUNTIME_DIR="$work/run" XDG_DATA_HOME="$work/data"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-test -r /dev/kvm && test -w /dev/kvm
+[[ -r /dev/kvm && -w /dev/kvm ]] || { echo "KVM is unavailable to the installed client" >&2; exit 1; }
 openbox --sm-disable > "$work/wm.log" 2>&1 &
 wm=$!
 aimanity-workspace > "$work/client.log" 2>&1 &

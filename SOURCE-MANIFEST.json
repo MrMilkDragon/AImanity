@@ -48,8 +48,8 @@
     },
     {
       "path": ".github/workflows/android-linux-avf.yml",
-      "size": 4533,
-      "sha256": "c7595b357d560437d24b165473ad7d5c2b41b7f3112c1b9d0ed2ca2356015dea"
+      "size": 4571,
+      "sha256": "56450e7fa086d1d7ab2a9b7b25eedacec66f27c2fc8e65e44789a0a3ef9de31a"
     },
     {
       "path": ".github/workflows/android-mobile.yml",
@@ -63,8 +63,8 @@
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 5358,
-      "sha256": "461dce4ff84898bd97ff896900ae837950cff5b9d18caa66ffec7d88a8dedfe2"
+      "size": 5396,
+      "sha256": "05ac0d58f64a781755184db73c46b258b60816d21c3af6f1f526e970ea1835f6"
     },
     {
       "path": ".github/workflows/linux-backend.yml",
@@ -139,7 +139,7 @@
     {
       "path": "Cargo.lock",
       "size": 106640,
-      "sha256": "91c8fd9a2b9bdb337f8e5581600abb4dc1eeb63180846c9c589a8ab6b2290ff0"
+      "sha256": "3bc6d24e8ba7cacf3c4bf6d0238a2d14adc465c12034557fe06150dd7f8b7d95"
     },
     {
       "path": "Cargo.toml",
@@ -228,18 +228,18 @@
     },
     {
       "path": "apps/android-host/Cargo.lock",
-      "size": 14255,
-      "sha256": "602205fec6c4a798aa26fb24f6987297e4a2699ac57bce3f2a751f2264b16c21"
+      "size": 12400,
+      "sha256": "3520e5586c2e31d9143916d2ba9ac2eda73a95db805da372457e6f339c661aba"
     },
     {
       "path": "apps/android-host/Cargo.toml",
-      "size": 389,
-      "sha256": "b43e543068e2af0f6c4c905276621d127867b4e58e6991c22e367c6c44132b88"
+      "size": 437,
+      "sha256": "34826cc42afb0068bbef1f37dd1d4e538d99b71e1510b796604a76b63f1f04c9"
     },
     {
       "path": "apps/android-host/src/adb.rs",
-      "size": 10042,
-      "sha256": "f8bcc48169ecf6203bdf59c6acaa919b74ad6bcbafcf68a38f66cad9dd402bc0"
+      "size": 9740,
+      "sha256": "d9272095e9305858e0efadd2cb5c1297807f93c56ba0e0ad8749ecd1ea3f04ee"
     },
     {
       "path": "apps/android-host/src/bin/aimanity-avf-guest-relay.rs",
@@ -314,7 +314,7 @@
     {
       "path": "apps/native/Cargo.lock",
       "size": 170460,
-      "sha256": "ed821838a7102f650522e17948b51eede76d09781c13052970d4b93d3b78e6be"
+      "sha256": "d90cd5be51c180e478df85aaa180abc6b81d4db157172cb05e64744f315c27c5"
     },
     {
       "path": "apps/native/Cargo.toml",
@@ -473,8 +473,8 @@
     },
     {
       "path": "apps/native/src/device_notices/windows.rs",
-      "size": 4843,
-      "sha256": "8eecf55a3eaed064d8f0ce94008e3db7784926a79d82585b6d7fe142aac038d5"
+      "size": 4785,
+      "sha256": "23babbaef56708ab770ab03ee216124811cbaa40856e8837d5afcb6d60fbde49"
     },
     {
       "path": "apps/native/src/device_notices.rs",
@@ -3748,8 +3748,8 @@
     },
     {
       "path": "crates/release-tools/src/dependency_audit.rs",
-      "size": 6176,
-      "sha256": "72bde4edf86ab84580601e395a49eb792c81b660abb9752c6f6c2b267f853dc4"
+      "size": 6775,
+      "sha256": "be66ed87a5d46b502cb7c5e04ce55fb3f716ef2a5a83173fb3f9b2ba70b505c0"
     },
     {
       "path": "crates/release-tools/src/image_factory.rs",
@@ -3988,8 +3988,8 @@
     },
     {
       "path": "docs/public/engineering/macos-full-runtime.md",
-      "size": 4089,
-      "sha256": "6fbd7b02c9adb973b2ed98ce22bdb5c52c0495dcdda6d4bcc4a4df970fa052e9"
+      "size": 3997,
+      "sha256": "d48b68aa1f2a7b9a4d4e21842a7369fc27ef15990e40e04bc93314f521ac0bdc"
     },
     {
       "path": "docs/public/engineering/native-android-preparation.md",
@@ -4043,8 +4043,8 @@
     },
     {
       "path": "docs/public/integrated-hosts.md",
-      "size": 2885,
-      "sha256": "df9cd133f884db08f8c26acfd8bddbc4bcc08285feb6f697dc4c2f44c860715a"
+      "size": 1666,
+      "sha256": "7fffcf2ee3dd9547b252e25f0b67b0f611e57df915388895aaad2b981f7616c4"
     },
     {
       "path": "docs/public/languages.md",
@@ -4628,8 +4628,8 @@
     },
     {
       "path": "docs/public/runtime-bundles.md",
-      "size": 7744,
-      "sha256": "2f6f0fef2e838bcb5a45bed56483c127727c9cdd14e4155a5a8deebaaef5819b"
+      "size": 7762,
+      "sha256": "13f6bcac1f3dbc8134ddde4d28cae5c38e796fbea91f859494024f8a10b21282"
     },
     {
       "path": "docs/public/simulated-location.md",
@@ -4973,8 +4973,8 @@
     },
     {
       "path": "scripts/check-linux-guests.sh",
-      "size": 3069,
-      "sha256": "2a7cbedf16b6fdf863dc808cd241cd58e394a67289c81578527b45ce95b38c9f"
+      "size": 3135,
+      "sha256": "9557ae1817a71aff03e146f86c0493e67ba075fb59f24194758587d8653d43ea"
     },
     {
       "path": "scripts/check-native-workspace.sh",
@@ -5013,8 +5013,8 @@
     },
     {
       "path": "scripts/mobile-smoke.sh",
-      "size": 7550,
-      "sha256": "37578141a75d207d7dc5cc99da8ccbe8fdf3fc94c9262bc1c4ac9f29a4667a51"
+      "size": 7618,
+      "sha256": "0decf487bb2c609c87edd76146d58d500c427ea912db73063ae9f364bf6ded59"
     },
     {
       "path": "scripts/native-host",

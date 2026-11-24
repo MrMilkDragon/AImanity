@@ -90,7 +90,8 @@ jobs:
             curl -fsSL "https://github.com/RustSec/rustsec/releases/download/cargo-audit/v0.22.2/$archive" -o "$audit_dir/$archive"
             printf '%s  %s\n' ec7ca4263769593df4d909be85b94a6b79efa2897be5d2bb8ebd516e823175af "$audit_dir/$archive" | shasum -a 256 -c -
             tar -xzf "$audit_dir/$archive" -C "$audit_dir" --strip-components 1 "${archive%.tgz}/cargo-audit"
-            PATH="$audit_dir:$PATH" cargo run --quiet --locked -p ai-phone-release-tools -- audit-dependencies --target aarch64-apple-darwin --output audit.json
+            PATH="$audit_dir:$PATH" cargo run --quiet --locked -p ai-phone-release-tools -- audit-dependencies --output audit.json
+            jq -e 'all(.blocked_targets[]; length == 0)' audit.json
           ) > "$RUNNER_TEMP/aiphone-native-audit.log" 2>&1 &
           audit_pid=$!
           native_result=0

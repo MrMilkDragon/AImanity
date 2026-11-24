@@ -16,9 +16,7 @@ The host requirement is an Apple Silicon Mac running macOS 15.0 or later, at lea
 | Device networking | Direct by default, with an optional workbench proxy |
 | Android | AOSP Android 17 ARM64 (build 16644040), Avo 1.1.0 and ADB 36.0.1. [Sources and staging](android-runtime.md) |
 | Linux desktop and workspace | One shared Debian filesystem |
-| Data services | Offline Alpine PostgreSQL 17 and Redis packages, started directly in the Lima guest |
-
-PostgreSQL and Redis listen on loopback ports 55482 and 56382. PostgreSQL stores its cluster on the installation's Linux guest disk.
+| Workspace | The native client stores its conversations, registry and work queue in `workspace.redb` |
 
 Resources are sealed by SHA-256 inventories. Runtime selection checks the host, component identity and file permissions. The distribution includes an inspectable source snapshot; chat, accounts, user files and device disks are never package inputs.
 
@@ -49,6 +47,6 @@ Private Actions storage retains the DMG, inventory and receipt. The maintainer p
 
 ## 中文
 
-macOS 安装包内置客户端、Android 和 Linux、服务及运行环境。首次部署要求 Apple Silicon、macOS 15.0、12 GiB 内存和 24 GiB 可用空间。用户数据存放在独立目录。
+macOS 安装包内置客户端、Android 和 Linux、服务及运行环境。需要创建虚拟设备时检查内存和磁盘。工作台可在零设备状态下打开，对话、设备注册表和待办保存在本机 `workspace.redb` 中。
 
 内置 Android 17 ARM64（构建 16644040）、Avo 1.1.0 和 ADB 36.0.1。构建时将 `AIMANITY_ANDROID_SDK_INPUT` 指向暂存目录并运行上方命令。已有离线胶囊时，改用 `AIMANITY_ANDROID_PAYLOAD` 和 `AIMANITY_ANDROID_PAYLOAD_SHA256`。[下载](../release-status.md) · [Android 源码与暂存](android-runtime.md)

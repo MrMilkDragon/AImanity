@@ -101,11 +101,12 @@ wait_word workspace Message
 adb shell dumpsys package "$PACKAGE" > evidence/package.txt
 grep -F 'android.permission.RECORD_AUDIO: granted=false' evidence/package.txt
 
-tap_word workspace Message
-for attempt in {1..20}; do
+for attempt in {1..8}; do
+  capture composer
+  if word_box composer Message >/dev/null; then tap_word composer Message; fi
   adb shell dumpsys input_method > evidence/composer-focus.txt
   if grep -Fq 'mServedView=dev.aimanity.mobile.KeyboardView' evidence/composer-focus.txt; then break; fi
-  sleep 0.25
+  sleep 0.4
 done
 grep -Fq 'mServedView=dev.aimanity.mobile.KeyboardView' evidence/composer-focus.txt
 adb shell input text Orbit

@@ -1,37 +1,20 @@
-# Self-contained host runtime
+# Fluorine host runtime
 
-The client creates the phone, computer and model configuration locally. Install the Apple Silicon DMG, Windows x64 EXE, or Linux x86_64 DEB or RPM. [Downloads and requirements](release-status.md)
+Choose a language to open the shared workbench. Chat, model settings, knowledge and files work with zero devices. Use Device Manager to create a guest, authorize the current computer or pair another device.
 
-## Host architecture
+| Client | Local Android phone | Local Linux desktop |
+| --- | --- | --- |
+| Apple Silicon macOS | AOSP on Avo | Debian desktop on Lima/VZ |
+| Windows 11 x64 | AOSP on QEMU/WHPX | Debian desktop on QEMU/WHPX |
+| Linux x86_64 | AOSP on QEMU/KVM | Debian desktop on QEMU/KVM |
+| Android phone or tablet | AOSP on AVF | Debian desktop on AVF |
 
-| Host | Phone | Computer and backend |
-|---|---|---|
-| macOS Apple Silicon | Native ARM64 Android Emulator using HVF | App-owned Lima/VZ container host |
-| Windows x64 | Native x64 Android Emulator using WHPX | App-owned QEMU Linux guest using WHPX |
-| Linux x86_64 | AOSP on QEMU/KVM | App-owned QEMU Linux guest using KVM |
+Android local guests require ARM64, root access and the AVF custom virtual machine service. The same landscape APK serves phones and tablets.
 
-The default guests are Android 15 and Debian 13/Openbox. CPU, memory and initial phone storage are configurable. Existing device storage is preserved when creation defaults change. The Linux desktop shares its container host's kernel.
+Guest templates ship with the installer. Creating a device assigns its own resources, writable disk and control endpoint. Disconnecting stops an owned guest and keeps its disk. Deleting the guest removes its local instance. Pairing a physical device registers the authorized connection.
 
-## Installation lifecycle
-
-1. Choose language and device resources. A fresh complete installation requires 12 GiB RAM and 24 GiB free storage; 16 GiB RAM is recommended. Choose 16, 32, or 64 GiB for the Linux system disk. The default is 32 GiB.
-2. The client stages the bundled systems, emulator, container engine, applications and compiled services. Users do not prepare a development environment or download system images separately.
-3. Versioned code lives in `host/releases/<payload hash>`; devices, database, files and configuration live in `host/user`.
-4. Rust initializes the container host, images, database and services, boots the native phone, provisions input/notifications and checks actual device frames before reporting ready.
-5. Resume reuses existing profiles, credentials, devices and running services. Cancellation retains completed work and preserves unknown device outcomes for observation.
-
-The Rust host runtime owns source staging, device creation, pairing and process supervision. SQLx owns PostgreSQL role preparation and migrations. The assistant also contains messaging-channel adapters; the phone runner owns media/control. Iced and wgpu supply the Rust workbench. Cargo builds the first-party components.
-
-The Windows client opens the bundled Linux disk read-only and keeps writes in a persistent QCOW2 overlay. Setup completes after the Linux guest and native Android worker return their paired protobuf receipt.
-
-## Qualification
-
-See [release status](release-status.md) for package availability and platform checks.
+The Iced/wgpu client opens an embedded Rust database (`workspace.redb`) for the shared workspace. Each device owns its audio routes and control session. Device input, state and action receipts use protobuf. [Installation and platform requirements](distribution-requirements.md)
 
 ## 中文
 
-安装包包括 Apple Silicon macOS DMG、Windows x64 EXE 和 Linux x86_64 DEB／RPM，内置两台设备的系统镜像与运行服务。用户在客户端选择语言、设备资源并配置模型。
-
-Rust 负责安装、恢复、进程、设备、媒体和渠道，SQLx 负责数据库角色和迁移。程序版本与用户数据分开保存，恢复已有安装不重建设备或覆盖账号聊天。双设备就绪由 protobuf 回执确认。
-
-构建和平台验收见[发行状态](release-status.md)。
+选择语言即可进入空工作台。设备管理支持按需创建 Android 手机或 Linux 电脑，授权本机或配对其他设备。每台虚拟设备拥有独立的可写盘和音频通道。断开时关机并保留设备盘，删除时清理该实例。设备、对话和任务由原生工作台统一管理。[平台与安装包](distribution-requirements.md)

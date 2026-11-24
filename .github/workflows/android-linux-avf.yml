@@ -53,11 +53,11 @@ jobs:
           keyring=$(scripts/stage-debian-keyring.sh "$RUNNER_TEMP/trixie-keyring")
           sudo env AI_PHONE_DEBIAN_KEYRING="$keyring" target/debug/release-tools factory-images rootfs arm64 "$RUNNER_TEMP/linux-rootfs.tar.zst"
           sudo chown "$(id -u):$(id -g)" "$RUNNER_TEMP/linux-rootfs.tar.zst"
+          export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$HOME=/build-user"
           cargo build --quiet --locked --release --target aarch64-unknown-linux-musl -p ai-phone-guest-runtime --bin desktop-bridge
           cargo build --quiet --locked --release --target aarch64-unknown-linux-musl \
             --manifest-path apps/android-host/Cargo.toml --bin aimanity-avf-guest-relay
-          cargo run --quiet --locked -p ai-phone-release-tools -- \
-            android-linux-context "$RUNNER_TEMP/compiled" "$RUNNER_TEMP/linux-rootfs.tar.zst"
+          target/debug/release-tools android-linux-context "$RUNNER_TEMP/compiled" "$RUNNER_TEMP/linux-rootfs.tar.zst"
       - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         if: ${{ !cancelled() && steps.compile.outcome != 'skipped' && steps.cargo-cache.outputs.cache-hit != 'true' }}
         with:

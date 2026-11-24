@@ -55,9 +55,7 @@ fn toast(node: &IUIAutomationElement) -> bool {
     unsafe {
         node.CurrentAutomationId()
             .is_ok_and(|id| id.to_string().contains("ToastView"))
-            || node
-                .CurrentClassName()
-                .is_ok_and(|s| s.to_string() == "ToastView")
+            || node.CurrentClassName().is_ok_and(|s| s == "ToastView")
     }
 }
 fn snapshot() -> windows::core::Result<Vec<Banner>> {
@@ -75,7 +73,7 @@ fn snapshot() -> windows::core::Result<Vec<Banner>> {
                 vec![window]
             } else if window
                 .CurrentClassName()
-                .is_ok_and(|s| s.to_string() == "Windows.UI.Core.CoreWindow")
+                .is_ok_and(|s| s == "Windows.UI.Core.CoreWindow")
             {
                 elements(&window, TreeScope_Descendants, &any)
                     .unwrap_or_default()

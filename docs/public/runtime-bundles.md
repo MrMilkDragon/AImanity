@@ -1,6 +1,6 @@
 # Runtime bundles
 
-AI Phone separates versioned application code, clean device baselines and persistent user data. The [Apple Silicon](engineering/macos-full-runtime.md) and [Windows](windows-client-factory.md) build guides define the seven resource groups required by a complete distribution. Published installers and platform qualification are listed in [release status](release-status.md).
+AImanity separates versioned application code, clean device baselines and persistent user data. The [Apple Silicon](engineering/macos-full-runtime.md) and [Windows](windows-client-factory.md) build guides define the seven resource groups required by a complete distribution. Published installers and platform qualification are listed in [release status](release-status.md).
 
 ## Package format
 
@@ -14,7 +14,7 @@ AI Phone separates versioned application code, clean device baselines and persis
 | Android runtime | Matched emulator, platform tools and clean Android factory image | Host/guest ABI, complete file inventory and archive integrity must match; redistribution qualification is separate |
 | Windows Linux guest | QEMU, WHPX, Linux kernel and QCOW2 base disk | Setup enables Windows Hypervisor Platform and creates a persistent overlay |
 | Shared Linux filesystem | Linux desktop, browser, and work environment | The Linux guest stages the matching Zstandard archive |
-| Data services | PostgreSQL and Redis run directly in the Linux guests | macOS supplies Alpine packages. Windows supplies dedicated executables and libraries |
+| Workspace | The native client embeds redb | Choosing a language opens a local workspace before any device is created |
 
 
 Each component manifest records file sizes, SHA-256 hashes and permissions. Native builds also record source fingerprints and compiler provenance. The packager accepts only matching builds. macOS helpers cannot require a newer OS than the client.
@@ -45,7 +45,7 @@ For full distribution commands and factory-resource requirements, use the [Apple
 
 Build on the matching host. Windows carries native Android and its matched QEMU Linux guest with Rust services.
 
-Verification stages the archive into an empty temporary installation, executes the native version commands and recognizes a generated OCR image. A disposable PostgreSQL fixture checks embedded migrations and the runtime role.
+Verification stages the archive into an empty temporary installation, executes the native version commands and recognizes a generated OCR image. The workspace checks reopen a temporary redb file and verify persisted conversations, queued work and attachments.
 
 ## Privacy and licensing
 
@@ -60,7 +60,7 @@ The packager checks paths and credentials. Binary packages include upstream noti
 | Media, channels and browser | Matching prebuilt dependencies and real startup checks |
 | Windows host | Independent services and both guest devices |
 | Updates | Signed artifacts, backup, migrations and rollback activation |
-| First run | Client resource/model configuration followed by a usable workbench |
+| First run | Language selection opens a zero-device workspace; Device Manager provisions guests on request |
 
 Physical installation on Apple Silicon macOS and Windows x64 remains unverified. See the [engineering records](engineering/index.md) for component checks and [release status](release-status.md) for package and redistribution status.
 
@@ -68,7 +68,7 @@ Physical installation on Apple Silicon macOS and Windows x64 remains unverified.
 
 客户端将版本化程序、设备基础和持久用户数据分开。工作台使用 Iced 和 wgpu，原生运行组件包含 Rust 助手、手机执行器与 OCR。
 
-归档在空白目录中验证程序版本和 OCR。数据库验证使用专用的回环临时实例，检查迁移和受限运行角色。手机与电脑共用 Rust PNG/OCR 流程。Tesseract 执行识别，Rust 负责画面摘要、文字边界和置信度解析。
+归档在空白目录中验证程序版本和 OCR。工作台使用临时 redb 文件验证重开后对话、任务及附件的留存。手机与电脑共用 Rust PNG/OCR 流程。Tesseract 执行识别，Rust 负责画面摘要、文字边界和置信度解析。
 
 macOS 安装包包含七组资源。Windows 安装包包含原生 Android 和 QEMU Linux 客体。首启、升级恢复和许可的核对结果见[发行状态](release-status.md)。
 
