@@ -12,7 +12,7 @@ Requires:       (google-noto-sans-cjk-fonts or google-noto-sans-cjk-vf-fonts)
 
 %global __os_install_post %{nil}
 %description
-Offline workspace with one Android phone, one Linux desktop and a shared agent.
+Offline workspace with optional Android and Linux devices and a shared agent.
 
 %install
 mkdir -p "%{buildroot}"

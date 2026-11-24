@@ -56,7 +56,7 @@ jobs:
           mapfile -t installer < <(find "$RUNNER_TEMP/signed" -type f -name "*.$PACKAGE")
           test "${#installer[@]}" -eq 1
           devices=()
-          if [[ "$PACKAGE" == deb && -c /dev/kvm ]]; then devices+=(--device=/dev/kvm); fi
+          if [[ "$PACKAGE" == deb ]]; then devices+=(--device=/dev/kvm); fi
           docker run --detach --name distro "${devices[@]}" \
             -v "${installer[0]}:/candidate.$PACKAGE:ro" \
             -v "$RUNNER_TEMP/package-key/AImanity-Fluorine.asc:/package-key.asc:ro" \
@@ -81,13 +81,8 @@ jobs:
         if: matrix.package == 'deb'
         run: |
           set -euo pipefail
-          if [[ ! -c /dev/kvm ]]; then
-            echo "::warning::This runner did not expose /dev/kvm. Guest boot was not exercised."
-            echo "- Guest boot was not exercised because the runner did not expose /dev/kvm." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
           docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc '
-            apt-get install -y --no-install-recommends xvfb xauth openbox wmctrl mesa-vulkan-drivers libgl1-mesa-dri jq curl procps
+            apt-get install -y --no-install-recommends xvfb xauth openbox wmctrl xdotool x11-utils imagemagick tesseract-ocr-eng tesseract-ocr mesa-vulkan-drivers libgl1-mesa-dri procps
             gid=$(stat -c %g /dev/kvm)
             group=$(getent group "$gid" | cut -d: -f1)
             if [ -z "$group" ]; then group=runner-kvm; groupadd -g "$gid" "$group"; fi
@@ -96,7 +91,7 @@ jobs:
           docker network disconnect bridge distro
           docker exec -u tester -e HOME=/home/tester distro \
             xvfb-run -a -s '-screen 0 1600x1000x24' bash /check-linux-guests.sh
-          echo "- With the network disconnected, the installed client booted Android and Linux, returned a root ADB screenshot, reached the Linux workbench, and shut down both QEMU guests." >> "$GITHUB_STEP_SUMMARY"
+          echo "- With the network disconnected, the installed client opened an empty workspace, created Android and Linux through Device Manager, displayed both first frames, returned a root ADB screenshot and stopped both guests on exit." >> "$GITHUB_STEP_SUMMARY"
       - name: Remove the disposable installation
         if: always()
         run: if docker inspect distro >/dev/null 2>&1; then docker rm -f distro; fi

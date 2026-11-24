@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.6 Fluorine (in development)
+
+- Start an empty workspace with embedded storage. Add and disconnect individual guests from Device Manager.
+- Share one conversation and task queue across authorized devices. Parallel tasks can use separate devices and audio streams.
+- Plan fresh installations for Apple Silicon macOS, Windows 11 x64, Debian/RPM Linux and Android. Android phones and tablets share one landscape APK. The universal iPhone and iPad client is scheduled for 0.0.7.
+
 ## 0.0.5 Europium
 
 - [Download for Apple Silicon macOS](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg) or [Windows 11 x64](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe).

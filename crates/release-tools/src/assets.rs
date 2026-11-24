@@ -147,13 +147,29 @@ pub(super) fn speech(arguments: &[OsString]) -> Result<Value> {
     Ok(json!({"resource":format!("speech/{}", model.file),"sha256":model.sha256}))
 }
 
-pub(super) fn windows_aosp(arguments: &[OsString]) -> Result<()> {
-    let [destination] = arguments else {
-        return Err("fetch-windows-aosp requires OUTPUT_ZIP".into());
+pub(super) fn aosp(arguments: &[OsString]) -> Result<()> {
+    let [arch, destination] = arguments else {
+        return Err("fetch-aosp requires arm64 or x86_64 and OUTPUT_ZIP".into());
     };
+    let (arch, build, size, digest) = match arch.to_str() {
+        Some("arm64") => (
+            "arm64",
+            "16644040",
+            1_101_174_958,
+            "21542c7cbc096a76d91b723c17ea391f",
+        ),
+        Some("x86_64") => (
+            "x86_64",
+            "13455678",
+            1_001_184_764,
+            "453044532a2070651c2576dc0343b1b6",
+        ),
+        _ => return Err("Unsupported AOSP guest architecture".into()),
+    };
+    let image = format!("aosp_cf_{arch}_only_phone");
     let viewer = Command::new("curl")
         .args(CURL_FETCH)
-        .arg("https://ci.android.com/builds/submitted/13455678/aosp_cf_x86_64_only_phone-userdebug/latest/view/aosp_cf_x86_64_only_phone-img-13455678.zip")
+        .arg(format!("https://ci.android.com/builds/submitted/{build}/{image}-userdebug/latest/view/{image}-img-{build}.zip"))
         .output()?;
     if !viewer.status.success() {
         return Err("Android CI viewer download failed".into());
@@ -168,12 +184,7 @@ pub(super) fn windows_aosp(arguments: &[OsString]) -> Result<()> {
         .as_str()
         .filter(|url| url.starts_with("https://storage.googleapis.com/"))
         .ok_or("Android CI did not return its image storage URL")?;
-    stage_pin::<md5::Md5>(
-        url,
-        Path::new(destination),
-        1_001_184_764,
-        "453044532a2070651c2576dc0343b1b6",
-    )
+    stage_pin::<md5::Md5>(url, Path::new(destination), size, digest)
 }
 
 pub(super) fn windows_audio(arguments: &[OsString]) -> Result<()> {

@@ -78,7 +78,7 @@ jobs:
           sha256sum -c "$RUNNER_TEMP/linux-prepared.sha256"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: europium-mobile-linux-avf-assets
+          name: linux-avf-assets
           path: ${{ runner.temp }}/avf-assets/
           if-no-files-found: error
           compression-level: 0

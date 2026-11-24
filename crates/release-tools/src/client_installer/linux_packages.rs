@@ -92,7 +92,7 @@ pub(crate) fn build(args: &[OsString]) -> Result<Value> {
     fs::write(
         image.join("DEBIAN/control"),
         format!(
-            "Package: aimanity-workspace\nVersion: {version}\nArchitecture: amd64\nMaintainer: AImanity maintainers <maintainers@users.noreply.github.com>\nSection: utils\nPriority: optional\nDepends: {linked}, libvulkan1, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon0, libxkbcommon-x11-0, pkexec, espeak-ng, fonts-noto-cjk, udev\nDescription: {TITLE}\n Offline workspace with one Android phone, one Linux desktop and a shared agent.\n"
+            "Package: aimanity-workspace\nVersion: {version}\nArchitecture: amd64\nMaintainer: AImanity maintainers <maintainers@users.noreply.github.com>\nSection: utils\nPriority: optional\nDepends: {linked}, libvulkan1, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon0, libxkbcommon-x11-0, pkexec, espeak-ng, fonts-noto-cjk, udev\nDescription: {TITLE}\n Offline workspace with optional Android and Linux devices and a shared agent.\n"
         ),
     )?;
     execute(

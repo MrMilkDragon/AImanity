@@ -292,47 +292,41 @@ pub extern "system" fn Java_dev_aimanity_mobile_WorkbenchActivity_onActivityResu
     let _ = tx.send(result.map_err(|e| e.to_string()));
 }
 
-static MIC: Mutex<Vec<oneshot::Sender<bool>>> = Mutex::new(Vec::new());
-pub(crate) async fn microphone() -> Result<()> {
-    let (tx, rx) = oneshot::channel();
-    let permission = "android.permission.RECORD_AUDIO";
-    let launched = with(|e, a| {
-        let permission = e.new_string(permission)?;
-        if e.call_method(
-            a,
-            "checkSelfPermission",
-            "(Ljava/lang/String;)I",
-            &[(&permission).into()],
-        )?
-        .i()?
-            == 0
-        {
-            return Ok(false);
-        }
-        let perms = e.new_object_array(1, "java/lang/String", &permission)?;
-        {
-            let mut pending = MIC.lock().unwrap();
-            let waiting = !pending.is_empty();
-            pending.push(tx);
-            if waiting {
-                return Ok(true);
-            }
-        }
-        if let Err(error) = e.call_method(
-            a,
-            "requestPermissions",
-            "([Ljava/lang/String;I)V",
-            &[(&perms).into(), 1402.into()],
-        ) {
-            MIC.lock().unwrap().clear();
-            return Err(error);
-        }
-        Ok(true)
-    })?;
-    if launched && !rx.await.map_err(|e| e.to_string())? {
-        return Err("Microphone permission was declined".into());
+static MIC: Mutex<Vec<oneshot::Sender<Result<()>>>> = Mutex::new(Vec::new());
+
+fn microphone_result(result: Result<()>) {
+    for reply in MIC.lock().unwrap().drain(..) {
+        let _ = reply.send(result.clone());
     }
-    Ok(())
+}
+
+pub(crate) async fn microphone() -> Result<()> {
+    let app = crate::deployment::android_assets::activity().map_err(|e| e.to_string())?;
+    let (tx, rx) = oneshot::channel();
+    let first = {
+        let mut pending = MIC.lock().unwrap();
+        pending.push(tx);
+        pending.len() == 1
+    };
+    if first {
+        app.run_on_java_main_thread(Box::new(|| {
+            let request = with(|e, a| {
+                let p = e.new_string("android.permission.RECORD_AUDIO")?;
+                if e.call_method(a, "checkSelfPermission", "(Ljava/lang/String;)I", &[(&p).into()])?.i()? == 0 {
+                    return Ok(true);
+                }
+                let permissions = e.new_object_array(1, "java/lang/String", &p)?;
+                e.call_method(a, "requestPermissions", "([Ljava/lang/String;I)V", &[(&permissions).into(), 1402.into()])?;
+                Ok(false)
+            });
+            match request {
+                Ok(false) => {}
+                Ok(true) => microphone_result(Ok(())),
+                Err(e) => microphone_result(Err(e)),
+            }
+        }));
+    }
+    rx.await.map_err(|e| e.to_string())?
 }
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_aimanity_mobile_WorkbenchActivity_onRequestPermissionsResult(
@@ -344,10 +338,10 @@ pub extern "system" fn Java_dev_aimanity_mobile_WorkbenchActivity_onRequestPermi
 ) {
     if request == 1402 {
         let mut first = [-1];
-        let allowed = e.get_int_array_region(&results, 0, &mut first).is_ok() && first[0] == 0;
-        for tx in MIC.lock().unwrap().drain(..) {
-            let _ = tx.send(allowed);
-        }
+        let allowed = e.get_array_length(&results).is_ok_and(|len| len > 0)
+            && e.get_int_array_region(&results, 0, &mut first).is_ok()
+            && first[0] == 0;
+        microphone_result(if allowed { Ok(()) } else { Err("Microphone permission was declined".into()) });
     }
 }
 

@@ -97,60 +97,17 @@ rustc --edition 2024 -O scripts/mobile-button-row.rs -o "$RUNNER_TEMP/mobile-but
 button_y=$(convert evidence/selected.png -colorspace Gray -threshold '25%' -depth 8 gray:- | \
   "$RUNNER_TEMP/mobile-button-row" "$width" "$height")
 adb shell input tap "$((width/2))" "$button_y"
-wait_word settings devices
-sleep 1
-capture settings
+wait_word workspace Message
+adb shell dumpsys package "$PACKAGE" > evidence/package.txt
+grep -F 'android.permission.RECORD_AUDIO: granted=false' evidence/package.txt
 
-# Read and edit the first CPU value, next to the Phone label. The two
-# adjacent field labels anchor the crop even if navigation insets move.
-read -r cpu_x cpu_y cpu_w cpu_h < <(word_box settings CPU)
-read -r mem_x mem_y mem_w mem_h < <(awk -F '\t' -v x="$cpu_x" -v y="$cpu_y" -v h="$cpu_h" '
-  $1 == 5 && tolower($12) == "memory" && $7 > x && $8 <= y+h && $8+$10 >= y {
-    print $7,$8,$9,$10; exit
-  }' evidence/settings.tsv)
-(( mem_x > cpu_x && cpu_h > 0 ))
-value_box=$(awk -F '\t' -v left="$((cpu_x+cpu_w))" -v right="$mem_x" -v y="$cpu_y" -v h="$cpu_h" '
-  $1 == 5 && $12 == "2" && $7 >= left && $7+$9 < right && $8 < y+h && $8+$10 > y {
-    pad=int($10/3)+1; print $7-pad, $8-pad, $9+2*pad, $10+2*pad; exit
-  }' evidence/settings.tsv)
-if [[ -z $value_box ]]; then
-  # The CPU and Memory label origins are 158 logical units apart in setup.
-  value_box=$(awk -v x="$mem_x" -v l="$cpu_x" -v y="$cpu_y" -v h="$cpu_h" \
-    'BEGIN {s=(x-l)/158; print int(x-41*s),int(y-3*s),int(20*s),int(h+8*s)}')
-fi
-read -r cx cy cw ch <<< "$value_box"
-cpu_value() {
-  local shot=$1 recognized
-  convert "evidence/$shot.png" -crop "${cw}x${ch}+${cx}+${cy}" +repage -resize 400% \
-    -colorspace Gray -contrast-stretch '2%x10%' -bordercolor white -border 12 "evidence/$shot-cpu.png"
-  recognized=$(awk -F '\t' -v x="$cx" -v y="$cy" -v w="$cw" -v h="$ch" '
-    $1 == 5 && $12 ~ /^[124]$/ && $7+$9/2 >= x && $7+$9/2 <= x+w && $8+$10/2 >= y && $8+$10/2 <= y+h {print $12; exit}
-  ' "evidence/$shot.tsv")
-  if [[ -n $recognized ]]; then printf %s "$recognized"; return; fi
-  tesseract "evidence/$shot-cpu.png" stdout -l eng --psm 10 -c tessedit_char_whitelist=0123456789 2>/dev/null | tr -cd '0-9'
-}
-before=$(cpu_value settings)
-[[ $before == 2 ]] || { echo "Expected initial phone CPU value 2, read '$before'" >&2; exit 1; }
-adb shell input tap "$((cx+cw*3/4))" "$((cy+ch/2))"
-adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL
-adb shell input text 4
-adb shell input keyevent KEYCODE_ENTER
+tap_word workspace Message
+adb shell input text Orbit
 hide_keyboard hardware
-for attempt in {1..10}; do
-  capture edited
-  after=$(cpu_value edited)
-  if [[ $after == 4 ]]; then break; fi
-  sleep 1
-done
-[[ $after == 4 ]] || { echo "Expected edited phone CPU value 4, read '$after'" >&2; exit 1; }
-
-# Try the installed system IME as well. Some AVD keyboard layouts don't
-# expose digit keys to OCR. Record this separately from hardware key input.
-tap_word settings Memory
+wait_word typed Orbit
 adb shell settings put secure show_ime_with_hard_keyboard 1
-adb shell input tap "$((cx+cw*3/4))" "$((cy+ch/2))"
-adb shell input keyevent KEYCODE_MOVE_END KEYCODE_DEL
-ime_status=keyboard-not-detected
+tap_word typed Orbit
+adb shell input keyevent KEYCODE_MOVE_END
 key_location() {
   awk -F '\t' -v key="$2" -v top="$keyboard_top" '
     $1 == 5 && $8 > top && $12 ~ key {print int($7+$9/2),int($8+$10/2); exit}
@@ -161,7 +118,6 @@ for attempt in {1..12}; do
   sleep 0.8
   adb shell dumpsys input_method > evidence/input-method.txt
   if ! grep -qE 'mInputShown=true|inputShown=true' evidence/input-method.txt; then continue; fi
-  ime_status=key-layout-unavailable
   # During Gboard's entrance Android reports the IME shown before the
   # keyboard covers its final area or provides any actual key targets.
   keyboard_top=$(sed -nE 's/.*visibleTopInsets=([0-9]+) touchableInsets=.*/\1/p' evidence/input-method.txt | head -1)
@@ -174,59 +130,48 @@ for attempt in {1..12}; do
 done
 # Start with the symbols layout where a tap on the numeral commits it.
 # A numeral printed as a secondary hint on a letter needs a long press.
-if [[ -n $symbols ]]; then
-  for attempt in {1..8}; do
-    if [[ -n $symbols ]]; then
-      read -r sx sy <<< "$symbols"
-      adb shell input tap "$sx" "$sy"
-    fi
-    sleep 0.8
-    capture symbols
-    symbols=$(key_location symbols '123')
-    if [[ -n $symbols ]]; then continue; fi
-    digit=$(key_location symbols '^2$')
-    if [[ -z $digit && $AVD_DEVICE == pixel_5 && -n $(key_location symbols '^ABC$') ]]; then
-      # The Pixel 5 symbols row has ten evenly spaced number keys. Sparse
-      # OCR can skip the 2 even when its two neighbors are clearly visible.
-      three=$(key_location symbols '^3$')
-      four=$(key_location symbols '^4$')
-      if [[ -n $three && -n $four ]]; then
-        read -r x3 y3 <<< "$three"
-        read -r x4 y4 <<< "$four"
-        if (( x4 > x3 && x4-x3 > width/16 && x4-x3 < width/8 && y3-y4 < 8 && y4-y3 < 8 )); then
-          digit="$((2*x3-x4)) $y3"
-        fi
+[[ -n $symbols ]] || { echo "System IME did not expose its symbols key" >&2; exit 1; }
+for attempt in {1..8}; do
+  if [[ -n $symbols ]]; then
+    read -r sx sy <<< "$symbols"
+    adb shell input tap "$sx" "$sy"
+  fi
+  sleep 0.8
+  capture symbols
+  symbols=$(key_location symbols '123')
+  if [[ -n $symbols ]]; then continue; fi
+  digit=$(key_location symbols '^2$')
+  if [[ -z $digit && -n $(key_location symbols '^ABC$') ]]; then
+    # Infer a missing numeral only from two visible keys on the same row.
+    three=$(key_location symbols '^3$')
+    four=$(key_location symbols '^4$')
+    if [[ -n $three && -n $four ]]; then
+      read -r x3 y3 <<< "$three"
+      read -r x4 y4 <<< "$four"
+      if (( x4 > x3 && x4-x3 > width/16 && x4-x3 < width/8 && y3-y4 < 8 && y4-y3 < 8 )); then
+        digit="$((2*x3-x4)) $y3"
       fi
     fi
-    if [[ -n $digit ]]; then break; fi
-  done
-  if [[ -n ${digit:-} ]]; then
-    read -r dx dy <<< "$digit"
-    adb shell input tap "$dx" "$dy"
-    adb shell input keyevent KEYCODE_ENTER
-    hide_keyboard soft
-    for attempt in {1..8}; do
-      capture ime-edited
-      observed=$(cpu_value ime-edited)
-      if [[ $observed == 2 ]]; then break; fi
-      sleep 1
-    done
-    [[ $observed == 2 ]] || { echo "System keyboard digit did not reach the CPU field" >&2; exit 1; }
-    ime_status=system-keyboard-tap-2-read-back
   fi
-fi
-if [[ ${REQUIRE_SYSTEM_KEYBOARD:-0} == 1 && $ime_status != system-keyboard-tap-2-read-back ]]; then
-  echo "Expected to locate a system keyboard, tap its digit, and read the CPU value back; observed $ime_status" >&2
-  exit 1
-fi
-adb shell input keyevent KEYCODE_ENTER
+  if [[ -n $digit ]]; then break; fi
+done
+[[ -n ${digit:-} ]] || { echo "System IME did not expose its 2 key" >&2; exit 1; }
+read -r dx dy <<< "$digit"
+adb shell input tap "$dx" "$dy"
+hide_keyboard soft
+wait_word composed Orbit2
+
+adb shell input keyevent KEYCODE_HOME
+adb shell am start -W -n "$activity" > evidence/resume.txt
+wait_word resumed Orbit2
+adb shell am force-stop "$PACKAGE"
+adb shell am start -W -n "$activity" > evidence/reopen.txt
+wait_word reopened Message
 adb shell dumpsys window > evidence/window.txt
 grep -F 'mCurrentFocus=' evidence/window.txt | grep -F "$activity"
-adb shell pidof "$PACKAGE"
 jq -n --arg device "$AVD_DEVICE" --arg profile "$PROFILE" --arg sha256 "$installed_sha" \
-  --argjson width "$width" --argjson height "$height" --argjson smallestWidthDp "$smallest" \
-  --argjson before "$before" --argjson after "$after" --arg ime "$ime_status" \
-  '{device:$device,profile:$profile,installedApkSha256:$sha256,$width,$height,$smallestWidthDp,
-     input:{method:"adb-injected-key-events",screen:"English setup",field:"Phone CPU",before:$before,typed:"4",observed:$after},
-     systemKeyboard:$ime}' > evidence/receipt.json
+  --argjson width "$width" --argjson height "$height" --argjson sw "$smallest" \
+  '{device:$device,profile:$profile,installedApkSha256:$sha256,$width,$height,smallestWidthDp:$sw,
+    firstLaunch:"zero-device workspace",input:"Orbit2",backgroundResume:"draft retained",
+    coldReopen:"English workspace",microphone:"unrequested"}' > evidence/receipt.json
 cat evidence/receipt.json >> "$GITHUB_STEP_SUMMARY"

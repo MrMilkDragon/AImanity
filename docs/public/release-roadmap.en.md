@@ -2,19 +2,22 @@
 
 See [release status](release-status.md) for downloads and platform requirements.
 
-## Europium 0.0.5
+## Fluorine 0.0.6
 
-Finish the native workbench and audit device actions, interruptions, recovery and response time against 0.0.4. Build installers after the application code is complete. Verify clean installation and in-app updates with existing devices, profiles and conversations before publishing.
+Fluorine starts with an empty workspace backed by an embedded Rust database. Add virtual Android phones and Linux desktops as needed, or pair a device. The shared Agent selects from the devices you authorize. Disconnecting stops an owned guest and keeps its disk. Deleting it also removes its local instance data.
 
-Linux targets Debian and Red Hat distributions. Android, iPhone and iPad are research targets for running both guests locally. The mobile workbench uses the same landscape canvas scaled to the available screen. Hardware qualification and measured performance determine availability.
+| Host | Planned installer |
+| --- | --- |
+| Apple Silicon Mac | DMG |
+| Windows 11 x64 | EXE |
+| Linux x86_64 | DEB for Debian and Ubuntu, RPM for Fedora and Enterprise Linux |
+| Android phone and tablet | One signed landscape APK for both screen sizes |
 
-## Complete local installation
+Install Fluorine as a fresh client. The Android package includes its guest templates. Creating local guests on Android requires an ARM64 host with root access and Android Virtualization Framework (AVF) custom VM support. The empty workspace opens before any guest or microphone permission is requested.
 
-- Include clean Android and Linux baselines, matching emulators, prebuilt services and their execution environments in each distribution.
-- Create the phone, computer and model configuration from one client, with resumable resource preparation and device readiness checks.
-- Keep device resource presets configurable while preserving existing disks, accounts and conversations. The default workspace contains one phone and one computer.
-- Build the offline Windows Linux host around QEMU and Windows Hypervisor Platform. Validate boot, Android pairing, desktop control and restart on a clean Windows 11 x64 host.
-- Qualify installation recovery, host restart and updates on physical macOS and Windows hosts.
+## 0.0.7 · iPhone and iPad
+
+Plan one universal iOS and iPadOS app with a shared landscape workbench. Qualify local execution and device permissions on both form factors before TestFlight distribution.
 
 The installation contract is described in [distribution requirements](distribution-requirements.md), [runtime bundles](runtime-bundles.md) and [self-contained hosts](integrated-hosts.md).
 
@@ -26,18 +29,13 @@ Device actions retain their result identity across cancellation and recovery. Un
 
 ## Models and connections
 
-Save model/API settings, application connections and memory per profile. Both devices use the selected profile. Skills, knowledge and work files are shared.
+Save model/API settings, application connections and memory per profile. All devices in the workspace share the selected profile. Skills, knowledge and work files are shared.
 
 Extend model discovery with manual-ID fallback, configuration-bound capability checks, provider-specific protocol tests, OAuth and local-model integration. Supported protocols and providers are listed in [model setup](model-and-channel-setup.md) and [compatibility](compatibility.md).
 
 ## Copilot voice
 
-The [Copilot contract](copilot-voice.md) defines continuous listening, 1.5-second commits, transcript corrections, same-conversation steering and interruptible spoken feedback. Browser PCM capture, per-Agent speech adapters, durable text/correction submission and streamed, interruptible WAV playback are implemented and covered by isolated transport tests. Real microphone and speech-provider validation are pending.
-
-1. Qualify real microphones and configured speech providers across languages, corrections, noise, echo and device switching.
-2. Measure capture-to-final-text, first spoken reply, playback interruption and first real device action separately.
-3. Extend provider protocols and native speech-to-speech without coupling microphone, device-audio and playback ownership.
-4. Provide an explicit guest-microphone route for voice messages and designated app-call tests.
+Copilot uses an offline speech recognizer and the system voice. Spoken corrections enter the same conversation as typed instructions. Guest microphone inputs and speaker outputs are routed per device. Qualification covers first-use permission, simultaneous audio, interruption and the time from a pause to the first device action.
 
 ## Calls and extensions
 

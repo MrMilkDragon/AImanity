@@ -43,23 +43,18 @@
     },
     {
       "path": ".github/workflows/android-guest-inputs.yml",
-      "size": 2218,
-      "sha256": "e78852b580b17074ec333939a9bb70050f4ce14720f372670d95abc9ac3fc334"
+      "size": 2314,
+      "sha256": "b8404f0a336761c8f064599d5d18160b2ac79f8ee968539bb3eacd087ae373fa"
     },
     {
       "path": ".github/workflows/android-linux-avf.yml",
-      "size": 4549,
-      "sha256": "f1dccfcab60de4308bbe500c350315186ee9251015cfeb268e7b5ce899deffd8"
-    },
-    {
-      "path": ".github/workflows/android-mobile-inputs.yml",
-      "size": 2014,
-      "sha256": "de97b63a3ba687af016d348d1f8b934ac25e5a92637f5d3dd9570cf984dcdb97"
+      "size": 4533,
+      "sha256": "c7595b357d560437d24b165473ad7d5c2b41b7f3112c1b9d0ed2ca2356015dea"
     },
     {
       "path": ".github/workflows/android-mobile.yml",
-      "size": 16338,
-      "sha256": "40cbd7e22d9e0d37ded69f3b957d879ba5a27e83575feaa53dacceeda8a29371"
+      "size": 16357,
+      "sha256": "ca3692892ef0eabff60ff2441e38fc9054c3e9563e32105f2397b7d81f468a25"
     },
     {
       "path": ".github/workflows/client-factory.yml",
@@ -78,13 +73,13 @@
     },
     {
       "path": ".github/workflows/linux-guest-inputs.yml",
-      "size": 2166,
-      "sha256": "8e1bd8426f3b3dd267ca1fb31dcd87fb92b8a7360892dbe44aa5db23399282f3"
+      "size": 2182,
+      "sha256": "7db84a701f17543533eaf90b1292b1a69f8133a572ee666ed99a8c562291a341"
     },
     {
       "path": ".github/workflows/linux-install-check.yml",
-      "size": 4811,
-      "sha256": "853713fa103111afb5821295365363409d00563ef21ad0e8609a8abe48f96611"
+      "size": 4613,
+      "sha256": "5cfcbd9bfb142c2ece502e3e17100268cda0108924bca8a707fd6a9c26007ae4"
     },
     {
       "path": ".github/workflows/linux-packages.yml",
@@ -108,8 +103,8 @@
     },
     {
       "path": ".github/workflows/windows-aosp-qualification.yml",
-      "size": 3296,
-      "sha256": "652c2dc8836c9da8ef62273a4022b74f3aa9db442f761482424d838a4b739876"
+      "size": 3295,
+      "sha256": "5275e992b0e1ed584dcd4e6c70eef14bb4fbfe6f8d5eb95b6a86effe8e1c8896"
     },
     {
       "path": ".github/workflows/windows-guest.yml",
@@ -133,8 +128,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 3460,
-      "sha256": "f1ab872d812aef7f183f66fca077aa6b4cd2bd4fffddf37f8f1144f1442c8cb6"
+      "size": 3942,
+      "sha256": "70d34734226801a7b8721f3f2c43e927c0cdef96a4c8b1ccb9b0a3f6f814f826"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -433,8 +428,8 @@
     },
     {
       "path": "apps/native/src/android_os.rs",
-      "size": 20066,
-      "sha256": "0ee72450256f8b9c9268fdd21abbce7bfa2f044fc5bdb7fd2f3005df3e3af533"
+      "size": 20242,
+      "sha256": "c6c00ef42e886dedd3282be632ed177646c48b2e0ffb4af18cdf5682d6bac677"
     },
     {
       "path": "apps/native/src/audio.rs",
@@ -703,8 +698,8 @@
     },
     {
       "path": "apps/native/src/workbench.rs",
-      "size": 105018,
-      "sha256": "d32467616a2ac5c183e5b126292d8c41cda98d0c090be7bb032ecb4a5cc30e5c"
+      "size": 105089,
+      "sha256": "8400941bb2b7380c9571aa76f58f19e0c965050693b255e2483fa76aaf4d2913"
     },
     {
       "path": "apps/native/src/workspace/conversation.rs",
@@ -3663,8 +3658,8 @@
     },
     {
       "path": "crates/release-tools/src/assets.rs",
-      "size": 11002,
-      "sha256": "df27b96cca88f779952ab843423ebff42da5e4b0e9999f14cb2b6393c89640aa"
+      "size": 11417,
+      "sha256": "184f2772554c2646579203cac58b682820f06f21b7c0f634f38b049e51680763"
     },
     {
       "path": "crates/release-tools/src/capsule.rs",
@@ -3673,8 +3668,8 @@
     },
     {
       "path": "crates/release-tools/src/client_installer/aimanity.spec",
-      "size": 1061,
-      "sha256": "b91f1459c89bb31b3833f6bd883f84c3719fea8155a987802fe982a4c4b188ca"
+      "size": 1059,
+      "sha256": "b2aec07fa08c1e6cc4bb80be2e65cd54271d6c2f33698fce7debaff1fa8de8e3"
     },
     {
       "path": "crates/release-tools/src/client_installer/bundle.rs",
@@ -3683,8 +3678,8 @@
     },
     {
       "path": "crates/release-tools/src/client_installer/linux_packages.rs",
-      "size": 6226,
-      "sha256": "c2d20d987d3832a363718d34a5aba0e34115d83b63f08d3cfe258a6ba3caaead"
+      "size": 6224,
+      "sha256": "ee4434e69d631063ed4ddabd6b1b85125429b23e5af5756d96d03a9214ae53c0"
     },
     {
       "path": "crates/release-tools/src/client_installer/linux_payload.rs",
@@ -3758,8 +3753,8 @@
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 5314,
-      "sha256": "dada0309b9c3976df10dadf4297a567fe16249ed31d20e10493780293813a753"
+      "size": 5298,
+      "sha256": "b8dca6c4a2f26c42c062499912b0bd81dd1c13ec2e55b4792e781f1e1769d213"
     },
     {
       "path": "crates/release-tools/src/native_services.rs",
@@ -3903,8 +3898,8 @@
     },
     {
       "path": "docs/public/distribution-requirements.md",
-      "size": 1314,
-      "sha256": "1d758422f89cd6a975d9f04b448bc729bb7a8c689e549c689f6dc3de7f756457"
+      "size": 1408,
+      "sha256": "bf85152b7d5c515ae9fa26490221164194d6ea106df791d57f1330ae973e77bb"
     },
     {
       "path": "docs/public/distribution.en.md",
@@ -4598,13 +4593,13 @@
     },
     {
       "path": "docs/public/release-roadmap.en.md",
-      "size": 4496,
-      "sha256": "8b5fb312daae92ba0dfaf78f1d46736bcdd35932d4526792408bc92e49afdbfc"
+      "size": 3736,
+      "sha256": "b5524cf45c61b65b2c82e4007f00408ad553931d92f80e988c90d9c2595ec229"
     },
     {
       "path": "docs/public/release-roadmap.zh-CN.md",
-      "size": 3671,
-      "sha256": "2f03ce0475b7e4ac899be31ac8e944879c3bf6150117d7243f7c6f406545ea30"
+      "size": 3176,
+      "sha256": "2bded0edcd7bf8747933073a931db2c1ff750c17e08c59eb6d886411e8e504f3"
     },
     {
       "path": "docs/public/release-status.md",
@@ -4958,8 +4953,8 @@
     },
     {
       "path": "scripts/check-linux-guests.sh",
-      "size": 2631,
-      "sha256": "d8d5904eb27e335d583a73cda6b0ae248819109d7efe9381962f04b309b4e1a8"
+      "size": 3069,
+      "sha256": "2a7cbedf16b6fdf863dc808cd241cd58e394a67289c81578527b45ce95b38c9f"
     },
     {
       "path": "scripts/check-native-workspace.sh",
@@ -4998,8 +4993,8 @@
     },
     {
       "path": "scripts/mobile-smoke.sh",
-      "size": 9988,
-      "sha256": "91b34f1aa82b5d440d13e51282e751877c34ed15bef5cbd4f0e112ec8521eb16"
+      "size": 7167,
+      "sha256": "bd7fd47eea8c3110f2223b8babf64a4f137751f7e1f621810909adc4291d99f9"
     },
     {
       "path": "scripts/native-host",

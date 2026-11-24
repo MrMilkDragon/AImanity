@@ -712,8 +712,9 @@ impl App {
                         });
                         if self.devices[index].frame.is_none() {
                             eprintln!(
-                                "native_metric first_frame device={index} ms={:0.3}",
-                                self.started.elapsed().as_secs_f64() * 1000.
+                                "native_metric first_frame device={index} ms={:0.3} kind={}",
+                                self.started.elapsed().as_secs_f64() * 1000.,
+                                self.devices[index].info.kind
                             );
                         }
                         self.devices[index].receive(frame);
