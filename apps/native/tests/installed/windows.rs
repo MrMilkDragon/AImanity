@@ -7,40 +7,38 @@ use ai_phone_host_runtime::{
     android::session::attached_client,
     guest_channel::{self, Service},
 };
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{env, fs, os::windows::fs::MetadataExt, path::PathBuf, time::Duration};
 use window::Client;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
-async fn onboarding(client: &mut Client, home: &Path) -> Result<()> {
-    client.choose_english().await?;
-    client.workspace().await?;
-    assert_eq!(fs::read_to_string(home.join("user/native-locale"))?, "en");
-    assert!(home.join("workspace.redb").is_file());
-    let devices = home.join("devices");
-    assert!(!devices.exists() || devices.read_dir()?.next().is_none());
-    client.capture("empty-workbench.png")?;
-    Ok(())
-}
 
 #[tokio::test]
 #[ignore = "opens the native workbench on a disposable Windows desktop"]
 async fn windows_empty_workbench() -> Result<()> {
     let evidence = PathBuf::from(env::var("AIMANITY_QA_ROOT")?);
-    fs::create_dir_all(&evidence)?;
-    let root = tempfile::tempdir()?;
-    let dir = root.path();
+    let dir = evidence.join("profile");
+    fs::create_dir_all(&dir)?;
     let exe =
         PathBuf::from(env::var_os("AIMANITY_QA_CLIENT").ok_or("Missing workbench executable")?);
     let home = dir.join("dev.aimanity.workspace/host");
-    let mut client = Client::launch(&exe, dir, &evidence, &evidence.join("fresh.log")).await?;
-    onboarding(&mut client, &home).await?;
+    assert!(!home.exists());
+    let mut client = Client::launch(&exe, &dir, &evidence, &evidence.join("fresh.log")).await?;
+    client.choose_english().await?;
+    client.capture_workbench("empty-workbench.png").await?;
+    let devices = home.join("devices");
+    assert!(!devices.exists() || devices.read_dir()?.next().is_none());
+    let database = home.join("workspace.redb");
+    let identity = fs::metadata(&database)?.creation_time();
     client.close().await?;
-    let mut reopened = Client::launch(&exe, dir, &evidence, &evidence.join("reopened.log")).await?;
-    reopened.workspace().await?;
+    let start = std::time::Instant::now();
+    let mut reopened =
+        Client::launch(&exe, &dir, &evidence, &evidence.join("reopened.log")).await?;
+    reopened.capture_workbench("reopened-workbench.png").await?;
+    println!(
+        "Installed Windows workbench visible after reopen in {} ms",
+        start.elapsed().as_millis()
+    );
+    assert_eq!(fs::read_to_string(home.join("user/native-locale"))?, "en");
+    assert_eq!(fs::metadata(database)?.creation_time(), identity);
     reopened.close().await?;
     Ok(())
 }
@@ -52,12 +50,12 @@ async fn windows_installed_guests() -> Result<()> {
     assert_eq!(env::var("RUNNER_ENVIRONMENT")?, "github-hosted");
     let profile = root.join("profile");
     let home = profile.join("dev.aimanity.workspace/host");
-    assert!(!home.exists());
+    assert!(home.join("workspace.redb").is_file());
     let exe = root.join("installed/ai-phone-client.exe");
     let log = root.join("native.log");
     let mut app = Client::launch(&exe, &profile, &root, &log).await?;
     let result = async {
-        onboarding(&mut app, &home).await?;
+        app.capture_workbench("before-guests.png").await?;
         app.word("Add", true).await?;
         app.create_guest("Phone").await?;
         app.frame("phone", &log).await?;
@@ -97,7 +95,7 @@ async fn windows_installed_guests() -> Result<()> {
     let log = root.join("reopen.log");
     let mut app = Client::launch(&exe, &profile, &root, &log).await?;
     let resumed = tokio::time::timeout(Duration::from_secs(1500), async {
-        app.workspace().await?;
+        app.capture_workbench("reopened-guests.png").await?;
         app.frame("phone", &log).await?;
         app.frame("desktop", &log).await
     })

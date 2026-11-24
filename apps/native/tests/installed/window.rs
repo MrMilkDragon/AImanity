@@ -61,7 +61,8 @@ impl Client {
                 sleep(Duration::from_millis(150)).await;
             }
         })
-        .await??;
+        .await
+        .map_err(|_| "No visible window for the installed workbench process")??;
         #[cfg(target_os = "macos")]
         {
             use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
@@ -123,9 +124,8 @@ impl Client {
         )?;
         Ok((pixels, left, top))
     }
-    #[cfg(target_os = "macos")]
     pub async fn capture_workbench(&self, name: &str) -> Result<()> {
-        timeout(Duration::from_secs(60), async {
+        let result = timeout(Duration::from_secs(60), async {
             loop {
                 if self.window.title()? == "AImanity" {
                     let (frame, _, _) = self.pixels()?;
@@ -144,7 +144,16 @@ impl Client {
                 sleep(Duration::from_millis(50)).await;
             }
         })
-        .await?
+        .await;
+        match result {
+            Ok(result) => result,
+            Err(_) => {
+                self.pixels()?
+                    .0
+                    .save(self.evidence.join(format!("timeout-{name}")))?;
+                Err(format!("The conversation controls were not visible in {name}").into())
+            }
+        }
     }
     #[cfg(windows)]
     pub fn capture(&self, name: &str) -> Result<()> {
@@ -169,7 +178,8 @@ impl Client {
                 sleep(Duration::from_millis(150)).await;
             }
         })
-        .await??;
+        .await
+        .map_err(|_| "The language page did not show its Continue button")??;
         self.click(left + width * 64 / 100, top + height * 36 / 100)?;
         timeout(Duration::from_secs(15), async {
             loop {
@@ -184,7 +194,8 @@ impl Client {
                 sleep(Duration::from_millis(100)).await;
             }
         })
-        .await??;
+        .await
+        .map_err(|_| "English was not selected in the visible language list")??;
         self.click(left + width / 2, top + button_y + 4)
     }
     fn click(&mut self, x: i32, y: i32) -> Result<()> {
@@ -219,19 +230,6 @@ impl Client {
             self.input.button(Button::Left, Direction::Click)?;
         }
         Ok(())
-    }
-    #[cfg(windows)]
-    pub async fn workspace(&mut self) -> Result<()> {
-        timeout(Duration::from_secs(60), async {
-            while self.window.title()? != "AImanity" {
-                if let Some(status) = self.child.try_wait()? {
-                    return Err(format!("Client exited: {status}").into());
-                }
-                sleep(Duration::from_millis(150)).await;
-            }
-            Result::Ok(())
-        })
-        .await?
     }
     #[cfg(windows)]
     pub async fn word(&mut self, word: &str, click: bool) -> Result<()> {
