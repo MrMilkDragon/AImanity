@@ -34,8 +34,13 @@ capture() {
   tesseract "evidence/$1.png" stdout -l eng --psm 11 tsv > "evidence/$1.tsv" 2>/dev/null
 }
 word_box() {
-  awk -F '\t' -v word="$2" -v row="${3:-}" '
-    $1 == 5 && index(tolower($12),tolower(word)) && (row == "" || ($8 >= row-$10 && $8 <= row+$10)) && (!found || $8 < y) {
+  awk -F '\t' -v word="$2" -v composer="${3:-}" -v width="${width:-0}" -v height="${height:-0}" '
+    $1 == 5 {
+      token=tolower($12); sub(/[|[:punct:]]+$/, "", token)
+      if (composer == "composer") {
+        if (token != tolower(word) || $7 < width/2 || $8 < height/2) next
+      } else if (!index(tolower($12),tolower(word))) next
+      if (found && $8 >= y) next
       x=$7; y=$8; w=$9; h=$10; found=1
     }
     END { if (!found) exit 1; print x,y,w,h }
@@ -107,7 +112,6 @@ button_y=$(convert evidence/selected.png -colorspace Gray -threshold '25%' -dept
   "$RUNNER_TEMP/mobile-button-row" "$width" "$height")
 adb shell input tap "$((width/2))" "$button_y"
 wait_word workspace Message
-read -r _ resting_y _ _ < <(word_box workspace Message)
 adb shell dumpsys package "$PACKAGE" > evidence/package.txt
 grep -F 'android.permission.RECORD_AUDIO: granted=false' evidence/package.txt
 
@@ -121,7 +125,7 @@ done
 grep -Fq 'connection=dev.aimanity.mobile.KeyboardConnection@' evidence/composer-focus.txt
 adb shell 'input text O && input keyevent KEYCODE_R KEYCODE_B KEYCODE_I KEYCODE_T'
 hide_keyboard hardware
-wait_word typed Orbit "$resting_y"
+wait_word typed Orbit composer
 tap_word typed Orbit
 adb shell input keyevent KEYCODE_MOVE_END
 key_location() {
@@ -175,11 +179,11 @@ done
 read -r dx dy <<< "$digit"
 adb shell input tap "$dx" "$dy"
 hide_keyboard soft
-wait_word composed Orbit2 "$resting_y"
+wait_word composed Orbit2 composer
 
 adb shell input keyevent KEYCODE_HOME
 adb shell am start -W -n "$activity" > evidence/resume.txt
-wait_word resumed Orbit2 "$resting_y"
+wait_word resumed Orbit2 composer
 adb shell dumpsys input_method > evidence/resumed-input-method.txt
 if grep -qE 'mInputShown=true|inputShown=true' evidence/resumed-input-method.txt; then
   echo "Returning to the workspace reopened the dismissed keyboard" >&2
