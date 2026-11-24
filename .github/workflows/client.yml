@@ -66,7 +66,7 @@ jobs:
         run: cargo test -p ai-phone-host-runtime --lib --locked
   macos-arm64:
     if: inputs.platform != 'windows'
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 45
     env:
       CARGO_BUILD_JOBS: '2'

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.6 Fluorine (in development)
+## 0.0.6 Fluorine
 
 - Start an empty workspace with embedded storage. Add and disconnect individual guests from Device Manager.
 - Share one conversation and task queue across authorized devices. Parallel tasks can use separate devices and audio streams.
@@ -10,7 +10,7 @@
 - Insert and read back literal text in writable macOS editors, including while the Pinyin input method has a pending composition.
 - Read desktop frames directly from the capture buffer for JPEG encoding. On an Apple Silicon Mac, median capture-to-receipt time fell from 464 to 441 ms for local control and from 464 to 443 ms through a local pairing.
 - Browse paired device files in the workspace. On Windows and macOS, desktop owners can also share visible notifications.
-- Plan fresh installations for Apple Silicon macOS, Windows 11 x64, Debian/RPM Linux and Android. Android phones and tablets share one landscape APK. The universal iPhone and iPad client is scheduled for 0.0.7.
+- Install Fluorine as a new client. The [release page](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) lists signed installers and the platform checks completed for each one. Android phones and tablets share one landscape APK. The universal iPhone and iPad client is scheduled for 0.0.7.
 
 ## 0.0.5 Europium
 

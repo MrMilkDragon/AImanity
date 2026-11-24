@@ -64,7 +64,7 @@
     {
       "path": ".github/workflows/client.yml",
       "size": 5664,
-      "sha256": "d8e88eaf36206c8c293b097269900bf7a943689d62765204c17a02355a1c702a"
+      "sha256": "36a6ea3181e2ab15459524933c68759e5faf7db31ef3bc1bda4e5a301f91e1f8"
     },
     {
       "path": ".github/workflows/linux-backend.yml",
@@ -128,8 +128,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 4888,
-      "sha256": "e1999e9b0aae16b52f70e516ec8bb0901e5c13b3ec57f75f54694f0ac538fa5b"
+      "size": 4962,
+      "sha256": "a3ae6cd929f54471b91cf4620db23c9ccffd5a0ae5cdf55a21598f7625b842dd"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -4648,8 +4648,8 @@
     },
     {
       "path": "docs/public/release-status.md",
-      "size": 7031,
-      "sha256": "67e2175bceb579c35c68c0ab0e38da722ca57d09a99e949416b3b7956cac2a61"
+      "size": 7565,
+      "sha256": "244d1a5e9877eaa75bbc49ec5709fe53b2e53af6c21007dc14364c9253f6063a"
     },
     {
       "path": "docs/public/runtime-bundles.md",
