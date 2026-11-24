@@ -29,6 +29,8 @@ mod layout;
 mod loading;
 mod locale;
 mod location;
+#[cfg(target_os = "macos")]
+mod macos_accessibility;
 mod modes;
 mod occlude;
 mod paired_phone;

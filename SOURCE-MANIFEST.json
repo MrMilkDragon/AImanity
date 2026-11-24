@@ -58,8 +58,8 @@
     },
     {
       "path": ".github/workflows/client-factory.yml",
-      "size": 9219,
-      "sha256": "90f107bba9e6f6755d860f3c842da89fda7f676293a5514ad7178b2430617e68"
+      "size": 10397,
+      "sha256": "10dd09d69d88671ce9ff3b3e1873ff8d3376279b79fea336d51cb0e81cda8924"
     },
     {
       "path": ".github/workflows/client.yml",
@@ -108,8 +108,8 @@
     },
     {
       "path": ".github/workflows/windows-guest.yml",
-      "size": 4123,
-      "sha256": "2ad91770fd5f8ee3a6f8a196ee5294227360d5afd523a0b0861ceef80c012e3a"
+      "size": 3901,
+      "sha256": "0e7c4fd77358a405f90b4b6f7b5578c047774c0b018938131c8d9f5a35b0f62d"
     },
     {
       "path": ".github/workflows/windows-installer-acceptance.yml",
@@ -118,8 +118,8 @@
     },
     {
       "path": ".github/workflows/windows-qemu.yml",
-      "size": 2519,
-      "sha256": "aeae8155063b669db02ebd1575f7be5969c41758cf9f1ee876cb576b73fbe580"
+      "size": 2207,
+      "sha256": "76540629158eedf0fb861c45e9b26d94d3f5c0fb6a5c106145f52483887db44c"
     },
     {
       "path": ".gitignore",
@@ -128,8 +128,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 4758,
-      "sha256": "c67c21599b1a7e3df1d737d7f1e21f5ec6991bd03d810eb06218f40ee0537950"
+      "size": 4888,
+      "sha256": "e1999e9b0aae16b52f70e516ec8bb0901e5c13b3ec57f75f54694f0ac538fa5b"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -468,8 +468,8 @@
     },
     {
       "path": "apps/native/src/device_notices/macos.rs",
-      "size": 4343,
-      "sha256": "792ff562581ef6a6b5164947fe6df053b42f071956e68a017e8a49d1cbd27b44"
+      "size": 3848,
+      "sha256": "275b47713b91909b8b222ecf82215b05d5056f139ca2b9330b3958f4f2c1262b"
     },
     {
       "path": "apps/native/src/device_notices/windows.rs",
@@ -508,8 +508,8 @@
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 26182,
-      "sha256": "ebccb2cdc6b5fb39d83c4ca3e2f5a2c3ad09fcd7cb966fab78380a4a8351b561"
+      "size": 26380,
+      "sha256": "d3a5ebd305b167d59294aa7eb96f739e663a4e251d6c5dcca4fa5667e8a807b1"
     },
     {
       "path": "apps/native/src/host_desktop_mobile.rs",
@@ -555,6 +555,11 @@
       "path": "apps/native/src/location.rs",
       "size": 28712,
       "sha256": "d363cb0ddc63959f29744c98116c831591432fb904fc36beb8d9e9e479ec624e"
+    },
+    {
+      "path": "apps/native/src/macos_accessibility.rs",
+      "size": 3748,
+      "sha256": "17072410b2d7e81c1fe4b6c213648fe419e546bd9e57d88ff277f8c0dc6b028e"
     },
     {
       "path": "apps/native/src/main.rs",
@@ -703,8 +708,8 @@
     },
     {
       "path": "apps/native/src/workbench.rs",
-      "size": 106166,
-      "sha256": "141f6e19d125d0d377a1fb1a3fd25f53f48964924c3b7536f6aeddef0cd8ab06"
+      "size": 106219,
+      "sha256": "14ea8494fa860798a660563332083e2eb69fa358ae46577962cce7c8514663b4"
     },
     {
       "path": "apps/native/src/workspace/conversation.rs",
@@ -4003,8 +4008,8 @@
     },
     {
       "path": "docs/public/engineering/macos-full-runtime.md",
-      "size": 3997,
-      "sha256": "d48b68aa1f2a7b9a4d4e21842a7369fc27ef15990e40e04bc93314f521ac0bdc"
+      "size": 4000,
+      "sha256": "f00bee5ca81cbde047aa07d13e7de139e9b64a48f82bc849cfa16714380b4f2b"
     },
     {
       "path": "docs/public/engineering/native-android-preparation.md",
@@ -4638,8 +4643,8 @@
     },
     {
       "path": "docs/public/release-status.md",
-      "size": 5881,
-      "sha256": "76205c598e5448a6758d723c3a6e2e3a917d160a671623434b6a4ae7202a8812"
+      "size": 7354,
+      "sha256": "2f490fa889698c1a62cca8fd86513f20207745bb03e068238c07480a20d188a4"
     },
     {
       "path": "docs/public/runtime-bundles.md",

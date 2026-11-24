@@ -474,6 +474,10 @@ pub(super) fn execute(
                 if current.focus.is_none() || current.focus != focused_window() {
                     return Err("前台窗口已切换，请重新观察".into());
                 }
+                #[cfg(target_os = "macos")]
+                if action.kind == "type" && crate::macos_accessibility::insert_text(&action.text)? {
+                    return Ok(());
+                }
                 let mut input = Enigo::new(&Settings {
                     open_prompt_to_get_permissions: false,
                     ..Default::default()

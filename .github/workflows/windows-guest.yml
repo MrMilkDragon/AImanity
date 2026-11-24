@@ -8,7 +8,7 @@ on:
         type: string
     outputs:
       artifact:
-        description: Private Windows Linux guest artifact ID
+        description: Windows Linux guest artifact ID
         value: ${{ jobs.linux.outputs.artifact }}
       identity:
         description: SHA-256 of windows-guest.payload
@@ -28,11 +28,6 @@ jobs:
       CARGO_INCREMENTAL: '0'
       AI_PHONE_TEST_TESSERACT: /usr/bin/tesseract
     steps:
-      - name: Require a private build repository
-        if: ${{ !github.event.repository.private }}
-        run: |
-          echo "::error::Run the Windows guest factory in a private repository."
-          exit 1
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false

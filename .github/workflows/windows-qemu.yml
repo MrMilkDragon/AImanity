@@ -4,7 +4,7 @@ on:
   workflow_call:
     outputs:
       artifact:
-        description: Private Windows QEMU artifact ID
+        description: Windows QEMU artifact ID
         value: ${{ jobs.windows.outputs.artifact }}
       kernel:
         description: Pinned kernel and license artifact ID
@@ -23,14 +23,6 @@ jobs:
       identity: ${{ steps.build.outputs.sha256 }}
       kernel: ${{ steps.kernel.outputs.artifact-id }}
     steps:
-      - name: Require a private build repository
-        shell: pwsh
-        env:
-          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
-        run: |
-          if ($env:REPOSITORY_PRIVATE -ne 'true') {
-            throw 'Run the Windows QEMU factory in a private repository.'
-          }
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false

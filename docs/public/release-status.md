@@ -1,6 +1,23 @@
 # Install AImanity / 安装 AImanity
 
-Each installer includes Android, the Linux desktop and the local services.
+## 0.0.6 Fluorine
+
+Fluorine opens an empty workspace. Add a virtual Android or Linux device when needed, pair a remote computer or phone, or grant the current task access to the host desktop. Install 0.0.6 as a fresh client. [Workspace guide](native-client.en.md)
+
+Fluorine 首次打开为空工作区。可以按需创建虚拟设备，配对其他电脑或手机，也可单独授权当前任务使用宿主机。0.0.6 使用全新安装。[工作区指南](native-client.zh-CN.md)
+
+| Platform | Verified before installer acceptance | Physical hardware coverage still open |
+| --- | --- | --- |
+| Apple Silicon macOS | TextEdit on this Mac, local and paired actions, Chinese input saved to disk | Pairing between two separate physical computers |
+| Windows 11 x64 target | Notepad and zero-device reopen on a hosted Windows Server desktop | A physical Windows 11 machine and its audio devices |
+| Linux x86_64 (DEB and RPM) | Embedded workspace, device lifecycle and offline tools on a hosted Linux runner | Physical desktop audio and GPU configurations |
+| Android phones and tablets | One candidate APK on two Android 15 emulators, landscape input, draft on resume and cold reopen | ARM64 AVF guest creation, simultaneous recordings and playback on a physical phone or tablet |
+
+iPhone and iPad are scheduled for 0.0.7. Installer acceptance uses the signed artifacts listed on the release page as they are published.
+
+## 0.0.5 Europium downloads
+
+Each installer below includes Android, the Linux desktop and the local services.
 
 | Platform | Requirements | Installer | Factory |
 | --- | --- | --- | --- |
@@ -59,7 +76,7 @@ Back up any devices, configuration and conversations you want to keep, uninstall
 - **Windows.** Go to **Settings → Apps → Installed apps → AImanity → Uninstall**, or run `unins000.exe` from the installation folder.
 - **Linux.** Select **Uninstall AImanity** in the workbench settings to remove the package and your local data. Removing only the system package with apt or dnf retains your user profile.
 
-The app’s uninstall action deletes both devices, chats, settings and work files. Backups saved outside the AImanity data folder stay in place.
+The app’s uninstall action deletes its managed devices, chats, settings and work files. Backups saved outside the AImanity data folder stay in place.
 
 ## 卸载
 
@@ -67,6 +84,6 @@ The app’s uninstall action deletes both devices, chats, settings and work file
 - **Windows。** 前往 **设置 → 应用 → 已安装的应用 → AImanity → 卸载**，也可以运行安装目录里的 `unins000.exe`。
 - **Linux。** 在工作台设置中选择 **卸载 AImanity**，移除软件包和当前用户的数据。使用 apt 或 dnf 单独移除软件包会保留个人数据。
 
-通过应用卸载会删除两台设备、聊天、配置和工作文件。存放在 AImanity 数据目录之外的备份会保留。
+通过应用卸载会删除受其管理的设备、聊天、配置和工作文件。存放在 AImanity 数据目录之外的备份会保留。
 
 [Model setup / 模型配置](model-and-channel-setup.md) · [Client development](native-client.en.md) · [客户端开发](native-client.zh-CN.md) · [Issues](https://github.com/MrMilkDragon/AImanity/issues/new/choose)

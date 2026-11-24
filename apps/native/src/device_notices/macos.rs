@@ -1,8 +1,9 @@
 use super::{Banner, PhoneNotification};
+use crate::macos_accessibility::attribute;
 use core_foundation::{
     array::CFArray,
     base::{CFType, CFTypeRef, TCFType},
-    string::{CFString, CFStringRef},
+    string::CFString,
 };
 use objc2_app_kit::NSRunningApplication;
 use objc2_foundation::NSString;
@@ -10,21 +11,8 @@ use objc2_foundation::NSString;
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
     fn AXUIElementCreateApplication(pid: libc::pid_t) -> CFTypeRef;
-    fn AXUIElementCopyAttributeValue(
-        element: CFTypeRef,
-        name: CFStringRef,
-        value: *mut CFTypeRef,
-    ) -> i32;
 }
 
-fn attribute(node: &CFType, name: &'static str) -> Option<CFType> {
-    let key = CFString::from_static_string(name);
-    let mut value = std::ptr::null();
-    let status = unsafe {
-        AXUIElementCopyAttributeValue(node.as_CFTypeRef(), key.as_concrete_TypeRef(), &mut value)
-    };
-    (status == 0 && !value.is_null()).then(|| unsafe { CFType::wrap_under_create_rule(value) })
-}
 fn string(node: &CFType, key: &'static str) -> String {
     attribute(node, key)
         .and_then(|v| v.downcast_into::<CFString>())

@@ -7,44 +7,20 @@ on:
         type: choice
         options: [macos, windows]
         required: true
-      android_draft_id:
-        description: Draft release ID in this private factory repository
-        type: string
-        required: true
-      android_payload_sha256:
-        description: SHA-256 of android-macos-arm64.payload or android-windows-x64.payload in the draft
-        type: string
-        required: true
 permissions:
   contents: read
   actions: read
-env:
-  AIMANITY_ANDROID_DRAFT_ID: ${{ inputs.android_draft_id }}
-  AIMANITY_ANDROID_PAYLOAD_SHA256: ${{ inputs.android_payload_sha256 }}
 concurrency:
   group: installer-${{ inputs.platform }}-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  admit:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Require a private build repository
-        env:
-          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
-        run: |
-          if [ "$REPOSITORY_PRIVATE" != true ]; then
-            echo "::error::Run the installer factory in a private repository."
-            exit 1
-          fi
-
   windows-qemu:
     if: inputs.platform == 'windows'
-    needs: admit
     uses: ./.github/workflows/windows-qemu.yml
 
   windows-guest:
     if: inputs.platform == 'windows'
-    needs: [admit, windows-qemu]
+    needs: windows-qemu
     uses: ./.github/workflows/windows-guest.yml
     with:
       kernel_artifact: ${{ needs.windows-qemu.outputs.kernel }}
@@ -54,7 +30,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 90
     permissions:
-      contents: write
+      contents: read
       actions: read
     env:
       CARGO_BUILD_JOBS: '2'
@@ -86,10 +62,20 @@ jobs:
           github-token: ${{ github.token }}
           artifact-ids: ${{ needs.windows-guest.outputs.artifact }}
           path: dist/windows-guest
-      - name: Fetch the sealed offline Android component
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: cargo run --quiet --locked -p ai-phone-release-tools -- factory-android
+      - name: Extract the published Windows Android runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $previous = Join-Path $env:RUNNER_TEMP 'europium.exe'
+          curl.exe -fLsS --retry 3 -o $previous 'https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-windows-x64-setup.exe'
+          if ((Get-FileHash $previous).Hash -ne '6fde29eb0fea8a8d7daab9d79a2163022c57d95eeb4b614b3fb14dbd0038937e') { throw 'Published EXE identity differs' }
+          $stage = Join-Path $env:RUNNER_TEMP 'shipped-aosp'
+          cargo run --quiet --locked -p ai-phone-release-tools -- windows-factory unpack . $previous $stage '{app}\host\android.payload'
+          $payload = Join-Path $stage 'host/android.payload'
+          "AIMANITY_ANDROID_PAYLOAD=$payload" >> $env:GITHUB_ENV
+          "AIMANITY_ANDROID_PAYLOAD_SHA256=23a97514fdbdbcfaa511549b6e016923023de28ce2de0ad71a2815192b9568ce" >> $env:GITHUB_ENV
+          Remove-Item -LiteralPath $previous
       - name: Assemble and inspect the offline Windows EXE
         env:
           GH_TOKEN: ${{ github.token }}
@@ -110,7 +96,6 @@ jobs:
 
   native-arm-rootfs:
     if: inputs.platform == 'macos'
-    needs: admit
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     outputs:
@@ -158,7 +143,7 @@ jobs:
     if: inputs.platform == 'macos'
     needs: native-arm-rootfs
     runs-on: macos-26
-    timeout-minutes: 120
+    timeout-minutes: 165
     permissions:
       contents: read
       actions: read
@@ -166,6 +151,7 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_INCREMENTAL: '0'
       HOMEBREW_NO_AUTO_UPDATE: '1'
+      CMAKE_POLICY_VERSION_MINIMUM: '3.5'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -180,8 +166,11 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal
           rustup default 1.96.0
           rustup target add --toolchain 1.96.0 aarch64-linux-android x86_64-linux-android
-          brew update
-          brew install --force-bottle tesseract
+          active=$(cd "$(xcode-select -p)/../.." && pwd -P)
+          for xcode in /Applications/Xcode*.app; do
+            if [ -d "$xcode" ] && [ "$(cd "$xcode" && pwd -P)" != "$active" ]; then sudo rm -rf "$xcode"; fi
+          done
+          if ! command -v tesseract >/dev/null; then brew install --force-bottle tesseract; fi
           cargo run --quiet --locked -p ai-phone-release-tools -- prepare-ocr-models --destination "$RUNNER_TEMP/aiphone-ocr-models"
           echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
           echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aiphone-ocr-models" >> "$GITHUB_ENV"
@@ -191,10 +180,23 @@ jobs:
         with:
           artifact-ids: ${{ needs.native-arm-rootfs.outputs.artifact }}
           path: ${{ runner.temp }}/mac-linux
-      - name: Fetch the sealed offline Android component
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: cargo run --quiet --locked -p ai-phone-release-tools -- factory-android
+      - name: Reuse the published Avo and AOSP runtime
+        run: |
+          set -euo pipefail
+          dmg="$RUNNER_TEMP/europium.dmg"
+          curl -fLsS --retry 3 -o "$dmg" https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.5/AImanity-0.0.5-macos-arm64.dmg
+          echo "c33cf818b29ccfb4198e97052e0820c68d528e634003c35f249eb5e7618c434f  $dmg" | shasum -a 256 -c -
+          codesign --verify --strict "$dmg"
+          mount="$RUNNER_TEMP/europium-image"
+          mkdir "$mount"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$dmg"
+          trap 'hdiutil detach "$mount" >/dev/null' EXIT
+          cp "$mount/AImanity.app/Contents/Resources/host/android.payload" "$RUNNER_TEMP/mac-linux/android.payload"
+          hdiutil detach "$mount"
+          trap - EXIT
+          rm "$dmg"
+          echo "AIMANITY_ANDROID_PAYLOAD=$RUNNER_TEMP/mac-linux/android.payload" >> "$GITHUB_ENV"
+          echo "AIMANITY_ANDROID_PAYLOAD_SHA256=5e99337bfaffc36edea006a5844f0befd39b7552e48dd0dcbcc40c9e7779afd2" >> "$GITHUB_ENV"
       - name: Build the complete Mac client
         env:
           GH_TOKEN: ${{ github.token }}

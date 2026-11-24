@@ -33,7 +33,7 @@ cargo run --locked -p ai-phone-release-tools -- macos-factory --compiler-sdk "$A
 
 The Mac job seals the staged AOSP, Avo and ADB files, builds the Lima guest resources, compiles the phone apps and assembles the signed DMG with Cargo. It writes `dist/macos-full-factory-report.json` after checking the DMG contents.
 
-To reuse a sealed Android capsule, set `AIMANITY_ANDROID_PAYLOAD` and `AIMANITY_ANDROID_PAYLOAD_SHA256` in place of `AIMANITY_ANDROID_SDK_INPUT`. In the private **Desktop installer factory** workflow, select `platform=macos` and enter the Android capsule’s `android_draft_id` and `android_payload_sha256`. The ARM64 Linux job builds the shared filesystem and desktop bridge. The Mac job assembles the DMG.
+To reuse a sealed Android capsule, set `AIMANITY_ANDROID_PAYLOAD` and `AIMANITY_ANDROID_PAYLOAD_SHA256` in place of `AIMANITY_ANDROID_SDK_INPUT`. In **Desktop installer factory**, select `platform=macos`. The ARM64 Linux job builds the current filesystem and desktop bridge. The Mac job verifies the published Europium DMG, extracts its Avo and AOSP capsule, rebuilds the guest apps and packages the workbench.
 
 A source-matched `.tools/phone-apps` lets the factory reuse the phone APKs. With the Linux host and Android capsule already staged, packaging needs 24 GiB free.
 
