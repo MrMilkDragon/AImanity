@@ -66,14 +66,8 @@ fn native_profile_creates_private_configuration_and_resumes_without_rewriting_us
         value["sdk_root"],
         root.join("SDK with spaces").to_str().unwrap()
     );
-    let environment = fs::read(root.join(".env")).unwrap();
-    let text = String::from_utf8(environment.clone()).unwrap();
-    let password = text
-        .lines()
-        .find_map(|line| line.strip_prefix("POSTGRES_PASSWORD="))
-        .unwrap();
-    assert_eq!(password.len(), 48);
-    assert!(password.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    let workspace = root.join("workspace.redb");
+    fs::write(&workspace, b"existing workspace").unwrap();
     let disk = root.join("data/userdata.img");
     fs::write(&disk, "original device disk").unwrap();
     let mut changed = request();
@@ -86,7 +80,7 @@ fn native_profile_creates_private_configuration_and_resumes_without_rewriting_us
         "android35-x86_64",
     ));
     assert_eq!(fs::read(&profile_path).unwrap(), profile);
-    assert_eq!(fs::read(root.join(".env")).unwrap(), environment);
+    assert_eq!(fs::read(workspace).unwrap(), b"existing workspace");
     assert_eq!(fs::read(disk).unwrap(), b"original device disk");
     let conflict = invoke(root, &request(), path, "android35-arm64");
     assert!(!conflict.status.success());
@@ -94,14 +88,6 @@ fn native_profile_creates_private_configuration_and_resumes_without_rewriting_us
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        assert_eq!(
-            fs::metadata(root.join(".env"))
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777,
-            0o600
-        );
         assert_eq!(
             fs::metadata(root.join("data/deployment/profile.json"))
                 .unwrap()
@@ -114,7 +100,7 @@ fn native_profile_creates_private_configuration_and_resumes_without_rewriting_us
 }
 
 #[test]
-fn malformed_deployment_requests_cannot_create_profile_or_database_credentials() {
+fn malformed_deployment_requests_leave_the_instance_empty() {
     let root = tempfile::tempdir().unwrap();
     let mut bad = Vec::new();
     for (field, value) in [
@@ -141,7 +127,6 @@ fn malformed_deployment_requests_cannot_create_profile_or_database_credentials()
                 .success()
         );
         assert!(!root.path().join("data").exists());
-        assert!(!root.path().join(".env").exists());
     }
 }
 
@@ -172,23 +157,19 @@ fn profile_capability_is_read_only_and_rejects_mixed_arguments() {
 
 #[cfg(unix)]
 #[test]
-fn persistent_links_and_existing_credentials_keep_the_same_user_data_owner() {
+fn device_profiles_survive_reopening_the_same_data_directory() {
     use std::os::unix::fs::symlink;
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("releases/source");
     let user = root.path().join("user");
     fs::create_dir_all(&source).unwrap();
     fs::create_dir_all(user.join("data")).unwrap();
-    symlink("../../user/.env", source.join(".env")).unwrap();
     symlink("../../user/data", source.join("data")).unwrap();
     success(invoke(&source, &request(), "/literal", "android35-arm64"));
-    assert!(source.join(".env").is_symlink());
     assert!(source.join("data").is_symlink());
     assert!(user.join("data/deployment/profile.json").is_file());
-    fs::write(user.join(".env"), b"KEEP_PRIVATE_DATABASE_VALUE\n").unwrap();
     let second = root.path().join("releases/second");
     fs::create_dir(&second).unwrap();
-    symlink("../../user/.env", second.join(".env")).unwrap();
     symlink("../../user/data", second.join("data")).unwrap();
     let profile = fs::read(user.join("data/deployment/profile.json")).unwrap();
     success(invoke(
@@ -201,34 +182,31 @@ fn persistent_links_and_existing_credentials_keep_the_same_user_data_owner() {
         fs::read(user.join("data/deployment/profile.json")).unwrap(),
         profile
     );
-    assert_eq!(
-        fs::read(user.join(".env")).unwrap(),
-        b"KEEP_PRIVATE_DATABASE_VALUE\n"
-    );
 }
 
-#[cfg(unix)]
 #[test]
-fn failed_credential_publication_leaves_no_half_configured_profile() {
-    use std::os::unix::fs::symlink;
+fn a_blocked_profile_write_can_be_retried_with_the_same_request() {
     let root = tempfile::tempdir().unwrap();
-    symlink("missing-user/.env", root.path().join(".env")).unwrap();
-    let output = invoke(root.path(), &request(), "/literal", "android35-arm64");
-    assert!(!output.status.success());
-    assert!(!root.path().join("data").exists());
-    fs::create_dir(root.path().join("missing-user")).unwrap();
+    let data = root.path().join("data");
+    fs::write(&data, b"existing file").unwrap();
+    assert!(
+        !invoke(root.path(), &request(), "/literal", "android35-arm64")
+            .status
+            .success()
+    );
+    assert_eq!(fs::read(&data).unwrap(), b"existing file");
+    fs::remove_file(&data).unwrap();
     success(invoke(
         root.path(),
         &request(),
         "/literal",
         "android35-arm64",
     ));
-    assert!(root.path().join("missing-user/.env").is_file());
-    assert!(root.path().join("data/deployment/profile.json").is_file());
+    assert!(data.join("deployment/profile.json").is_file());
 }
 
 #[test]
-fn legacy_profiles_are_validated_without_rewriting_fields_or_private_values() {
+fn saved_profiles_are_validated_without_rewriting_optional_fields() {
     let root = tempfile::tempdir().unwrap();
     success(invoke(
         root.path(),
@@ -242,7 +220,6 @@ fn legacy_profiles_are_validated_without_rewriting_fields_or_private_values() {
     value["emulator_proxy"] = json!("legacy-value");
     let legacy = serde_json::to_vec_pretty(&value).unwrap();
     fs::write(&path, &legacy).unwrap();
-    let credentials = fs::read(root.path().join(".env")).unwrap();
     success(invoke(
         root.path(),
         &request(),
@@ -271,12 +248,11 @@ fn legacy_profiles_are_validated_without_rewriting_fields_or_private_values() {
         assert!(output.stdout.is_empty());
         assert!(!String::from_utf8_lossy(&output.stderr).contains("PRIVATE_"));
         assert_eq!(fs::read(&path).unwrap(), bytes);
-        assert_eq!(fs::read(root.path().join(".env")).unwrap(), credentials);
     }
 }
 
 #[test]
-fn explicit_profile_edits_use_the_same_validator_and_preserve_database_and_device_bytes() {
+fn explicit_profile_edits_use_the_same_validator_and_preserve_the_device_disk() {
     let root = tempfile::tempdir().unwrap();
     success(invoke(
         root.path(),
@@ -286,7 +262,6 @@ fn explicit_profile_edits_use_the_same_validator_and_preserve_database_and_devic
     ));
     let path = root.path().join("data/deployment/profile.json");
     let mut value: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    let credentials = fs::read(root.path().join(".env")).unwrap();
     let disk = root.path().join("data/userdata.img");
     fs::write(&disk, "keep device").unwrap();
     value["phone"]["memory_mb"] = json!(4096);
@@ -313,7 +288,6 @@ fn explicit_profile_edits_use_the_same_validator_and_preserve_database_and_devic
     assert!(!String::from_utf8_lossy(&failed.stderr).contains("PRIVATE_"));
     assert!(failed.stdout.is_empty());
     assert_eq!(fs::read(&path).unwrap(), before);
-    assert_eq!(fs::read(root.path().join(".env")).unwrap(), credentials);
     assert_eq!(fs::read(disk).unwrap(), b"keep device");
 }
 

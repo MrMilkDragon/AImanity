@@ -88,7 +88,9 @@ impl Client {
                 let (frame, left, top) = self.pixels()?;
                 let (w, h) = frame.dimensions();
                 let button = (h * 78 / 100..h * 96 / 100).find(|&y| {
-                    [44, 56].iter().all(|x| frame.get_pixel(w * x / 100, y)[0] < 64)
+                    [44, 56]
+                        .iter()
+                        .all(|x| frame.get_pixel(w * x / 100, y)[0] < 64)
                         && frame.get_pixel(w / 3, y)[0] > 190
                 });
                 if let Some(y) = button {
@@ -97,14 +99,31 @@ impl Client {
                 }
                 sleep(Duration::from_millis(150)).await;
             }
-        }).await??;
-        for (x, y) in [(width * 64 / 100, height * 36 / 100), (width / 2, button_y + 4)] {
-            if !self.window.is_focused()? {
-                return Err("The language window lost focus".into());
+        })
+        .await??;
+        self.click(left + width * 64 / 100, top + height * 36 / 100)?;
+        timeout(Duration::from_secs(15), async {
+            loop {
+                let (frame, _, _) = self.pixels()?;
+                let (w, h) = frame.dimensions();
+                let selected = (h * 33 / 100..h * 38 / 100)
+                    .any(|y| (w * 52 / 100..w * 55 / 100).any(|x| frame.get_pixel(x, y)[0] < 64));
+                if selected {
+                    frame.save(self.evidence.join("english.png"))?;
+                    return Result::Ok(());
+                }
+                sleep(Duration::from_millis(100)).await;
             }
-            self.input.move_mouse(left + x, top + y, Coordinate::Abs)?;
-            self.input.button(Button::Left, Direction::Click)?;
+        })
+        .await??;
+        self.click(left + width / 2, top + button_y + 4)
+    }
+    fn click(&mut self, x: i32, y: i32) -> Result<()> {
+        if !self.window.is_focused()? {
+            return Err("The workbench lost focus".into());
         }
+        self.input.move_mouse(x, y, Coordinate::Abs)?;
+        self.input.button(Button::Left, Direction::Click)?;
         Ok(())
     }
     pub async fn workspace(&mut self) -> Result<()> {
@@ -116,7 +135,8 @@ impl Client {
                 sleep(Duration::from_millis(150)).await;
             }
             Result::Ok(())
-        }).await?
+        })
+        .await?
     }
     pub async fn word(&mut self, word: &str, click: bool) -> Result<()> {
         let until = Instant::now() + Duration::from_secs(35);
@@ -167,12 +187,7 @@ impl Client {
                 .min_by_key(|&(_, y)| y);
             if let Some((x, y)) = target {
                 if click {
-                    if !self.window.is_focused()? {
-                        return Err("The installed client lost focus".into());
-                    }
-                    self.input
-                        .move_mouse(left + x / 2, top + y / 2, Coordinate::Abs)?;
-                    self.input.button(Button::Left, Direction::Click)?;
+                    self.click(left + x / 2, top + y / 2)?;
                 }
                 return Ok(());
             }

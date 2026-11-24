@@ -788,8 +788,8 @@
     },
     {
       "path": "apps/native/tests/installed/window.rs",
-      "size": 9022,
-      "sha256": "dc5af0b5409c438c68d8d168f6d43845bec285f2170c9fcffa0227672392162f"
+      "size": 9450,
+      "sha256": "3c67ad871ff35d9f993521711014b9f77c6cd61218a723397e11d85b5834725d"
     },
     {
       "path": "apps/native/tests/installed/windows.rs",
@@ -3443,8 +3443,8 @@
     },
     {
       "path": "crates/host-runtime/tests/host_profile_cli.rs",
-      "size": 12295,
-      "sha256": "c703d1d5b019d5f6d901fb0891834842bed8817081ca17ff55b5743c4fe6f5f0"
+      "size": 10995,
+      "sha256": "823fb6fc0cb1b036a11eca16c5581a6a2345a6d56bd05bf2ddfea3cc91a64a18"
     },
     {
       "path": "crates/host-runtime/tests/legacy_format1.rs",
@@ -3458,8 +3458,8 @@
     },
     {
       "path": "crates/host-runtime/tests/network_observation_cli.rs",
-      "size": 21365,
-      "sha256": "503967df9cdb4b1496cc145660ff925b1bc07cc287040fe1b5f039ab6658f188"
+      "size": 21430,
+      "sha256": "38ed91ee9445fa1bacae3b55118683f0346e27351fa1e8dd2520ef286e3ff340"
     },
     {
       "path": "crates/host-runtime/tests/network_paths_cli.rs",
