@@ -4648,8 +4648,8 @@
     },
     {
       "path": "docs/public/release-status.md",
-      "size": 7568,
-      "sha256": "7116568e650f1004f8616447f4ce4ec8b9a583b63e79f6a59b993a0ff87e28fe"
+      "size": 8460,
+      "sha256": "6e8a3f6962aaf18e034673bd1f53dfd55deba466b8b57e8ab3f40da897ef0bc9"
     },
     {
       "path": "docs/public/runtime-bundles.md",

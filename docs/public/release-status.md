@@ -2,7 +2,9 @@
 
 ## 0.0.6 Fluorine
 
-[Download macOS DMG](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.6/AImanity-0.0.6-macos-arm64.dmg) · [Download Windows EXE](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.6/AImanity-0.0.6-windows-x64-setup.exe) · [All 0.0.6 installers](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) · [下载及逐端安装验收](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6)
+[macOS DMG](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.6/AImanity-0.0.6-macos-arm64.dmg) · [Windows EXE](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.6/AImanity-0.0.6-windows-x64-setup.exe) · [Linux DEB](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.6/AImanity-0.0.6-linux-amd64.deb) · [Linux RPM](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.6/AImanity-0.0.6-linux-x86_64.rpm) · [Android phone and tablet APK](https://github.com/MrMilkDragon/AImanity/releases/download/v0.0.6/AImanity-0.0.6-android-universal.apk)
+
+[Release notes and signed installer results / 发布说明和逐端安装验收](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6)
 
 Fluorine opens an empty workspace. Add a virtual Android or Linux device when needed, pair a remote computer or phone, or grant the current task access to the host desktop. Install 0.0.6 as a fresh client. [Workspace guide](native-client.en.md)
 
@@ -12,8 +14,8 @@ Fluorine 首次打开为空工作区。可以按需创建虚拟设备，配对�
 | --- | --- | --- |
 | Apple Silicon macOS | Signed DMG on an Apple Silicon Mac. The offline workbench opened from a fresh profile, saved English and reopened the same database. Time to the visible conversation controls was 1.624 s. Local and paired TextEdit input was checked on disk. | Pairing across two physical Macs, guest audio on hardware, and optional guest creation from this specific DMG |
 | Windows 11 x64 target | Signed EXE, offline installation and same-database reopen on a hosted Windows Server 2025 desktop. Conversation controls appeared in 1.409 s. The device creation form accepted a typed name. | WHPX guest frames, physical Windows 11 input and audio |
-| Linux x86_64 (DEB and RPM) | Embedded workspace, device lifecycle and offline tools on a hosted Linux runner | Physical desktop audio and GPU configurations |
-| Android phones and tablets | One candidate APK on two Android 15 emulators, landscape input, draft on resume and cold reopen | ARM64 AVF guest creation, simultaneous recordings and playback on a physical phone or tablet |
+| Linux x86_64 (DEB and RPM) | Signed packages installed offline on Debian 12 and Fedora 43. Reopening the same database to the visible conversation controls took 663 ms and 627 ms respectively. Chinese speech synthesis and CJK fonts worked offline. [Screens and installation checks](https://github.com/MrMilkDragon/AImanity/actions/runs/45453161355) | Physical desktop audio and GPU configurations |
+| Android phones and tablets | One universal APK for the Android 15 phone and tablet emulator profiles. The checks cover landscape, hardware and software keyboard input, draft retention on resume and cold reopen. [Signed APK and its acceptance record](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) | ARM64 AVF guest creation, simultaneous recordings and playback on a physical phone or tablet |
 
 **Workspace features under development.** The Skills window can enable or disable bundled skills. Importing a custom SKILL.md from a file or URL still lacks a native workspace handler. The external messaging channel list, binding, pairing and removal also await their native handlers. Computer and Android device pairing use a separate, working connection.
 
@@ -29,7 +31,7 @@ Fluorine 首次打开为空工作区。可以按需创建虚拟设备，配对�
 | First device action, first visible reply, whole task | Nov 23 native workspace, local Qwen3-VL-2B, same AOSP Settings → Home task, three runs | medians 1.947 / 2.225 / 2.398 s |
 | Device dispatch to real input receipt | Same three Android runs | 17 ms each |
 
-The model's decision and final reply accounted for 91.0–94.0% of those Android task times. Three additional reopens of the signed Mac app reached the visible conversation controls in 1.604, 1.592 and 1.592 seconds. Median time from closing the window to process exit was 311 ms. The TextEdit timings measure the local input path. Windows, Linux and Android entries above identify the machines used for acceptance.
+The model's decision and final reply accounted for 91.0–94.0% of those Android task times. Three additional reopens of the signed Mac app reached the visible conversation controls in 1.604, 1.592 and 1.592 seconds. Median time from closing the window to process exit was 311 ms. In a separate 60-second sample, the signed Mac client used 0.26 CPU seconds and held 105.33–105.42 MiB RSS after the first five seconds with zero devices. The TextEdit timings measure the local input path. Windows, Linux and Android entries above identify the machines used for acceptance.
 
 iPhone and iPad are scheduled for 0.0.7. Installer acceptance uses the signed artifacts listed on the release page as they are published.
 
