@@ -74,6 +74,29 @@ impl Adb {
     }
 }
 
+#[cfg(any(
+    target_os = "macos",
+    windows,
+    all(target_os = "linux", target_arch = "x86_64")
+))]
+pub(super) async fn sync(client: &ai_phone_adb::Client) -> Result<()> {
+    let receipt = client
+        .shell(
+            "sync",
+            ai_phone_adb::Limits {
+                stdout: 1024,
+                stderr: 1024,
+            },
+            Duration::from_secs(4),
+        )
+        .await
+        .map_err(error)?;
+    if receipt.code != 0 {
+        return Err(Error::Invalid("android_sync_failed"));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,27 +136,4 @@ mod tests {
         }
         assert_eq!(result.unwrap(), Some(0));
     }
-}
-
-#[cfg(any(
-    target_os = "macos",
-    windows,
-    all(target_os = "linux", target_arch = "x86_64")
-))]
-pub(super) async fn sync(client: &ai_phone_adb::Client) -> Result<()> {
-    let receipt = client
-        .shell(
-            "sync",
-            ai_phone_adb::Limits {
-                stdout: 1024,
-                stderr: 1024,
-            },
-            Duration::from_secs(4),
-        )
-        .await
-        .map_err(error)?;
-    if receipt.code != 0 {
-        return Err(Error::Invalid("android_sync_failed"));
-    }
-    Ok(())
 }
