@@ -232,6 +232,17 @@ impl Client {
         Ok(())
     }
     #[cfg(windows)]
+    pub fn hover_devices(&mut self) -> Result<()> {
+        let (pixels, left, top) = self.pixels()?;
+        let (width, height) = pixels.dimensions();
+        self.input.move_mouse(
+            left + (width * 739 / 1000) as i32,
+            top + 31 + ((height - 31) / 30) as i32,
+            Coordinate::Abs,
+        )?;
+        Ok(())
+    }
+    #[cfg(windows)]
     pub async fn word(&mut self, word: &str, click: bool) -> Result<()> {
         let until = Instant::now() + Duration::from_secs(35);
         let image = self.evidence.join("window.png");

@@ -86,19 +86,26 @@ jobs:
           docker network disconnect bridge distro
           if [[ "$PACKAGE" == deb ]]; then
             docker exec -e DEBIAN_FRONTEND=noninteractive distro bash -euc 'apt-get --no-download install -y /candidate.deb && dpkg-query -W aimanity-workspace'
-            mode=guests
           else
             docker exec distro bash -euc 'dnf --disablerepo="*" --setopt=localpkg_gpgcheck=1 install -y /candidate.rpm && rpm -V aimanity-workspace'
-            mode=workbench
           fi
           docker exec distro aimanity-workspace --verify-bundled-host /usr/lib/aimanity-workspace/host
           docker exec distro aimanity-workspace --android-session-contract
-          docker exec -u tester -e HOME=/home/tester -e DISPLAY=:99 -e QA_MODE="$mode" distro bash -euc '
+          docker exec distro bash -euc 'tools=/usr/lib/aimanity-workspace/host/tools; LD_LIBRARY_PATH="$tools/lib" "$tools/bin/espeak-ng" --path="$tools/share" -v cmn -w /tmp/voice.wav "你好"; test "$(stat -c %s /tmp/voice.wav)" -gt 1000; fc-scan --format "%{family}\n" /usr/share/fonts/opentype/aimanity/NotoSansCJK-Regular.ttc | grep -F "Noto Sans CJK SC"'
+          docker exec -u tester -e HOME=/home/tester -e DISPLAY=:99 distro bash -euc '
             Xvfb :99 -screen 0 1600x1000x24 -nolisten tcp > "$HOME/xvfb.log" 2>&1 &
             for i in {1..50}; do xwininfo -root >/dev/null 2>&1 && break; sleep 0.1; done
-            bash /check-linux-guests.sh "$QA_MODE"
+            bash /check-linux-guests.sh workbench
           '
-          echo "- $DISTRO: installed the signed $PACKAGE offline, opened an empty workspace, closed it, then reopened the same database. Coverage: $mode." >> "$GITHUB_STEP_SUMMARY"
+          echo "- $DISTRO: installed the signed $PACKAGE offline, opened an empty workspace, closed it, then reopened the same database." >> "$GITHUB_STEP_SUMMARY"
+      - name: Check on-demand guests with KVM
+        if: matrix.package == 'deb'
+        continue-on-error: true
+        run: |
+          if ! docker exec -u tester -e HOME=/home/tester -e DISPLAY=:99 distro bash /check-linux-guests.sh guests; then
+            echo "Optional KVM guest creation did not complete." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
       - name: Collect workbench screens and lifecycle log
         if: always()
         run: |

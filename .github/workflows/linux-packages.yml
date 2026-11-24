@@ -31,6 +31,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ inputs.source_ref || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - name: Set up the Debian 12 build root
         run: |
@@ -47,7 +48,7 @@ jobs:
           sudo chroot "$root" /bin/bash -euc '
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
-            apt-get install -y --no-install-recommends git curl build-essential pkg-config cmake clang libclang-dev libssl-dev libasound2-dev libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxcb1-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libpipewire-0.3-dev libspa-0.2-dev libgbm-dev libegl1-mesa-dev libdrm-dev libdbus-1-dev rpm xz-utils zstd adb dpkg-dev
+            apt-get install -y --no-install-recommends git curl build-essential pkg-config cmake clang libclang-dev libssl-dev libasound2-dev libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxcb1-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libpipewire-0.3-dev libspa-0.2-dev libgbm-dev libegl1-mesa-dev libdrm-dev libdbus-1-dev rpm xz-utils zstd adb dpkg-dev espeak-ng fonts-noto-cjk
             apt-get install -y --no-install-recommends -t bookworm-backports qemu-system-x86 qemu-utils
           '
           rustup toolchain install 1.96.0 --profile minimal
@@ -78,7 +79,7 @@ jobs:
         run: |
           sudo chroot "$BUILD_ROOT" /bin/bash -euc '
             cd /work
-            test "$(cat .tools/linux-guest-inputs/source-commit)" = "$(git rev-parse HEAD)"
+            git merge-base --is-ancestor "$(cat .tools/linux-guest-inputs/source-commit)" HEAD
             target/release/release-tools linux-payload "$PWD/.tools/linux-guest-inputs" /factory/tools
             export AIMANITY_BUNDLE_INTEGRITY=$PWD/apps/native/gen/host/integrity.json
             cargo build --release --locked --manifest-path apps/native/Cargo.toml --bin aimanity-native

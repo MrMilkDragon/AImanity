@@ -3,6 +3,7 @@ set -euo pipefail
 
 root=/usr/lib/aimanity-workspace/host
 work="$HOME/cold-install"
+if [[ $1 == guests ]]; then work="$HOME/optional-guests"; fi
 export XDG_RUNTIME_DIR="$work/run" XDG_DATA_HOME="$work/data"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
@@ -49,7 +50,7 @@ word() {
     echo "Missing $wanted on the installed client" >&2
     return 1
 }
-click_word() { word "$1"; xdotool mousemove --window "$window" "$x" "$y" click 1; }
+click_word() { word "$1"; xdotool mousemove --window "$window" "$x" "$y" sleep 0.1 mousedown 1 sleep 0.1 mouseup 1; }
 qemu_pids() { ps -u "$(id -u)" -o pid=,comm= | awk '$2 ~ /qemu-system-x86/ {print $1}'; }
 click_word English
 click_word Continue
@@ -64,7 +65,8 @@ if [[ $1 == workbench ]]; then
     exit 0
 fi
 [[ -r /dev/kvm && -w /dev/kvm ]]
-click_word Add
+eval "$(xdotool getwindowgeometry --shell "$window")"
+xdotool mousemove --window "$window" "$((WIDTH * 739 / 1000))" "$((HEIGHT / 30))"
 word Share
 
 for kind in phone desktop; do

@@ -56,7 +56,7 @@ async fn windows_installed_guests() -> Result<()> {
     let mut app = Client::launch(&exe, &profile, &root, &log).await?;
     let result = async {
         app.capture_workbench("before-guests.png").await?;
-        app.word("Add", true).await?;
+        app.hover_devices()?;
         app.word("Share", false).await?;
         app.create_guest("Phone").await?;
         app.frame("phone", &log).await?;

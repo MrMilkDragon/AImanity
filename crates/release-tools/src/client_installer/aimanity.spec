@@ -7,8 +7,7 @@ URL:            https://github.com/MrMilkDragon/AImanity
 BuildArch:      x86_64
 AutoReqProv:    no
 Requires:       glibc >= 2.36, @LINKED@
-Requires:       vulkan-loader, libwayland-client, libX11, libX11-xcb, libXcursor, libXi, libxkbcommon, libxkbcommon-x11, polkit, espeak-ng, systemd-udev
-Requires:       (google-noto-sans-cjk-fonts or google-noto-sans-cjk-vf-fonts)
+Requires:       vulkan-loader, libwayland-client, libX11, libX11-xcb, libXcursor, libXi, libxkbcommon, libxkbcommon-x11, polkit, systemd-udev
 
 %global __os_install_post %{nil}
 %description
@@ -27,5 +26,6 @@ cp -al "$AIMANITY_STAGE/usr" "%{buildroot}/"
 /usr/lib/aimanity-workspace
 /usr/lib/udev/rules.d/70-aimanity-workspace-kvm.rules
 /usr/share/applications/dev.aimanity.workspace.desktop
+/usr/share/fonts/opentype/aimanity
 /usr/share/icons/hicolor/scalable/apps/dev.aimanity.workspace.svg
 /usr/share/doc/aimanity-workspace

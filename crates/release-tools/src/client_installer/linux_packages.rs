@@ -46,6 +46,19 @@ pub(crate) fn build(args: &[OsString]) -> Result<Value> {
     let applications = image.join("usr/share/applications");
     fs::create_dir_all(&applications)?;
     fs::write(applications.join("dev.aimanity.workspace.desktop"), DESKTOP)?;
+    let fonts = image.join("usr/share/fonts/opentype/aimanity");
+    fs::create_dir_all(&fonts)?;
+    for weight in ["Regular", "Bold"] {
+        let name = format!("NotoSansCJK-{weight}.ttc");
+        fs::copy(
+            std::path::Path::new("/usr/share/fonts/opentype/noto").join(&name),
+            fonts.join(name),
+        )?;
+    }
+    fs::copy(
+        "/usr/share/doc/fonts-noto-cjk/copyright",
+        legal.join("noto-cjk.copyright"),
+    )?;
     let rules = image.join("usr/lib/udev/rules.d");
     fs::create_dir_all(&rules)?;
     fs::write(rules.join("70-aimanity-workspace-kvm.rules"), KVM_RULE)?;
@@ -92,7 +105,7 @@ pub(crate) fn build(args: &[OsString]) -> Result<Value> {
     fs::write(
         image.join("DEBIAN/control"),
         format!(
-            "Package: aimanity-workspace\nVersion: {version}\nArchitecture: amd64\nMaintainer: AImanity maintainers <maintainers@users.noreply.github.com>\nSection: utils\nPriority: optional\nDepends: {linked}, libvulkan1, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon0, libxkbcommon-x11-0, pkexec, espeak-ng, fonts-noto-cjk, udev\nDescription: {TITLE}\n Offline workspace with optional Android and Linux devices and a shared agent.\n"
+            "Package: aimanity-workspace\nVersion: {version}\nArchitecture: amd64\nMaintainer: AImanity maintainers <maintainers@users.noreply.github.com>\nSection: utils\nPriority: optional\nDepends: {linked}, libvulkan1, libwayland-client0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon0, libxkbcommon-x11-0, pkexec, udev\nDescription: {TITLE}\n Offline workspace with optional Android and Linux devices and a shared agent.\n"
         ),
     )?;
     execute(

@@ -78,13 +78,13 @@
     },
     {
       "path": ".github/workflows/linux-install-check.yml",
-      "size": 5539,
-      "sha256": "c96f9b0fa5d3e9b912c8b046387457884a5d377487e4be88998e0129fc39b0a3"
+      "size": 6185,
+      "sha256": "3358a675c9dd3028d13aa5bd7beb181e8c51a2af3b665a19192f7d8ff6034f8b"
     },
     {
       "path": ".github/workflows/linux-packages.yml",
-      "size": 4623,
-      "sha256": "aca87737cab1ff97dd62da5f501792783623ee77094a0c046157f95b85f5cff8"
+      "size": 4676,
+      "sha256": "6467e2208335772e4f84b2259b220e92d06b62dea6847627a46c50046c714011"
     },
     {
       "path": ".github/workflows/linux-publish.yml",
@@ -183,8 +183,8 @@
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
-      "size": 17369,
-      "sha256": "e05b004846d834719399a09f6ea94cdd2ef036f8837e40a78bd909c71a2ae016"
+      "size": 17724,
+      "sha256": "6cc6657ec90de4a7ceeb181ba877f7883233ec3f0879e1de6ca20952838ef4a2"
     },
     {
       "path": "ai-phone",
@@ -573,8 +573,8 @@
     },
     {
       "path": "apps/native/src/modes/speech/speaker.rs",
-      "size": 6462,
-      "sha256": "9cb9891196142854ae9dd7f6d17ba304cf4d8e4fca2de203dfd8eb9d5cab2127"
+      "size": 6670,
+      "sha256": "15c7015267ad254cd60813d12bd477731f129bdbae1c52debe6da2504247371a"
     },
     {
       "path": "apps/native/src/modes/speech.rs",
@@ -798,13 +798,13 @@
     },
     {
       "path": "apps/native/tests/installed/window.rs",
-      "size": 13780,
-      "sha256": "a2b50c2dd92751e141c84b83337a596706ecd8c5a3934adcefdf28f960fcae89"
+      "size": 14146,
+      "sha256": "28878ad034355aeaa7637e08a9fa6a9c0dcdac6900f8b5f680c99886b32f9164"
     },
     {
       "path": "apps/native/tests/installed/windows.rs",
-      "size": 4198,
-      "sha256": "370509bdcadca103abf3fe2857197766bdfe061af1ad125a2dea81fff71ae392"
+      "size": 4190,
+      "sha256": "59095505676f0b9c713634750cb75da463b1c6941287e8afec8db4b4f46446aa"
     },
     {
       "path": "apps/native/tests/installed_macos.rs",
@@ -3703,8 +3703,8 @@
     },
     {
       "path": "crates/release-tools/src/client_installer/aimanity.spec",
-      "size": 1059,
-      "sha256": "b2aec07fa08c1e6cc4bb80be2e65cd54271d6c2f33698fce7debaff1fa8de8e3"
+      "size": 1005,
+      "sha256": "0ab9a6e38f3fa48791b69403b219472aa9a9d66002a7e31362677b548e153f28"
     },
     {
       "path": "crates/release-tools/src/client_installer/bundle.rs",
@@ -3713,8 +3713,8 @@
     },
     {
       "path": "crates/release-tools/src/client_installer/linux_packages.rs",
-      "size": 6224,
-      "sha256": "ee4434e69d631063ed4ddabd6b1b85125429b23e5af5756d96d03a9214ae53c0"
+      "size": 6652,
+      "sha256": "d3fe9ad90ddf2bb9e6451e50f95f884381430d789dddb0f11344ba9f325f1fbb"
     },
     {
       "path": "crates/release-tools/src/client_installer/linux_payload.rs",
@@ -4998,8 +4998,8 @@
     },
     {
       "path": "scripts/check-linux-guests.sh",
-      "size": 3461,
-      "sha256": "3a0b1b8fec70488cec97464bc775835e12e26949901261000dd8a61784b741f2"
+      "size": 3677,
+      "sha256": "8a5977d74f82e75b3c5baf67dc43f4396c3c95ea7e5504d074bfeb38e72d4bae"
     },
     {
       "path": "scripts/check-native-workspace.sh",
@@ -5068,8 +5068,8 @@
     },
     {
       "path": "scripts/stage-linux-tools.sh",
-      "size": 1897,
-      "sha256": "184b88939a2f9bdf1c0ba633d18f1e5f6e78ff1ea38ae626425db8dfcb14eab8"
+      "size": 2023,
+      "sha256": "59c616083415272c15c2d5803ded5b9996a51acd18aa7e170142b91f1149ce52"
     },
     {
       "path": "scripts/windows-release-layer.sh",
