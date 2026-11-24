@@ -101,18 +101,21 @@ pub fn show(purpose: Option<input_method::Purpose>) {
                         *slot = Some(env.new_global_ref(view)?);
                     }
                     let view = slot.as_ref().unwrap().as_obj();
-                    env.call_method(view, "requestFocus", "()Z", &[])?;
-                    env.call_method(
-                        &imm,
-                        "restartInput",
-                        "(Landroid/view/View;)V",
-                        &[view.into()],
-                    )?;
+                    if env.call_method(view, "hasFocus", "()Z", &[])?.z()? {
+                        env.call_method(
+                            &imm,
+                            "restartInput",
+                            "(Landroid/view/View;)V",
+                            &[view.into()],
+                        )?;
+                    } else {
+                        env.call_method(view, "requestFocus", "()Z", &[])?;
+                    }
                     env.call_method(
                         &imm,
                         "showSoftInput",
                         "(Landroid/view/View;I)Z",
-                        &[view.into(), 0.into()],
+                        &[view.into(), 1.into()],
                     )?;
                 } else if let Some(view) = slot.as_ref() {
                     let token = env

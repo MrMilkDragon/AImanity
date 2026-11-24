@@ -105,10 +105,10 @@ for attempt in {1..8}; do
   capture composer
   if word_box composer Message >/dev/null; then tap_word composer Message; fi
   adb shell dumpsys input_method > evidence/composer-focus.txt
-  if grep -Fq 'mServedView=dev.aimanity.mobile.KeyboardView' evidence/composer-focus.txt; then break; fi
+  if grep -Fq 'connection=dev.aimanity.mobile.KeyboardConnection@' evidence/composer-focus.txt; then break; fi
   sleep 0.4
 done
-grep -Fq 'mServedView=dev.aimanity.mobile.KeyboardView' evidence/composer-focus.txt
+grep -Fq 'connection=dev.aimanity.mobile.KeyboardConnection@' evidence/composer-focus.txt
 adb shell input text Orbit
 hide_keyboard hardware
 wait_word typed Orbit
