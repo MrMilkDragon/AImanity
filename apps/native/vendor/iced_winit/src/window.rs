@@ -287,8 +287,7 @@ where
         if std::mem::take(&mut self.ime_tapped)
             || self.ime_state.is_some_and(|(_, previous)| previous != purpose)
         {
-            let baseline = (cursor.y + cursor.height) * self.state.scale_factor();
-            crate::ANDROID_KEYBOARD.get()(Some((purpose, baseline.round() as i32)));
+            crate::ANDROID_KEYBOARD.get()(Some(purpose));
         }
         #[cfg(not(target_os = "android"))]
         if self.ime_state.is_none() {

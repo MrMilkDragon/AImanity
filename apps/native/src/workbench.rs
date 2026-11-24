@@ -83,6 +83,8 @@ enum Message {
     Agents(agents::Message),
     Devices(devices::Message),
     HostAccess(bool),
+    #[cfg(target_os = "android")]
+    KeyboardCoverage(f32),
     Audio(String, audio::Message),
     Files(Box<files::Message>),
     Todos(todos::Message),
@@ -209,6 +211,8 @@ struct App {
     streams: Option<iced::task::Handle>,
     ui_scale: f32,
     canvas_origin: iced::Vector,
+    #[cfg(target_os = "android")]
+    keyboard_coverage: f32,
     home: Layout,
     layout: Layout,
     from: Layout,
@@ -267,6 +271,8 @@ impl App {
             streams: None,
             ui_scale: 1.,
             canvas_origin: iced::Vector::ZERO,
+            #[cfg(target_os = "android")]
+            keyboard_coverage: 0.,
             home: layout.clone(),
             layout: layout.clone(),
             from: layout.clone(),
@@ -797,7 +803,7 @@ impl App {
                 }
             }
             Message::Conversation(message) => {
-                if self.layout.chat.contains(self.cursor) {
+                if self.chat_bounds().contains(self.cursor) {
                     self.keyboard_target = None;
                 }
                 if let chat::Message::Mode(message) = message {
@@ -1017,6 +1023,8 @@ impl App {
                     self.reflow_child();
                 }
             }
+            #[cfg(target_os = "android")]
+            Message::KeyboardCoverage(covered) => self.keyboard_coverage = covered,
             Message::HostAccess(enabled) => {
                 if let Err(error) = self.chat.host.configure(&self.host_home, enabled) {
                     self.error = error.to_string();
@@ -1427,6 +1435,17 @@ impl App {
         }
         Task::none()
     }
+    fn chat_bounds(&self) -> Rectangle {
+        let chat = self.layout.chat;
+        #[cfg(target_os = "android")]
+        if self.keyboard_coverage > 0. {
+            let origin = self.canvas_origin.y;
+            let visible = (WORKBENCH.height + 2. * origin) * (1. - self.keyboard_coverage) - origin;
+            return Rectangle { height: (visible - layout::SIDE_INSET - chat.y).clamp(0., chat.height), ..chat };
+        }
+        chat
+    }
+
     fn subscription(&self) -> Subscription<Message> {
         if self.closing {
             return Subscription::none();
@@ -1473,6 +1492,8 @@ impl App {
         {
             subscriptions.push(window::frames().map(Message::Tick));
         }
+        #[cfg(target_os = "android")]
+        subscriptions.push(Subscription::run(android_keyboard::coverage).map(Message::KeyboardCoverage));
         subscriptions.push(self.chat.subscription().map(Message::Conversation));
         subscriptions.push(
             self.agents
@@ -1684,7 +1705,7 @@ impl App {
     }
     fn panel_anchor(&self, panel: Panel) -> Rectangle {
         if matches!(panel, Panel::Todos | Panel::Goal) {
-            let chat = self.layout.chat;
+            let chat = self.chat_bounds();
             let [vertical, horizontal] = layout::CHAT_PADDING;
             let size = style::CONTROL_HEIGHT;
             let goal_offset = if panel == Panel::Goal {
@@ -2205,7 +2226,7 @@ impl App {
         let child_popup = self.child_rect();
         let (mode_effects, mode_motion) = self.modes.effects(self.reduced_motion);
         let scene = scene::Scene {
-            layout: self.layout.clone(),
+            layout: Layout { chat: self.chat_bounds(), ..self.layout.clone() },
             size: WORKBENCH,
             devices: self
                 .devices
@@ -2442,7 +2463,7 @@ impl App {
             board_widgets.push(
                 pin(container(add)
                     .center_x(Length::Fill)
-                    .width(self.layout.chat.x - 2. * layout::SIDE_INSET))
+                    .width(self.chat_bounds().x - 2. * layout::SIDE_INSET))
                 .x(layout::SIDE_INSET)
                 .y(board.center_y() - 20.)
                 .into(),
@@ -2452,10 +2473,10 @@ impl App {
             1,
             occlude::behind(
                 occlude::within(stack(board_widgets).into(), board + self.canvas_origin),
-                self.layout.chat + self.canvas_origin,
+                self.chat_bounds() + self.canvas_origin,
             ),
         );
-        let r = self.layout.chat;
+        let r = self.chat_bounds();
         stage.push(
             pin(container(
                 self.chat

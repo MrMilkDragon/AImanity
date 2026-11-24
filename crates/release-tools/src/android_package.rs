@@ -24,10 +24,18 @@ pub fn mobile_dex(args: &[OsString]) -> Result<()> {
         Class {
             name: "Ldev/aimanity/mobile/KeyboardView;",
             parent: "Landroid/view/View;",
-            interfaces: &[],
+            interfaces: &["Landroid/view/View$OnApplyWindowInsetsListener;"],
             constructor_args: &["Landroid/content/Context;"],
             fields: &[],
             natives: &[
+                (
+                    "onApplyWindowInsets",
+                    (
+                        "Landroid/view/WindowInsets;",
+                        &["Landroid/view/View;", "Landroid/view/WindowInsets;"],
+                    ),
+                    1,
+                ),
                 ("onCheckIsTextEditor", ("Z", &[]), 1),
                 (
                     "onCreateInputConnection",

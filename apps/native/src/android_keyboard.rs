@@ -17,10 +17,70 @@ static VIEW: Mutex<Option<GlobalRef>> = Mutex::new(None);
 static GENERATION: AtomicI32 = AtomicI32::new(0);
 static INPUT_TYPE: AtomicI32 = AtomicI32::new(1);
 
+static COVERED: std::sync::LazyLock<tokio::sync::watch::Sender<f32>> =
+    std::sync::LazyLock::new(|| tokio::sync::watch::Sender::new(0.));
+
+pub fn coverage() -> impl futures_util::Stream<Item = f32> {
+    futures_util::stream::unfold(COVERED.subscribe(), |mut rx| async move {
+        rx.changed().await.ok()?;
+        let fraction = *rx.borrow_and_update();
+        Some((fraction, rx))
+    })
+}
+
+#[unsafe(no_mangle)]
+extern "system" fn Java_dev_aimanity_mobile_KeyboardView_onApplyWindowInsets(
+    mut env: JNIEnv,
+    _: JObject,
+    decor: JObject,
+    insets: JObject,
+) -> jobject {
+    let result = (|| -> jni::errors::Result<_> {
+        let height = env.call_method(&decor, "getHeight", "()I", &[])?.i()?;
+        let ime = env
+            .call_static_method("android/view/WindowInsets$Type", "ime", "()I", &[])?
+            .i()?;
+        let edges = env
+            .call_method(
+                &insets,
+                "getInsets",
+                "(I)Landroid/graphics/Insets;",
+                &[ime.into()],
+            )?
+            .l()?;
+        let bottom = env.get_field(edges, "bottom", "I")?.i()?;
+        if height > 0 {
+            let covered = bottom as f32 / height as f32;
+            COVERED.send_if_modified(|previous| {
+                if *previous == covered {
+                    return false;
+                }
+                *previous = covered;
+                true
+            });
+        }
+        env.call_method(
+            decor,
+            "onApplyWindowInsets",
+            "(Landroid/view/WindowInsets;)Landroid/view/WindowInsets;",
+            &[(&insets).into()],
+        )?
+        .l()
+    })();
+    match result {
+        Ok(remaining) => remaining.into_raw(),
+        Err(error) => {
+            eprintln!("Android keyboard insets: {error}");
+            insets.into_raw()
+        }
+    }
+}
+
 pub fn attach(app: AndroidApp) {
     *ACTIVITY.lock().unwrap() = Some(app);
 }
 pub fn detach() {
+    COVERED.send_replace(0.);
     GENERATION.fetch_add(1, Ordering::Relaxed);
     ACTIVITY.lock().unwrap().take();
     VIEW.lock().unwrap().take();
@@ -44,7 +104,7 @@ fn app_class<'a>(
         .l()?;
     Ok(class.into())
 }
-pub fn show(editor: Option<(input_method::Purpose, i32)>) {
+pub fn show(purpose: Option<input_method::Purpose>) {
     let Some(app) = ACTIVITY.lock().unwrap().clone() else {
         return;
     };
@@ -61,8 +121,12 @@ pub fn show(editor: Option<(input_method::Purpose, i32)>) {
                     )?
                     .l()?;
                 let mut slot = VIEW.lock().unwrap();
-                if let Some((purpose, baseline)) = editor {
-                    let input_type = if purpose == input_method::Purpose::Secure { 0x81 } else { 1 };
+                if let Some(purpose) = purpose {
+                    let input_type = if purpose == input_method::Purpose::Secure {
+                        0x81
+                    } else {
+                        1
+                    };
                     let type_changed = INPUT_TYPE.swap(input_type, Ordering::Relaxed) != input_type;
                     if slot.is_none() {
                         let class = app_class(env, activity, "dev.aimanity.mobile.KeyboardView")?;
@@ -81,7 +145,7 @@ pub fn show(editor: Option<(input_method::Purpose, i32)>) {
                             &[2.into()],
                         )?;
                         let layout = env.new_object(
-                            "android/widget/FrameLayout$LayoutParams",
+                            "android/view/ViewGroup$LayoutParams",
                             "(II)V",
                             &[1.into(), 1.into()],
                         )?;
@@ -91,12 +155,22 @@ pub fn show(editor: Option<(input_method::Purpose, i32)>) {
                             "(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V",
                             &[(&view).into(), (&layout).into()],
                         )?;
+                        let window = env
+                            .call_method(activity, "getWindow", "()Landroid/view/Window;", &[])?
+                            .l()?;
+                        let decor = env
+                            .call_method(window, "getDecorView", "()Landroid/view/View;", &[])?
+                            .l()?;
+                        env.call_method(
+                            &decor,
+                            "setOnApplyWindowInsetsListener",
+                            "(Landroid/view/View$OnApplyWindowInsetsListener;)V",
+                            &[(&view).into()],
+                        )?;
+                        env.call_method(&decor, "requestApplyInsets", "()V", &[])?;
                         *slot = Some(env.new_global_ref(view)?);
                     }
                     let view = slot.as_ref().unwrap().as_obj();
-                    let layout = env.call_method(view, "getLayoutParams", "()Landroid/view/ViewGroup$LayoutParams;", &[])?.l()?;
-                    env.set_field(&layout, "topMargin", "I", baseline.into())?;
-                    env.call_method(view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[(&layout).into()])?;
                     if !env.call_method(view, "hasFocus", "()Z", &[])?.z()? {
                         env.call_method(view, "requestFocus", "()Z", &[])?;
                     } else if type_changed {
@@ -173,7 +247,10 @@ extern "system" fn Java_dev_aimanity_mobile_KeyboardView_onCreateInputConnection
             &connection,
             "generation",
             "I",
-            GENERATION.fetch_add(1, Ordering::Relaxed).wrapping_add(1).into(),
+            GENERATION
+                .fetch_add(1, Ordering::Relaxed)
+                .wrapping_add(1)
+                .into(),
         )?;
         iced_winit::android_input(Event::InputMethod(input_method::Event::Opened));
         Ok(connection.into_raw())

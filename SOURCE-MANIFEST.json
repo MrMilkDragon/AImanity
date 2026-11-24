@@ -193,8 +193,8 @@
     },
     {
       "path": "apps/android-client/AndroidManifest.xml",
-      "size": 1762,
-      "sha256": "0e2a4a86f4d8c404ce4538ae1a0f6585169c4102417b71abbe9d36ae1eb715b7"
+      "size": 1766,
+      "sha256": "f4996ca6a42dfcc0b12b630cb37078fd87394a0e752552f78205c2da1cb821b5"
     },
     {
       "path": "apps/android-client/res/drawable/aimanity.xml",
@@ -423,8 +423,8 @@
     },
     {
       "path": "apps/native/src/android_keyboard.rs",
-      "size": 12864,
-      "sha256": "56beb9b499ededaad8dc88caa64478456c531b6323e4dce7e3ccd17a08e8354a"
+      "size": 15250,
+      "sha256": "e654acaa96bd2c0b5d11088b11e94fb536ba19021b9d65b1aafd49a621c8ba7f"
     },
     {
       "path": "apps/native/src/android_os.rs",
@@ -703,8 +703,8 @@
     },
     {
       "path": "apps/native/src/workbench.rs",
-      "size": 105199,
-      "sha256": "3109f7be8f9bd975499d014e627355418f28548e806a56fcf53ae654b7631bc6"
+      "size": 106166,
+      "sha256": "141f6e19d125d0d377a1fb1a3fd25f53f48964924c3b7536f6aeddef0cd8ab06"
     },
     {
       "path": "apps/native/src/workspace/conversation.rs",
@@ -883,8 +883,8 @@
     },
     {
       "path": "apps/native/vendor/iced_winit/src/lib.rs",
-      "size": 79814,
-      "sha256": "23282bbc979d7475123635c476acb5b4071a80428114b075e926c4215e716487"
+      "size": 79800,
+      "sha256": "887dfaad6ed645c74ecd73db97358336f9ba8dfeaa986fa1346bc78e057f279a"
     },
     {
       "path": "apps/native/vendor/iced_winit/src/proxy.rs",
@@ -898,8 +898,8 @@
     },
     {
       "path": "apps/native/vendor/iced_winit/src/window.rs",
-      "size": 13860,
-      "sha256": "f6faa8b0f458f392bc068fc2fee8a545462036929fc9dabbbdb516b22fe429e8"
+      "size": 13750,
+      "sha256": "a00804650eeb57c945fb40460b2616a72b90eb430fb792614573f42a61d73b38"
     },
     {
       "path": "apps/native/vendor/winit/Cargo.toml",
@@ -3678,8 +3678,8 @@
     },
     {
       "path": "crates/release-tools/src/android_package.rs",
-      "size": 8781,
-      "sha256": "0e39b5b47b500d5eade2fc90a4965ec930f694d79eb8b0c43406edc0d5b82b9f"
+      "size": 9114,
+      "sha256": "98363e5e0efe5acdfad19baf55822068696faf713426c9c841c4f97dd21c79dc"
     },
     {
       "path": "crates/release-tools/src/assets.rs",
