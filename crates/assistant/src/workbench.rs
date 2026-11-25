@@ -131,47 +131,11 @@ async fn download(app: &App, url: &str, limit: usize) -> Result<Vec<u8>, String>
     }
     Ok(bytes)
 }
-fn metadata(content: &str, fallback: &str) -> (String, String) {
-    let mut name = fallback.to_string();
-    let mut description = String::new();
-    if content.starts_with("---") {
-        for line in content.lines().skip(1).take_while(|line| *line != "---") {
-            if let Some(value) = line.strip_prefix("name:") {
-                name = value.trim().trim_matches(['\"', '\'']).to_string();
-            }
-            if let Some(value) = line.strip_prefix("description:") {
-                description = value.trim().trim_matches(['\"', '\'']).to_string();
-            }
-        }
-    }
-    if name.trim().is_empty() {
-        name = "自定义 Skill".into();
-    }
-    (
-        name.chars().take(100).collect(),
-        description.chars().take(600).collect(),
-    )
-}
+use ai_phone_api::skill::validate_skill;
 fn content_version(content: &str) -> String {
     crate::request_digest::encode(content.as_bytes())
 }
-fn validate_skill(content: &str, fallback: &str) -> Result<(String, String), String> {
-    if content.trim().is_empty() || content.len() > 1_048_576 || content.contains('\0') {
-        return Err("Skill正文为空、包含无效字符或超过1MB".into());
-    }
-    let (name, description) = metadata(content, fallback);
-    if !content.starts_with("---\n") && !content.starts_with("---\r\n") {
-        return Err("SKILL.md需要包含name和description的YAML头部".into());
-    }
-    let mut lines = content.lines().skip(1);
-    if !lines.by_ref().any(|line| line == "---") || !lines.any(|line| !line.trim().is_empty()) {
-        return Err("Skill需要完整YAML头部和可执行的正文说明".into());
-    }
-    if name == "自定义 Skill" || name.trim().is_empty() || description.trim().is_empty() {
-        return Err("Skill需要明确的name和description".into());
-    }
-    Ok((name, description))
-}
+
 async fn skill_set_enabled(
     app: &App,
     request: wire::SkillUpdateRequest,

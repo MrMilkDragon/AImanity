@@ -237,7 +237,9 @@ pub(super) fn assemble(
     let version = release["version"]
         .as_str()
         .ok_or("Missing release version")?;
-    let numeric = version.split('-').next().unwrap_or(version);
+    let release = crate::release_version::Version::parse(version)?;
+    let [major, minor, patch] = release.base;
+    let fix = release.fix;
     let output = target
         .parent()
         .ok_or("Missing installer output directory")?;
@@ -246,7 +248,7 @@ pub(super) fn assemble(
         Command::new(compiler)
             .arg("/Qp")
             .arg(format!("/DAppVersion={version}"))
-            .arg(format!("/DNumericVersion={numeric}.0"))
+            .arg(format!("/DNumericVersion={major}.{minor}.{patch}.{fix}"))
             .arg(argument("/DAppSource=", stage))
             .arg(argument("/DProjectRoot=", root))
             .arg(argument("/O", output))

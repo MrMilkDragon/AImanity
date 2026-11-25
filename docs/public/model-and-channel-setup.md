@@ -59,7 +59,9 @@ An optional proxy is under **Advanced**. Empty uses the host's configured defaul
 
 **Rescan** removes that session locally and starts a new identity/owner pairing. **Unbind** attempts remote logout and removes the local session. If remote confirmation is unknown, the interface reports it; check WhatsApp's Linked devices and remove the old session there. Network reconnect keeps the same local session; shutdown stops the active connection.
 
-The Rust assistant runs the WhatsApp, QQ, WeCom, Feishu and Telegram adapters. WhatsApp stores its linked-device session in local PostgreSQL. On upgrades from 0.1.5, scan the new WhatsApp QR once. Existing AI Phone conversations and Agent settings stay in place. [Supported channels and operations](compatibility.md)
+Open **Configuration → Agent → Connections** and choose Telegram, WhatsApp, QQ, WeCom or Feishu. Enter the bot credentials, or scan the WhatsApp linked-device QR. Send the displayed pairing command in a private chat with the bot. The paired account can send a task and receive its reply in the originating conversation. Bindings and pending replies live in the native workspace and reopen with it. Telegram also accepts a custom Bot API endpoint.
+
+Open **Skills → +** to import a local SKILL.md or an HTTPS link to the Markdown file. Enable the imported guide in the list. Its YAML header supplies the name and description. The Agent reads the body on demand. [Supported channels](compatibility.md)
 
 ## Primary references
 

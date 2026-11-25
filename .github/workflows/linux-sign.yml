@@ -49,8 +49,12 @@ jobs:
             <Verification><Required Type="origin" File="aimanity.pgp" id="$fingerprint"/></Verification>
           </Policy>
           POLICY
-          deb=dist/AImanity-0.0.6-linux-amd64.deb
-          rpm=dist/AImanity-0.0.6-linux-x86_64.rpm
+          debs=(dist/AImanity-*-linux-amd64.deb)
+          [[ ${#debs[@]} == 1 && -f ${debs[0]} ]]
+          version=${debs[0]#dist/AImanity-}
+          version=${version%-linux-amd64.deb}
+          deb=dist/AImanity-$version-linux-amd64.deb
+          rpm=dist/AImanity-$version-linux-x86_64.rpm
           ar p "$deb" debian-binary control.tar.zst data.tar.zst | gpg --batch --local-user "$fingerprint" --detach-sign --output "$GNUPGHOME/_gpgorigin"
           ar q "$deb" "$GNUPGHOME/_gpgorigin"
           debsig-verify --policies-dir "$RUNNER_TEMP/deb-policy" --keyrings-dir "$RUNNER_TEMP/deb-keys" "$deb"

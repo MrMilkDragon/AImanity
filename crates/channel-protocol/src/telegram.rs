@@ -11,7 +11,7 @@ use reqwest::{
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 
-pub(super) fn identity(token: &str) -> Option<&str> {
+pub fn identity(token: &str) -> Option<&str> {
     let (id, key) = token.split_once(':')?;
     (id.len() >= 5
         && id.len() <= 20
@@ -24,6 +24,7 @@ pub(super) fn identity(token: &str) -> Option<&str> {
 }
 pub(super) struct Telegram {
     client: Client,
+    api_base: String,
     token: String,
     context: Context,
 }
@@ -32,8 +33,7 @@ impl Telegram {
         let request = self
             .client
             .post(format!(
-                "https://api.telegram.org/bot{}/{method}",
-                self.token
+                "{}/bot{}/{method}", self.api_base, self.token
             ))
             .json(&body);
         let response = self.context.request(request).await?;
@@ -61,18 +61,18 @@ impl Telegram {
         }
         Ok(())
     }
-    async fn run(&self, mut offset: i64) -> Result<()> {
+    async fn run(&self, offset: &mut i64) -> Result<()> {
         while !self.context.cancel.is_cancelled() {
             let updates = self
                 .api(
                     "getUpdates",
-                    json!({"offset":offset,"timeout":25,"limit":100,"allowed_updates":["message"]}),
+                    json!({"offset":*offset,"timeout":25,"limit":100,"allowed_updates":["message"]}),
                 )
                 .await?;
             self.context.status("connected", "");
             for update in updates.as_array().ok_or("telegram_updates")? {
                 let next = update["update_id"].as_i64().ok_or("telegram_update_id")?;
-                if next < offset {
+                if next < *offset {
                     continue;
                 }
                 let message = &update["message"];
@@ -96,8 +96,8 @@ impl Telegram {
                         )
                         .await?;
                 }
-                offset = next + 1;
-                self.context.offset(offset).await?;
+                self.context.offset(next + 1).await?;
+                *offset = next + 1;
             }
         }
         Ok(())
@@ -130,8 +130,7 @@ impl Telegram {
                     let request = self
                         .client
                         .post(format!(
-                            "https://api.telegram.org/bot{}/sendPhoto",
-                            self.token
+                            "{}/bot{}/sendPhoto", self.api_base, self.token
                         ))
                         .multipart(form);
                     let response = self.context.request(request).await?;
@@ -155,6 +154,7 @@ pub(super) fn start(context: Context, config: Config) -> Result<Arc<Telegram>> {
     }
     let transport = Arc::new(Telegram {
         client: State::external_client(&config.proxy_url, Duration::from_secs(40))?,
+        api_base: context.telegram_api().to_owned(),
         token: config.secret,
         context,
     });
@@ -163,7 +163,7 @@ pub(super) fn start(context: Context, config: Config) -> Result<Arc<Telegram>> {
         if let Err(error)=session.authenticate().await{if !session.context.cancel.is_cancelled(){session.context.status("failed",&error.to_string());}return;}
         let mut offset=config.offset;
         loop {
-            match session.run(offset).await {
+            match session.run(&mut offset).await {
                 Ok(())=>break,
                 Err(error)=>{
                     if session.context.cancel.is_cancelled(){break;}
@@ -172,10 +172,6 @@ pub(super) fn start(context: Context, config: Config) -> Result<Arc<Telegram>> {
                     session.context.status("reconnecting","Telegram connection interrupted");
                 }
             }
-            let store=session.context.state.store.lock().await;
-            let Some(config)=store.vault.configs.get(&session.context.key) else{break};
-            offset=config.offset;
-            drop(store);
             tokio::select!{_ = session.context.cancel.cancelled()=>break,_ = tokio::time::sleep(Duration::from_secs(3))=>{}}
         }
     });

@@ -5,6 +5,7 @@ use std::{error::Error, fs, path::Path, sync::Arc};
 use tokio::sync::{Notify, watch};
 use tokio_util::sync::CancellationToken;
 
+mod channels;
 mod conversation;
 mod device_run;
 mod documents;
@@ -45,6 +46,7 @@ const BLOBS: TableDefinition<&str, &[u8]> = TableDefinition::new("attachments");
 pub(crate) struct Workspace {
     pub(crate) host: std::sync::Mutex<Option<(String, Arc<crate::host_desktop::Grant>)>>,
     pub(crate) host_microphone: Arc<tokio::sync::Semaphore>,
+    channels: channels::Channels,
     db: Database,
     peers: Arc<peers::Peers>,
     #[cfg(any(
@@ -116,6 +118,9 @@ impl Workspace {
         tx.open_table(INBOX)?;
         tx.open_table(documents::DOCUMENTS)?;
         tx.open_table(skills::ENABLED)?;
+        tx.open_table(skills::CUSTOM)?;
+        tx.open_table(channels::BINDINGS)?;
+        tx.open_table(channels::OUTBOX)?;
         {
             let mut data = tx.open_table(RECORDS)?;
             if data.get("chat")?.is_none() {
@@ -156,6 +161,7 @@ impl Workspace {
             proxy: Default::default(),
             verified: Default::default(),
             worker: Default::default(),
+            channels: Default::default(),
         });
         if this.files.with_file_name("proxy").join("profile.json").is_file() { this.network_proxy()?; }
         Ok(this)
@@ -166,6 +172,7 @@ impl Workspace {
         let stop = self.shutdown.clone();
         let ready = self.ready.clone();
         ready.notify_one();
+        let channels = tokio::spawn(channels::serve(weak.clone(), stop.clone(), self.channels.ready.clone()));
         let watch_location = tokio::spawn(Self::watch_location(
             weak.clone(),
             stop.clone(),
@@ -239,6 +246,7 @@ impl Workspace {
                 }
             }
             while tasks.join_next().await.is_some() {}
+            let _ = channels.await;
             let _ = watch_location.await;
             #[cfg(any(
                 target_os = "macos",
@@ -369,6 +377,13 @@ impl Workspace {
                 .await
                 .map(|r| r.encode_to_vec())
                 .map_err(|e| e.to_string());
+        }
+        if let Some(op) = name.strip_prefix("channels/") {
+            return self.channel_request(op, &bytes).await.map(|list| list.encode_to_vec()).map_err(|e| e.to_string());
+        }
+        if name == "workbench/skill-import" {
+            let q = wire::SkillImportRequest::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
+            return self.import_skill(q).await.map(|s| s.encode_to_vec()).map_err(|e| e.to_string());
         }
         if let Some(operation) = name.strip_prefix("proxy/") {
             return self.proxy_request(operation, bytes).await.map_err(|e| e.to_string());

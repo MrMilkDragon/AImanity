@@ -451,6 +451,7 @@ impl Workspace {
         put(&tx, "chat", &head)?;
         tx.commit()?;
         self.live.lock().unwrap().take_if(|live| live.run == id);
+        if job.source == "channel" { self.channels.ready.notify_one(); }
 
         self.changed();
         Ok(())
@@ -470,6 +471,9 @@ impl Workspace {
             .take(if isolated { 1 } else { 80 })
             .map(|r| Ok(wire::ChatMessage::decode(r?.1.value())?))
             .collect::<Result<Vec<_>>>()?;
+        if let Some(scope) = rows.first().and_then(|m|m.run_id.strip_prefix("channel/")).and_then(|id|id.rsplit_once('/')).map(|(scope,_)|format!("channel/{scope}/")) {
+            rows.retain(|m|m.run_id.starts_with(&scope));
+        }
         let mut repeat_input = false;
         if let Some(request) = rows.first() {
             let records = tx.open_table(RECORDS)?;

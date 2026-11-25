@@ -40,9 +40,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag=v0.0.6
+          debs=(dist/AImanity-*-linux-amd64.deb)
+          [[ ${#debs[@]} == 1 && -f ${debs[0]} ]]
+          version=${debs[0]#dist/AImanity-}
+          version=${version%-linux-amd64.deb}
+          tag=v$version
           base="repos/$GITHUB_REPOSITORY/releases/tags/$tag"
-          for file in dist/AImanity-0.0.6-linux-amd64.deb dist/AImanity-0.0.6-linux-x86_64.rpm; do
+          for file in dist/AImanity-$version-linux-amd64.deb dist/AImanity-$version-linux-x86_64.rpm; do
             wanted="sha256:$(sha256sum "$file" | cut -d' ' -f1)"
             actual=$(gh api "$base" --jq ".assets[]|select(.name==\"$(basename "$file")\")|.digest")
             if [[ -z "$actual" ]]; then

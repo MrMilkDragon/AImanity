@@ -42,13 +42,9 @@ pub(super) fn assemble(
     for (input, target) in &plan.resources {
         link(&root.join(input), &resources.join(target))?;
     }
-    let version_valid = version.split('.').count() == 3
-        && version
-            .split('.')
-            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()));
-    if !version_valid {
-        return Err("Invalid application version".into());
-    }
+    let release = crate::release_version::Version::parse(version)?;
+    let [major, minor, patch] = release.base;
+    let build = patch * 100 + release.fix;
     fs::write(
         app.join("Info.plist"),
         format!(
@@ -61,8 +57,9 @@ pub(super) fn assemble(
 <key>CFBundleExecutable</key><string>{executable}</string>
 <key>CFBundleIconFile</key><string>icon.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>{version}</string>
-<key>CFBundleShortVersionString</key><string>{version}</string>
+<key>CFBundleVersion</key><string>{major}.{minor}.{build}</string>
+<key>CFBundleShortVersionString</key><string>{major}.{minor}.{patch}</string>
+<key>AImanityRelease</key><string>{version}</string>
 <key>LSMinimumSystemVersion</key><string>{minimum}</string>
 <key>NSMicrophoneUsageDescription</key><string>Use the microphone for Copilot or send your voice to the virtual device you select.</string>
 <key>NSHighResolutionCapable</key><true/>
