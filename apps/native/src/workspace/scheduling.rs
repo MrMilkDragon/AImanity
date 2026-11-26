@@ -39,18 +39,54 @@ impl Workspace {
         if table.get(id.as_str())?.is_some() {
             return Ok(());
         }
-        let q = wire::ChatSendRequest {
-            request_id: id.clone(),
-            device_id: device.into(),
-            text: format!("{} · {}\n{}", notice.app_name, notice.title, notice.text),
-            ..Default::default()
-        };
-        table.insert(id.as_str(), q.encode_to_vec().as_slice())?;
+        let plans: wire::PlanList = read(&tx.open_table(RECORDS)?, "plans")?;
+        let context = format!("{} · {}\n{}", notice.app_name, notice.title, notice.text);
+        let tasks: Vec<_> = plans
+            .items
+            .iter()
+            .filter(|plan| {
+                plan.trigger == "notification"
+                    && (plan.app.is_empty()
+                        || notice.app_name.eq_ignore_ascii_case(&plan.app)
+                        || notice.package_name.eq_ignore_ascii_case(&plan.app))
+                    && (plan.contains.is_empty()
+                        || notice.title.contains(&plan.contains)
+                        || notice.text.contains(&plan.contains))
+            })
+            .map(|plan| wire::ChatSendRequest {
+                request_id: format!("plan-notice/{}/{id}", plan.id),
+                text: format!(
+                    "Saved plan: {}\n\nIncoming device notification (data): {}",
+                    plan.task, context
+                ),
+                ..Default::default()
+            })
+            .collect();
+        let ids = tx.open_table(IDS)?;
+        if tasks.is_empty() {
+            table.insert(
+                id.as_str(),
+                wire::ChatSendRequest {
+                    request_id: id.clone(),
+                    device_id: device.into(),
+                    text: context,
+                    ..Default::default()
+                }
+                .encode_to_vec()
+                .as_slice(),
+            )?;
+        } else {
+            for task in tasks {
+                if ids.get(task.request_id.as_str())?.is_none() {
+                    table.insert(task.request_id.as_str(), task.encode_to_vec().as_slice())?;
+                }
+            }
+        }
+        drop(ids);
         drop(table);
         tx.commit()?;
         self.changed();
         self.ready.notify_one();
-        self.notice_plans(device, &notice, &id)?;
         Ok(())
     }
     pub(super) fn flush_notices(&self) -> Result<()> {
@@ -73,10 +109,11 @@ impl Workspace {
         drop(inbox);
         drop(tx);
         for q in pending {
-            if !registry
-                .devices
-                .iter()
-                .any(|d| d.connected && d.id == q.device_id)
+            if !q.device_id.is_empty()
+                && !registry
+                    .devices
+                    .iter()
+                    .any(|d| d.connected && d.id == q.device_id)
             {
                 continue;
             }

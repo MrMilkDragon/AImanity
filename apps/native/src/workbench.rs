@@ -786,9 +786,15 @@ impl App {
                 }
             }
             Message::Conversation(chat::Message::Todos(click)) => {
+                if !click && !self.chat.composer_ready_for_hover() {
+                    return Task::none();
+                }
                 return self.update(Message::OpenPanel(Panel::Todos, click));
             }
             Message::Conversation(chat::Message::Goal(click)) => {
+                if !click && !self.chat.composer_ready_for_hover() {
+                    return Task::none();
+                }
                 return self.update(Message::OpenPanel(Panel::Goal, click));
             }
             Message::Todos(message) => {
@@ -1543,7 +1549,7 @@ impl App {
                 true,
             ),
             Panel::Proxy => (420., 480., true),
-            Panel::Goal => (650., 620., false),
+            Panel::Goal => (650., 620., true),
         };
         let height = if fit {
             self.panel_content_height.min(max_height)
@@ -2455,7 +2461,9 @@ impl App {
                 );
             }
         }
-        if !self.layout.tiles.iter().any(layout::Tile::visible) {
+        if !(self.layout.tiles.iter().any(layout::Tile::visible)
+            || self.popup && self.panel == Panel::Devices)
+        {
             let add = button(
                 row![Icon::Plus.view(), text(self.locale.tr("添加设备")).size(15)]
                     .spacing(8)

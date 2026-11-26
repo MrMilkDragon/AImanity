@@ -98,6 +98,7 @@ pub struct Chat {
     display_after: Option<u64>,
     children_open: bool,
     composer_hover: bool,
+    composer_opened: Option<std::time::Instant>,
     pub state: wire::ChatState,
     draft: text_editor::Content,
     pending: Vec<Pending>,
@@ -122,6 +123,7 @@ impl Chat {
             display_after: None,
             children_open: false,
             composer_hover: false,
+            composer_opened: None,
             state: Default::default(),
             draft: text_editor::Content::new(),
             pending: Vec::new(),
@@ -348,6 +350,10 @@ impl Chat {
             && message.run_id == self.state.run_id
             && matches!(self.state.run_status.as_str(), "queued" | "running")
     }
+    pub fn composer_ready_for_hover(&self) -> bool {
+        self.composer_opened
+            .is_none_or(|at| at.elapsed() >= std::time::Duration::from_millis(220))
+    }
     pub fn subscription(&self) -> Subscription<Message> {
         if self
             .state
@@ -372,7 +378,12 @@ impl Chat {
                 self.following = true;
             }
             Message::Children => self.children_open = !self.children_open,
-            Message::ComposerHover(hovered) => self.composer_hover = hovered,
+            Message::ComposerHover(hovered) => {
+                if hovered && !self.composer_hover {
+                    self.composer_opened = Some(std::time::Instant::now());
+                }
+                self.composer_hover = hovered;
+            }
             Message::Mode(_) | Message::Todos(_) | Message::Goal(_) => {}
             Message::Edit(action) => self.draft.perform(action),
             Message::Send => {

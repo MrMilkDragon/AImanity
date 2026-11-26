@@ -115,39 +115,6 @@ impl Workspace {
         }
         Ok(())
     }
-
-    pub(super) fn notice_plans(
-        &self,
-        device: &str,
-        notice: &wire::PhoneNotification,
-        event_id: &str,
-    ) -> Result<()> {
-        for plan in self.get::<wire::PlanList>("plans")?.items {
-            if plan.trigger == "notification"
-                && (plan.app.is_empty()
-                    || notice.app_name.eq_ignore_ascii_case(&plan.app)
-                    || notice.package_name.eq_ignore_ascii_case(&plan.app))
-                && (plan.contains.is_empty()
-                    || notice.title.contains(&plan.contains)
-                    || notice.text.contains(&plan.contains))
-            {
-                self.submit_job(
-                    wire::ChatSendRequest {
-                        request_id: format!("plan/{}/{event_id}", plan.id),
-                        text: format!(
-                            "{}\n\nNotification from {}: {}\n{}",
-                            plan.task, notice.app_name, notice.title, notice.text
-                        ),
-                        device_id: device.into(),
-                        ..Default::default()
-                    },
-                    "plan-notification",
-                    "",
-                )?;
-            }
-        }
-        Ok(())
-    }
 }
 
 fn validate(plan: &wire::Plan) -> Result<()> {

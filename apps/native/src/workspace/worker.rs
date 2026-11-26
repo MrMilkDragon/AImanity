@@ -20,7 +20,7 @@ impl Workspace {
         let (mut input, mut input_pending) = self.context(
             n,
             &job.instructions,
-            is_child || matches!(job.source.as_str(), "notification" | "plan-notification"),
+            is_child || job.source == "notification",
         )?;
         let host = job.request.as_ref().is_some_and(|q| q.use_host_desktop);
         if host

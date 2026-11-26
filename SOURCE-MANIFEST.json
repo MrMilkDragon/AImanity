@@ -443,8 +443,8 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 62906,
-      "sha256": "d039d336d35d9662b79966239a2e1e9eff8031d64d51aeb20d44f7984ce5bf59"
+      "size": 63341,
+      "sha256": "946d01f7b4ce0897df5858bac5e691dbb4d7c35b30be0592b88bc1e98fd1acf8"
     },
     {
       "path": "apps/native/src/connection.rs",
@@ -588,8 +588,8 @@
     },
     {
       "path": "apps/native/src/modes.rs",
-      "size": 24644,
-      "sha256": "16384a505b9e66cbdf840ec9f22bf9959612cdd3855d839976e12b8a032df738"
+      "size": 25004,
+      "sha256": "00261a6ad8043a16ccc8d1f53d9d99ef494bdbf408395bbdc8135cb596df8b28"
     },
     {
       "path": "apps/native/src/occlude.rs",
@@ -703,13 +703,13 @@
     },
     {
       "path": "apps/native/src/workbench.rs",
-      "size": 105745,
-      "sha256": "abf77cfa61c4334615646c6bf7930191386335865c40e83a352e25e9c3969072"
+      "size": 106068,
+      "sha256": "5d80800142aa5753d3b1bda1b259308b1a693484577342635c6432d6a492b5c0"
     },
     {
       "path": "apps/native/src/workspace/conversation.rs",
-      "size": 21459,
-      "sha256": "9c2be927b9d325e66e91f742104f9519ae4c30429a47f1f69835ca55b5c916e1"
+      "size": 21429,
+      "sha256": "4856142128c914ea3e5cd7e71355259ab9907b3ea04c547fa45d66e1f41d3aa3"
     },
     {
       "path": "apps/native/src/workspace/device_run.rs",
@@ -758,8 +758,8 @@
     },
     {
       "path": "apps/native/src/workspace/plans.rs",
-      "size": 7143,
-      "sha256": "69ad95f3bd3bce3e8c32eb09185d74eee9e2cbb44d16a59fae5910bc270a3eaf"
+      "size": 5891,
+      "sha256": "e64624de62fb0b316f6bb1705e4e469462de950d2de7746692f9c4515fc2ad55"
     },
     {
       "path": "apps/native/src/workspace/power.rs",
@@ -773,8 +773,8 @@
     },
     {
       "path": "apps/native/src/workspace/scheduling.rs",
-      "size": 26427,
-      "sha256": "f122725b4bc74a94fc2594696d6c55ff942e2a62b9f0cf053cc03ec6fb80ccd3"
+      "size": 27891,
+      "sha256": "e0de046b73aef5d877316294c345168304aeb56f71a843dcaeaad01086999db2"
     },
     {
       "path": "apps/native/src/workspace/settings.rs",
@@ -788,8 +788,8 @@
     },
     {
       "path": "apps/native/src/workspace/worker.rs",
-      "size": 31321,
-      "sha256": "d7aa58aa56d58da09cda6b6c505883b5f739c616d4f6cbdc85464d5537f0d489"
+      "size": 31282,
+      "sha256": "4fe37ba1bf58f7d2a169a6e409d39d55451860155eff180857cf3692568ac7ff"
     },
     {
       "path": "apps/native/src/workspace.rs",

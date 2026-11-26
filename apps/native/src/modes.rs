@@ -523,7 +523,7 @@ impl Modes {
                 });
         let editor = text_editor(&self.goal)
             .placeholder(self.locale.tr("填入你的目标与要求"))
-            .height(222)
+            .height(184)
             .padding([14, 16])
             .size(15)
             .line_height(iced::Pixels(24.))
@@ -589,7 +589,14 @@ impl Modes {
                 .height(76)
                 .padding([10, 12])
                 .size(14)
-                .on_action(Message::EditPlan),
+                .on_action(Message::EditPlan)
+                .style(|theme, status| {
+                    let mut field = text_editor::default(theme, status);
+                    field.background = style::CONTROL_FILL.into();
+                    field.border.width = style::BORDER_WIDTH;
+                    field.border.radius = style::CONTROL_RADIUS.into();
+                    field
+                }),
             action_button(
                 self.locale.tr("整理计划"),
                 (!self.plan_busy && !self.plan_text.text().trim().is_empty())

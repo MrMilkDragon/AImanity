@@ -186,7 +186,7 @@ impl Workspace {
             request_id: q.request_id.clone(),
             role: if !parent.is_empty() || matches!(source, "liberty" | "goal") {
                 "workspace"
-            } else if matches!(source, "notification" | "plan-notification") {
+            } else if source == "notification" {
                 "notification"
             } else {
                 "user"
