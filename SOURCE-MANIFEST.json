@@ -173,8 +173,8 @@
     },
     {
       "path": "README.md",
-      "size": 6196,
-      "sha256": "da397482bd5f24ac4f0c8b5baa48a1098ceb73f414400e6ba4db9d0c37171d21"
+      "size": 5758,
+      "sha256": "eeeec9428054fc8fa0fc128bd0be7e36843c4867c53ef4411412d51aa7e518cf"
     },
     {
       "path": "SECURITY.md",
@@ -4067,6 +4067,11 @@
       "sha256": "067525c827bcd6cfb50a4cbe85bc1b2e21b605759a3e0b67dd4e0f1e59c0f82b"
     },
     {
+      "path": "docs/public/gallium.md",
+      "size": 2218,
+      "sha256": "4fbc54b8b7496d4595659df5a5bef439ef7f94d63226afe3b30f8b9bc0f4c07f"
+    },
+    {
       "path": "docs/public/getting-started.en.md",
       "size": 928,
       "sha256": "b05316baca2b9105b5ab89c75571a4eb363c7c59997a8ecdfce518365c6733b6"
@@ -4078,8 +4083,8 @@
     },
     {
       "path": "docs/public/index.md",
-      "size": 2033,
-      "sha256": "e97eb919083d5df1d3611bc752549f4ebc6d8225045c7b5bee9e7cd034d81ada"
+      "size": 2119,
+      "sha256": "c790fb6e3324aa5b64bd5e1300cf0552589aa6ce42ee21f04efca57cdd84864d"
     },
     {
       "path": "docs/public/integrated-hosts.md",
