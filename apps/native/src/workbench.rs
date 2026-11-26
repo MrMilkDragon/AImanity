@@ -1174,6 +1174,7 @@ impl App {
                 );
             }
             Message::Tick(now) => {
+                self.chat.animate_composer(now);
                 self.modes.animate(now);
                 if let Some(start) = self.input_started.take() {
                     eprintln!(
@@ -1488,6 +1489,7 @@ impl App {
                 .as_ref()
                 .is_some_and(|child| child.animation.is_some())
             || self.input_started.is_some()
+            || self.chat.composer_animating()
             || (!self.reduced_motion && (self.modes.animating()))
         {
             subscriptions.push(window::frames().map(Message::Tick));

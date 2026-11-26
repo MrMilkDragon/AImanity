@@ -188,13 +188,21 @@ impl Installation {
             return Ok(None);
         }
         filesystem::checked_parents(&self.home, &root)?;
-        let raw = filesystem::bounded_file_with_limit(
-            &root.join(manifest::NAME),
-            manifest::LIMITS.metadata,
-        )?;
-        let value = manifest::parse(&raw, platform)?;
-        for record in &value.files {
-            filesystem::open_record(&root, record)?;
+        let verify = || -> Result<()> {
+            let raw = filesystem::bounded_file_with_limit(
+                &root.join(manifest::NAME),
+                manifest::LIMITS.metadata,
+            )?;
+            let value = manifest::parse(&raw, platform)?;
+            for record in &value.files {
+                filesystem::open_record(&root, record)?;
+            }
+            Ok(())
+        };
+        match verify() {
+            Ok(()) => {}
+            Err(error) if resources::repairable(&error) => return Ok(None),
+            Err(error) => return Err(error),
         }
         let sdk_root = root.join("sdk");
         let avd_home = self

@@ -353,7 +353,7 @@ impl Workspace {
     }
 
     pub(super) async fn execute(
-        &self,
+        self: &Arc<Self>,
         n: u64,
         job: Job,
         token: &CancellationToken,

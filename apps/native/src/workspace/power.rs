@@ -38,6 +38,61 @@ impl Workspace {
             }
         }
     }
+    pub(super) async fn repair_device(
+        self: &Arc<Self>,
+        id: &str,
+        token: &CancellationToken,
+    ) -> Result<wire::RegisteredDevice> {
+        let state = self.registry()?;
+        let device = state
+            .devices
+            .into_iter()
+            .find(|d| d.id == id && !d.paired)
+            .ok_or("请选择已创建的虚拟设备")?;
+        if device.connected {
+            return Ok(device);
+        }
+        let mut updates = self.registry_changes();
+        if device.runtime_state == "booted" && self.disconnect_reason(id).is_some() {
+            self.end_device(id, lifecycle::Change::Disconnect).await?;
+        }
+        self.start_device(wire::DeviceStartRequest {
+            device_id: id.into(),
+            resources: device.resources,
+        })
+        .await?;
+        let outcome = async {
+            loop {
+                let device = self
+                    .registry()?
+                    .devices
+                    .into_iter()
+                    .find(|d| d.id == id)
+                    .ok_or("设备已移除")?;
+                if device.connected || matches!(device.runtime_state.as_str(), "failed" | "stopped")
+                {
+                    return Ok(device);
+                }
+                if device.runtime_state == "booted"
+                    && let Some(reason) = self.disconnect_reason(id)
+                {
+                    return Ok(wire::RegisteredDevice {
+                        start_error: reason,
+                        ..device
+                    });
+                }
+                updates.changed().await?;
+            }
+        };
+        tokio::select! {
+            biased;
+            _ = token.cancelled() => Err("任务已停止".into()),
+            result = tokio::time::timeout(std::time::Duration::from_secs(110), outcome) => {
+                result.map_err(|_| "设备仍在启动。可在画布查看当前阶段。")?
+            }
+        }
+    }
+
     pub(super) async fn start_device(
         self: &Arc<Self>,
         q: wire::DeviceStartRequest,

@@ -161,11 +161,36 @@ pub(super) fn stage(
     }
     let folder = home.join("components/android");
     let destination = folder.join(identity);
-    let reused = fs::symlink_metadata(&destination).is_ok();
-    if reused {
-        existing(&destination, &raw, &manifest, control)?;
+    let reused = if destination.try_exists()? {
+        match existing(&destination, &raw, &manifest, control) {
+            Ok(()) => true,
+            Err(error) if repairable(&error) => {
+                let temporary = tempfile::Builder::new()
+                    .prefix(".android-repair-")
+                    .tempdir_in(&folder)?;
+                let damaged = temporary.path().join("runtime");
+                fs::rename(&destination, &damaged)?;
+                let result = publish(&mut file, &folder, &destination, &raw, &manifest, control);
+                if result.is_err() && !destination.try_exists()? {
+                    fs::rename(&damaged, &destination)?;
+                }
+                filesystem::finish_temporary(result, temporary)?;
+                false
+            }
+            Err(error) => return Err(error),
+        }
     } else {
         publish(&mut file, &folder, &destination, &raw, &manifest, control)?;
-    }
+        false
+    };
     Ok((destination.join("sdk"), reused))
+}
+
+pub(super) fn repairable(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::Invalid(
+            "android_resource_changed" | "android_resource_inventory" | "source_resource_changed"
+        )
+    ) || matches!(error, Error::Io(io) if io.kind() == std::io::ErrorKind::NotFound)
 }

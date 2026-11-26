@@ -98,7 +98,8 @@ pub struct Chat {
     display_after: Option<u64>,
     children_open: bool,
     composer_hover: bool,
-    composer_opened: Option<std::time::Instant>,
+    composer_animation: Option<(std::time::Instant, f32)>,
+    composer_amount: f32,
     pub state: wire::ChatState,
     draft: text_editor::Content,
     pending: Vec<Pending>,
@@ -123,7 +124,8 @@ impl Chat {
             display_after: None,
             children_open: false,
             composer_hover: false,
-            composer_opened: None,
+            composer_animation: None,
+            composer_amount: 0.,
             state: Default::default(),
             draft: text_editor::Content::new(),
             pending: Vec::new(),
@@ -351,8 +353,23 @@ impl Chat {
             && matches!(self.state.run_status.as_str(), "queued" | "running")
     }
     pub fn composer_ready_for_hover(&self) -> bool {
-        self.composer_opened
-            .is_none_or(|at| at.elapsed() >= std::time::Duration::from_millis(220))
+        self.composer_animation.is_none()
+    }
+    pub fn composer_animating(&self) -> bool {
+        self.composer_animation.is_some()
+    }
+    pub fn animate_composer(&mut self, now: std::time::Instant) {
+        if let Some((start, from)) = self.composer_animation {
+            let (amount, done) = crate::surface::window_progress(
+                now.saturating_duration_since(start),
+                self.composer_hover,
+            );
+            let target = if self.composer_hover { 1. } else { 0. };
+            self.composer_amount = (from + (target - from) * amount).clamp(0., 1.);
+            if done {
+                self.composer_animation = None;
+            }
+        }
     }
     pub fn subscription(&self) -> Subscription<Message> {
         if self
@@ -379,10 +396,11 @@ impl Chat {
             }
             Message::Children => self.children_open = !self.children_open,
             Message::ComposerHover(hovered) => {
-                if hovered && !self.composer_hover {
-                    self.composer_opened = Some(std::time::Instant::now());
+                if hovered != self.composer_hover {
+                    self.composer_animation =
+                        Some((std::time::Instant::now(), self.composer_amount));
+                    self.composer_hover = hovered;
                 }
-                self.composer_hover = hovered;
             }
             Message::Mode(_) | Message::Todos(_) | Message::Goal(_) => {}
             Message::Edit(action) => self.draft.perform(action),
@@ -1093,9 +1111,19 @@ impl Chat {
                 ].spacing(8).align_y(iced::Center)
             ].spacing(6)
         });
+        let forced = modes.copilot_active()
+            || !self.uploads.is_empty()
+            || self.control_busy
+            || matches!(self.state.run_status.as_str(), "running" | "queued");
+        let reveal = if forced || reduced_motion && self.composer_hover {
+            1.
+        } else {
+            self.composer_amount
+        };
+        let action_height = style::CONTROL_HEIGHT * reveal;
+        const SEND_SIZE: f32 = 28.;
         let editor = text_editor(&self.draft)
-            .placeholder(locale.tr("发送消息…"))
-            .height(72.)
+            .height(58. * reveal.max(0.08))
             .padding([0, 4])
             .size(15)
             .line_height(iced::widget::text::LineHeight::Relative(1.6))
@@ -1162,17 +1190,16 @@ impl Chat {
                 )
                 .center(Length::Fill),
             )
-            .width(style::CONTROL_HEIGHT)
-            .height(style::CONTROL_HEIGHT)
+            .width(SEND_SIZE)
+            .height(SEND_SIZE)
             .padding(0)
             .style(|theme, status| {
                 let mut button = style::primary(theme, status);
-                button.border.radius = (style::CONTROL_HEIGHT / 2.).into();
+                button.border.radius = (SEND_SIZE / 2.).into();
                 button
             })
             .on_press_maybe(can_send.then_some(Message::Send))
         };
-        submit = submit.push(send_button());
         use crate::host_desktop::Permission;
         let host_button: Option<Element<'_, Message>> = match self.host {
             Permission::Disabled => None,
@@ -1208,18 +1235,27 @@ impl Chat {
             .on_enter(open(false))
         };
         let actions = row![
-            row![
-                panel_button(Icon::Todos, false, Message::Todos),
-                panel_button(Icon::Target, modes.goal_active(), Message::Goal),
-                icon_button(Icon::Paperclip, Some(Message::Pick)),
-            ]
-            .extend(host_button)
-            .push(modes.liberty_button().map(Message::Mode))
-            .spacing(COMPOSER_ACTION_GAP)
-            .align_y(iced::Center),
-            container(right_actions.push(submit),)
+            container(
+                row![
+                    panel_button(Icon::Todos, false, Message::Todos),
+                    panel_button(Icon::Target, modes.goal_active(), Message::Goal),
+                    icon_button(Icon::Paperclip, Some(Message::Pick)),
+                ]
+                .extend(host_button)
+                .push(modes.liberty_button().map(Message::Mode))
+                .spacing(COMPOSER_ACTION_GAP)
+                .align_y(iced::Center)
+            )
+            .height(action_height)
+            .align_y(iced::Center)
+            .clip(true),
+            container(right_actions.push(submit))
                 .width(Length::Fill)
-                .align_x(iced::Right),
+                .height(action_height)
+                .align_x(iced::Right)
+                .align_y(iced::Center)
+                .clip(true),
+            send_button(),
         ]
         .spacing(4)
         .align_y(iced::Center);
@@ -1301,24 +1337,24 @@ impl Chat {
                 );
             }
         }
-        composer = composer
-            .push(crate::touch_editor::editor(editor))
-            .push(actions);
-        let expanded = self.composer_hover
-            || modes.copilot_active()
-            || !self.uploads.is_empty()
-            || self.control_busy
-            || matches!(self.state.run_status.as_str(), "running" | "queued");
+        composer = composer.push(crate::touch_editor::editor(editor)).push(
+            container(actions)
+                .height((28. + 12. * reveal).max(action_height))
+                .align_y(iced::Center)
+                .clip(true),
+        );
+        let expanded = reveal > 0.06;
         let composer: Element<'_, Message> = if expanded {
-            stack![container(composer.spacing(8)).padding(COMPOSER_PADDING)]
-                .push_under(
-                    container(
-                        modes.voice_strip(self.state.run_status == "running", reduced_motion),
-                    )
+            stack![container(composer.spacing(8. * reveal)).padding([
+                4. + (COMPOSER_PADDING.top - 4.) * reveal,
+                COMPOSER_PADDING.left
+            ])]
+            .push_under(
+                container(modes.voice_strip(self.state.run_status == "running", reduced_motion))
                     .align_bottom(Length::Fill)
                     .padding(iced::Padding::ZERO.left(8.).right(8.).bottom(1.)),
-                )
-                .into()
+            )
+            .into()
         } else {
             let draft = self.draft.text();
             let preview = draft
@@ -1326,7 +1362,7 @@ impl Chat {
                 .next()
                 .filter(|line| !line.is_empty())
                 .map(str::to_owned)
-                .unwrap_or_else(|| locale.tr("发送消息").to_owned());
+                .unwrap_or_default();
             row![
                 container(text(preview).size(14).wrapping(text::Wrapping::None))
                     .clip(true)
@@ -1352,12 +1388,7 @@ impl Chat {
                     border: iced::Border {
                         color: iced::Color::from_rgb8(222, 222, 222),
                         width: 1.,
-                        radius: if expanded {
-                            style::PANEL_RADIUS
-                        } else {
-                            (style::CONTROL_HEIGHT + 8.) / 2.
-                        }
-                        .into(),
+                        radius: (18. + (style::PANEL_RADIUS - 18.) * reveal).into(),
                     },
                     ..Default::default()
                 }

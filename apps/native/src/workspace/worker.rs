@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 impl Workspace {
     pub(super) async fn answer(
-        &self,
+        self: &Arc<Self>,
         n: u64,
         id: &str,
         job: &super::conversation::Job,
@@ -100,6 +100,15 @@ impl Workspace {
         if matches!(job.source.as_str(), "user" | "copilot") && !is_child {
             tools.push(json!({"type":"function","name":"workspace_settings","description":"Inspect native settings, list saved model profiles or plans, or apply a user-requested setting. Use a saved Agent id to switch model for future tasks. Operations do not request system permissions.","parameters":{"type":"object","properties":{"operation":{"type":"string","enum":["show","plans","select_agent","goal","liberty","notifications","skill"]},"id":{"type":"string"},"enabled":{"type":"boolean"},"goal":{"type":"string"}},"required":["operation"]}}));
         }
+        #[cfg(any(
+            target_os = "macos",
+            windows,
+            all(target_os = "linux", target_arch = "x86_64"),
+            all(target_os = "android", target_arch = "aarch64")
+        ))]
+        if !is_child && job.source != "notification" {
+            tools.push(json!({"type":"function","name":"virtual_devices","description":"Inspect local virtual device status or repair an existing failed virtual device in place. Use id from status. This returns readiness or a startup error.","parameters":{"type":"object","properties":{"operation":{"type":"string","enum":["status","repair"]},"id":{"type":"string"}},"required":["operation"]}}));
+        }
         let mut events = Vec::new();
         let mut host_image = None;
         if !device_run.devices.is_empty() {
@@ -148,7 +157,7 @@ impl Workspace {
             tools.push(tool);
         }
         let mut last_rejection = None;
-        let required_tools = std::cell::OnceCell::new();
+        let mut required_tools = std::cell::OnceCell::new();
         let mut cycles_without_action = 0;
         loop {
             let started = crate::connection::epoch_ms() as u64;
@@ -156,7 +165,7 @@ impl Workspace {
             let selected = if input_pending {
                 required_tools.get_or_init(|| {
             let mut choices: Vec<_> = tools.iter().filter(|t| matches!(t["name"].as_str(),
-                Some("device_interact" | "delegate_tasks" | "device_audio_input" | "skill_read" | "host_desktop" | "ask_user"))).cloned().collect();
+                Some("device_interact" | "delegate_tasks" | "device_audio_input" | "skill_read" | "host_desktop" | "ask_user" | "virtual_devices"))).cloned().collect();
             choices.push(json!({"type":"function","name":"report_no_input","description":"Explain why no input is appropriate.","parameters":{"type":"object","properties":{"reason":{"type":"string"}},"required":["reason"]}}));
             choices
                 })
@@ -272,6 +281,46 @@ impl Workspace {
                         event.finished_at_ms = crate::connection::epoch_ms() as u64;
                         events.push(event);
                         return Ok((question.into(), events));
+                    }
+                    #[cfg(any(
+                        target_os = "macos",
+                        windows,
+                        all(target_os = "linux", target_arch = "x86_64"),
+                        all(target_os = "android", target_arch = "aarch64")
+                    ))]
+                    "virtual_devices" if !is_child && job.source != "notification" => {
+                        let args: Value = serde_json::from_str(args)?;
+                        let devices = match args["operation"].as_str() {
+                            Some("status") => self.registry()?.devices,
+                            Some("repair") => {
+                                let device_id = args["id"].as_str().ok_or("缺少设备编号")?;
+                                let device = self.repair_device(device_id, token).await?;
+                                if device.connected {
+                                    cycles_without_action = 0;
+                                    if device_run.attach(&self.peers, device.clone())? {
+                                        let schema = device_run.tool();
+                                        if let Some(tool) = tools
+                                            .iter_mut()
+                                            .find(|t| t["name"] == "device_interact")
+                                        {
+                                            *tool = schema;
+                                        } else {
+                                            tools.push(schema);
+                                        }
+                                        required_tools.take();
+                                    }
+                                } else {
+                                    event.status = "failed".into();
+                                    event.content.clone_from(&device.start_error);
+                                }
+                                vec![device]
+                            }
+                            _ => return Err("请选择查看状态或修复".into()),
+                        };
+                        Value::String(json!(devices.iter().filter(|d| !d.paired).map(|d| json!({
+                            "id":d.id,"name":d.name,"system":d.kind,"state":d.runtime_state,"online":d.connected,
+                            "stage":d.start_stage,"error":self.disconnect_reason(&d.id).unwrap_or_else(|| d.start_error.clone())
+                        })).collect::<Vec<_>>()).to_string())
                     }
                     "workspace_settings"
                         if matches!(job.source.as_str(), "user" | "copilot") && !is_child =>

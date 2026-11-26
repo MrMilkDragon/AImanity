@@ -155,6 +155,21 @@ impl DeviceRun {
             ..Default::default()
         }
     }
+    pub(super) fn attach(
+        &mut self,
+        peers: &super::peers::Peers,
+        device: wire::RegisteredDevice,
+    ) -> Result<bool> {
+        let session = peers.active_session(&device.id)?;
+        self.observations.remove(&device.id);
+        self.sessions.insert(device.id.clone(), session);
+        if self.devices.iter().any(|d| d.id == device.id) {
+            return Ok(false);
+        }
+        self.devices.push(device);
+        Ok(true)
+    }
+
     pub(super) fn session(&self, id: &str) -> Result<CancellationToken> {
         self.sessions
             .get(id)

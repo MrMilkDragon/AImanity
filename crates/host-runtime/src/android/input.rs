@@ -378,7 +378,7 @@ async fn configure(
             Stage::InstallUnknown
         })?;
         // The guest package version is the receipt. A later explicit repair may retry the same -r install.
-        let _ = adb
+        let installation = adb
             .execute(
                 &["install", "--no-incremental", "-r", "--user", "0", apk],
                 60,
@@ -388,6 +388,7 @@ async fn configure(
             .await?
             .is_none_or(|version| version < VERSION)
         {
+            installation?;
             return Err(Error::Invalid("phone_input_install_unknown"));
         }
         changed = true;
