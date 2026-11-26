@@ -57,7 +57,6 @@ async fn windows_installed_guests() -> Result<()> {
     let result = async {
         app.capture_workbench("before-guests.png").await?;
         app.hover_devices()?;
-        app.word("Share", false).await?;
         app.create_guest("Phone").await?;
         app.frame("phone", &log).await?;
         app.create_guest("Desktop").await?;

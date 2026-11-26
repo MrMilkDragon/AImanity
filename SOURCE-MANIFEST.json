@@ -63,8 +63,8 @@
     },
     {
       "path": ".github/workflows/client.yml",
-      "size": 5664,
-      "sha256": "36a6ea3181e2ab15459524933c68759e5faf7db31ef3bc1bda4e5a301f91e1f8"
+      "size": 5666,
+      "sha256": "98a57dd167b4b0365b070f74658b64aedee6f9779d8796e3a05434249cacac8b"
     },
     {
       "path": ".github/workflows/linux-backend.yml",
@@ -508,8 +508,8 @@
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 26387,
-      "sha256": "e68f62020e15ff94df5d4fdcc259a1a6d537d71169974c317931cacb074960e5"
+      "size": 23497,
+      "sha256": "3b1ec851ffdf2e568e65eeb50e2874b84e8ca01dcc5b59ea8dea09571663815b"
     },
     {
       "path": "apps/native/src/host_desktop_mobile.rs",
@@ -808,8 +808,8 @@
     },
     {
       "path": "apps/native/tests/installed/windows.rs",
-      "size": 4190,
-      "sha256": "59095505676f0b9c713634750cb75da463b1c6941287e8afec8db4b4f46446aa"
+      "size": 4149,
+      "sha256": "83eebe8844b39afb918f7d42d46028a9bc16657cacfb5069316f575d0a419a37"
     },
     {
       "path": "apps/native/tests/installed_macos.rs",

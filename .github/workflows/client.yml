@@ -58,7 +58,7 @@ jobs:
           name: windows-empty-workbench
           path: ${{ runner.temp }}/empty-workbench
           if-no-files-found: ignore
-      - name: Exercise local and paired Windows desktops in Notepad
+      - name: Exercise the authorized Windows host desktop in Notepad
         if: runner.os == 'Windows'
         run: cargo test --locked windows_notepad_receives_host_input -- --ignored --nocapture
       - name: Test native host runtime
