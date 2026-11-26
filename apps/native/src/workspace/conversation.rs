@@ -320,6 +320,7 @@ impl Workspace {
             let mut reply =
                 wire::ChatMessage::decode(replies.get(pos + 1)?.ok_or("子任务缺少回复")?.value())?;
             reply.active = resume;
+            reply.run_outcome = status.into();
             replies.insert(pos + 1, reply.encode_to_vec().as_slice())?;
         }
         drop(replies);
@@ -331,6 +332,7 @@ impl Workspace {
         let mut msgs = tx.open_table(MESSAGES)?;
         let mut m = wire::ChatMessage::decode(msgs.get(n + 1)?.ok_or("消息不存在")?.value())?;
         m.active = resume;
+        m.run_outcome = status.into();
         msgs.insert(n + 1, m.encode_to_vec().as_slice())?;
         drop(msgs);
         drop(jobs);
@@ -465,6 +467,7 @@ impl Workspace {
             };
         }
         reply.active = false;
+        reply.run_outcome = status.into();
         reply.has_activity = true;
         msgs.insert(n + 1, reply.encode_to_vec().as_slice())?;
         drop(msgs);

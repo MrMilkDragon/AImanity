@@ -119,7 +119,6 @@ impl Modes {
                     expected_revision: state.revision,
                     exploring: !state.exploring,
                     notifications_enabled: state.notifications_enabled,
-                    forward_notifications: state.forward_notifications,
                     autonomous_reply: state.autonomous_reply,
                     autonomous_install: state.autonomous_install,
                     interval_seconds: state.interval_seconds,
@@ -307,8 +306,33 @@ impl Modes {
     pub fn copilot_active(&self) -> bool {
         self.speech.active()
     }
-    pub fn transcript(&self) -> &str {
-        &self.speech.transcript
+    pub fn transcript(&self, reduced_motion: bool) -> Option<Element<'_, crate::chat::Message>> {
+        let transcript = self.speech.transcript.as_str();
+        if transcript.is_empty() {
+            return None;
+        }
+        let font = self.locale.font();
+        Some(
+            container(iced::widget::stack![
+                container(
+                    text(transcript)
+                        .font(font)
+                        .line_height(iced::Pixels(20.))
+                        .size(14)
+                        .width(Length::Fill)
+                )
+                .padding(iced::padding::bottom(12)),
+                iced::widget::canvas(voice_particles::Reveal {
+                    text: transcript,
+                    font,
+                    reduced_motion
+                })
+                .width(Length::Fill)
+                .height(Length::Fill),
+            ])
+            .padding([3, 10])
+            .into(),
+        )
     }
     pub fn voice_error(&self) -> &str {
         self.locale.tr(&self.speech.error)

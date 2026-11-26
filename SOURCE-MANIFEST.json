@@ -363,8 +363,8 @@
     },
     {
       "path": "apps/native/locales/en.json",
-      "size": 25019,
-      "sha256": "8e822bae2b410cc0f1ebd5f3dfaddba5a15ed5d59cd7beb7a753aed8ef7a1f28"
+      "size": 25602,
+      "sha256": "7fee79bd3619a537fac57ccd45e60083d78c0a916c349e64790d15f62d456f14"
     },
     {
       "path": "apps/native/locales/es.json",
@@ -443,8 +443,8 @@
     },
     {
       "path": "apps/native/src/chat.rs",
-      "size": 62665,
-      "sha256": "9747cb7305eb9e1151c706e87c1453a5a75c66edf2c6a0e2d9e5b2f98aa45855"
+      "size": 62906,
+      "sha256": "d039d336d35d9662b79966239a2e1e9eff8031d64d51aeb20d44f7984ce5bf59"
     },
     {
       "path": "apps/native/src/connection.rs",
@@ -583,13 +583,13 @@
     },
     {
       "path": "apps/native/src/modes/voice_particles.rs",
-      "size": 5978,
-      "sha256": "05117f3a4e7474fa37890dfa6b629137f8429a19f8919a749190fdf44dd69095"
+      "size": 8894,
+      "sha256": "1abbd6ca8c36c2c054090ebf225e46af3cd86a9c15cbb096ca8ba940326ec823"
     },
     {
       "path": "apps/native/src/modes.rs",
-      "size": 23784,
-      "sha256": "79c1f09ba88c8d61842961b8c73233b2c2547f5afd2b31e30e85fc82779910d1"
+      "size": 24603,
+      "sha256": "4b9217738ca2b310b90002d6705959698e82fc8307a9eef617f6f4be8bc7eefa"
     },
     {
       "path": "apps/native/src/occlude.rs",
@@ -708,8 +708,8 @@
     },
     {
       "path": "apps/native/src/workspace/conversation.rs",
-      "size": 21330,
-      "sha256": "7134d41f3ddc339ec4a85a4f2b7d9b79d11f387599a38b1d09dc0301f84fb89a"
+      "size": 21459,
+      "sha256": "9c2be927b9d325e66e91f742104f9519ae4c30429a47f1f69835ca55b5c916e1"
     },
     {
       "path": "apps/native/src/workspace/device_run.rs",
@@ -738,8 +738,8 @@
     },
     {
       "path": "apps/native/src/workspace/modes.rs",
-      "size": 6048,
-      "sha256": "512f63fb425096fa5cef3dca665c81bf0d2ae1d40d1a0e0ac73d52e0ead0a036"
+      "size": 6030,
+      "sha256": "288bab334ed31be9c32cb02197435f0735233db3a3e9173cf0dde02d33772a51"
     },
     {
       "path": "apps/native/src/workspace/network.rs",
@@ -3518,13 +3518,13 @@
     },
     {
       "path": "crates/local-speech/Cargo.toml",
-      "size": 413,
-      "sha256": "f2c58ebffe071f742e385b81a25caccd10eea80a5d12419c64fad964fa108fdc"
+      "size": 278,
+      "sha256": "c32a637208ff58158471d1150b88326adf981f379b7058aec7e5fcd6e3c414a7"
     },
     {
       "path": "crates/local-speech/src/lib.rs",
-      "size": 2844,
-      "sha256": "2a2a05281d42ab3f913fe11c1ec8204f573a18bed7e20adaa2cb779f375b9f77"
+      "size": 2824,
+      "sha256": "340e8edd8701fd3390fb24f64fcfc9aa6b754cddc767b4a1e084a7526a5e7d8a"
     },
     {
       "path": "crates/model/Cargo.toml",
@@ -4063,8 +4063,8 @@
     },
     {
       "path": "docs/public/gallium-runtime.zh-CN.md",
-      "size": 3779,
-      "sha256": "24a8c44221138180b69c15c2475e6342f6e6ed65df54bea1edd09b3258367508"
+      "size": 3786,
+      "sha256": "067525c827bcd6cfb50a4cbe85bc1b2e21b605759a3e0b67dd4e0f1e59c0f82b"
     },
     {
       "path": "docs/public/getting-started.en.md",
@@ -4843,8 +4843,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/assistant.proto",
-      "size": 3198,
-      "sha256": "3828bfdf0597e9dddfd25c2e4c8a865fe70b1aaee3b18ce466c51c7ebfc63b21"
+      "size": 3225,
+      "sha256": "a55d0ca22535ef2378303dd47bc1f1452400b17f2ba3b2bf6a6a3a7651f80511"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/auth.proto",

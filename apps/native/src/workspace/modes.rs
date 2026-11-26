@@ -41,7 +41,7 @@ impl Workspace {
             state.exploring = q.exploring;
             state.notifications_enabled = q.notifications_enabled;
             state.autonomous_reply = q.autonomous_reply;
-            state.forward_notifications = q.forward_notifications;
+            state.forward_notifications = false;
             state.autonomous_install = q.autonomous_install;
             state.interval_seconds = q.interval_seconds.max(1);
             changed

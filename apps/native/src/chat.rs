@@ -826,6 +826,8 @@ impl Chat {
                 .map_or(locale.tr(status_label(&self.state.run_status)), |receipt| {
                     locale.tr(&receipt.title)
                 })
+        } else if !message.run_outcome.is_empty() {
+            locale.tr(status_label(&message.run_outcome))
         } else if message.active {
             locale.tr("待继续")
         } else if !message.system_notice.is_empty() {
@@ -1235,9 +1237,7 @@ impl Chat {
                 .align_y(iced::Alignment::Center),
             );
         }
-        if !modes.transcript().is_empty() {
-            composer = composer.push(container(text(modes.transcript()).size(13)).padding([6, 10]));
-        }
+        composer = composer.extend(modes.transcript(reduced_motion));
         if !self.state.children.is_empty() {
             let count = self.state.children.len().to_string();
             let label = locale
@@ -1441,6 +1441,7 @@ fn status_label(status: &str) -> &str {
         "running" => "正在工作",
         "queued" => "排队中",
         "paused" => "已暂停",
+        "awaiting_user" => "等待补充",
         "failed" => "执行失败",
         "canceled" => "已停止",
         "completed" | "succeeded" => "已完成",
@@ -1525,6 +1526,8 @@ mod tests {
             chat.state.messages[0].action_receipts,
             running.messages[0].action_receipts
         );
+        assert!(iced::advanced::subscription::into_recipes(chat.subscription()).is_empty());
+        let _ = chat.update(Message::Trace("active".into()), &client, "phone");
         assert_eq!(
             iced::advanced::subscription::into_recipes(chat.subscription()).len(),
             1
