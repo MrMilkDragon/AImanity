@@ -738,8 +738,8 @@
     },
     {
       "path": "apps/native/src/workspace/modes.rs",
-      "size": 6030,
-      "sha256": "288bab334ed31be9c32cb02197435f0735233db3a3e9173cf0dde02d33772a51"
+      "size": 6049,
+      "sha256": "a7997fae18472eada226436bfa9997581b9c4a0d33f881e8b744d136a831191a"
     },
     {
       "path": "apps/native/src/workspace/network.rs",
@@ -788,8 +788,8 @@
     },
     {
       "path": "apps/native/src/workspace/worker.rs",
-      "size": 36813,
-      "sha256": "fe9c437e943975905cb6be6ffe56e997517b732691b8e5d3d37738f7fbd0243e"
+      "size": 37492,
+      "sha256": "f91f9c1faa84cc8d044a4becbe08b4917e4ac1d82546e14842aee7c36b8d704a"
     },
     {
       "path": "apps/native/src/workspace.rs",

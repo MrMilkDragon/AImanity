@@ -90,7 +90,7 @@ impl Workspace {
         let s = self.proactive_state()?;
         if !(s.exploring || s.goal_active)
             || !s.active_run_id.is_empty()
-            || s.goal_status == "awaiting_user"
+            || (s.goal_active && s.goal_status == "awaiting_user")
             || s.next_wake_at_ms > crate::connection::epoch_ms() as u64
         {
             return Ok(());

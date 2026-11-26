@@ -5,6 +5,10 @@ use super::*;
 use aimanity_model::model_timing::Timing;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::{
+    collections::HashSet,
+    hash::{BuildHasher, BuildHasherDefault, DefaultHasher},
+};
 
 impl Workspace {
     pub(super) async fn answer(
@@ -181,7 +185,20 @@ impl Workspace {
         let mut last_rejection = None;
         let mut required_tools = std::cell::OnceCell::new();
         let mut cycles_without_action = 0;
+        let mut workspace_results = HashSet::new();
         loop {
+            if cycles_without_action == 8 {
+                return Ok((
+                    "暂时没有取得可确认的进展。请告诉我应继续哪一步。".into(),
+                    vec![wire::HarnessEvent {
+                        id: uuid::Uuid::now_v7().to_string(),
+                        run_id: id.into(),
+                        kind: "ask_user".into(),
+                        status: "waiting".into(),
+                        ..Default::default()
+                    }],
+                ));
+            }
             let started = crate::connection::epoch_ms() as u64;
             let mut timing = Timing::default();
             let selected = if input_pending {
@@ -241,19 +258,6 @@ impl Workspace {
                 return Ok((text, events));
             }
             cycles_without_action += 1;
-            if cycles_without_action == 8 {
-                self.record_tools(n, id, events)?;
-                return Ok((
-                    "暂时没有取得可确认的进展。请告诉我应继续哪一步。".into(),
-                    vec![wire::HarnessEvent {
-                        id: uuid::Uuid::now_v7().to_string(),
-                        run_id: id.into(),
-                        kind: "ask_user".into(),
-                        status: "waiting".into(),
-                        ..Default::default()
-                    }],
-                ));
-            }
             for value in &out {
                 let mut value = value.clone();
                 if let Some(fields) = value.as_object_mut() {
@@ -603,13 +607,25 @@ impl Workspace {
                     }
                     _ => return Err(format!("当前工作区没有工具 {name}").into()),
                 };
-                if event.kind == "device_input"
-                    && matches!(event.status.as_str(), "dispatched" | "succeeded")
-                {
-                    cycles_without_action = 0;
-                }
                 if event.status == "dispatched" {
                     event.status = "succeeded".into();
+                }
+                if event.status == "succeeded"
+                    && (event.kind == "device_input"
+                        || (matches!(
+                            name,
+                            "skill_read"
+                                | "search_knowledge"
+                                | "workspace_settings"
+                                | "workspace_todos"
+                                | "set_workspace_location"
+                                | "delegate_tasks"
+                        ) && workspace_results.insert(
+                            BuildHasherDefault::<DefaultHasher>::default()
+                                .hash_one((name, result.as_str())),
+                        )))
+                {
+                    cycles_without_action = 0;
                 }
                 event.finished_at_ms = crate::connection::epoch_ms() as u64;
                 events.push(event);
