@@ -132,10 +132,10 @@ impl Display {
             .connection
             .get_property(false, self.root, atom, xproto::AtomEnum::WINDOW, 0, 1)?
             .reply()?;
-        reply
+        Ok(reply
             .value32()
             .and_then(|mut values| values.next())
-            .ok_or_else(|| "没有活动窗口".into())
+            .unwrap_or_default())
     }
 
     fn property(&self, window: u32, name: u32) -> Result<Vec<u8>> {
@@ -148,7 +148,11 @@ impl Display {
 
     fn active_title(&self) -> Result<String> {
         let window = self.active_window()?;
-        self.window_title(window)
+        if window == 0 {
+            Ok(String::new())
+        } else {
+            self.window_title(window)
+        }
     }
     fn window_title(&self, window: u32) -> Result<String> {
         let atom = self.atom(b"_NET_WM_NAME")?;
@@ -220,6 +224,9 @@ impl Screen for NativeScreen {
     fn window(&self) -> Result<WindowIdentity> {
         self.with(|display| {
             let window = display.active_window()?;
+            if window == 0 {
+                return Ok(WindowIdentity::default());
+            }
             let process = display.process_id(window)?;
             Ok(WindowIdentity {
                 title: display.window_title(window)?,

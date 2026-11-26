@@ -213,7 +213,7 @@ fn sealed_sdk_creates_one_device_and_reuses_it_without_resizing_or_touching_user
     );
 }
 #[test]
-fn changed_bundle_and_existing_sdk_are_never_accepted() {
+fn changed_bundle_is_rejected_and_damaged_sdk_is_repaired() {
     let folder = tempfile::tempdir().unwrap();
     let (payload, identity) = fixture(folder.path());
     let mut install = Installation::lock(&folder.path().join("home")).unwrap();
@@ -237,27 +237,33 @@ fn changed_bundle_and_existing_sdk_are_never_accepted() {
         &|| false,
     )
     .unwrap();
+    let executable = prepared.sdk_root.join("emulator").join(if cfg!(windows) {
+        "emulator.exe"
+    } else {
+        "emulator"
+    });
+    let original = fs::read(&executable).unwrap();
+    let note = install.home.join("user/data/keep.txt");
+    fs::write(&note, "keep").unwrap();
     let mut file = fs::OpenOptions::new()
         .append(true)
-        .open(prepared.sdk_root.join("emulator").join(if cfg!(windows) {
-            "emulator.exe"
-        } else {
-            "emulator"
-        }))
+        .open(&executable)
         .unwrap();
     file.write_all(b"changed").unwrap();
     drop(file);
-    assert!(
-        prepare(
-            &mut install,
-            &payload,
-            &identity,
-            resources(),
-            &|_| u64::MAX,
-            &|| false
-        )
-        .is_err()
-    );
+    let repaired = prepare(
+        &mut install,
+        &payload,
+        &identity,
+        resources(),
+        &|_| u64::MAX,
+        &|| false,
+    )
+    .unwrap();
+    assert!(!repaired.reused_sdk);
+    assert_eq!(repaired.avd_home, prepared.avd_home);
+    assert_eq!(fs::read(executable).unwrap(), original);
+    assert_eq!(fs::read_to_string(note).unwrap(), "keep");
 }
 
 #[test]

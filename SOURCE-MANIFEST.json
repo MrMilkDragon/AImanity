@@ -758,8 +758,8 @@
     },
     {
       "path": "apps/native/src/workspace/plans.rs",
-      "size": 5891,
-      "sha256": "e64624de62fb0b316f6bb1705e4e469462de950d2de7746692f9c4515fc2ad55"
+      "size": 5864,
+      "sha256": "41e44b5d4215d91577d573726214766bb950ccadb9e5bc105277b253a75adbf7"
     },
     {
       "path": "apps/native/src/workspace/power.rs",
@@ -2993,8 +2993,8 @@
     },
     {
       "path": "crates/guest-runtime/src/screen.rs",
-      "size": 17478,
-      "sha256": "bb4fe6045d0a154475aee714847948a52bac43204482d488307d298bdf3a99fb"
+      "size": 17642,
+      "sha256": "cc492e29d89cd81d4e3dc6dfa0e43dc7dd9c5a5b43cceb0eb82e9171e2588c8a"
     },
     {
       "path": "crates/guest-runtime/src/settings.rs",
@@ -3163,8 +3163,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/tests.rs",
-      "size": 17388,
-      "sha256": "0cef22ab84ff70f53b588d8648f17c0b6b36b86cc4d875ddc21b15a27053b495"
+      "size": 17722,
+      "sha256": "f3ee2b79b68709db3f129927b3bcac58e9eb21dd7b2c1c39b6223910ea4067f1"
     },
     {
       "path": "crates/host-runtime/src/android.rs",

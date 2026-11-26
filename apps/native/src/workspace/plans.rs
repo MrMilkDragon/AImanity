@@ -38,7 +38,7 @@ impl Workspace {
                     Self::model(self.get(&format!("model/{}", active.model_connection_id))?)?;
                 let client = self.client(&config.proxy_url)?;
                 let body = json!({"input":[
-                    {"role":"system","content":format!("Convert the user's rule to JSON only. Local date and time: {}. Keys: task (instructions), trigger (clock or notification), time (24-hour HH:MM local), date (YYYY-MM-DD, for one-time schedules, empty for repeating), weekdays (ISO Monday=1 through Sunday=7 for weekly schedules, empty for daily), app (notification app name), contains (title or body substring). Optional values may be omitted. Keep task in the user's language. If the trigger cannot be expressed as a local clock time or notification, set trigger to unsupported. No tools.",Local::now().format("%Y-%m-%d %H:%M"))},
+                    {"role":"system","content":format!("Convert the user's rule to one JSON object. Local date and time: {}. Use these shapes: daily {{\"task\":\"Review notes\",\"trigger\":\"clock\",\"time\":\"09:00\"}}; weekly adds \"weekdays\":[1,5] (Monday=1, Sunday=7); once adds \"date\":\"YYYY-MM-DD\". For a notification use {{\"task\":\"Summarize the message\",\"trigger\":\"notification\",\"app\":\"Mail\",\"contains\":\"invoice\"}}. Omit unused keys. Keep task in the user's language. Set trigger to unsupported when neither clock nor notification applies.",Local::now().format("%Y-%m-%d %H:%M"))},
                     {"role":"user","content":prompt.text}
                 ],"reasoning":{"effort":"none"}});
                 let mut timing = aimanity_model::model_timing::Timing::default();
