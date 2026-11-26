@@ -803,8 +803,8 @@
     },
     {
       "path": "apps/native/tests/installed/window.rs",
-      "size": 14146,
-      "sha256": "28878ad034355aeaa7637e08a9fa6a9c0dcdac6900f8b5f680c99886b32f9164"
+      "size": 15499,
+      "sha256": "2dc0e178995af2be74abd6f3078003f88ba2ac301f10c8030ae9ec5dd98bc303"
     },
     {
       "path": "apps/native/tests/installed/windows.rs",
@@ -1894,7 +1894,7 @@
     {
       "path": "config/container-host-runtime.json",
       "size": 22184,
-      "sha256": "033432f480ba2f5ac87f7d166205fcb6834ec1942915e175c9d0322b1dddfb0f"
+      "sha256": "be57c0e6963a29399152c397509d50a6c320b60176f71e799a5877a82446781e"
     },
     {
       "path": "config/device-presets.json",
