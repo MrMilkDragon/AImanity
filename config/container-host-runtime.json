@@ -55,10 +55,10 @@
           "sha256": "6e3a34ed8b40718f9b9291319f7890638156a3d63807284a66d9672d3a8b1d3e"
         },
         {
-          "file": "glib-2.88.1-r1.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/glib-2.88.1-r1.apk",
-          "size_bytes": 1995383,
-          "sha256": "0ae89191a79ea5d5a02515e41f29b62e5e0a0a80fb059804bbbacac2d77cce4e"
+          "file": "glib-2.88.4-r0.apk",
+          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/glib-2.88.4-r0.apk",
+          "size_bytes": 1980396,
+          "sha256": "0605a48319f3cca14b3d026175fd7c41a28c854632cda48fc12d1a1318ab5919"
         },
         {
           "file": "iptables-1.8.13-r0.apk",
