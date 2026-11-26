@@ -38,7 +38,7 @@ pub(crate) async fn workspace_desktop(
     let cancel = || *stop.borrow();
     let staged = match install.resume_source(id, &cancel)? {
         Some(s) => s,
-        None => install.stage_source(
+        None => install.recover_source(
             &spec.bundle.join("source.payload"),
             id,
             &|p| fs2::available_space(p).unwrap_or(0),

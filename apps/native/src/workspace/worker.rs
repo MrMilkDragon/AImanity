@@ -35,6 +35,24 @@ impl Workspace {
         }
         let target = job.request.as_ref().map_or("", |q| q.device_id.as_str());
         let registry = self.registry()?;
+        let mut repair_pending = cfg!(any(
+            target_os = "macos",
+            windows,
+            all(target_os = "linux", target_arch = "x86_64"),
+            all(target_os = "android", target_arch = "aarch64")
+        )) && !is_child
+            && matches!(job.source.as_str(), "user" | "copilot")
+            && job.request.as_ref().is_some_and(|q| {
+                let text = q.text.trim().to_lowercase();
+                text.contains("repair") && text.contains("virtual_devices")
+                    || registry.devices.iter().any(|d| {
+                        !d.paired
+                            && text.contains(&d.name.to_lowercase())
+                            && ["repair ", "fix ", "修复", "帮我修复"]
+                                .iter()
+                                .any(|verb| text.starts_with(verb))
+                    })
+            });
         let workspace_only = !job.parent.is_empty() && target.is_empty();
         if target.is_empty() && !workspace_only {
             let roster: Vec<_> = registry.devices.iter().map(device_info).collect();
@@ -50,6 +68,10 @@ impl Workspace {
             }),
         );
         let previous: wire::HarnessEventList = self.get(&format!("events/{id}"))?;
+        repair_pending &= !previous
+            .events
+            .iter()
+            .any(|event| event.kind == "device_repair" && event.status == "succeeded");
         if previous
             .events
             .iter()
@@ -123,7 +145,7 @@ impl Workspace {
                 tools.push(json!({"type":"function","name":"device_audio_input","description":"Feed a WAV work file into the selected device microphone.","parameters":{"type":"object","properties":{"device_id":{"type":"string","enum":microphones},"path":{"type":"string"}},"required":["device_id","path"]}}));
             }
         }
-        let first_device = if host {
+        let first_device = if host || repair_pending {
             None
         } else if !target.is_empty() {
             Some(target.to_owned())
@@ -173,7 +195,9 @@ impl Workspace {
                 &tools
             };
             let mut body = json!({"input":input,"tools":selected,"reasoning":{"effort":"none"}});
-            if input_pending {
+            if repair_pending {
+                body["tool_choice"] = json!({"type":"function","name":"virtual_devices"});
+            } else if input_pending {
                 body["tool_choice"] = json!("required");
             }
             let out = aimanity_model::request_with_text(
@@ -183,7 +207,7 @@ impl Workspace {
                 token,
                 &mut timing,
                 |delta| {
-                    if !is_child && !input_pending {
+                    if !is_child && !input_pending && !repair_pending {
                         self.show_text(id, delta)
                     }
                 },
@@ -202,6 +226,10 @@ impl Workspace {
                 ..Default::default()
             });
             if !out.iter().any(|v| v["type"] == "function_call") {
+                if repair_pending {
+                    self.record_tools(n, id, events)?;
+                    return Err("本轮未收到设备修复回执".into());
+                }
                 if input_pending {
                     self.record_tools(n, id, events)?;
                     return Err("本轮未收到设备输入回执".into());
@@ -295,7 +323,10 @@ impl Workspace {
                             Some("repair") => {
                                 let device_id = args["id"].as_str().ok_or("缺少设备编号")?;
                                 let device = self.repair_device(device_id, token).await?;
+                                event.kind = "device_repair".into();
+                                event.content = device.id.clone();
                                 if device.connected {
+                                    repair_pending = false;
                                     cycles_without_action = 0;
                                     if device_run.attach(&self.peers, device.clone())? {
                                         let schema = device_run.tool();
@@ -312,6 +343,17 @@ impl Workspace {
                                 } else {
                                     event.status = "failed".into();
                                     event.content.clone_from(&device.start_error);
+                                    if repair_pending {
+                                        let error = if device.start_error.is_empty() {
+                                            "设备修复后仍未连接".to_owned()
+                                        } else {
+                                            device.start_error
+                                        };
+                                        event.finished_at_ms = crate::connection::epoch_ms() as u64;
+                                        events.push(event);
+                                        self.record_tools(n, id, events)?;
+                                        return Err(error.into());
+                                    }
                                 }
                                 vec![device]
                             }

@@ -788,8 +788,8 @@
     },
     {
       "path": "apps/native/src/workspace/worker.rs",
-      "size": 34495,
-      "sha256": "b08fe75ce9392a111122bbc6d57595f419c46d12820d78ef53cfb5648cb9a914"
+      "size": 36813,
+      "sha256": "fe9c437e943975905cb6be6ffe56e997517b732691b8e5d3d37738f7fbd0243e"
     },
     {
       "path": "apps/native/src/workspace.rs",
@@ -3403,8 +3403,8 @@
     },
     {
       "path": "crates/host-runtime/src/unix_initializer.rs",
-      "size": 16721,
-      "sha256": "86e2b9a6a85f206df5b3722e867ed3b48584adfce93ddda66a605b554eadba71"
+      "size": 16723,
+      "sha256": "7516b3aefa566ce43e7fffb7d6266446b935697208b218e053302c9f1a48cbc8"
     },
     {
       "path": "crates/host-runtime/src/virtual_device.rs",
