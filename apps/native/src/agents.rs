@@ -31,7 +31,6 @@ impl std::fmt::Display for Provider {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tab {
     Model,
-    Connections,
     Memory,
     Voice,
 }
@@ -384,19 +383,6 @@ impl Agents {
         }
         Task::none()
     }
-    pub fn subscription(&self, open: bool) -> iced::Subscription<Message> {
-        match self.current.as_ref().and_then(|id| self.editors.get(id)) {
-            Some(editor) if open => {
-                let id = editor.agent.id.clone();
-                editor
-                    .details
-                    .subscription(editor.tab)
-                    .with(id)
-                    .map(|(id, m)| Message::Detail(id, m))
-            }
-            _ => iced::Subscription::none(),
-        }
-    }
     pub fn view<'a>(
         &'a self,
         locale: crate::locale::Locale,
@@ -449,7 +435,6 @@ impl Agents {
                     container(
                         row([
                             (Tab::Model, locale.tr("配置")),
-                            (Tab::Connections, locale.tr("连接应用")),
                             (Tab::Memory, locale.tr("记忆")),
                             (Tab::Voice, locale.tr("语音")),
                         ]

@@ -96,7 +96,7 @@ impl Location {
         self.state.as_ref().is_some_and(|s| s.enabled)
     }
     pub fn subscription(&self) -> Subscription<Message> {
-        if self.state.as_ref().is_some_and(|s| s.moving) {
+        if self.state.as_ref().is_some_and(|s| s.enabled || s.devices.iter().any(|d| d.status == "pending")) {
             iced::time::every(Duration::from_secs(1)).map(|_| Message::Load)
         } else {
             Subscription::none()

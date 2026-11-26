@@ -187,7 +187,7 @@ impl Workspace {
                 .encode_to_vec(),
             "workbench/skills" => self.skill_list()?.encode_to_vec(),
             "workbench/skill-update" => self
-                .set_builtin_skill(req!(SkillUpdateRequest))?
+                .update_skill(req!(SkillUpdateRequest))?
                 .encode_to_vec(),
             "workbench/events" => self
                 .get::<wire::HarnessEventList>(&format!(

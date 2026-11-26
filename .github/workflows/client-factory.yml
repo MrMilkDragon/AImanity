@@ -294,7 +294,8 @@ jobs:
           set -euo pipefail
           source=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" --jq 'select(.path==".github/workflows/client-factory.yml" and .conclusion=="success")|.head_sha')
           test -n "$source"
-          dmg="$RUNNER_TEMP/installer/AImanity-0.0.6-macos-arm64.dmg"
+          version=$(jq -er .version config/release-policy.json)
+          dmg="$RUNNER_TEMP/installer/AImanity-$version-macos-arm64.dmg"
           jq -e --arg source "$source" '.source_commit==$source and .complete_device_bundle' "$dmg.manifest.json"
           test "$(shasum -a 256 "$dmg" | cut -d' ' -f1)" = "$(jq -r .sha256 "$dmg.manifest.json")"
           codesign --verify --strict "$dmg"

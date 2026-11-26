@@ -60,6 +60,7 @@ dependencies = [
  "prost",
  "prost-build",
  "protoc-bin-vendored",
+ "serde_yaml_ng",
 ]
 
 [[package]]
@@ -129,7 +130,7 @@ dependencies = [
 
 [[package]]
 name = "aimanity-native"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "ai-phone-adb",
  "ai-phone-api",

@@ -155,6 +155,21 @@ impl DeviceRun {
             ..Default::default()
         }
     }
+    pub(super) fn attach(
+        &mut self,
+        peers: &super::peers::Peers,
+        device: wire::RegisteredDevice,
+    ) -> Result<bool> {
+        let session = peers.active_session(&device.id)?;
+        self.observations.remove(&device.id);
+        self.sessions.insert(device.id.clone(), session);
+        if self.devices.iter().any(|d| d.id == device.id) {
+            return Ok(false);
+        }
+        self.devices.push(device);
+        Ok(true)
+    }
+
     pub(super) fn session(&self, id: &str) -> Result<CancellationToken> {
         self.sessions
             .get(id)
@@ -162,10 +177,11 @@ impl DeviceRun {
             .ok_or_else(|| "这台设备不在当前任务的授权范围".into())
     }
     pub(super) fn tool(&self) -> Value {
-        let ids: Vec<_> = self.devices.iter().map(|d| &d.id).collect();
-        let roster: Vec<_> = self.devices.iter().map(device_info).collect();
-        let mut tool = json!({"type":"function","name":"device_interact","description":format!("Operate a connected device. For system navigation or a named key use kind=key and the key parameter. For a visible control observe, then use screenshot pixels. Devices: {}",json!(roster)),
-            "parameters":{"type":"object","properties":{"device_id":{"type":"string","enum":ids},"kind":{"type":"string","enum":["foreground","observe","key","click","double_click","scroll","type"]},"key":{"type":"string","enum":["home","back","enter","tab","escape","backspace","left","right","up","down","save","select_all","undo","redo"],"description":"Phone navigation includes home and back. Desktop shortcuts include save, select_all, undo, redo."},"x":{"type":"integer"},"y":{"type":"integer"},"to_x":{"type":"integer"},"to_y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"}},"required":["device_id","kind"]}});
+        let mut tool = json!({"type":"function","name":"device_interact","description":"For a named key, use kind=key and the key parameter (e.g. home). For a visible control, use its observed screenshot pixels.","parameters":{"type":"object","properties":{"kind":{"type":"string","enum":["foreground","observe","key","click","double_click","scroll","type"]},"key":{"type":"string","enum":["home","back","enter","tab","escape","backspace","left","right","up","down","save","select_all","undo","redo"]},"x":{"type":"integer"},"y":{"type":"integer"},"to_x":{"type":"integer"},"to_y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"}},"required":["kind"]}});
+        if self.devices.len() > 1 {
+            tool["parameters"]["properties"]["device_id"] = json!({"type":"string","enum":self.devices.iter().map(|d|&d.id).collect::<Vec<_>>()});
+            tool["parameters"]["required"] = json!(["device_id", "kind"]);
+        }
         if self.devices.iter().any(|d| d.kind == "phone") {
             tool["parameters"]["properties"]["kind"]["enum"]
                 .as_array_mut()
@@ -202,6 +218,20 @@ impl DeviceRun {
                     "上次操作中断时未取得设备回执，请先核对当前画面，再由用户确认是否重试".into(),
                 );
             }
+            if action.kind == "key" && !self.observations.contains_key(&id) {
+                let mut observed = super::worker::tool_event(run, "device_interact");
+                let inspect = DesktopInput::observe(&id).request(&observed.id, run);
+                let view = workspace.peers.perform(inspect, Some(&session)).await?;
+                if view.observation_id.is_empty() {
+                    return Err("设备未返回当前观察".into());
+                }
+                observed.finished_at_ms = crate::connection::epoch_ms() as u64;
+                observed.status = "succeeded".into();
+                observed.content = json!({"device_id": id, "kind":"observe", "observation_id": view.observation_id, "width":view.width,"height":view.height}).to_string();
+                self.observations
+                    .insert(id.clone(), (view.observation_id, view.width, view.height));
+                events.push(observed);
+            }
             if let Some((view, width, height)) = self.observations.get(&id) {
                 let inside = |x: i32, y: i32| {
                     (0..i64::from(*width)).contains(&i64::from(x))
@@ -222,7 +252,7 @@ impl DeviceRun {
                 {
                     info["executed"] = json!(false);
                     info["reason"] = json!(format!(
-                        "Coordinates outside the {width}×{height} observation. Use pixel coordinates or a named key for system navigation."
+                        "Coordinates outside {width}×{height}. For a system key send kind=key with its key name. For a control, observe its pixel position."
                     ));
                     event.status = "not_executed".into();
                     event.content = info.to_string();
@@ -234,6 +264,7 @@ impl DeviceRun {
                 if action.kind == "key" {
                     info["key"] = json!(action.key);
                 }
+                event.created_at_ms = crate::connection::epoch_ms() as u64;
                 event.status = "dispatched".into();
                 event.kind = "device_input".into();
                 event.content = info.to_string();
@@ -271,6 +302,13 @@ impl DeviceRun {
             info["foreground"] = json!(reply.foreground);
         }
         event.content = info.to_string();
+        if let Some(metadata) = info.as_object_mut() {
+            metadata.remove("action_id");
+            metadata.remove("observation_id");
+            if input && event.kind == "device_input" {
+                metadata.insert("input_executed".into(), true.into());
+            }
+        }
         Ok(device_output(&info, reply))
     }
 }

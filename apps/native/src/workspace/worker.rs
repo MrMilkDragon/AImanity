@@ -5,10 +5,14 @@ use super::*;
 use aimanity_model::model_timing::Timing;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::{
+    collections::HashSet,
+    hash::{BuildHasher, BuildHasherDefault, DefaultHasher},
+};
 
 impl Workspace {
     pub(super) async fn answer(
-        &self,
+        self: &Arc<Self>,
         n: u64,
         id: &str,
         job: &super::conversation::Job,
@@ -35,6 +39,24 @@ impl Workspace {
         }
         let target = job.request.as_ref().map_or("", |q| q.device_id.as_str());
         let registry = self.registry()?;
+        let mut repair_pending = cfg!(any(
+            target_os = "macos",
+            windows,
+            all(target_os = "linux", target_arch = "x86_64"),
+            all(target_os = "android", target_arch = "aarch64")
+        )) && !is_child
+            && matches!(job.source.as_str(), "user" | "copilot")
+            && job.request.as_ref().is_some_and(|q| {
+                let text = q.text.trim().to_lowercase();
+                text.contains("repair") && text.contains("virtual_devices")
+                    || registry.devices.iter().any(|d| {
+                        !d.paired
+                            && text.contains(&d.name.to_lowercase())
+                            && ["repair ", "fix ", "修复", "帮我修复"]
+                                .iter()
+                                .any(|verb| text.starts_with(verb))
+                    })
+            });
         let workspace_only = !job.parent.is_empty() && target.is_empty();
         if target.is_empty() && !workspace_only {
             let roster: Vec<_> = registry.devices.iter().map(device_info).collect();
@@ -50,6 +72,10 @@ impl Workspace {
             }),
         );
         let previous: wire::HarnessEventList = self.get(&format!("events/{id}"))?;
+        repair_pending &= !previous
+            .events
+            .iter()
+            .any(|event| event.kind == "device_repair" && event.status == "succeeded");
         if previous
             .events
             .iter()
@@ -76,7 +102,9 @@ impl Workspace {
         }
         let skills = self.active_skill_ids()?;
         let mut tools = vec![
-            json!({"type":"function","name":"skill_read","description":"Read an enabled guide when its topic matches the task.","parameters":{"type":"object","properties":{"id":{"type":"string","enum":skills}},"required":["id"]}}),
+            json!({"type":"function","name":"skill_read","description":"Read the requested enabled guide by its exact ID before answering from its contents.","parameters":{"type":"object","properties":{"id":{"type":"string","enum":skills}},"required":["id"]}}),
+            json!({"type":"function","name":"publish_image","description":"Attach an existing image to the current reply. Use an absolute path within Work Files (empty device_id) or an authorized device. This returns an attachment ID after reading real bytes.","parameters":{"type":"object","properties":{"path":{"type":"string"},"device_id":{"type":"string"}},"required":["path"]}}),
+            json!({"type":"function","name":"ask_user","description":"Stop and ask one concrete question when progress requires a missing detail, human action or permission. Do not repeat blocked actions.","parameters":{"type":"object","properties":{"question":{"type":"string"}},"required":["question"]}}),
             json!({"type":"function","name":"search_knowledge","description":"Find documents in this workspace by title or content.","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}),
         ];
         let location: wire::LocationState = self.get("location")?;
@@ -95,6 +123,18 @@ impl Workspace {
         if !is_child && job.parent.is_empty() {
             tools.push(json!({"type":"function","name":"delegate_tasks","description":"Delegate genuinely independent work in parallel when it benefits the task. Use a different connected device for each device task, or omit the device for workspace work. Returns completed results.","parameters":{"type":"object","properties":{"tasks":{"type":"array","minItems":1,"maxItems":8,"items":{"type":"object","properties":{"task":{"type":"string"},"device_id":{"type":"string"}},"required":["task"]}}},"required":["tasks"]}}));
         }
+        if matches!(job.source.as_str(), "user" | "copilot") && !is_child {
+            tools.push(json!({"type":"function","name":"workspace_settings","description":"Inspect native settings, list saved model profiles or plans, or apply a user-requested setting. Use a saved Agent id to switch model for future tasks. Operations do not request system permissions.","parameters":{"type":"object","properties":{"operation":{"type":"string","enum":["show","plans","select_agent","goal","liberty","notifications","skill"]},"id":{"type":"string"},"enabled":{"type":"boolean"},"goal":{"type":"string"}},"required":["operation"]}}));
+        }
+        #[cfg(any(
+            target_os = "macos",
+            windows,
+            all(target_os = "linux", target_arch = "x86_64"),
+            all(target_os = "android", target_arch = "aarch64")
+        ))]
+        if !is_child && job.source != "notification" {
+            tools.push(json!({"type":"function","name":"virtual_devices","description":"Inspect local virtual device status or repair an existing failed virtual device in place. Use id from status. This returns readiness or a startup error.","parameters":{"type":"object","properties":{"operation":{"type":"string","enum":["status","repair"]},"id":{"type":"string"}},"required":["operation"]}}));
+        }
         let mut events = Vec::new();
         let mut host_image = None;
         if !device_run.devices.is_empty() {
@@ -109,7 +149,7 @@ impl Workspace {
                 tools.push(json!({"type":"function","name":"device_audio_input","description":"Feed a WAV work file into the selected device microphone.","parameters":{"type":"object","properties":{"device_id":{"type":"string","enum":microphones},"path":{"type":"string"}},"required":["device_id","path"]}}));
             }
         }
-        let first_device = if host {
+        let first_device = if host || repair_pending {
             None
         } else if !target.is_empty() {
             Some(target.to_owned())
@@ -130,40 +170,51 @@ impl Workspace {
                 .iter()
                 .rposition(|v| v["role"] == "user" && v["content"].is_array())
                 .ok_or("任务缺少用户消息")?;
-            device_run.images.insert(target, turn);
-            input[turn]["content"]
-                .as_array_mut()
-                .unwrap()
-                .extend(output.as_array().unwrap().iter().cloned());
+            if let (Some(content), Value::Array(parts)) =
+                (input[turn]["content"].as_array_mut(), output)
+            {
+                device_run.images.insert(target, turn);
+                content.extend(parts);
+            }
         }
         if host {
             let mut tool = json!({"type":"function","name":"host_desktop","description":format!("Operate the authorized local {} desktop. Use the observation ID and screenshot pixels from this display.",ai_phone_api::platform_name(std::env::consts::OS).unwrap_or(std::env::consts::OS)),"parameters":{"type":"object","properties":{"kind":{"type":"string","enum":["observe","click","double_click","scroll","type","key"]},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"amount":{"type":"integer"},"text":{"type":"string"},"key":{"type":"string"}},"required":["kind"]}});
             add_desktop_actions(&mut tool);
             tools.push(tool);
         }
+        let mut last_rejection = None;
+        let mut required_tools = std::cell::OnceCell::new();
+        let mut cycles_without_action = 0;
+        let mut workspace_results = HashSet::new();
         loop {
+            if cycles_without_action == 8 {
+                return Ok((
+                    "暂时没有取得可确认的进展。请告诉我应继续哪一步。".into(),
+                    vec![wire::HarnessEvent {
+                        id: uuid::Uuid::now_v7().to_string(),
+                        run_id: id.into(),
+                        kind: "ask_user".into(),
+                        status: "waiting".into(),
+                        ..Default::default()
+                    }],
+                ));
+            }
             let started = crate::connection::epoch_ms() as u64;
             let mut timing = Timing::default();
-            let mut body = json!({"input":input,"tools":tools,"reasoning":{"effort":"none"}});
-            if input_pending {
-                let mut choices: Vec<_> = tools
-                    .iter()
-                    .filter(|t| {
-                        matches!(
-                            t["name"].as_str(),
-                            Some(
-                                "device_interact"
-                                    | "delegate_tasks"
-                                    | "device_audio_input"
-                                    | "skill_read"
-                                    | "host_desktop"
-                            )
-                        )
-                    })
-                    .cloned()
-                    .collect();
-                choices.push(json!({"type":"function","name":"report_no_input","description":"End with the actual reason if no device input is appropriate or available for this request.","parameters":{"type":"object","properties":{"reason":{"type":"string"}},"required":["reason"]}}));
-                body["tools"] = json!(choices);
+            let selected = if input_pending {
+                required_tools.get_or_init(|| {
+            let mut choices: Vec<_> = tools.iter().filter(|t| matches!(t["name"].as_str(),
+                Some("device_interact" | "delegate_tasks" | "device_audio_input" | "skill_read" | "host_desktop" | "ask_user" | "virtual_devices"))).cloned().collect();
+            choices.push(json!({"type":"function","name":"report_no_input","description":"Explain why no input is appropriate.","parameters":{"type":"object","properties":{"reason":{"type":"string"}},"required":["reason"]}}));
+            choices
+                })
+            } else {
+                &tools
+            };
+            let mut body = json!({"input":input,"tools":selected,"reasoning":{"effort":"none"}});
+            if repair_pending {
+                body["tool_choice"] = json!({"type":"function","name":"virtual_devices"});
+            } else if input_pending {
                 body["tool_choice"] = json!("required");
             }
             let out = aimanity_model::request_with_text(
@@ -173,7 +224,7 @@ impl Workspace {
                 token,
                 &mut timing,
                 |delta| {
-                    if !is_child && !input_pending {
+                    if !is_child && !input_pending && !repair_pending {
                         self.show_text(id, delta)
                     }
                 },
@@ -192,6 +243,10 @@ impl Workspace {
                 ..Default::default()
             });
             if !out.iter().any(|v| v["type"] == "function_call") {
+                if repair_pending {
+                    self.record_tools(n, id, events)?;
+                    return Err("本轮未收到设备修复回执".into());
+                }
                 if input_pending {
                     self.record_tools(n, id, events)?;
                     return Err("本轮未收到设备输入回执".into());
@@ -202,6 +257,7 @@ impl Workspace {
                 }
                 return Ok((text, events));
             }
+            cycles_without_action += 1;
             for value in &out {
                 let mut value = value.clone();
                 if let Some(fields) = value.as_object_mut() {
@@ -217,6 +273,106 @@ impl Workspace {
                 let args = call["arguments"].as_str().ok_or("无效工具参数")?;
                 let mut event = tool_event(id, name);
                 let result = match name {
+                    "publish_image" => {
+                        #[derive(Deserialize)]
+                        struct ImageInput {
+                            path: String,
+                            #[serde(default)]
+                            device_id: String,
+                        }
+                        let image: ImageInput = serde_json::from_str(args)?;
+                        if !image.device_id.is_empty() {
+                            device_run.session(&image.device_id)?;
+                            self.claim_device(id, &image.device_id, "publish_image")
+                                .await?;
+                        }
+                        let attachment = self
+                            .publish_image(
+                                n,
+                                wire::FileLocation {
+                                    path: image.path,
+                                    device_id: image.device_id,
+                                },
+                            )
+                            .await?;
+                        event.content = attachment.name.clone();
+                        cycles_without_action = 0;
+                        Value::String(
+                            json!({"id":attachment.id,"filename":attachment.name}).to_string(),
+                        )
+                    }
+                    "ask_user" => {
+                        let fields: Value = serde_json::from_str(args)?;
+                        let question = fields["question"]
+                            .as_str()
+                            .filter(|s| !s.trim().is_empty())
+                            .ok_or("需要说明当前障碍")?;
+                        event.kind = "ask_user".into();
+                        event.status = "waiting".into();
+                        event.content = question.into();
+                        event.finished_at_ms = crate::connection::epoch_ms() as u64;
+                        events.push(event);
+                        return Ok((question.into(), events));
+                    }
+                    #[cfg(any(
+                        target_os = "macos",
+                        windows,
+                        all(target_os = "linux", target_arch = "x86_64"),
+                        all(target_os = "android", target_arch = "aarch64")
+                    ))]
+                    "virtual_devices" if !is_child && job.source != "notification" => {
+                        let args: Value = serde_json::from_str(args)?;
+                        let devices = match args["operation"].as_str() {
+                            Some("status") => self.registry()?.devices,
+                            Some("repair") => {
+                                let device_id = args["id"].as_str().ok_or("缺少设备编号")?;
+                                let device = self.repair_device(device_id, token).await?;
+                                event.kind = "device_repair".into();
+                                event.content = device.id.clone();
+                                if device.connected {
+                                    repair_pending = false;
+                                    cycles_without_action = 0;
+                                    if device_run.attach(&self.peers, device.clone())? {
+                                        let schema = device_run.tool();
+                                        if let Some(tool) = tools
+                                            .iter_mut()
+                                            .find(|t| t["name"] == "device_interact")
+                                        {
+                                            *tool = schema;
+                                        } else {
+                                            tools.push(schema);
+                                        }
+                                        required_tools.take();
+                                    }
+                                } else {
+                                    event.status = "failed".into();
+                                    event.content.clone_from(&device.start_error);
+                                    if repair_pending {
+                                        let error = if device.start_error.is_empty() {
+                                            "设备修复后仍未连接".to_owned()
+                                        } else {
+                                            device.start_error
+                                        };
+                                        event.finished_at_ms = crate::connection::epoch_ms() as u64;
+                                        events.push(event);
+                                        self.record_tools(n, id, events)?;
+                                        return Err(error.into());
+                                    }
+                                }
+                                vec![device]
+                            }
+                            _ => return Err("请选择查看状态或修复".into()),
+                        };
+                        Value::String(json!(devices.iter().filter(|d| !d.paired).map(|d| json!({
+                            "id":d.id,"name":d.name,"system":d.kind,"state":d.runtime_state,"online":d.connected,
+                            "stage":d.start_stage,"error":self.disconnect_reason(&d.id).unwrap_or_else(|| d.start_error.clone())
+                        })).collect::<Vec<_>>()).to_string())
+                    }
+                    "workspace_settings"
+                        if matches!(job.source.as_str(), "user" | "copilot") && !is_child =>
+                    {
+                        self.workspace_settings(serde_json::from_str(args)?)?
+                    }
                     "report_no_input" if input_pending => {
                         let args: Value = serde_json::from_str(args)?;
                         self.record_tools(n, id, events)?;
@@ -278,10 +434,17 @@ impl Workspace {
                     "workspace_todos" if !is_child && job.source != "notification" => {
                         let args: Value = serde_json::from_str(args)?;
                         let list = if let Some(id) = args["id"].as_str() {
-                            self.move_todo(wire::TodoMove {
+                            match self.move_todo(wire::TodoMove {
                                 id: id.into(),
                                 before_id: args["before_id"].as_str().unwrap_or_default().into(),
-                            })?
+                            }) {
+                                Ok(list) => list,
+                                Err(error) => {
+                                    event.status = "failed".into();
+                                    event.content = error.to_string();
+                                    self.todos()?
+                                }
+                            }
                         } else {
                             self.todos()?
                         };
@@ -326,7 +489,7 @@ impl Workspace {
                         }
                         let q: Read = serde_json::from_str(args)?;
                         event.content = q.id.clone();
-                        Value::String(self.read_active_skill(&q.id)?.into())
+                        Value::String(self.read_active_skill(&q.id)?)
                     }
                     "search_knowledge" => {
                         #[derive(Deserialize)]
@@ -381,7 +544,12 @@ impl Workspace {
                         Value::String(event.content.clone())
                     }
                     "device_interact" => {
-                        let data: DesktopInput = serde_json::from_str(args)?;
+                        let mut data: DesktopInput = serde_json::from_str(args)?;
+                        if data.device_id.is_empty()
+                            && let [device] = device_run.devices.as_slice()
+                        {
+                            data.device_id.clone_from(&device.id);
+                        }
                         let device = data.device_id.clone();
                         let needs_input = !matches!(data.kind.as_str(), "observe" | "foreground");
                         let kind = data.kind.clone();
@@ -391,6 +559,17 @@ impl Workspace {
                         if needs_input {
                             input_pending =
                                 event.kind != "device_input" || event.status != "dispatched";
+                        }
+                        if event.status == "not_executed" {
+                            let rejected = (device.clone(), serde_json::from_str::<Value>(args)?);
+                            if last_rejection.as_ref() == Some(&rejected) {
+                                events.push(event);
+                                self.record_tools(n, id, events)?;
+                                return Err("设备连续拒绝了相同的输入，未执行操作".into());
+                            }
+                            last_rejection = Some(rejected);
+                        } else {
+                            last_rejection = None;
                         }
                         if kind != "foreground" && event.status != "not_executed" {
                             retire_image(device_run.images.remove(&device), &mut input);
@@ -430,6 +609,23 @@ impl Workspace {
                 };
                 if event.status == "dispatched" {
                     event.status = "succeeded".into();
+                }
+                if event.status == "succeeded"
+                    && (event.kind == "device_input"
+                        || (matches!(
+                            name,
+                            "skill_read"
+                                | "search_knowledge"
+                                | "workspace_settings"
+                                | "workspace_todos"
+                                | "set_workspace_location"
+                                | "delegate_tasks"
+                        ) && workspace_results.insert(
+                            BuildHasherDefault::<DefaultHasher>::default()
+                                .hash_one((name, result.as_str())),
+                        )))
+                {
+                    cycles_without_action = 0;
                 }
                 event.finished_at_ms = crate::connection::epoch_ms() as u64;
                 events.push(event);
@@ -490,7 +686,7 @@ impl Workspace {
         Ok(())
     }
 }
-fn tool_event(run: &str, name: &str) -> wire::HarnessEvent {
+pub(super) fn tool_event(run: &str, name: &str) -> wire::HarnessEvent {
     wire::HarnessEvent {
         id: uuid::Uuid::now_v7().to_string(),
         run_id: run.into(),

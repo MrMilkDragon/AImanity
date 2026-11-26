@@ -51,3 +51,16 @@ message GoalUpdateRequest {
   string goal = 2;
   string device_id = 3;
 }
+message Plan {
+  string id = 1;
+  string task = 2;
+  string trigger = 3;
+  string time = 4;
+  repeated uint32 weekdays = 5;
+  string app = 6;
+  string contains = 7;
+  string date = 8;
+}
+message PlanList { repeated Plan items = 1; }
+message PlanPrompt { string text = 1; }
+message PlanRemove { string id = 1; }

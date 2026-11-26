@@ -147,17 +147,26 @@ async fn attach(w: &Arc<Workspace>, id: &str, kind: &str, home: &Path) -> Result
         return Ok(());
     };
     let mut guest = WebSocketStream::from_raw_socket(pipe, Role::Client, None).await;
-    let Some(Ok(Frame::Binary(hello))) =
-        tokio::time::timeout(Duration::from_secs(12), guest.next()).await?
-    else {
-        return Err("Linux 桌面未就绪".into());
-    };
+    let hello = tokio::time::timeout(Duration::from_secs(35), async {
+        while let Some(message) = guest.next().await {
+            match message? {
+                Frame::Binary(hello) => {
+                    return Ok::<_, Box<dyn std::error::Error + Send + Sync>>(hello);
+                }
+                Frame::Close(_) => break,
+                _ => {}
+            }
+        }
+        Err("Linux 桌面控制服务已退出".into())
+    })
+    .await
+    .map_err(|_| "等待 Linux 桌面控制服务超时")??;
     wire::HostDesktopReply::decode(hello)?;
     let addr = w.peers.listen(w, peers::PORT).await?;
     let target = addr.port().to_string();
     let code = w.peers.owned_ticket(w, id)?;
     let request = peer_connection::registration(&code.to_string(), "linux", true)?;
-    let (mut hub, _tunnel) = peer_connection::dial(&target, request).await?;
+    let mut hub = peer_connection::dial(&target, request).await?;
     let Some(Ok(Frame::Binary(hello))) = hub.next().await else {
         return Err("工作区已关闭".into());
     };
@@ -201,7 +210,7 @@ async fn relay_io(
     key: String,
     io: wire::DeviceIoRequest,
 ) -> Result<()> {
-    let (mut hub, _tunnel) = peer_connection::io_socket(&target, &key).await?;
+    let mut hub = peer_connection::io_socket(&target, &key).await?;
     let transfer = async {
         let (pipe, _owner) = guest_channel::open(&home, Service::FilesAndAudio)
             .await?

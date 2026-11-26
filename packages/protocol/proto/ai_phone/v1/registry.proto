@@ -35,6 +35,7 @@ message RegisteredDevice {
   VirtualDeviceProfile resources = 12;
   optional uint32 instance_slot = 13;
   string start_error = 14;
+  string start_stage = 15;
 }
 message RegisteredAgent {
   string id = 1;

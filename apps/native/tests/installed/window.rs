@@ -124,12 +124,36 @@ impl Client {
         )?;
         Ok((pixels, left, top))
     }
-    pub async fn capture_workbench(&self, name: &str) -> Result<()> {
+    pub async fn capture_workbench(&mut self, name: &str) -> Result<()> {
         let result = timeout(Duration::from_secs(60), async {
             loop {
                 if self.window.title()? == "AImanity" {
-                    let (frame, _, _) = self.pixels()?;
+                    let (frame, left, top) = self.pixels()?;
                     let (w, h) = frame.dimensions();
+                    if w > h {
+                        let x = left + (w * 84 / 100) as i32;
+                        let y = top + (h * 94 / 100) as i32;
+                        #[cfg(windows)]
+                        self.input.move_mouse(x, y, Coordinate::Abs)?;
+                        #[cfg(target_os = "macos")]
+                        {
+                            use core_graphics::{
+                                event::{CGEvent, CGEventTapLocation, CGEventType, CGMouseButton},
+                                event_source::{CGEventSource, CGEventSourceStateID},
+                                geometry::CGPoint,
+                            };
+                            let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+                                .map_err(|_| "Cannot create a pointer event source")?;
+                            let event = CGEvent::new_mouse_event(
+                                source,
+                                CGEventType::MouseMoved,
+                                CGPoint::new(x.into(), y.into()),
+                                CGMouseButton::Left,
+                            )
+                            .map_err(|_| "Cannot hover over the composer")?;
+                            event.post(CGEventTapLocation::HID);
+                        }
+                    }
                     let composer_visible = w > h
                         && (h * 88 / 100..h * 96 / 100).any(|y| {
                             (w * 80 / 100..w * 94 / 100)

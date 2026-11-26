@@ -12,6 +12,7 @@ mod files;
 mod lifecycle;
 mod location;
 mod modes;
+mod plans;
 mod network;
 #[cfg(any(
     target_os = "macos",
@@ -30,6 +31,7 @@ mod peers;
 mod power;
 mod records;
 mod scheduling;
+mod settings;
 mod skills;
 mod worker;
 
@@ -61,6 +63,8 @@ pub(crate) struct Workspace {
     location: tokio::sync::Mutex<std::collections::HashMap<String, CancellationToken>>,
     location_changed: Arc<Notify>,
     shutdown: CancellationToken,
+    #[cfg(target_os = "macos")]
+    _awake: Option<crate::platform::Awake>,
     run: std::sync::Mutex<std::collections::BTreeMap<String, scheduling::Active>>,
     verified: std::sync::Mutex<std::collections::HashMap<String, (String, u64, wire::ModelDraft)>>,
     worker: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
@@ -116,8 +120,17 @@ impl Workspace {
         tx.open_table(INBOX)?;
         tx.open_table(documents::DOCUMENTS)?;
         tx.open_table(skills::ENABLED)?;
+        tx.open_table(skills::CUSTOM)?;
         {
             let mut data = tx.open_table(RECORDS)?;
+            let mut registry: wire::RegistryState = read(&data, "registry")?;
+            if registry.devices.iter().any(|device| device.paired) {
+                registry.devices.retain(|device| !device.paired);
+                if !registry.devices.iter().any(|device| device.id == registry.active_device_id) {
+                    registry.active_device_id.clear();
+                }
+                data.insert("registry", registry.encode_to_vec().as_slice())?;
+            }
             if data.get("chat")?.is_none() {
                 data.insert(
                     "chat",
@@ -134,6 +147,8 @@ impl Workspace {
         let shutdown = CancellationToken::new();
         let this = Arc::new(Self {
             db,
+            #[cfg(target_os = "macos")]
+            _awake: (!cfg!(test)).then(crate::platform::Awake::new).flatten(),
             peers: peers::Peers::new(shutdown.clone()),
             #[cfg(any(
                 target_os = "macos",
@@ -201,6 +216,8 @@ impl Workspace {
             let mut tasks = tokio::task::JoinSet::new();
             loop {
                 let delay = weak.upgrade().and_then(|w| w.mode_wait());
+                let now = chrono::Local::now();
+                let plan_tick = std::time::Duration::from_millis(60_000 - chrono::Timelike::second(&now) as u64 * 1000 - chrono::Timelike::nanosecond(&now) as u64 / 1_000_000);
                 let timer = async {
                     match delay {
                         Some(d) => tokio::time::sleep(d).await,
@@ -210,6 +227,7 @@ impl Workspace {
                 tokio::select! {biased;
                     _ = stop.cancelled() => break,
                     _ = timer => {},
+                    _ = tokio::time::sleep(plan_tick) => {},
                     Some(done) = tasks.join_next(), if !tasks.is_empty() => { if let Err(e) = done { eprintln!("Workspace task: {e}"); } }
                     _ = ready.notified() => {}
                 }
@@ -218,6 +236,9 @@ impl Workspace {
                 };
                 if let Err(e) = workspace.schedule_mode() {
                     eprintln!("Workspace mode: {e}");
+                }
+                if let Err(e) = workspace.tick_plans() {
+                    eprintln!("Workspace plans: {e}");
                 }
                 if let Err(e) = workspace.flush_notices() {
                     eprintln!("Workspace inbox: {e}");
@@ -347,14 +368,11 @@ impl Workspace {
         read(&self.db.begin_read()?.open_table(RECORDS)?, key)
     }
 
-    pub(super) async fn start_pairing(
-        self: &Arc<Self>,
-        request: wire::DevicePairRequest,
-        port: u16,
-    ) -> Result<wire::DeviceInvitation> {
-        let invitation = self.peers.invite(self, request)?;
+    #[cfg(test)]
+    pub(super) async fn start_pairing(self: &Arc<Self>, request: wire::DevicePairRequest, port: u16) -> Result<wire::DeviceInvitation> {
+        let ticket = self.peers.invite(self, request)?;
         self.peers.listen(self, port).await?;
-        Ok(invitation)
+        Ok(ticket)
     }
     pub(crate) async fn rpc(
         self: &Arc<Self>,
@@ -421,14 +439,6 @@ impl Workspace {
                 .map(|s| s.encode_to_vec())
                 .map_err(|e| e.to_string());
         }
-        if name == "registry/device-invite" {
-            let q = wire::DevicePairRequest::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
-            return self
-                .start_pairing(q, peers::PORT)
-                .await
-                .map(|invite| invite.encode_to_vec())
-                .map_err(|e| e.to_string());
-        }
         if name == "registry/model-test" {
             return self
                 .probe(
@@ -438,6 +448,13 @@ impl Workspace {
                 .await
                 .map(|m| m.encode_to_vec())
                 .map_err(|e| e.to_string());
+        }
+        if let Some(operation) = name.strip_prefix("plans/") {
+            return self.plan_request(operation, &bytes).await.map_err(|e| e.to_string());
+        }
+        if name == "workbench/skill-import" {
+            let request = wire::SkillImportRequest::decode(bytes.as_slice()).map_err(|e| e.to_string())?;
+            return self.import_skill(request).await.map(|skill| skill.encode_to_vec()).map_err(|e| e.to_string());
         }
         let store = self.clone();
         let name = name.to_owned();

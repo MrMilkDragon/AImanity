@@ -31,13 +31,14 @@ pub(crate) async fn workspace_desktop(
     spec: &crate::virtual_device::Instance,
     mut stop: watch::Receiver<bool>,
     ready: tokio::sync::oneshot::Sender<()>,
+    progress: watch::Sender<&'static str>,
 ) -> Result<()> {
     let mut install = Installation::lock(&spec.home)?;
     let id = spec.identity("source.payload")?;
     let cancel = || *stop.borrow();
     let staged = match install.resume_source(id, &cancel)? {
         Some(s) => s,
-        None => install.stage_source(
+        None => install.recover_source(
             &spec.bundle.join("source.payload"),
             id,
             &|p| fs2::available_space(p).unwrap_or(0),
@@ -65,6 +66,7 @@ pub(crate) async fn workspace_desktop(
         execute: Process(stop.clone()),
     };
     let result = async {
+        progress.send_replace("boot");
         let managed = engine::ensure(&mut backend, &spec.home, &user, &spec.bundle, true).await?;
         backend.env.extend(managed);
         let lima = backend
@@ -72,6 +74,7 @@ pub(crate) async fn workspace_desktop(
             .get("AI_PHONE_LIMA_COMMAND")
             .ok_or(Error::Invalid("managed_engine_path"))?
             .clone();
+        progress.send_replace("desktop");
         let stage = crate::desktop_bridge::native_arguments(&root, "stage", Some(&lima))?;
         backend
             .checked(backend.command(&stage[0], &stage[1..]), Vec::new())

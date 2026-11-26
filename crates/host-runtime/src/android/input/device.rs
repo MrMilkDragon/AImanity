@@ -1,6 +1,6 @@
 use crate::{Error, Result};
 use std::time::Duration;
-use tokio::{io::AsyncReadExt, sync::watch};
+use tokio::sync::watch;
 
 pub(super) trait Device {
     async fn execute(&mut self, args: &[&str], seconds: u64) -> Result<String>;
@@ -50,22 +50,35 @@ impl Device for Adb {
                         .collect::<Vec<_>>()
                         .join(" ");
                     let mut apk = tokio::fs::File::open(path).await?;
-                    let size = apk.metadata().await?.len();
-                    let mut stream = self
+                    let deadline = Duration::from_secs(seconds);
+                    let remote = "/data/local/tmp/aimanity-offline-install.apk";
+                    self.client
+                        .push(remote, &mut apk, 0, deadline)
+                        .await
+                        .map_err(|_| Error::Invalid("phone_input_transfer_failed"))?;
+                    let command = format!(
+                        "pm install {flags} {remote}; result=$?; rm -f {remote}; exit $result"
+                    );
+                    let result = self
                         .client
-                        .open_stream(
-                            &format!("exec:cmd package install {flags} -S {size} -"),
-                            Duration::from_secs(seconds),
+                        .shell(
+                            &command,
+                            ai_phone_adb::Limits {
+                                stdout: 65_536,
+                                stderr: 4_096,
+                            },
+                            deadline,
                         )
                         .await
                         .map_err(|_| Error::Invalid("phone_input_install_unknown"))?;
-                    tokio::io::copy(&mut apk, &mut stream).await?;
-                    let mut receipt = Vec::new();
-                    stream.take(65537).read_to_end(&mut receipt).await?;
-                    if !receipt.trim_ascii().ends_with(b"Success") {
-                        return Err(Error::Invalid("phone_input_install_unknown"));
+                    if result.code != 0 {
+                        eprintln!(
+                            "Android package install: {}",
+                            String::from_utf8_lossy(&result.stdout).trim()
+                        );
+                        return Err(Error::Invalid("phone_input_install_failed"));
                     }
-                    Ok(receipt)
+                    Ok(result.stdout)
                 }
                 _ => Err(Error::Invalid("phone_input_command_unknown")),
             }

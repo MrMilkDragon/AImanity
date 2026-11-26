@@ -16,7 +16,6 @@ pub(super) struct Motion {
     last: Option<Instant>,
     energy: f32,
     phase: f32,
-    magnet: Option<Point>,
 }
 
 impl<M> canvas::Program<M> for Particles<'_> {
@@ -26,8 +25,8 @@ impl<M> canvas::Program<M> for Particles<'_> {
         &self,
         state: &mut Motion,
         event: &Event,
-        bounds: Rectangle,
-        cursor: mouse::Cursor,
+        _bounds: Rectangle,
+        _: mouse::Cursor,
     ) -> Option<canvas::Action<M>> {
         let Event::Window(window::Event::RedrawRequested(now)) = event else {
             return None;
@@ -44,7 +43,6 @@ impl<M> canvas::Program<M> for Particles<'_> {
         if self.reduced_motion {
             state.energy = target;
             state.phase = 0.;
-            state.magnet = None;
             return None;
         }
         let dt = state.last.replace(*now).map_or(0.02, |last| {
@@ -55,15 +53,6 @@ impl<M> canvas::Program<M> for Particles<'_> {
         if target == 0. && state.energy < 0.008 {
             *state = Motion::default();
             return None;
-        }
-        let rest_y = bounds.height + 2.;
-        let pointer = cursor.land().position_in(bounds);
-        if let Some(from) = state
-            .magnet
-            .or_else(|| pointer.map(|p| Point::new(p.x, rest_y)))
-        {
-            let to = pointer.unwrap_or(Point::new(from.x, rest_y));
-            state.magnet = Some(from + (to - from) * (1. - (-dt / 0.08).exp()));
         }
         state.phase = (state.phase + dt * (0.25 + 0.86 * state.energy)).fract();
         Some(canvas::Action::request_redraw_at(
@@ -129,30 +118,128 @@ impl<M> canvas::Program<M> for Particles<'_> {
                 let arc = 4. * flight * (1. - flight);
                 let top = row as f32 / rows.max(1.);
                 let lift = strength * (0.7 + 7.8 * top * seed);
-                let mut point = Point::new(
+                let point = Point::new(
                     x + arc * lift * (dx * 1.8 + ripple * 0.38),
                     bounds.height - 1.4 - row as f32 * pitch * 0.77 - arc * lift,
                 );
-                if seed < 0.36
-                    && let Some(pointer) = state.magnet
-                {
-                    let reach = (1. - (point.x - pointer.x).abs() / 46.)
-                        .clamp(0., 1.)
-                        .powi(2);
-                    let pull = (point.y - pointer.y).clamp(0., 28.) * reach;
-                    point.x += (pointer.x - point.x) * pull / 46.;
-                    point.y -= pull * 0.85;
-                }
                 let alpha = (rows - row as f32).min(1.)
                     * (0.48 + 0.52 * seed)
                     * (state.energy * 5.).min(1.);
                 let side = pitch * (0.40 + 0.24 * seed);
-                frame.fill_rectangle(
-                    Point::new(point.x - side * 0.5, point.y - side),
-                    Size::new(side, side),
+                frame.fill(
+                    &canvas::Path::circle(point, side * 0.44),
                     color.scale_alpha(alpha),
                 );
             }
+        }
+        vec![frame.into_geometry()]
+    }
+}
+pub(super) struct Reveal<'a> {
+    pub text: &'a str,
+    pub font: iced::Font,
+    pub reduced_motion: bool,
+}
+
+#[derive(Default)]
+pub(super) struct Landing {
+    text: String,
+    started: Option<Instant>,
+    progress: f32,
+    target: Point,
+}
+
+impl<M> canvas::Program<M> for Reveal<'_> {
+    type State = Landing;
+
+    fn update(
+        &self,
+        state: &mut Landing,
+        event: &Event,
+        bounds: Rectangle,
+        _: mouse::Cursor,
+    ) -> Option<canvas::Action<M>> {
+        if self.reduced_motion {
+            return None;
+        }
+        let Event::Window(window::Event::RedrawRequested(now)) = event else {
+            return None;
+        };
+        if self.text != state.text {
+            let first_changed = self
+                .text
+                .char_indices()
+                .zip(state.text.chars())
+                .take_while(|((_, new), old)| new == old)
+                .map(|((at, c), _)| at + c.len_utf8())
+                .last()
+                .unwrap_or(0);
+            state.text.clear();
+            state.text.push_str(self.text);
+            if first_changed < self.text.len() {
+                use iced::advanced::text::{
+                    Alignment, Paragraph, Renderer, Shaping, Span, Text, Wrapping,
+                };
+                let spans = [
+                    Span::<()>::new(&self.text[..first_changed]),
+                    Span::new(&self.text[first_changed..]),
+                ];
+                let paragraph = <iced::Renderer as Renderer>::Paragraph::with_spans(Text {
+                    content: &spans,
+                    bounds: Size::new(bounds.width, f32::INFINITY),
+                    size: iced::Pixels(14.),
+                    line_height: iced::Pixels(20.).into(),
+                    font: self.font,
+                    align_x: Alignment::Left,
+                    align_y: iced::alignment::Vertical::Top,
+                    shaping: Shaping::Advanced,
+                    wrapping: Wrapping::WordOrGlyph,
+                });
+                if let Some(last) = paragraph.span_bounds(1).last() {
+                    state.target =
+                        Point::new((last.x + last.width).min(bounds.width - 1.), last.y + 9.);
+                    state.started = Some(*now);
+                }
+            }
+        }
+        let elapsed = now.saturating_duration_since(state.started?).as_secs_f32();
+        state.progress = (elapsed / 0.28).min(1.);
+        if state.progress == 1. {
+            state.started = None;
+            return None;
+        }
+        Some(canvas::Action::request_redraw_at(
+            *now + Duration::from_millis(16),
+        ))
+    }
+
+    fn draw(
+        &self,
+        state: &Landing,
+        renderer: &iced::Renderer,
+        _: &iced::Theme,
+        bounds: Rectangle,
+        _: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        if self.reduced_motion || state.started.is_none() {
+            return Vec::new();
+        }
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let palette = [
+            Color::from_rgb8(31, 143, 199),
+            Color::from_rgb8(9, 172, 155),
+            Color::from_rgb8(153, 111, 229),
+            Color::from_rgb8(219, 113, 142),
+        ];
+        for index in 0..24 {
+            let speed = (index % 7) as f32 / 14.;
+            let fraction = (state.progress * (1. + speed)).min(1.);
+            let ease = fraction * fraction * (3. - 2. * fraction);
+            let x = state.target.x + (index as f32 - 11.5) * 4. * (1. - ease);
+            let y = state.target.y + (bounds.height - state.target.y) * (1. - ease);
+            let opacity = (1. - fraction).sqrt() * 0.8;
+            let dot = canvas::Path::circle(Point::new(x, y), 0.6 + speed);
+            frame.fill(&dot, palette[index % palette.len()].scale_alpha(opacity));
         }
         vec![frame.into_geometry()]
     }

@@ -14,12 +14,15 @@ pub struct Device {
     pub audio: audio::Playback,
     pub queue: VecDeque<DeviceInput>,
     pub busy: bool,
-    pub waiting: bool,
+    pub input_ack_at: Option<Instant>,
     pub click: Option<(Instant, u32, u32)>,
     pub visible: tokio::sync::watch::Sender<bool>,
     pub stream: Option<iced::task::Handle>,
 }
 impl Device {
+    pub fn starting(&self) -> bool {
+        matches!(self.info.runtime_state.as_str(), "starting" | "booted") && self.info.start_error.is_empty()
+    }
     pub fn new(info: RegisteredDevice) -> Self {
         Self {
             info,
@@ -29,7 +32,7 @@ impl Device {
             audio: audio::Playback::new(),
             queue: VecDeque::new(),
             busy: false,
-            waiting: false,
+            input_ack_at: None,
             click: None,
             visible: tokio::sync::watch::channel(true).0,
             stream: None,

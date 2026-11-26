@@ -1,7 +1,7 @@
 {
-  "version": "0.0.6",
-  "release_name": "Fluorine",
-  "release_notes": "Install Fluorine as a new client. Its workspace uses an embedded Rust database.",
+  "version": "0.0.7",
+  "release_name": "Gallium",
+  "release_notes": "Gallium for Apple Silicon. Visible device startup, interruptible conversations, offline Copilot and scheduled plans.",
   "source_preview": {
     "license": "Apache-2.0",
     "remote_publication_authorized": true,

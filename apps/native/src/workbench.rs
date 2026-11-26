@@ -41,8 +41,6 @@ mod platform;
 mod proxy;
 mod scene;
 mod scene_gpu;
-#[cfg(not(target_os = "android"))]
-mod sharing;
 mod skills;
 mod spring_slider;
 mod stage;
@@ -110,7 +108,7 @@ enum Message {
     CanvasFocus,
     DeviceState(Result<wire::RegistryState, String>),
     Input(usize, DeviceInput),
-    InputDone(String, Result<(), String>, Instant),
+    InputDone(String, Result<Instant, String>, Instant),
     Retry,
     Quit,
     Tick(Instant),
@@ -320,7 +318,9 @@ impl App {
     }
     fn rearrange(&mut self, animate: bool) {
         let on_canvas = |d: &stage::Device| {
-            connection::reachable(&d.info) && !self.device_admin.issues.contains_key(&d.info.id)
+            d.starting()
+                || (connection::reachable(&d.info)
+                    && !self.device_admin.issues.contains_key(&d.info.id))
         };
         let mut home = Layout::home(
             WORKBENCH,
@@ -350,7 +350,7 @@ impl App {
         self.target = self.home.project(&mut self.camera);
         for (d, tile) in self.devices.iter().zip(&self.target.tiles) {
             let shown = if tile.visible() {
-                tile.screen.intersects(&self.target.board) || d.busy || d.waiting
+                tile.screen.intersects(&self.target.board) || d.busy || d.input_ack_at.is_some()
             } else {
                 connection::reachable(&d.info)
             };
@@ -440,7 +440,7 @@ impl App {
                 device.frame = None;
                 device.trace = None;
                 device.busy = false;
-                device.waiting = false;
+                device.input_ack_at = None;
                 device.queue.clear();
                 device.click = None;
             }
@@ -546,7 +546,7 @@ impl App {
         self.input(index, input)
     }
     fn input(&mut self, index: usize, mut input: DeviceInput) -> Task<Message> {
-        if self.devices[index].busy || self.devices[index].waiting {
+        if self.devices[index].busy || self.devices[index].input_ack_at.is_some() {
             match (self.devices[index].queue.back_mut(), &input) {
                 (Some(DeviceInput::Text(previous)), DeviceInput::Text(text)) => {
                     previous.push_str(text);
@@ -619,7 +619,7 @@ impl App {
                             self.locale = setup.language;
                             self.modes.set_language(self.locale.code());
                             self.modes
-                                .set_speech_model(setup.resource.join("speech/ggml-tiny-q5_1.bin"));
+                                .set_speech_model(setup.resource.join("speech/ggml-base-q5_1.bin"));
                             self.phase = "正在启动工作区".into();
                             self.started = Instant::now();
                             return Task::perform(Connection::connect(self.root.clone()), |r| {
@@ -729,15 +729,19 @@ impl App {
                                 self.devices[index].info.kind
                             );
                         }
+                        let post_input = self.devices[index]
+                            .input_ack_at
+                            .is_some_and(|ack| frame.received >= ack);
                         self.devices[index].receive(frame);
                         let recovered = self.device_admin.frame_received(&id);
                         if resized || recovered {
                             self.rearrange(true);
                         }
-                        if std::mem::take(&mut self.devices[index].waiting)
-                            && let Some(next) = self.devices[index].queue.pop_front()
-                        {
-                            return self.input(index, next);
+                        if post_input {
+                            self.devices[index].input_ack_at = None;
+                            if let Some(next) = self.devices[index].queue.pop_front() {
+                                return self.input(index, next);
+                            }
                         }
                     }
                     Some(Err(error)) => {
@@ -745,7 +749,7 @@ impl App {
                             self.devices[index].frame = None;
                             self.devices[index].trace = None;
                             self.devices[index].queue.clear();
-                            self.devices[index].waiting = false;
+                            self.devices[index].input_ack_at = None;
                             if self.keyboard_target == Some(index) {
                                 self.keyboard_target = None;
                             }
@@ -786,9 +790,15 @@ impl App {
                 }
             }
             Message::Conversation(chat::Message::Todos(click)) => {
+                if !click && !self.chat.composer_ready_for_hover() {
+                    return Task::none();
+                }
                 return self.update(Message::OpenPanel(Panel::Todos, click));
             }
             Message::Conversation(chat::Message::Goal(click)) => {
+                if !click && !self.chat.composer_ready_for_hover() {
+                    return Task::none();
+                }
                 return self.update(Message::OpenPanel(Panel::Goal, click));
             }
             Message::Todos(message) => {
@@ -838,7 +848,10 @@ impl App {
                 }
             }
             Message::Modes(message) => {
-                if matches!(message, modes::Message::GoalEdit(_)) {
+                if matches!(
+                    message,
+                    modes::Message::GoalEdit(_) | modes::Message::EditPlan(_)
+                ) {
                     self.keyboard_target = None;
                     self.pinned = true;
                 }
@@ -1034,10 +1047,7 @@ impl App {
             }
             Message::Devices(message) => {
                 if let Some(client) = self.connection.clone() {
-                    let status_change = matches!(
-                        &message,
-                        devices::Message::Installed(..) | devices::Message::Invitation(..)
-                    );
+                    let status_change = matches!(&message, devices::Message::Installed(..));
                     let task = self
                         .device_admin
                         .update(message, &self.agents.registry, &client)
@@ -1059,9 +1069,6 @@ impl App {
                         agent_details::Message::Memories(_)
                             | agent_details::Message::MemorySaved(..)
                             | agent_details::Message::MemoryDeleted(..)
-                            | agent_details::Message::Channels(_)
-                            | agent_details::Message::ChannelSaved(_)
-                            | agent_details::Message::Poll
                             | agent_details::Message::Voice(_)
                             | agent_details::Message::VoiceSaved(_)
                     ),
@@ -1091,14 +1098,6 @@ impl App {
             }
             Message::DeviceState(Ok(registry)) => {
                 if let Some(client) = self.connection.clone() {
-                    if let Some((invitation, _)) = &self.device_admin.invitation
-                        && registry
-                            .devices
-                            .iter()
-                            .any(|d| d.id == invitation.device_id && d.connected)
-                    {
-                        self.device_admin.invitation = None;
-                    }
                     return self.display_devices(registry, &client);
                 }
             }
@@ -1153,12 +1152,21 @@ impl App {
                     started.elapsed().as_secs_f64() * 1000.,
                     result.is_ok()
                 );
-                if let Err(error) = result {
-                    self.error = error;
-                    self.devices[index].queue.clear();
-                } else {
-                    self.devices[index].waiting = true;
-                    self.error.clear();
+                match result {
+                    Ok(ack) => {
+                        self.error.clear();
+                        if self.devices[index].frame.as_ref().is_some_and(|f| f.received >= ack) {
+                            if let Some(next) = self.devices[index].queue.pop_front() {
+                                return self.input(index, next);
+                            }
+                        } else {
+                            self.devices[index].input_ack_at = Some(ack);
+                        }
+                    }
+                    Err(error) => {
+                        self.error = error;
+                        self.devices[index].queue.clear();
+                    }
                 }
             }
             Message::Retry => {
@@ -1179,6 +1187,7 @@ impl App {
                 );
             }
             Message::Tick(now) => {
+                self.chat.animate_composer(now);
                 self.modes.animate(now);
                 if let Some(start) = self.input_started.take() {
                     eprintln!(
@@ -1443,7 +1452,10 @@ impl App {
         if self.keyboard_coverage > 0. {
             let origin = self.canvas_origin.y;
             let visible = (WORKBENCH.height + 2. * origin) * (1. - self.keyboard_coverage) - origin;
-            return Rectangle { height: (visible - layout::SIDE_INSET - chat.y).clamp(0., chat.height), ..chat };
+            return Rectangle {
+                height: (visible - layout::SIDE_INSET - chat.y).clamp(0., chat.height),
+                ..chat
+            };
         }
         chat
     }
@@ -1490,18 +1502,15 @@ impl App {
                 .as_ref()
                 .is_some_and(|child| child.animation.is_some())
             || self.input_started.is_some()
+            || self.chat.composer_animating()
             || (!self.reduced_motion && (self.modes.animating()))
         {
             subscriptions.push(window::frames().map(Message::Tick));
         }
         #[cfg(target_os = "android")]
-        subscriptions.push(Subscription::run(android_keyboard::coverage).map(Message::KeyboardCoverage));
+        subscriptions
+            .push(Subscription::run(android_keyboard::coverage).map(Message::KeyboardCoverage));
         subscriptions.push(self.chat.subscription().map(Message::Conversation));
-        subscriptions.push(
-            self.agents
-                .subscription(self.popup && self.panel == Panel::Agent)
-                .map(Message::Agents),
-        );
         if self.connection.is_some() {
             subscriptions.push(self.modes.subscription().map(Message::Modes));
         }
@@ -1555,7 +1564,7 @@ impl App {
                 true,
             ),
             Panel::Proxy => (420., 480., true),
-            Panel::Goal => (650., 364., true),
+            Panel::Goal => (650., 620., true),
         };
         let height = if fit {
             self.panel_content_height.min(max_height)
@@ -1769,7 +1778,7 @@ impl App {
             Panel::Location => Message::Location(location::Message::Load),
             Panel::Proxy => Message::Proxy(proxy::Message::Load),
             Panel::Files => Message::Files(Box::new(files::Message::Load)),
-            Panel::Goal => Message::Modes(modes::Message::Refresh),
+            Panel::Goal => Message::Modes(modes::Message::LoadPlans),
             _ => return Task::none(),
         };
         self.update(message)
@@ -2228,7 +2237,10 @@ impl App {
         let child_popup = self.child_rect();
         let (mode_effects, mode_motion) = self.modes.effects(self.reduced_motion);
         let scene = scene::Scene {
-            layout: Layout { chat: self.chat_bounds(), ..self.layout.clone() },
+            layout: Layout {
+                chat: self.chat_bounds(),
+                ..self.layout.clone()
+            },
             size: WORKBENCH,
             devices: self
                 .devices
@@ -2436,14 +2448,25 @@ impl App {
                 board_widgets.push(pin(label).x(h.x).y(h.y).into());
             }
             if d.frame.is_none() && tile.screen.intersects(&board) {
-                let status = if connection::reachable(&d.info) {
-                    self.locale.tr("正在连接…")
-                } else {
-                    self.locale.tr("已断开")
+                let status = match d.info.runtime_state.as_str() {
+                    "starting" => match d.info.start_stage.as_str() {
+                        "boot" => "正在启动系统",
+                        "input" => "正在配置中文输入",
+                        "desktop" => "正在安装桌面",
+                        _ => "正在准备离线组件",
+                    },
+                    "booted" => "正在连接…",
+                    _ if d.info.connected => "正在连接…",
+                    _ => "已断开",
                 };
+                let mut content = column![].align_x(iced::Center).spacing(12);
+                if d.starting() || d.info.connected {
+                    content = content.push(crate::loading::orb(24., self.reduced_motion));
+                }
+                content = content.push(text(self.locale.tr(status)).size(13).color(style::MUTED));
                 let rect = tile.screen;
                 board_widgets.push(
-                    pin(container(text(status).size(13).color(style::MUTED))
+                    pin(container(content)
                         .center(Length::Fill)
                         .width(rect.width)
                         .height(rect.height))
@@ -2453,7 +2476,9 @@ impl App {
                 );
             }
         }
-        if !self.layout.tiles.iter().any(layout::Tile::visible) {
+        if !(self.layout.tiles.iter().any(layout::Tile::visible)
+            || self.popup && self.panel == Panel::Devices)
+        {
             let add = button(
                 row![Icon::Plus.view(), text(self.locale.tr("添加设备")).size(15)]
                     .spacing(8)
@@ -2580,19 +2605,6 @@ fn run_workbench(
     #[cfg(not(target_os = "android"))]
     {
         let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
-        if let [mode, target, serial] = arguments.as_slice()
-            && mode == "--share-android"
-        {
-            std::process::exit(peer_connection::android_cli(
-                &target.to_string_lossy(),
-                &serial.to_string_lossy(),
-            ));
-        }
-        if let [mode, locale] = arguments.as_slice()
-            && mode == "--share-device"
-        {
-            return sharing::window(locale::Locale::parse(&locale.to_string_lossy()));
-        }
         #[cfg(unix)]
         if let Some(code) = uninstall::run(&arguments) {
             std::process::exit(code);

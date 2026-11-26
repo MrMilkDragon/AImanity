@@ -67,6 +67,7 @@ dependencies = [
  "prost-build",
  "protoc-bin-vendored",
  "reqwest",
+ "serde_yaml_ng",
  "tokio",
 ]
 

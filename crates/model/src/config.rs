@@ -79,6 +79,7 @@ pub fn client_for_proxy(proxy_url: &str) -> Result<reqwest::Client, String> {
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(30))
         .timeout(Duration::from_secs(180));
     if !proxy_url.is_empty() {
         builder = builder.proxy(reqwest::Proxy::all(proxy_url).map_err(|_| "代理地址无效")?);

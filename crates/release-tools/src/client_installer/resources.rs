@@ -42,7 +42,7 @@ impl Plan {
                 "source.payload"
                 | "android.payload"
                 | "images.payload"
-                | "speech/ggml-tiny-q5_1.bin"
+                | "speech/ggml-base-q5_1.bin"
                 | "qemu/manifest.json"
                 | "mihomo"
                 | "mihomo.exe" => {}
@@ -78,7 +78,7 @@ impl Plan {
         for required in [
             "source.payload",
             "android.payload",
-            "speech/ggml-tiny-q5_1.bin",
+            "speech/ggml-base-q5_1.bin",
             if cfg!(windows) {
                 "qemu/manifest.json"
             } else {

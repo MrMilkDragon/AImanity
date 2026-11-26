@@ -12,26 +12,16 @@ use iced::{
     Element, Length, Task,
     widget::{button, column, container, row, rule, space, text},
 };
-use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub enum Message {
     Open,
     Edit(String),
-    Invite(wire::DevicePairRequest),
-    Invitation(
-        wire::DevicePairRequest,
-        Result<wire::DeviceInvitation, String>,
-    ),
     Repair(String),
-    ExpireInvitation(std::time::Instant),
     Disconnect(String),
     AskDelete(String),
     Delete(String),
     CancelDelete,
-    CopyCode,
-    #[cfg(not(target_os = "android"))]
-    Share(String),
     New(String),
     Name(String),
     Kind(String),
@@ -46,22 +36,16 @@ pub enum Message {
     ),
 }
 
-#[derive(Clone, Debug)]
-pub enum Startup {
-    Pair(wire::DevicePairRequest),
-    Virtual(wire::DeviceStartRequest),
-}
 #[derive(Debug)]
 pub struct Issue {
     pub reason: String,
-    pub retry: Option<Startup>,
+    pub retry: Option<wire::DeviceStartRequest>,
 }
 #[derive(Default)]
 pub struct Devices {
     pub issues: std::collections::HashMap<String, Issue>,
     starting: std::collections::HashSet<String>,
     pub selected: String,
-    pub(super) invitation: Option<(wire::DeviceInvitation, std::time::Instant)>,
     draft: Option<wire::DeviceSaveRequest>,
     busy: bool,
     delete: Option<String>,
@@ -82,10 +66,10 @@ impl Devices {
             d.id.clone(),
             Issue {
                 reason: d.start_error.clone(),
-                retry: Some(Startup::Virtual(wire::DeviceStartRequest {
+                retry: Some(wire::DeviceStartRequest {
                     device_id: d.id.clone(),
                     resources: d.resources,
-                })),
+                }),
             },
         );
     }
@@ -112,30 +96,16 @@ impl Devices {
     pub fn frame_received(&mut self, id: &str) -> bool {
         self.issues.remove(id).is_some()
     }
-    fn launch(&mut self, action: Startup, client: &Connection) -> Task<Message> {
-        let client = client.clone();
-        match action {
-            Startup::Pair(request) => {
-                if !self.starting.insert(request.id.clone()) {
-                    return Task::none();
-                }
-                let retry = request.clone();
-                Task::perform(
-                    async move { client.rpc("registry/device-invite", request).await },
-                    move |r| Message::Invitation(retry.clone(), r),
-                )
-            }
-            Startup::Virtual(request) => {
-                if !self.starting.insert(request.device_id.clone()) {
-                    return Task::none();
-                }
-                let retry = request.clone();
-                Task::perform(
-                    async move { client.rpc("registry/device-start", request).await },
-                    move |r| Message::Installed(retry.clone(), r),
-                )
-            }
+    fn launch(&mut self, request: wire::DeviceStartRequest, client: &Connection) -> Task<Message> {
+        if !self.starting.insert(request.device_id.clone()) {
+            return Task::none();
         }
+        let client = client.clone();
+        let retry = request.clone();
+        Task::perform(
+            async move { client.rpc("registry/device-start", request).await },
+            move |r| Message::Installed(retry.clone(), r),
+        )
     }
     fn end_device(
         &mut self,
@@ -144,13 +114,6 @@ impl Devices {
         client: &Connection,
     ) -> Task<Message> {
         self.busy = true;
-        if self
-            .invitation
-            .as_ref()
-            .is_some_and(|(invite, _)| invite.device_id == id)
-        {
-            self.invitation = None;
-        }
         let client = client.clone();
         Task::perform(
             async move {
@@ -200,52 +163,6 @@ impl Devices {
                     return self.launch(action, client);
                 }
             }
-            Message::Invite(request) => {
-                self.error.clear();
-                return self.launch(Startup::Pair(request), client);
-            }
-            Message::Invitation(request, r) => {
-                self.starting.remove(&request.id);
-                match r {
-                    Ok(invite) => {
-                        self.issues.remove(&request.id);
-                        self.selected = invite.device_id.clone();
-                        self.draft = None;
-                        let issued = std::time::Instant::now();
-                        if !registry
-                            .devices
-                            .iter()
-                            .any(|d| d.id == invite.device_id && d.connected)
-                        {
-                            self.invitation = Some((invite, issued));
-                            return Task::perform(
-                                async { tokio::time::sleep(Duration::from_secs(300)).await },
-                                move |()| Message::ExpireInvitation(issued),
-                            );
-                        }
-                    }
-                    Err(reason) => {
-                        self.selected = request.id.clone();
-                        self.draft = None;
-                        self.issues.insert(
-                            request.id.clone(),
-                            Issue {
-                                reason,
-                                retry: Some(Startup::Pair(request)),
-                            },
-                        );
-                    }
-                }
-            }
-            Message::ExpireInvitation(issued) => {
-                if self
-                    .invitation
-                    .as_ref()
-                    .is_some_and(|(_, at)| *at == issued)
-                {
-                    self.invitation = None;
-                }
-            }
             Message::AskDelete(id) => self.delete = Some(id),
             Message::CancelDelete => self.delete = None,
             Message::Disconnect(id) => {
@@ -254,22 +171,6 @@ impl Devices {
             Message::Delete(id) => {
                 self.delete = None;
                 return self.end_device(id, "registry/device-delete", client);
-            }
-            Message::CopyCode => {
-                if let Some((i, _)) = &self.invitation {
-                    return iced::clipboard::write(i.code.clone());
-                }
-            }
-            #[cfg(not(target_os = "android"))]
-            Message::Share(locale) => {
-                match std::env::current_exe().and_then(|p| {
-                    std::process::Command::new(p)
-                        .args(["--share-device", &locale])
-                        .spawn()
-                }) {
-                    Ok(_) => {}
-                    Err(e) => self.error = e.to_string(),
-                }
             }
             Message::Open => {
                 self.delete = None;
@@ -314,17 +215,6 @@ impl Devices {
             Message::Discard => self.draft = None,
             Message::Save => {
                 if let Some(draft) = self.draft.clone() {
-                    if let Some(kind) = draft.kind.strip_prefix("paired-") {
-                        return self.update(
-                            Message::Invite(wire::DevicePairRequest {
-                                id: draft.id,
-                                name: draft.name,
-                                kind: kind.to_owned(),
-                            }),
-                            registry,
-                            client,
-                        );
-                    }
                     self.busy = true;
                     self.error.clear();
                     let client = client.clone();
@@ -362,7 +252,7 @@ impl Devices {
             },
             Message::Start(request) => {
                 self.error.clear();
-                return self.launch(Startup::Virtual(request), client);
+                return self.launch(request, client);
             }
             Message::Installed(request, result) => {
                 let id = request.device_id.clone();
@@ -378,7 +268,7 @@ impl Devices {
                             id,
                             Issue {
                                 reason,
-                                retry: Some(Startup::Virtual(request)),
+                                retry: Some(request),
                             },
                         );
                     }
@@ -392,7 +282,7 @@ impl Devices {
             self.available(registry)
                 .first()
                 .copied()
-                .unwrap_or("paired-phone")
+                .unwrap_or("phone")
                 .into(),
         )
     }
@@ -410,14 +300,7 @@ impl Devices {
         )
         .padding([0, 8])
         .on_press_maybe((!self.busy && self.draft.is_none()).then(|| self.new_device(registry)));
-        let actions = row![].align_y(iced::Center).spacing(6);
-        #[cfg(not(target_os = "android"))]
-        let actions = actions.push(
-            text_button(locale.tr("共享设备"))
-                .height(style::TOOL_CONTROL)
-                .on_press(Message::Share(locale.code().into())),
-        );
-        actions.push(add).into()
+        add.into()
     }
 
     pub fn editing(&self) -> bool {
@@ -438,16 +321,11 @@ impl Devices {
         let mut list = column![].spacing(4);
         if let Some(d) = self.draft.as_ref().filter(|d| d.expected_revision == 0) {
             let available = self.available(registry);
-            let choices = [
-                ("phone", "Android 手机"),
-                ("desktop", "Linux 电脑"),
-                ("paired-phone", "远程 Android"),
-                ("paired-desktop", "远程电脑"),
-            ]
-            .into_iter()
-            .filter(|(kind, _)| kind.starts_with("paired-") || available.contains(kind))
-            .map(|(kind, label)| (kind, tr(label)))
-            .collect::<Vec<_>>();
+            let choices = [("phone", "Android 手机"), ("desktop", "Linux 电脑")]
+                .into_iter()
+                .filter(|(kind, _)| available.contains(kind))
+                .map(|(kind, label)| (kind, tr(label)))
+                .collect::<Vec<_>>();
             let selected = choices
                 .iter()
                 .find(|(kind, _)| *kind == d.kind)
@@ -470,14 +348,8 @@ impl Devices {
             ]
             .spacing(6)
             .width(Length::Fill);
-            let apply = if d.kind.starts_with("paired-") {
-                tr("生成配对码")
-            } else {
-                tr("开始安装")
-            };
-            let mut fields = column![row![name, kind].spacing(12).align_y(iced::Bottom)];
-            if !d.kind.starts_with("paired-") {
-                fields = fields.push(deployment::resource_controls(
+            let fields = column![row![name, kind].spacing(12).align_y(iced::Bottom)].push(
+                deployment::resource_controls(
                     d.kind == "desktop",
                     &self.resources,
                     None,
@@ -486,8 +358,8 @@ impl Devices {
                     #[cfg(target_os = "android")]
                     None,
                     Message::Resource,
-                ));
-            }
+                ),
+            );
             list = list.push(admin(
                 fields
                     .push(
@@ -496,7 +368,7 @@ impl Devices {
                             text_button(tr("撤销"))
                                 .on_press_maybe((!self.busy).then_some(Message::Discard)),
                             action_button(
-                                apply,
+                                tr("开始安装"),
                                 (!self.busy && !d.name.trim().is_empty()).then_some(Message::Save)
                             )
                         ]
@@ -605,26 +477,6 @@ impl Devices {
                         .style(container::rounded_box)
                         .into(),
                     ));
-                } else if device.paired
-                    && !device.connected
-                    && self
-                        .invitation
-                        .as_ref()
-                        .is_none_or(|(i, _)| i.device_id != device.id)
-                {
-                    let request = wire::DevicePairRequest {
-                        id: device.id.clone(),
-                        name: device.name.clone(),
-                        kind: device.kind.clone(),
-                    };
-                    line = line.push(admin(
-                        text_button(tr("生成配对码"))
-                            .on_press_maybe(
-                                (!self.starting.contains(&device.id))
-                                    .then_some(Message::Invite(request)),
-                            )
-                            .into(),
-                    ));
                 } else if !device.paired
                     && !device.connected
                     && !matches!(
@@ -648,10 +500,6 @@ impl Devices {
                     ));
                 }
                 if crate::connection::reachable(device)
-                    || self
-                        .invitation
-                        .as_ref()
-                        .is_some_and(|(inv, _)| inv.device_id == device.id)
                     || matches!(
                         device.runtime_state.as_str(),
                         "starting" | "booted" | "stopping"
@@ -689,12 +537,7 @@ impl Devices {
             );
             if self.delete.as_deref() == Some(&device.id) {
                 let confirm = row![
-                    text(tr(if device.paired {
-                        "移除设备共享？"
-                    } else {
-                        "删除设备及其数据？"
-                    }))
-                    .size(13),
+                    text(tr("删除设备及其数据？")).size(13),
                     space::horizontal(),
                     text_button(tr("取消")).on_press(Message::CancelDelete),
                     text_button(tr("删除")).on_press(Message::Delete(device.id.clone()))
@@ -708,60 +551,42 @@ impl Devices {
                         .into(),
                 ));
             }
-            let invitation = self
-                .invitation
-                .as_ref()
-                .filter(|(i, _)| i.device_id == device.id);
-            if editing.is_some() || invitation.is_some() {
+            if editing.is_some() {
                 let mut details: Vec<Element<'a, Message>> = Vec::new();
                 let desktop = device.kind == "desktop";
-                if device.paired {
-                    if let Some((invite, _)) = invitation {
-                        details.push(
-                            row![
-                                text(&invite.code).size(13),
-                                icon_button(Icon::Copy, Some(Message::CopyCode))
-                            ]
-                            .spacing(6)
-                            .align_y(iced::Center)
-                            .into(),
-                        );
-                    }
-                } else {
-                    let existing = device.resources.map(|p| p.storage_gb);
-                    details.push(deployment::resource_controls(
-                        desktop,
-                        &self.resources,
-                        existing,
-                        locale,
-                        reduced_motion,
-                        #[cfg(target_os = "android")]
-                        None,
-                        Message::Resource,
-                    ));
-                    let starting = matches!(device.runtime_state.as_str(), "starting" | "booted");
-                    if !device.connected || device.resources != Some(self.resources) {
-                        let label = if starting {
-                            "正在启动"
-                        } else if device.connected {
-                            "应用并重启"
-                        } else if device.resources.is_some() {
-                            "启动设备"
-                        } else {
-                            "安装系统"
-                        };
-                        details.push(
-                            action_button(
-                                tr(label),
-                                (!self.busy && !starting && !self.starting.contains(&device.id))
-                                    .then_some(Message::Start(wire::DeviceStartRequest {
-                                        device_id: device.id.clone(),
-                                        resources: Some(self.resources),
-                                    })),
-                            )
-                            .into(),
-                        );
-                    }
+                let existing = device.resources.map(|p| p.storage_gb);
+                details.push(deployment::resource_controls(
+                    desktop,
+                    &self.resources,
+                    existing,
+                    locale,
+                    reduced_motion,
+                    #[cfg(target_os = "android")]
+                    None,
+                    Message::Resource,
+                ));
+                let starting = matches!(device.runtime_state.as_str(), "starting" | "booted");
+                if !device.connected || device.resources != Some(self.resources) {
+                    let label = if starting {
+                        "正在启动"
+                    } else if device.connected {
+                        "应用并重启"
+                    } else if device.resources.is_some() {
+                        "启动设备"
+                    } else {
+                        "安装系统"
+                    };
+                    details.push(
+                        action_button(
+                            tr(label),
+                            (!self.busy && !starting && !self.starting.contains(&device.id))
+                                .then_some(Message::Start(wire::DeviceStartRequest {
+                                    device_id: device.id.clone(),
+                                    resources: Some(self.resources),
+                                })),
+                        )
+                        .into(),
+                    );
                 }
                 if !details.is_empty() {
                     list = list.push(admin(

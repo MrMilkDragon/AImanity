@@ -2,7 +2,8 @@
 
 ## Install and use
 
-- [Downloads and platform status](release-status.md)
+- [Gallium installation and quick start · English / 简体中文](gallium.md)
+- [Fluorine archive and platform status](release-status.md)
 - [Setup · English](getting-started.en.md) / [简体中文](getting-started.zh-CN.md)
 - [Control a local or remote computer · English](native-client.en.md) / [简体中文](native-client.zh-CN.md)
 - [Model and application connections](model-and-channel-setup.md)
