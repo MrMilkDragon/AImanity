@@ -108,7 +108,7 @@ enum Message {
     CanvasFocus,
     DeviceState(Result<wire::RegistryState, String>),
     Input(usize, DeviceInput),
-    InputDone(String, Result<(), String>, Instant),
+    InputDone(String, Result<Instant, String>, Instant),
     Retry,
     Quit,
     Tick(Instant),
@@ -350,7 +350,7 @@ impl App {
         self.target = self.home.project(&mut self.camera);
         for (d, tile) in self.devices.iter().zip(&self.target.tiles) {
             let shown = if tile.visible() {
-                tile.screen.intersects(&self.target.board) || d.busy || d.waiting
+                tile.screen.intersects(&self.target.board) || d.busy || d.input_ack_at.is_some()
             } else {
                 connection::reachable(&d.info)
             };
@@ -440,7 +440,7 @@ impl App {
                 device.frame = None;
                 device.trace = None;
                 device.busy = false;
-                device.waiting = false;
+                device.input_ack_at = None;
                 device.queue.clear();
                 device.click = None;
             }
@@ -546,7 +546,7 @@ impl App {
         self.input(index, input)
     }
     fn input(&mut self, index: usize, mut input: DeviceInput) -> Task<Message> {
-        if self.devices[index].busy || self.devices[index].waiting {
+        if self.devices[index].busy || self.devices[index].input_ack_at.is_some() {
             match (self.devices[index].queue.back_mut(), &input) {
                 (Some(DeviceInput::Text(previous)), DeviceInput::Text(text)) => {
                     previous.push_str(text);
@@ -729,15 +729,19 @@ impl App {
                                 self.devices[index].info.kind
                             );
                         }
+                        let post_input = self.devices[index]
+                            .input_ack_at
+                            .is_some_and(|ack| frame.received >= ack);
                         self.devices[index].receive(frame);
                         let recovered = self.device_admin.frame_received(&id);
                         if resized || recovered {
                             self.rearrange(true);
                         }
-                        if std::mem::take(&mut self.devices[index].waiting)
-                            && let Some(next) = self.devices[index].queue.pop_front()
-                        {
-                            return self.input(index, next);
+                        if post_input {
+                            self.devices[index].input_ack_at = None;
+                            if let Some(next) = self.devices[index].queue.pop_front() {
+                                return self.input(index, next);
+                            }
                         }
                     }
                     Some(Err(error)) => {
@@ -745,7 +749,7 @@ impl App {
                             self.devices[index].frame = None;
                             self.devices[index].trace = None;
                             self.devices[index].queue.clear();
-                            self.devices[index].waiting = false;
+                            self.devices[index].input_ack_at = None;
                             if self.keyboard_target == Some(index) {
                                 self.keyboard_target = None;
                             }
@@ -1148,12 +1152,21 @@ impl App {
                     started.elapsed().as_secs_f64() * 1000.,
                     result.is_ok()
                 );
-                if let Err(error) = result {
-                    self.error = error;
-                    self.devices[index].queue.clear();
-                } else {
-                    self.devices[index].waiting = true;
-                    self.error.clear();
+                match result {
+                    Ok(ack) => {
+                        self.error.clear();
+                        if self.devices[index].frame.as_ref().is_some_and(|f| f.received >= ack) {
+                            if let Some(next) = self.devices[index].queue.pop_front() {
+                                return self.input(index, next);
+                            }
+                        } else {
+                            self.devices[index].input_ack_at = Some(ack);
+                        }
+                    }
+                    Err(error) => {
+                        self.error = error;
+                        self.devices[index].queue.clear();
+                    }
                 }
             }
             Message::Retry => {

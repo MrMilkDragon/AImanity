@@ -448,8 +448,8 @@
     },
     {
       "path": "apps/native/src/connection.rs",
-      "size": 14115,
-      "sha256": "ccc82df238906ba3db1bce1c6a6f05a8f354886ecdccb5a727a6b84f310d4611"
+      "size": 14132,
+      "sha256": "2516e0c96e71e7a983ff043c58b34770f24723a3998096243972dab7cba4673b"
     },
     {
       "path": "apps/native/src/controls.rs",
@@ -653,8 +653,8 @@
     },
     {
       "path": "apps/native/src/stage.rs",
-      "size": 1726,
-      "sha256": "a7080cb2e1924ceb091128d9c4d355044460bd6ae50c8714edea7a4579da3dfd"
+      "size": 1746,
+      "sha256": "778e4da3fc5cdf0beedd03c3264b63f452ed489cb6d42a462597852c05008859"
     },
     {
       "path": "apps/native/src/style.rs",
@@ -703,8 +703,8 @@
     },
     {
       "path": "apps/native/src/workbench.rs",
-      "size": 106163,
-      "sha256": "e875d4ce0af2aa47ab1bc6254acd4314f71b80e14c0db57c6a297af0f2e93381"
+      "size": 106867,
+      "sha256": "63ab7e6431a5f2d3eecaea38d4677d0cb6b2a8f07daf3980dabd18fe8cb8a3fa"
     },
     {
       "path": "apps/native/src/workspace/conversation.rs",

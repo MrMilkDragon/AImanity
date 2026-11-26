@@ -304,7 +304,7 @@ impl Connection {
         device: &wire::RegisteredDevice,
         input: DeviceInput,
         observation: String,
-    ) -> Result<(), String> {
+    ) -> Result<Instant, String> {
         if observation.is_empty() {
             return Err("请先获取设备画面".into());
         }
@@ -369,7 +369,7 @@ impl Connection {
         }
         .into();
         self.workspace.manual_input(action).await?;
-        Ok(())
+        Ok(Instant::now())
     }
 }
 pub fn epoch_ms() -> f64 {
