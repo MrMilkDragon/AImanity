@@ -123,6 +123,7 @@ impl Modes {
                     autonomous_install: state.autonomous_install,
                     interval_seconds: state.interval_seconds,
                     wechat_watch: Some(state.wechat_watch),
+                    ..Default::default()
                 };
                 let client = client.clone();
                 return Task::perform(

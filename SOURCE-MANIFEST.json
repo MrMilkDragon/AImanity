@@ -588,8 +588,8 @@
     },
     {
       "path": "apps/native/src/modes.rs",
-      "size": 24603,
-      "sha256": "4b9217738ca2b310b90002d6705959698e82fc8307a9eef617f6f4be8bc7eefa"
+      "size": 24644,
+      "sha256": "16384a505b9e66cbdf840ec9f22bf9959612cdd3855d839976e12b8a032df738"
     },
     {
       "path": "apps/native/src/occlude.rs",
