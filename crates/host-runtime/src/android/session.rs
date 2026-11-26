@@ -24,6 +24,7 @@ pub(crate) async fn workspace(
     slot: u16,
     mut stop: tokio::sync::watch::Receiver<bool>,
     ready: tokio::sync::oneshot::Sender<()>,
+    progress: tokio::sync::watch::Sender<&'static str>,
 ) -> crate::Result<()> {
     use ai_phone_api::wire::NativeAndroidInputSetup;
     let ports = plan::Ports {
@@ -49,8 +50,10 @@ pub(crate) async fn workspace(
         offline_apps: true,
         ..Default::default()
     };
+    progress.send_replace("boot");
     let started = process::start(plan, &mut stop, async |_, _| Ok(())).await?;
     let provision = async |stop: tokio::sync::watch::Receiver<bool>| -> crate::Result<()> {
+        progress.send_replace("input");
         super::input::setup_at(ports.adb, setup, stop).await?;
         let _ = ready.send(());
         Ok(())

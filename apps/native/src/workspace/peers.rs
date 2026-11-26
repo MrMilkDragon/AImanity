@@ -18,7 +18,7 @@ use std::{
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
-pub(super) const PORT: u16 = 17863;
+pub(super) const PORT: u16 = 0;
 type Call = (
     wire::DesktopActionRequest,
     oneshot::Sender<wire::HostDesktopReply>,
@@ -207,6 +207,7 @@ impl Peers {
             self.signal();
         }
     }
+    #[cfg(test)]
     pub(super) fn invite(
         &self,
         workspace: &Workspace,
@@ -860,7 +861,7 @@ mod tests {
             };
             req.headers_mut().insert("x-aimanity-system", os.parse()?);
             let target = address.port().to_string();
-            let (ws, _) = peer_connection::dial(&target, req).await?;
+            let ws = peer_connection::dial(&target, req).await?;
             let services = Services {
                 target,
                 files: Endpoint::Directory(dir),

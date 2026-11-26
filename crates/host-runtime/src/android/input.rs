@@ -367,10 +367,6 @@ async fn configure(
         windows_migration::transfer(adb, installed, apk).await?;
         state.save(Stage::RestoreWindowsRoles)?;
         changed = true;
-    } else if (pending.is_some() && installed.is_none())
-        || (pending == Some(Stage::ReplaceUnknown) && !current)
-    {
-        return Err(Error::Invalid("phone_input_install_unknown"));
     } else if !current {
         if observe {
             return Err(Error::Invalid("phone_input_not_ready"));
@@ -381,7 +377,7 @@ async fn configure(
         } else {
             Stage::InstallUnknown
         })?;
-        // An unknown exit is observed, never reinstalled by this invocation.
+        // The guest package version is the receipt. A later explicit repair may retry the same -r install.
         let _ = adb
             .execute(
                 &["install", "--no-incremental", "-r", "--user", "0", apk],

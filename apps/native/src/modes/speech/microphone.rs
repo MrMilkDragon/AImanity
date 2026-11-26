@@ -18,7 +18,8 @@ use tokio::sync::watch;
 
 const RATE: u32 = 16_000;
 const FRAME: usize = RATE as usize / 50;
-const MIN_VOICE_RMS: f32 = 0.008;
+const MIN_VOICE_RMS: f32 = 0.005;
+const METER_RMS: f32 = 0.008;
 
 pub fn events(
     model: PathBuf,
@@ -144,7 +145,7 @@ type Sender = mpsc::SyncSender<Result<(Frame, f32), String>>;
 fn measure(frame: &Frame, levels: &watch::Sender<MicrophoneLevels>) -> f32 {
     let power: f32 = frame.iter().map(|&sample| f32::from(sample).powi(2)).sum();
     let rms = (power / FRAME as f32).sqrt() / 32768.;
-    let point = if rms <= MIN_VOICE_RMS {
+    let point = if rms <= METER_RMS {
         0
     } else {
         (rms.sqrt() * 255.).round() as u8
@@ -321,7 +322,7 @@ mod tests {
         assert_eq!(measure(&silence, &levels), 0.);
         for peak in [120_i16, 180, 250] {
             let room_noise = std::array::from_fn(|i| if i % 2 == 0 { peak } else { -peak });
-            assert!(measure(&room_noise, &levels) < MIN_VOICE_RMS);
+            assert!(measure(&room_noise, &levels) < METER_RMS);
         }
         assert!(!updates.has_changed().unwrap());
         let quiet = std::array::from_fn(|i| if i % 2 == 0 { 1024 } else { -512 });

@@ -1,15 +1,13 @@
 use crate::{
     agents::Tab,
     connection::Connection,
-    controls::{
-        Icon, action_button, field, form_input, form_select, icon_button, tab_button, text_button,
-    },
+    controls::{Icon, action_button, field, form_input, form_select, icon_button, text_button},
     style,
 };
 use ai_phone_api::wire;
 use iced::{
-    Element, Length, Subscription, Task, keyboard,
-    widget::{column, image, row, space, text, text_editor},
+    Element, Length, Task, keyboard,
+    widget::{column, row, space, text, text_editor},
 };
 
 #[derive(Clone, Debug)]
@@ -21,17 +19,6 @@ pub enum Message {
     DeleteMemory(usize),
     MemorySaved(usize, Result<wire::ModelMemory, String>),
     MemoryDeleted(usize, Result<wire::MemoryList, String>),
-    Channels(Result<wire::ChannelListResponse, String>),
-    Channel(String),
-    AppId(String),
-    Secret(String),
-    Proxy(String),
-    Bind(bool),
-    CopyPair(String),
-    Unbind,
-    Pair,
-    ChannelSaved(Result<wire::ChannelListResponse, String>),
-    Poll,
     Voice(Result<(wire::VoiceSettings, wire::VoiceCredential), String>),
     VoiceField(VoiceField, String),
     VoiceProtocol(wire::VoiceInputProtocol),
@@ -59,15 +46,6 @@ pub struct Details {
     memories: Vec<Memory>,
     memory_loaded: bool,
     memory_busy: bool,
-    channels: Vec<wire::ChannelBinding>,
-    channels_loaded: bool,
-    channels_busy: bool,
-    channel: String,
-    app_id: String,
-    secret: String,
-    proxy: String,
-    channel_drafts: std::collections::HashMap<String, (String, String, String)>,
-    qr: Option<image::Handle>,
     voice: wire::VoiceDraft,
     voice_revision: u64,
     voice_loaded: bool,
@@ -83,15 +61,6 @@ impl Details {
             memories: Vec::new(),
             memory_loaded: false,
             memory_busy: false,
-            channels: Vec::new(),
-            channels_loaded: false,
-            channels_busy: false,
-            channel: String::new(),
-            app_id: String::new(),
-            secret: String::new(),
-            proxy: String::new(),
-            channel_drafts: Default::default(),
-            qr: None,
             voice: wire::VoiceDraft {
                 input_protocol: wire::VoiceInputProtocol::AudioChat.into(),
                 ..Default::default()
@@ -122,17 +91,6 @@ impl Details {
                             .await
                     },
                     Message::Memories,
-                )
-            }
-            Tab::Connections if !self.channels_loaded && !self.channels_busy => {
-                self.channels_busy = true;
-                Task::perform(
-                    async move {
-                        client
-                            .rpc("channels/list", wire::ChannelListRequest { agent_id })
-                            .await
-                    },
-                    Message::Channels,
                 )
             }
             Tab::Voice if !self.voice_loaded && !self.voice_busy => {
@@ -166,13 +124,6 @@ impl Details {
                 )
             }
             _ => Task::none(),
-        }
-    }
-    pub fn subscription(&self, tab: Tab) -> Subscription<Message> {
-        if tab == Tab::Connections && self.channels_loaded && !self.channels_busy {
-            iced::time::every(std::time::Duration::from_millis(2500)).map(|_| Message::Poll)
-        } else {
-            Subscription::none()
         }
     }
     pub fn update(&mut self, message: Message, client: &Connection) -> Task<Message> {
@@ -251,104 +202,6 @@ impl Details {
                     }
                     Err(e) => self.error = e,
                 }
-            }
-            Message::Poll => {
-                self.channels_busy = true;
-                let client = client.clone();
-                let input = wire::ChannelListRequest {
-                    agent_id: self.agent_id.clone(),
-                };
-                return Task::perform(
-                    async move { client.rpc("channels/list", input).await },
-                    Message::Channels,
-                );
-            }
-            Message::Channels(result) | Message::ChannelSaved(result) => {
-                self.channels_busy = false;
-                match result {
-                    Ok(list) => {
-                        self.channels = list.bindings;
-                        self.channels_loaded = true;
-                        self.qr = self
-                            .channels
-                            .iter()
-                            .find(|c| c.provider == self.channel)
-                            .filter(|c| !c.qr_png.is_empty())
-                            .map(|c| image::Handle::from_bytes(c.qr_png.clone()));
-                    }
-                    Err(e) => self.error = e,
-                }
-            }
-            Message::Channel(provider) => {
-                self.channel_drafts.insert(
-                    self.channel.clone(),
-                    (
-                        std::mem::take(&mut self.app_id),
-                        std::mem::take(&mut self.secret),
-                        std::mem::take(&mut self.proxy),
-                    ),
-                );
-                self.channel = provider;
-                let saved = self.channels.iter().find(|c| c.provider == self.channel);
-                self.app_id = saved.map(|c| c.app_id.clone()).unwrap_or_default();
-                self.proxy = saved.map(|c| c.proxy_url.clone()).unwrap_or_default();
-                if let Some((id, key, proxy)) = self.channel_drafts.remove(&self.channel) {
-                    self.app_id = id;
-                    self.secret = key;
-                    self.proxy = proxy;
-                }
-                self.qr = saved
-                    .filter(|c| !c.qr_png.is_empty())
-                    .map(|c| image::Handle::from_bytes(c.qr_png.clone()));
-            }
-            Message::AppId(v) => self.app_id = v,
-            Message::Secret(v) => self.secret = v,
-            Message::Proxy(v) => self.proxy = v,
-            Message::CopyPair(command) => return iced::clipboard::write(command),
-            Message::Bind(reset_session) => {
-                self.channels_busy = true;
-                let client = client.clone();
-                let app_id = if self.channel == "telegram" {
-                    self.secret.split(':').next().unwrap_or_default().into()
-                } else {
-                    self.app_id.clone()
-                };
-                let input = wire::ChannelBindRequest {
-                    provider: self.channel.clone(),
-                    agent_id: self.agent_id.clone(),
-                    app_id,
-                    secret: self.secret.clone(),
-                    proxy_url: self.proxy.clone(),
-                    reset_session,
-                };
-                return Task::perform(
-                    async move { client.rpc("channels/bind", input).await },
-                    Message::ChannelSaved,
-                );
-            }
-            Message::Pair => {
-                self.channels_busy = true;
-                let client = client.clone();
-                let input = wire::ChannelPairRequest {
-                    provider: self.channel.clone(),
-                    agent_id: self.agent_id.clone(),
-                };
-                return Task::perform(
-                    async move { client.rpc("channels/pair", input).await },
-                    Message::ChannelSaved,
-                );
-            }
-            Message::Unbind => {
-                self.channels_busy = true;
-                let client = client.clone();
-                let input = wire::ChannelUnbindRequest {
-                    provider: self.channel.clone(),
-                    agent_id: self.agent_id.clone(),
-                };
-                return Task::perform(
-                    async move { client.rpc("channels/unbind", input).await },
-                    Message::ChannelSaved,
-                );
             }
             Message::Voice(result) => {
                 self.voice_busy = false;
@@ -481,111 +334,6 @@ impl Details {
                     body = body.push(text(locale.tr("暂无记忆")).size(13).color(style::MUTED));
                 }
             }
-            Tab::Connections => {
-                body = body.push(
-                    row([
-                        ("wecom", locale.tr("企业微信")),
-                        ("feishu", locale.tr("飞书")),
-                        ("qq", "QQ"),
-                        ("telegram", "Telegram"),
-                        ("whatsapp", "WhatsApp"),
-                    ]
-                    .into_iter()
-                    .map(|(id, label)| {
-                        tab_button(label, self.channel == id, Some(Message::Channel(id.into())))
-                    }))
-                    .spacing(2),
-                );
-                if !self.channel.is_empty() {
-                    let binding = self.channels.iter().find(|c| c.provider == self.channel);
-                    if let Some(binding) = binding {
-                        body = body.push(
-                            text(match binding.status.as_str() {
-                                "connected" => locale.tr("已连接"),
-                                "connecting" => locale.tr("连接中"),
-                                "waiting_qr" => locale.tr("等待扫码"),
-                                "failed" => locale.tr("连接失败"),
-                                "unbound" => locale.tr("未连接"),
-                                _ => &binding.status,
-                            })
-                            .size(12)
-                            .color(style::MUTED),
-                        );
-                        if !binding.error.is_empty() {
-                            body = body.push(text(&binding.error).size(12).color(style::ERROR));
-                        }
-                    }
-                    if self.channel != "whatsapp" {
-                        if self.channel != "telegram" {
-                            body = body.push(field(
-                                if self.channel == "wecom" {
-                                    "Bot ID"
-                                } else {
-                                    "App ID"
-                                },
-                                &self.app_id,
-                                Message::AppId,
-                                self.channels_loaded && !self.channels_busy,
-                            ));
-                        }
-                        body = body.push(field(
-                            if self.channel == "telegram" {
-                                "Bot Token"
-                            } else {
-                                "Secret"
-                            },
-                            &self.secret,
-                            Message::Secret,
-                            self.channels_loaded && !self.channels_busy,
-                        ));
-                    }
-                    body = body.push(field(
-                        locale.tr("代理地址"),
-                        &self.proxy,
-                        Message::Proxy,
-                        self.channels_loaded && !self.channels_busy,
-                    ));
-                    if let Some(qr) = &self.qr {
-                        body = body.push(image(qr.clone()).width(220).height(220));
-                    }
-                    if let Some(binding) = binding.filter(|b| !b.pairing_command.is_empty()) {
-                        body = body.push(text(&binding.pairing_command).size(14));
-                    }
-                    if let Some(binding) = binding.filter(|b| !b.pairing_command.is_empty()) {
-                        body = body.push(
-                            text_button(locale.tr("复制配对指令"))
-                                .on_press(Message::CopyPair(binding.pairing_command.clone())),
-                        );
-                    }
-                    let enabled = self.channels_loaded && !self.channels_busy;
-                    if self.channel == "whatsapp" && binding.is_some_and(|b| b.configured) {
-                        body = body.push(
-                            text_button(locale.tr("重新扫码"))
-                                .on_press_maybe(enabled.then_some(Message::Bind(true))),
-                        );
-                    }
-                    body = body.push(
-                        row![
-                            action_button(
-                                locale.tr("连接"),
-                                enabled.then_some(Message::Bind(false))
-                            ),
-                            text_button(locale.tr("配对")).on_press_maybe(
-                                (enabled && binding.is_some_and(|b| b.configured))
-                                    .then_some(Message::Pair)
-                            ),
-                            space::horizontal(),
-                            icon_button(
-                                Icon::Trash,
-                                (enabled && binding.is_some_and(|b| b.configured))
-                                    .then_some(Message::Unbind)
-                            )
-                        ]
-                        .align_y(iced::Center)
-                        .spacing(8),
-                    );
-                }
-            }
             Tab::Voice => {
                 body = body
                     .push(field(
@@ -674,7 +422,7 @@ impl Details {
             }
             Tab::Model => {}
         }
-        if self.memory_busy || self.voice_busy || (!self.channels_loaded && self.channels_busy) {
+        if self.memory_busy || self.voice_busy {
             body = body.push(text(locale.tr("读取中…")).size(12).color(style::MUTED));
         }
         if !self.error.is_empty() {
@@ -692,25 +440,5 @@ impl std::fmt::Display for VoiceProtocol {
             wire::VoiceInputProtocol::AudioChat => "音频对话",
             _ => "语音转写",
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn changing_channel_keeps_each_unsaved_configuration() {
-        let client = Connection::for_state_test();
-        let mut details = Details::new("agent".into());
-        let _ = details.update(Message::Channel("wecom".into()), &client);
-        let _ = details.update(Message::AppId("draft-app".into()), &client);
-        let _ = details.update(Message::Secret("draft-secret".into()), &client);
-        let _ = details.update(Message::Channel("telegram".into()), &client);
-        let _ = details.update(Message::Secret("draft-token".into()), &client);
-        let _ = details.update(Message::Channel("wecom".into()), &client);
-        assert_eq!(details.app_id, "draft-app");
-        assert_eq!(details.secret, "draft-secret");
-        let _ = details.update(Message::Channel("telegram".into()), &client);
-        assert_eq!(details.secret, "draft-token");
     }
 }

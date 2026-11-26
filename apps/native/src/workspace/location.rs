@@ -64,9 +64,21 @@ impl Workspace {
         s.route = q.route;
         s.repeat = q.repeat;
         s.updated_at_ms = crate::connection::epoch_ms() as u64;
+        s.devices = self
+            .registry()?
+            .devices
+            .into_iter()
+            .map(|device| wire::LocationDevice {
+                device_id: device.id,
+                kind: device.kind,
+                status: "pending".into(),
+                ..Default::default()
+            })
+            .collect();
         self.store_location(&s)?;
         self.location_changed.notify_one();
-        self.deliver_location(s, &mut sessions, true).await
+        sessions.clear();
+        Ok(s)
     }
     fn store_location(&self, s: &wire::LocationState) -> Result<()> {
         let tx = self.db.begin_write()?;
@@ -129,11 +141,17 @@ impl Workspace {
                         location: Some(fix),
                         ..Default::default()
                     };
-                    self.peers.perform(req, Some(&session)).await.map(Some)
+                    tokio::time::timeout(
+                        Duration::from_secs(2),
+                        self.peers.perform(req, Some(&session)),
+                    )
+                    .await
+                    .map_err(|e| e.into())
+                    .and_then(|result| result.map(Some))
                 } else if !device.paired
                     && !matches!(
                         device.runtime_state.as_str(),
-                        "stopped" | "stopping" | "deleting"
+                        "stopped" | "stopping" | "deleting" | "failed" | "starting"
                     )
                 {
                     self.owned_location(&device, &fix).await
@@ -180,6 +198,7 @@ impl Workspace {
         receipts.sort_by_key(|i| i.0);
         state.devices = receipts.into_iter().map(|v| v.1).collect();
         self.store_location(&state)?;
+        self.changed();
         Ok(state)
     }
     async fn owned_location(
@@ -239,7 +258,7 @@ impl Workspace {
                 .is_some_and(|s| s.moving);
             let tick = tokio::select! {
                 _=stop.cancelled()=>break,
-                _=wake.notified()=>continue,
+                _=wake.notified()=>false,
                 result=devices.changed()=>{if result.is_err(){break;}false},
                 _=tokio::time::sleep(Duration::from_secs(1)),if moving=>true,
             };

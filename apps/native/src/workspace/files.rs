@@ -1,7 +1,7 @@
 use super::*;
 use crate::device_files::{Endpoint, absolute, child};
 use ai_phone_api::wire::{DeviceIoOperation as Io, FileLocation as Location, FileOperation as Op};
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 impl Workspace {
     pub(crate) fn upload(&self, name: String, bytes: Vec<u8>) -> Result<wire::ChatAttachment> {
@@ -34,6 +34,41 @@ impl Workspace {
             fs::remove_file(destination)?;
         }
         result
+    }
+
+    pub(super) async fn publish_image(&self, n: u64, loc: Location) -> Result<wire::ChatAttachment> {
+        let name = Path::new(&loc.path).file_name().and_then(|s| s.to_str()).ok_or("图片名无效")?;
+        let (reader, mut writer) = tokio::io::duplex(128 * 1024);
+        let transfer = async {
+            self.read_file(&loc, &mut writer).await?;
+            writer.shutdown().await?;
+            Result::Ok(())
+        };
+        let read = async {
+            let mut bytes = Vec::new();
+            const MAX_IMAGE: u64 = 12 * 1024 * 1024;
+            reader.take(MAX_IMAGE + 1).read_to_end(&mut bytes).await?;
+            if bytes.len() as u64 > MAX_IMAGE { return Err("图片不能超过 12 MB".into()); }
+            Result::Ok(bytes)
+        };
+        let (_, bytes) = tokio::try_join!(transfer, read)?;
+        if !matches!(image::guess_format(&bytes), Ok(image::ImageFormat::Png | image::ImageFormat::Jpeg | image::ImageFormat::Gif | image::ImageFormat::WebP)) {
+            return Err("请选择 PNG、JPEG、GIF 或 WebP 图片".into());
+        }
+        let attachment = if loc.device_id.is_empty() {
+            self.store_attachment(name.to_owned(), &bytes)?
+        } else {
+            self.upload(name.to_owned(), bytes)?
+        };
+        let tx = self.db.begin_write()?;
+        let mut messages = tx.open_table(MESSAGES)?;
+        let mut reply = wire::ChatMessage::decode(messages.get(n+1)?.ok_or("消息不存在")?.value())?;
+        reply.attachments.push(attachment.clone());
+        messages.insert(n+1,reply.encode_to_vec().as_slice())?;
+        drop(messages);
+        tx.commit()?;
+        self.changed();
+        Ok(attachment)
     }
 
     fn work_files(&self) -> Endpoint {

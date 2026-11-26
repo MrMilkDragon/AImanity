@@ -40,10 +40,12 @@ impl Instance {
         kind: &str,
         stop: watch::Receiver<bool>,
         ready: oneshot::Sender<()>,
+        progress: watch::Sender<&'static str>,
     ) -> Result<()> {
         if kind == "phone" && self.slot >= 65 {
             return Err(Error::Invalid("device_ports_exhausted"));
         }
+        progress.send_replace("prepare");
         if kind == "phone" {
             let mut install = Installation::lock(&self.home)?;
             let identity = self.identity("android.payload")?;
@@ -68,13 +70,14 @@ impl Instance {
             let root = self.home.join("user");
             phone_apps(&root, &self.bundle, self.identity("source.payload")?, &stop)?;
             drop(install);
-            return android::session::workspace(phone, &root, self.slot, stop, ready).await;
+            return android::session::workspace(phone, &root, self.slot, stop, ready, progress)
+                .await;
         }
         if kind != "desktop" {
             return Err(Error::Invalid("device_kind"));
         }
         #[cfg(target_os = "macos")]
-        return crate::unix_initializer::workspace_desktop(&self, stop, ready).await;
+        return crate::unix_initializer::workspace_desktop(&self, stop, ready, progress).await;
         #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
         {
             let bundle = self.bundle.join("qemu");
@@ -84,6 +87,7 @@ impl Instance {
             let profile = serde_json::to_vec(&self.desktop_profile())
                 .map_err(|_| Error::Invalid("host_profile"))?;
             crate::filesystem::directory(&home, true)?;
+            progress.send_replace("boot");
             let port = crate::qemu_host::running_control(&home)?.unwrap_or(19061 + self.slot);
             let result = crate::qemu_host::ensure(
                 &bundle,

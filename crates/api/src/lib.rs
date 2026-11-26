@@ -31,6 +31,7 @@ impl wire::RegisteredDevice {
 
 pub mod location_motion;
 pub mod observations;
+pub mod skill;
 pub mod wire {
     include!(concat!(env!("OUT_DIR"), "/ai_phone.v1.rs"));
 }

@@ -394,3 +394,43 @@ pub async fn read_clipboard() -> Result<Option<ClipboardContent>, String> {
         .await
         .map_err(|e| e.to_string())?
 }
+#[cfg(target_os = "macos")]
+pub struct Awake(u32);
+
+#[cfg(target_os = "macos")]
+#[link(name = "IOKit", kind = "framework")]
+unsafe extern "C" {
+    fn IOPMAssertionCreateWithName(
+        kind: core_foundation::string::CFStringRef,
+        level: u32,
+        name: core_foundation::string::CFStringRef,
+        id: *mut u32,
+    ) -> i32;
+    fn IOPMAssertionRelease(id: u32) -> i32;
+}
+
+#[cfg(target_os = "macos")]
+impl Awake {
+    pub fn new() -> Option<Self> {
+        use core_foundation::{base::TCFType, string::CFString};
+        let kind = CFString::new("PreventUserIdleSystemSleep");
+        let name = CFString::new("AImanity workbench and scheduled tasks");
+        let mut id = 0;
+        let result = unsafe {
+            IOPMAssertionCreateWithName(
+                kind.as_concrete_TypeRef(),
+                255,
+                name.as_concrete_TypeRef(),
+                &mut id,
+            )
+        };
+        (result == 0).then_some(Self(id))
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for Awake {
+    fn drop(&mut self) {
+        unsafe { IOPMAssertionRelease(self.0) };
+    }
+}

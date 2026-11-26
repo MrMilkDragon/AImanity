@@ -164,7 +164,6 @@ impl Workspace {
             || (!q.device_id.is_empty()
                 && !registry.devices.iter().any(|device| {
                     device.id == q.device_id
-                        && device.paired
                         && !matches!(
                             device.runtime_state.as_str(),
                             "stopping" | "stopped" | "deleting"
@@ -187,7 +186,7 @@ impl Workspace {
             request_id: q.request_id.clone(),
             role: if !parent.is_empty() || matches!(source, "liberty" | "goal") {
                 "workspace"
-            } else if source == "notification" {
+            } else if matches!(source, "notification" | "plan-notification") {
                 "notification"
             } else {
                 "user"
@@ -211,6 +210,7 @@ impl Workspace {
             run_id: q.request_id.clone(),
             ordinal: n + 1,
             active: true,
+            has_activity: true,
             ..Default::default()
         };
         for m in [&user, &reply] {
@@ -337,7 +337,12 @@ impl Workspace {
         put(&tx, "chat", &head)?;
         tx.commit()?;
         drop(active);
+        self.live
+            .lock()
+            .unwrap()
+            .take_if(|live| !resume && live.run == head.run_id);
         self.changed();
+        self.ready.notify_one();
         if resume {
             self.ready.notify_one()
         }
@@ -365,16 +370,25 @@ impl Workspace {
             return Ok(());
         }
         let started = crate::connection::epoch_ms() as u64;
-        let output = if q.device_id.is_empty() {
-            self.answer(n, &id, &job, token).await
-        } else {
-            match self.peers.active_session(&q.device_id) {
-                Ok(session) => tokio::select! {biased;
-                    _=session.cancelled()=>Err("设备已断开".into()),
-                    result=self.answer(n,&id,&job,token)=>result,
-                },
-                Err(e) => Err(e),
+        let operation = async {
+            if q.device_id.is_empty() {
+                self.answer(n, &id, &job, token).await
+            } else {
+                let session = self.peers.active_session(&q.device_id)?;
+                tokio::select! {
+                    biased;
+                    _ = session.cancelled() => Err("设备已断开".into()),
+                    result = self.answer(n, &id, &job, token) => result,
+                }
             }
+        };
+        let output = tokio::select! {
+            biased;
+            _ = token.cancelled() => {
+                self.live.lock().unwrap().take_if(|live| live.run == id);
+                return Ok(());
+            }
+            result = operation => result,
         };
         if token.is_cancelled() {
             self.live.lock().unwrap().take_if(|live| live.run == id);
@@ -391,6 +405,9 @@ impl Workspace {
         let goal_done = output
             .as_ref()
             .is_ok_and(|(_, events)| events.iter().any(|e| e.kind == "goal_complete"));
+        let awaiting = output
+            .as_ref()
+            .is_ok_and(|(_, events)| events.iter().any(|e| e.kind == "ask_user"));
         let (status, error) = match output {
             Ok((text, events)) => {
                 if !reply.text.is_empty() {
@@ -404,7 +421,14 @@ impl Workspace {
                     log.events.push(event);
                 }
                 put(&tx, &format!("events/{id}"), &log)?;
-                ("succeeded", String::new())
+                (
+                    if awaiting {
+                        "awaiting_user"
+                    } else {
+                        "succeeded"
+                    },
+                    String::new(),
+                )
             }
             Err(error) => {
                 let error = error.to_string();
@@ -446,7 +470,7 @@ impl Workspace {
         drop(msgs);
         tx.open_table(JOBS)?.remove(n)?;
         if matches!(job.source.as_str(), "goal" | "liberty") {
-            self.finish_mode(&tx, &id, goal_done, status == "failed")?;
+            self.finish_mode(&tx, &id, goal_done, status == "failed", awaiting)?;
         }
         put(&tx, "chat", &head)?;
         tx.commit()?;

@@ -43,7 +43,7 @@ impl LocalSpeech {
             .ok_or(Error::UnsupportedLanguage)?;
         whisper_rs::install_logging_hooks();
         let mut parameters = WhisperContextParameters::default();
-        parameters.use_gpu(false);
+        parameters.use_gpu(cfg!(target_os = "macos"));
         let context = WhisperContext::new_with_params(model_path, parameters)?;
         let state = context.create_state()?;
         Ok(Self { state, language })

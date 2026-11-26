@@ -67,7 +67,7 @@ mod remote {
     }
     impl Services {
         pub(crate) async fn serve(&self, key: &str, q: DeviceIoRequest) -> Result<()> {
-            let (mut ws, _tunnel) = peer_connection::io_socket(&self.target, key).await?;
+            let mut ws = peer_connection::io_socket(&self.target, key).await?;
             aimanity_device_io::StorageMedia {
                 files: self.files.clone(),
                 guest_audio: self.guest_audio,

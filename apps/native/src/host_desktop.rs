@@ -654,7 +654,7 @@ mod tests {
         let (ready, connected) = oneshot::channel();
         let (revoke_share, share_stop) = watch::channel(());
         let peer = tokio::spawn(async move {
-            peer_connection::share(
+            peer_connection::share_device(
                 &port.to_string(),
                 &invitation.code,
                 None,

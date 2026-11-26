@@ -4,8 +4,6 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use image::codecs::jpeg::JpegEncoder;
 use std::time::{Duration, Instant};
 
-#[cfg(not(target_os = "android"))]
-pub(super) const ADB_PORT: u16 = 5037;
 pub(super) const DEADLINE: Duration = Duration::from_secs(8);
 pub(super) struct Phone {
     pub(super) client: Client,
@@ -13,18 +11,6 @@ pub(super) struct Phone {
     observations: ai_phone_api::observations::Views<(u32, u32, Instant)>,
 }
 impl Phone {
-    #[cfg(not(target_os = "android"))]
-    pub async fn open(serial: &str) -> Result<Self, String> {
-        let device = ai_phone_adb::devices(ADB_PORT, DEADLINE)
-            .await
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .find(|device| device.serial == serial)
-            .ok_or("请在手机上授权 ADB 并重新选择设备")?;
-        Ok(Self::attached(
-            Client::attached(ADB_PORT, device).map_err(|e| e.to_string())?,
-        ))
-    }
     pub fn attached(client: Client) -> Self {
         Self {
             client,

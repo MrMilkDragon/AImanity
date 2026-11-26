@@ -5,7 +5,7 @@ pub type MicrophoneLevels = [u8; 32];
 
 use crate::{
     connection::Connection,
-    controls::{Icon, action_button},
+    controls::{Icon, action_button, icon_button},
     locale::Locale,
     style,
 };
@@ -25,6 +25,13 @@ pub enum Message {
     Refreshed(Result<wire::ProactiveState, String>),
     ToggleLiberty,
     GoalEdit(text_editor::Action),
+    LoadPlans,
+    EditPlan(text_editor::Action),
+    InterpretPlan,
+    PreviewPlan(Result<wire::Plan, String>),
+    SavePlan,
+    RemovePlan(String),
+    Plans(Result<wire::PlanList, String>),
     SetGoal(bool),
     Saved(Option<u64>, Result<wire::ProactiveState, String>),
     ToggleCopilot,
@@ -41,6 +48,11 @@ pub struct Modes {
     connection_error: String,
     goal_error: String,
     goal: text_editor::Content,
+    plan_text: text_editor::Content,
+    plan_preview: Option<wire::Plan>,
+    plans: Vec<wire::Plan>,
+    plan_error: String,
+    plan_busy: bool,
     goal_edited: bool,
     goal_revision: u64,
     speech: speech::Copilot,
@@ -118,6 +130,63 @@ impl Modes {
                     async move { client.rpc("proactive/update", request).await },
                     |result| Message::Saved(None, result),
                 );
+            }
+            Message::LoadPlans => {
+                let client = client.clone();
+                return Task::perform(
+                    async move { client.rpc("plans/list", wire::ProactiveRequest {}).await },
+                    Message::Plans,
+                );
+            }
+            Message::EditPlan(action) => {
+                if action.is_edit() {
+                    self.plan_preview = None;
+                    self.plan_error.clear();
+                }
+                self.plan_text.perform(action);
+            }
+            Message::InterpretPlan => {
+                self.plan_busy = true;
+                self.plan_error.clear();
+                let client = client.clone();
+                let prompt = wire::PlanPrompt {
+                    text: self.plan_text.text(),
+                };
+                return Task::perform(
+                    async move { client.rpc("plans/interpret", prompt).await },
+                    Message::PreviewPlan,
+                );
+            }
+            Message::PreviewPlan(result) => {
+                self.plan_busy = false;
+                match result {
+                    Ok(plan) => self.plan_preview = Some(plan),
+                    Err(error) => self.plan_error = error,
+                }
+            }
+            Message::SavePlan => {
+                if let Some(plan) = self.plan_preview.take() {
+                    let client = client.clone();
+                    self.plan_busy = true;
+                    return Task::perform(
+                        async move { client.rpc("plans/save", plan).await },
+                        Message::Plans,
+                    );
+                }
+            }
+            Message::RemovePlan(id) => {
+                let client = client.clone();
+                return Task::perform(
+                    async move { client.rpc("plans/remove", wire::PlanRemove { id }).await },
+                    Message::Plans,
+                );
+            }
+            Message::Plans(result) => {
+                self.plan_busy = false;
+                match result {
+                    Ok(list) => self.plans = list.items,
+                    Err(error) => self.plan_error = error,
+                }
             }
             Message::GoalEdit(action) => {
                 if action.is_edit() {
@@ -234,6 +303,9 @@ impl Modes {
     }
     pub fn take_recovered(&mut self) -> String {
         std::mem::take(&mut self.speech.recovered)
+    }
+    pub fn copilot_active(&self) -> bool {
+        self.speech.active()
     }
     pub fn transcript(&self) -> &str {
         &self.speech.transcript
@@ -400,7 +472,9 @@ impl Modes {
             !self.saving
                 && !value.is_empty()
                 && value.len() <= 12000
-                && (!state.goal_active || value != state.goal)
+                && (!state.goal_active
+                    || value != state.goal
+                    || state.goal_status == "awaiting_user")
         })
     }
     pub fn goal_view(&self) -> Element<'_, Message> {
@@ -416,6 +490,7 @@ impl Modes {
                     "queued" => "待继续",
                     "running" => "正在处理",
                     "paused" => "任务已暂停",
+                    "awaiting_user" => "等待补充",
                     "failed" => "执行失败",
                     "succeeded" => "已完成",
                     "canceled" => "已停止",
@@ -461,7 +536,12 @@ impl Modes {
                 .style(style::quiet),
             );
         }
-        if !active || self.state.as_ref().is_some_and(|s| value != s.goal) {
+        if !active
+            || self
+                .state
+                .as_ref()
+                .is_some_and(|s| value != s.goal || s.goal_status == "awaiting_user")
+        {
             actions = actions.push(action_button(
                 self.locale.tr(if active { "更新目标" } else { "激活" }),
                 can_save.then_some(Message::SetGoal(false)),
@@ -476,7 +556,42 @@ impl Modes {
         if !error.is_empty() {
             body = body.push(text(error).size(12).style(style::error_text));
         }
-        body.push(actions).width(Length::Fill).into()
+        let mut plans = column![
+            iced::widget::rule::horizontal(1).style(iced::widget::rule::weak),
+            text("Plan").size(16),
+            text_editor(&self.plan_text)
+                .placeholder(self.locale.tr("输入计划与触发条件"))
+                .height(76)
+                .padding([10, 12])
+                .size(14)
+                .on_action(Message::EditPlan),
+            action_button(
+                self.locale.tr("整理计划"),
+                (!self.plan_busy && !self.plan_text.text().trim().is_empty())
+                    .then_some(Message::InterpretPlan)
+            ),
+        ]
+        .spacing(8);
+        if let Some(plan) = &self.plan_preview {
+            plans = plans.push(plan_form(plan, self.locale)).push(action_button(
+                self.locale.tr("保存"),
+                Some(Message::SavePlan),
+            ));
+        }
+        for plan in &self.plans {
+            plans = plans.push(
+                row![
+                    plan_form(plan, self.locale),
+                    icon_button(Icon::Trash, Some(Message::RemovePlan(plan.id.clone()))),
+                ]
+                .spacing(8)
+                .align_y(iced::Center),
+            );
+        }
+        if !self.plan_error.is_empty() {
+            plans = plans.push(text(&self.plan_error).size(12).style(style::error_text));
+        }
+        body.push(actions).push(plans).width(Length::Fill).into()
     }
 }
 
@@ -504,4 +619,44 @@ fn mode_button(
     .height(style::CONTROL_HEIGHT)
     .padding([0, 10])
     .on_press_maybe(action)
+}
+fn plan_form(plan: &wire::Plan, locale: Locale) -> Element<'_, Message> {
+    let trigger = if plan.trigger == "clock" {
+        if !plan.date.is_empty() {
+            format!("{} {}", plan.date, plan.time)
+        } else if plan.weekdays.is_empty() {
+            format!("{} {}", locale.tr("每天"), plan.time)
+        } else {
+            let days = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+            format!(
+                "{} {}",
+                plan.weekdays
+                    .iter()
+                    .filter_map(|d| days.get(d.saturating_sub(1) as usize))
+                    .map(|d| locale.tr(d))
+                    .collect::<Vec<_>>()
+                    .join("、"),
+                plan.time
+            )
+        }
+    } else {
+        format!("{} · {} {}", locale.tr("设备通知"), plan.app, plan.contains)
+    };
+    column![
+        row![
+            text(locale.tr("触发条件"))
+                .size(12)
+                .style(style::muted_text),
+            text(trigger).size(13)
+        ]
+        .spacing(8),
+        row![
+            text(locale.tr("任务")).size(12).style(style::muted_text),
+            text(&plan.task).size(13)
+        ]
+        .spacing(8),
+    ]
+    .spacing(3)
+    .width(Length::Fill)
+    .into()
 }

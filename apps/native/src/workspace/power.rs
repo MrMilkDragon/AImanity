@@ -146,13 +146,16 @@ impl Workspace {
         let id = id.to_owned();
         tokio::spawn(async move {
             let _finished = done.drop_guard();
-            let (ready, up) = oneshot::channel();
+            let (ready, mut up) = oneshot::channel();
+            let (progress, mut phases) = watch::channel("prepare");
             let home = w.device_home(&id);
             let mut job = tokio::task::spawn_blocking(move || -> Result<()> {
                 let setup = crate::deployment::Setup::load()?;
                 let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()?;
+                #[cfg(target_os = "android")]
+                let _progress = progress;
                 #[cfg(target_os = "android")]
                 runtime.block_on(crate::android_host::run(
                     home,
@@ -174,16 +177,28 @@ impl Workspace {
                         slot,
                         locale: setup.language.code().into(),
                     };
-                    runtime.block_on(spec.run(&d.kind, stop, ready))?;
+                    runtime.block_on(spec.run(&d.kind, stop, ready, progress))?;
                 }
                 Ok(())
             });
-            let outcome = tokio::select! {biased;
-                ready=up=>{
-                    if ready.is_ok(){w.record_power(&id,"booted",String::new());}
-                    job.await
+            let outcome = loop {
+                tokio::select! { biased;
+                    ready=&mut up=>{
+                        if ready.is_ok(){w.record_power(&id,"booted",String::new());}
+                        break job.await;
+                    }
+                    r=&mut job=>break r,
+                    Ok(())=phases.changed()=>{
+                        let stage=*phases.borrow_and_update();
+                        let result=w.write_registry(|s,_|{
+                            if let Some(device)=s.devices.iter_mut().find(|d| d.id==id && d.runtime_state=="starting"){
+                                device.start_stage=stage.into();
+                            }
+                            Ok(())
+                        });
+                        if result.is_ok(){w.peers.signal();}
+                    }
                 }
-                r=&mut job=>r
             };
             let why = match outcome {
                 Ok(Ok(())) => None,
@@ -210,6 +225,7 @@ impl Workspace {
             }) {
                 d.runtime_state = state.into();
                 d.start_error = reason;
+                d.start_stage.clear();
             }
             Ok(())
         });

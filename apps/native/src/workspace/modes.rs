@@ -90,6 +90,7 @@ impl Workspace {
         let s = self.proactive_state()?;
         if !(s.exploring || s.goal_active)
             || !s.active_run_id.is_empty()
+            || s.goal_status == "awaiting_user"
             || s.next_wake_at_ms > crate::connection::epoch_ms() as u64
         {
             return Ok(());
@@ -141,12 +142,19 @@ impl Workspace {
         id: &str,
         done: bool,
         error: bool,
+        awaiting: bool,
     ) -> Result<()> {
         let mut s: wire::ProactiveState = read(&tx.open_table(RECORDS)?, "proactive")?;
         if s.active_run_id != id {
             return Ok(());
         }
         s.active_run_id.clear();
+        if awaiting {
+            s.goal_status = "awaiting_user".into();
+            s.exploring = false;
+            s.next_wake_at_ms = 0;
+            return put(tx, "proactive", &s);
+        }
         if done {
             s.goal_active = false;
             s.goal_status = "completed".into();

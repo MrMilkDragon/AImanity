@@ -20,6 +20,9 @@ pub struct Device {
     pub stream: Option<iced::task::Handle>,
 }
 impl Device {
+    pub fn starting(&self) -> bool {
+        matches!(self.info.runtime_state.as_str(), "starting" | "booted") && self.info.start_error.is_empty()
+    }
     pub fn new(info: RegisteredDevice) -> Self {
         Self {
             info,

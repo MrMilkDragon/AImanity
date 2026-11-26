@@ -33,6 +33,7 @@ const REPLY_TEXT_INSET: f32 = button::DEFAULT_PADDING.left + ICON_SIZE + DISCLOS
 pub enum Message {
     Todos(bool),
     Children,
+    ComposerHover(bool),
     Goal(bool),
     HostToggle,
     HostAllow,
@@ -96,6 +97,7 @@ struct Trace {
 pub struct Chat {
     display_after: Option<u64>,
     children_open: bool,
+    composer_hover: bool,
     pub state: wire::ChatState,
     draft: text_editor::Content,
     pending: Vec<Pending>,
@@ -119,6 +121,7 @@ impl Chat {
         Self {
             display_after: None,
             children_open: false,
+            composer_hover: false,
             state: Default::default(),
             draft: text_editor::Content::new(),
             pending: Vec::new(),
@@ -225,7 +228,7 @@ impl Chat {
                     .traces
                     .entry(incoming.id.clone())
                     .or_insert_with(|| Trace {
-                        expanded: live,
+                        expanded: false,
                         loading: false,
                         loaded: false,
                         events: Vec::new(),
@@ -369,6 +372,7 @@ impl Chat {
                 self.following = true;
             }
             Message::Children => self.children_open = !self.children_open,
+            Message::ComposerHover(hovered) => self.composer_hover = hovered,
             Message::Mode(_) | Message::Todos(_) | Message::Goal(_) => {}
             Message::Edit(action) => self.draft.perform(action),
             Message::Send => {
@@ -808,37 +812,39 @@ impl Chat {
         message: &'a wire::ChatMessage,
         theme: &iced::Theme,
         locale: crate::locale::Locale,
+        reduced_motion: bool,
     ) -> Element<'a, Message> {
         let Some(trace) = self.traces.get(&message.id) else {
             return space().into();
         };
         let text_column = iced::padding::left(REPLY_TEXT_INSET);
-        let status = if message.active && message.run_id == self.state.run_id {
-            locale.tr(status_label(&self.state.run_status))
+        let running = self.is_live(message);
+        let status = if running {
+            message
+                .action_receipts
+                .last()
+                .map_or(locale.tr(status_label(&self.state.run_status)), |receipt| {
+                    locale.tr(&receipt.title)
+                })
+        } else if message.active {
+            locale.tr("待继续")
+        } else if !message.system_notice.is_empty() {
+            locale.tr("执行失败")
         } else {
-            locale.tr("执行记录")
+            locale.tr("已完成")
+        };
+        let marker: Element<'_, Message> = if running {
+            crate::loading::orb(16., reduced_motion).into()
+        } else if trace.expanded {
+            Icon::Down.view().into()
+        } else {
+            Icon::Right.view().into()
         };
         let mut body = column![
             button(
-                row![
-                    if trace.expanded {
-                        Icon::Down
-                    } else {
-                        Icon::Right
-                    }
-                    .view(),
-                    text(match message.action_receipts.last() {
-                        Some(receipt) => format!(
-                            "{status} · #{} {} · {}",
-                            message.action_receipts.len(),
-                            locale.tr(&receipt.title),
-                            locale.tr("已送达"),
-                        ),
-                        None => status.to_owned(),
-                    })
-                    .size(12)
-                ]
-                .spacing(DISCLOSURE_GAP)
+                row![marker, text(status).size(12)]
+                    .spacing(DISCLOSURE_GAP)
+                    .align_y(iced::Center)
             )
             .style(style::quiet)
             .on_press(Message::Trace(message.id.clone()))
@@ -1003,9 +1009,6 @@ impl Chat {
             );
         }
         for message in &self.state.messages {
-            if !message.system_notice.is_empty() {
-                continue;
-            }
             if self
                 .display_after
                 .is_some_and(|ordinal| message.ordinal <= ordinal)
@@ -1015,7 +1018,17 @@ impl Chat {
             }
             let mut item = column![].spacing(7);
             if message.has_activity {
-                item = item.push(self.trace(message, &theme, locale));
+                item = item.push(self.trace(message, &theme, locale, reduced_motion));
+            }
+            if !message.system_notice.is_empty() {
+                item = item.push(
+                    container(
+                        text(&message.system_notice)
+                            .size(13)
+                            .style(style::muted_text),
+                    )
+                    .padding(iced::padding::left(REPLY_TEXT_INSET)),
+                );
             }
             if !message.attachments.is_empty() {
                 item = item.push(self.attachments(&message.attachments));
@@ -1094,25 +1107,13 @@ impl Chat {
                 s.border.width = 0.;
                 s
             });
-        let mut right_actions = row![
+        let right_actions = row![
             modes
                 .copilot_button(!self.state.conversation_id.is_empty())
                 .map(Message::Mode),
         ]
         .spacing(4)
         .align_y(iced::Center);
-        if matches!(self.state.run_status.as_str(), "queued" | "running") {
-            right_actions = right_actions.push(crate::loading::label(
-                locale.tr(if self.state.run_status == "queued" {
-                    "待继续"
-                } else {
-                    "正在处理"
-                }),
-                12,
-                true,
-                reduced_motion,
-            ));
-        }
         let mut submit = row![].spacing(4).align_y(iced::Center);
         if self.state.run_status == "paused" {
             submit = submit.push(icon_button(
@@ -1136,20 +1137,29 @@ impl Chat {
             ));
         }
         let can_send = self.can_send();
-        let send = Icon::Send
-            .view()
-            .opacity(if can_send { 1. } else { 0.5 })
-            .style(|_, _| iced::widget::svg::Style {
-                color: Some(iced::Color::WHITE),
-            });
-        submit = submit.push(
-            button(container(send).center(Length::Fill))
-                .width(style::CONTROL_HEIGHT)
-                .height(style::CONTROL_HEIGHT)
-                .padding(0)
-                .style(style::primary)
-                .on_press_maybe(can_send.then_some(Message::Send)),
-        );
+        let send_button = || {
+            button(
+                container(
+                    Icon::Send
+                        .view()
+                        .opacity(if can_send { 1. } else { 0.5 })
+                        .style(|_, _| iced::widget::svg::Style {
+                            color: Some(iced::Color::WHITE),
+                        }),
+                )
+                .center(Length::Fill),
+            )
+            .width(style::CONTROL_HEIGHT)
+            .height(style::CONTROL_HEIGHT)
+            .padding(0)
+            .style(|theme, status| {
+                let mut button = style::primary(theme, status);
+                button.border.radius = (style::CONTROL_HEIGHT / 2.).into();
+                button
+            })
+            .on_press_maybe(can_send.then_some(Message::Send))
+        };
+        submit = submit.push(send_button());
         use crate::host_desktop::Permission;
         let host_button: Option<Element<'_, Message>> = match self.host {
             Permission::Disabled => None,
@@ -1283,6 +1293,40 @@ impl Chat {
         composer = composer
             .push(crate::touch_editor::editor(editor))
             .push(actions);
+        let expanded = self.composer_hover
+            || modes.copilot_active()
+            || !self.uploads.is_empty()
+            || self.control_busy
+            || matches!(self.state.run_status.as_str(), "running" | "queued");
+        let composer: Element<'_, Message> = if expanded {
+            stack![container(composer.spacing(8)).padding(COMPOSER_PADDING)]
+                .push_under(
+                    container(
+                        modes.voice_strip(self.state.run_status == "running", reduced_motion),
+                    )
+                    .align_bottom(Length::Fill)
+                    .padding(iced::Padding::ZERO.left(8.).right(8.).bottom(1.)),
+                )
+                .into()
+        } else {
+            let draft = self.draft.text();
+            let preview = draft
+                .lines()
+                .next()
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| locale.tr("发送消息").to_owned());
+            row![
+                container(text(preview).size(14).wrapping(text::Wrapping::None))
+                    .clip(true)
+                    .width(Length::Fill),
+                send_button(),
+            ]
+            .spacing(8)
+            .align_y(iced::Center)
+            .padding([4, 7])
+            .into()
+        };
         column![
             scrollable(container(messages).padding([12, 2]))
                 .direction(scrollable::Direction::Vertical(
@@ -1291,24 +1335,24 @@ impl Chat {
                 .id("shared-chat")
                 .on_scroll(|v| Message::Scroll(v.relative_offset().y > 0.98))
                 .height(Length::Fill),
-            container(
-                stack![container(composer.spacing(8)).padding(COMPOSER_PADDING)].push_under(
-                    container(
-                        modes.voice_strip(self.state.run_status == "running", reduced_motion)
-                    )
-                    .align_bottom(Length::Fill)
-                    .padding(iced::Padding::ZERO.left(8.).right(8.).bottom(1.))
-                )
-            )
-            .style(move |_| container::Style {
-                background: Some(iced::Color::WHITE.into()),
-                border: iced::Border {
-                    color: iced::Color::from_rgb8(222, 222, 222),
-                    width: 1.,
-                    radius: style::PANEL_RADIUS.into()
-                },
-                ..Default::default()
-            }),
+            iced::widget::mouse_area(container(composer).style(move |_| {
+                container::Style {
+                    background: Some(iced::Color::WHITE.into()),
+                    border: iced::Border {
+                        color: iced::Color::from_rgb8(222, 222, 222),
+                        width: 1.,
+                        radius: if expanded {
+                            style::PANEL_RADIUS
+                        } else {
+                            (style::CONTROL_HEIGHT + 8.) / 2.
+                        }
+                        .into(),
+                    },
+                    ..Default::default()
+                }
+            }))
+            .on_enter(Message::ComposerHover(true))
+            .on_exit(Message::ComposerHover(false)),
         ]
         .into()
     }
