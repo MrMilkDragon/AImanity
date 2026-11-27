@@ -21,6 +21,9 @@ mod network;
     all(target_os = "linux", target_arch = "x86_64")
 ))]
 mod owned;
+#[cfg(all(test, any(target_os = "macos", windows)))]
+#[path = "../tests/installed/overlay.rs"]
+mod fluent_overlay_qualification;
 mod peers;
 #[cfg(any(
     target_os = "macos",

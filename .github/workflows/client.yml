@@ -1,134 +1,100 @@
 name: Native client checks
 on:
-  pull_request:
-    branches: [master]
   workflow_dispatch:
     inputs:
       platform:
-        description: Native checks to run
         type: choice
-        options: [all, windows]
-        default: all
+        options: [macos, windows]
+        required: true
+      factory_run:
+        type: string
+        required: true
 permissions:
+  actions: read
   contents: read
-concurrency:
-  group: client-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
-  native-workbench:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ${{ fromJSON(inputs.platform == 'windows' && '["windows-2022"]' || '["macos-26","windows-2022"]') }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+  install-over-original:
+    runs-on: ${{ inputs.platform == 'macos' && 'macos-26' || 'windows-2022' }}
+    timeout-minutes: 75
     env:
       CARGO_BUILD_JOBS: '2'
-    defaults:
-      run:
-        working-directory: apps/native
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CMAKE_POLICY_VERSION_MINIMUM: '3.5'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - name: Rust toolchain
+        with: {persist-credentials: false}
+      - name: Download the unchanged original 0.0.6 installer
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM: ${{ inputs.platform }}
         run: |
-          rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
-          rustup default 1.96.0
-      - name: Check formatting
-        run: cargo fmt --check
-      - name: Lint native workbench
-        run: cargo clippy --all-targets --locked -- -D warnings
-      - name: Build native workbench
-        run: cargo build --locked
-      - name: Test native workbench
-        run: cargo test --locked
-      - name: Open and reopen a fresh zero-device Windows workbench
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/original" "$RUNNER_TEMP/overlay-profile"
+          if [[ $PLATFORM == macos ]]; then
+            file=AImanity-0.0.6-macos-arm64.dmg
+            digest=f7d2ff21425555374aeb72042436cc8e5d986856688f4e8d30e3422a763cbc74
+          else
+            file=AImanity-0.0.6-windows-x64-setup.exe
+            digest=6a167304ff149a88ecd41dd20f9d8b014344421cb8353f8d05d421847a91289b
+          fi
+          gh release download v0.0.6 --pattern "$file" --dir "$RUNNER_TEMP/original"
+          cd "$RUNNER_TEMP/original"
+          if [[ $PLATFORM == macos ]]; then actual=$(shasum -a 256 "$file"); else actual=$(sha256sum "$file"); fi
+          [[ ${actual%% *} == "$digest" ]]
+          printf 'AIMANITY_QA_ROOT=%s\n' "$RUNNER_TEMP/overlay-profile" >> "$GITHUB_ENV"
+      - name: Install original DMG
+        if: runner.os == 'macOS'
+        run: bash scripts/overlay-install-mac.sh "$RUNNER_TEMP/original/"*.dmg
+      - name: Install original EXE
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $env:AIMANITY_QA_ROOT = Join-Path $env:RUNNER_TEMP 'empty-workbench'
-          $env:AIMANITY_QA_CLIENT = (Resolve-Path target/debug/aimanity-native.exe).Path
-          cargo test --locked --bin aimanity-native windows_empty_workbench -- --ignored --nocapture
-      - name: Save the Windows workbench screen and log
-        if: failure() && runner.os == 'Windows'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: windows-empty-workbench
-          path: ${{ runner.temp }}/empty-workbench
-          if-no-files-found: ignore
-      - name: Exercise local and paired Windows desktops in Notepad
-        if: runner.os == 'Windows'
-        run: cargo test --locked windows_notepad_receives_host_input -- --ignored --nocapture
-      - name: Test native host runtime
-        working-directory: .
-        run: cargo test -p ai-phone-host-runtime --lib --locked
-  macos-arm64:
-    if: inputs.platform != 'windows'
-    runs-on: macos-15
-    timeout-minutes: 45
-    env:
-      CARGO_BUILD_JOBS: '2'
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - name: Toolchain and locked dependencies
-        run: |
-          test "$(uname -m)" = arm64
-          cmake --version
-          rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
-          rustup default 1.96.0
-      - name: Native OCR qualification tools
-        run: |
-          brew install --force-bottle tesseract
-          cargo run --quiet --locked -p ai-phone-release-tools -- prepare-ocr-models --destination "$RUNNER_TEMP/aiphone-ocr-models"
-          echo "AI_PHONE_TEST_TESSERACT=$(command -v tesseract)" >> "$GITHUB_ENV"
-          echo "AI_PHONE_TEST_TESSDATA=$RUNNER_TEMP/aiphone-ocr-models" >> "$GITHUB_ENV"
-      - name: Qualify native services and dependency advisories
+          $exe=(Get-ChildItem "$env:RUNNER_TEMP/original/*.exe").FullName
+          ./scripts/overlay-install-win.ps1 $exe
+      - name: Open original client, create and read its workspace
+        shell: bash
+        env:
+          AIMANITY_QA_PHASE: baseline
         run: |
           set -euo pipefail
-          (
-            audit_dir="$RUNNER_TEMP/aiphone-cargo-audit"
-            archive=cargo-audit-aarch64-apple-darwin-v0.22.2.tgz
-            mkdir "$audit_dir"
-            curl -fsSL "https://github.com/RustSec/rustsec/releases/download/cargo-audit/v0.22.2/$archive" -o "$audit_dir/$archive"
-            printf '%s  %s\n' ec7ca4263769593df4d909be85b94a6b79efa2897be5d2bb8ebd516e823175af "$audit_dir/$archive" | shasum -a 256 -c -
-            tar -xzf "$audit_dir/$archive" -C "$audit_dir" --strip-components 1 "${archive%.tgz}/cargo-audit"
-            PATH="$audit_dir:$PATH" cargo run --quiet --locked -p ai-phone-release-tools -- audit-dependencies --output audit.json
-            jq -e 'all(.blocked_targets[]; length == 0)' audit.json
-          ) > "$RUNNER_TEMP/aiphone-native-audit.log" 2>&1 &
-          audit_pid=$!
-          native_result=0
-          cargo run --quiet --locked -p ai-phone-release-tools -- native-services build || native_result=$?
-          audit_result=0
-          wait "$audit_pid" || audit_result=$?
-          cat "$RUNNER_TEMP/aiphone-native-audit.log"
-          test "$native_result" -eq 0 && test "$audit_result" -eq 0 || exit 1
-      - name: Retain sanitized dependency diagnostics
-        if: always() && hashFiles('audit.json') != ''
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: native-dependency-audit
-          path: audit.json
-          if-no-files-found: error
-          retention-days: 14
-
-  android-arm64:
-    if: inputs.platform != 'windows'
-    # Phone-control helpers run inside the virtual Android guest.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - name: Android guest application toolchain
-        shell: bash
-        run: |
           rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-          rustup target add aarch64-linux-android x86_64-linux-android
-      - name: Build and verify virtual-phone control applications
-        run: cargo run --quiet --locked -p ai-phone-release-tools -- phone-apps build .
+          cargo +1.96.0 test --locked --manifest-path apps/native/Cargo.toml --bin aimanity-native fluorine_overlay -- --ignored --nocapture
+          rm -f "$RUNNER_TEMP/original/"AImanity-0.0.6-*
+      - name: Fetch this hotfix's signed installer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FACTORY: ${{ inputs.factory_run }}
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          set -euo pipefail
+          [[ $FACTORY =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FACTORY" |
+            jq -e '.path == ".github/workflows/client-factory.yml" and .head_sha=="54be836db330b23b655b8b60b73ead02ca46dc8e" and .conclusion=="success"' >/dev/null
+          gh run download "$FACTORY" --name "complete-$PLATFORM-installer" --dir "$RUNNER_TEMP/hotfix"
+      - name: Replace installed Mac app at its original location
+        if: runner.os == 'macOS'
+        run: bash scripts/overlay-install-mac.sh "$RUNNER_TEMP/hotfix/"*.dmg
+      - name: Install Windows update over the original location
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe=(Get-ChildItem "$env:RUNNER_TEMP/hotfix/*.exe").FullName
+          ./scripts/overlay-install-win.ps1 $exe
+      - name: Reopen with the original profile and read devices, model, chat and attachment
+        shell: bash
+        env:
+          AIMANITY_QA_PHASE: candidate
+        run: cargo +1.96.0 test --locked --manifest-path apps/native/Cargo.toml --bin aimanity-native fluorine_overlay -- --ignored --nocapture
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: fluorine-overlay-${{ inputs.platform }}
+          path: |
+            ${{ runner.temp }}/overlay-profile/*.png
+            ${{ runner.temp }}/overlay-profile/*.log
+          if-no-files-found: ignore
+          retention-days: 7
