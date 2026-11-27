@@ -1,7 +1,7 @@
 {
   "version": "0.0.6.fix1",
-  "release_name": "Fluorine fix1",
-  "release_notes": "Import and enable Markdown skills, pair external channels, and reach a single device with a shorter first tool call.",
+  "release_name": "Fluorine hotfix1",
+  "release_notes": "Recover Android input setup and the Linux desktop after an interrupted installation. Canceled runs release the conversation. Location changes reach online devices independently. Copilot now uses offline Whisper Base with a 1.5-second speech pause. Import Markdown skills and connect external chat channels.",
   "source_preview": {
     "license": "Apache-2.0",
     "remote_publication_authorized": true,

@@ -1,12 +1,12 @@
 {
-  "model": "whisper-tiny",
+  "model": "whisper-base",
   "quantization": "q5_1",
   "repository": "ggerganov/whisper.cpp",
   "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-  "file": "ggml-tiny-q5_1.bin",
-  "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny-q5_1.bin",
-  "size_bytes": 32152673,
-  "sha256": "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7",
+  "file": "ggml-base-q5_1.bin",
+  "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base-q5_1.bin",
+  "size_bytes": 59707625,
+  "sha256": "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898",
   "license": "MIT",
   "license_source": "https://raw.githubusercontent.com/openai/whisper/86098128c0b4f24f0e2aa2994de830614b474227/LICENSE"
 }

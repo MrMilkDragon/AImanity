@@ -628,7 +628,7 @@ impl App {
                             self.locale = setup.language;
                             self.modes.set_language(self.locale.code());
                             self.modes
-                                .set_speech_model(setup.resource.join("speech/ggml-tiny-q5_1.bin"));
+                                .set_speech_model(setup.resource.join("speech/ggml-base-q5_1.bin"));
                             self.phase = "正在启动工作区".into();
                             self.started = Instant::now();
                             return Task::perform(Connection::connect(self.root.clone()), |r| {

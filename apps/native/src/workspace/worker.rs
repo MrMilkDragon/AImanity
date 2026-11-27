@@ -320,7 +320,7 @@ impl Workspace {
                         }
                         let q: Read = serde_json::from_str(args)?;
                         event.content = q.id.clone();
-                        Value::String(self.read_active_skill(&q.id)?.into())
+                        Value::String(self.read_active_skill(&q.id)?)
                     }
                     "search_knowledge" => {
                         #[derive(Deserialize)]

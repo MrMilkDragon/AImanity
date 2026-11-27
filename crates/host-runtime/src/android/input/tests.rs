@@ -343,7 +343,7 @@ async fn older_input_is_replaced_once_and_only_a_new_version_confirms_the_instal
         f.run(&mut phone, false).await.unwrap_err().code(),
         "phone_input_install_unknown"
     );
-    assert!(f.run(&mut phone, false).await.is_err());
+    assert!(f.run(&mut phone, true).await.is_err());
     assert_eq!(
         phone
             .calls
@@ -354,7 +354,7 @@ async fn older_input_is_replaced_once_and_only_a_new_version_confirms_the_instal
     );
 }
 #[tokio::test]
-async fn absent_package_after_attempt_remains_unknown_and_is_not_replayed_on_resume() {
+async fn explicit_repair_installs_when_package_manager_still_reports_absent() {
     let f = Fixture::new();
     let mut phone = Phone::new(false);
     phone.install_visible = false;
@@ -363,11 +363,9 @@ async fn absent_package_after_attempt_remains_unknown_and_is_not_replayed_on_res
         "phone_input_install_unknown"
     );
     assert!(f.state().load().unwrap() == Some(Stage::InstallUnknown));
-    assert_eq!(
-        f.run(&mut phone, false).await.unwrap_err().code(),
-        "phone_input_install_unknown"
-    );
-    assert_eq!(phone.calls.iter().filter(|a| a[0] == "install").count(), 1);
+    phone.install_visible = true;
+    assert!(f.run(&mut phone, false).await.unwrap());
+    assert_eq!(phone.calls.iter().filter(|a| a[0] == "install").count(), 2);
 }
 #[tokio::test]
 async fn known_package_resumes_a_legacy_unknown_install_record_without_reinstall() {

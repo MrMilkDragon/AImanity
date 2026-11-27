@@ -17,7 +17,11 @@ Fluorine 首次打开为空工作区。可以按需创建虚拟设备，配对�
 | Linux x86_64 (DEB and RPM) | Signed packages installed offline on Debian 12 and Fedora 43. Reopening the same database to the visible conversation controls took 663 ms and 627 ms respectively. Chinese speech synthesis and CJK fonts worked offline. [Screens and installation checks](https://github.com/MrMilkDragon/AImanity/actions/runs/45453161355) | Physical desktop audio and GPU configurations |
 | Android phones and tablets | One universal APK for the Android 15 phone and tablet emulator profiles. The checks cover landscape, hardware and software keyboard input, draft retention on resume and cold reopen. [Signed APK and its acceptance record](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) | ARM64 AVF guest creation, simultaneous recordings and playback on a physical phone or tablet |
 
-### 0.0.6.fix1 · Fluorine patch
+### 0.0.6.fix1 · Fluorine hotfix1
+
+Android input setup retries an interrupted installation after checking the installed package. The Linux guest can present its first frame on an empty desktop. Canceling a run releases the conversation immediately. Location changes are saved before reaching each available device. Offline Copilot uses multilingual Whisper Base and keeps speech on both sides of a short pause.
+
+Android 输入组件安装中断后会核对设备内版本并重试。Linux 空桌面可直接显示首帧。取消任务后，对话即可继续。位置模拟先保存选点，再逐台下发。Copilot 使用内置的多语言 Whisper Base，短暂停顿时保留前后的语音。
 
 The native Skills window imports a local SKILL.md or Markdown URL. Imported guides start disabled. On macOS both import paths, enablement and reopening the same database were exercised through the visible client. An isolated Telegram Bot API delivered a private pairing command, an incoming task, the local model’s reply in the originating chat, and a message queued during shutdown. Public bot accounts and the other providers still need live account coverage.
 

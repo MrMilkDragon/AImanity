@@ -105,7 +105,7 @@ pub fn bundle_inventory(resource: &Path) -> Result<BTreeMap<String, String>, Str
         "source.payload",
         "android.payload",
         platform,
-        "speech/ggml-tiny-q5_1.bin",
+        "speech/ggml-base-q5_1.bin",
     ] {
         if !inventory.contains_key(name) || !resource.join(name).is_file() {
             return Err(format!("离线组件缺失 · {name}"));

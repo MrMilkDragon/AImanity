@@ -597,7 +597,21 @@ mod tests {
                 ..Default::default()
             })
             .await?;
-        assert!(s.devices.len() == 2 && s.devices.iter().all(|r| r.status == "applied"));
+        assert!(s.enabled && s.devices.len() == 2);
+        let mut delivery = w.subscribe();
+        tokio::time::timeout(limit, async {
+            loop {
+                let current: wire::LocationState = w.get("location")?;
+                if current.devices.len() == 2
+                    && current.devices.iter().all(|receipt| receipt.status == "applied")
+                {
+                    break;
+                }
+                delivery.changed().await?;
+            }
+            Result::Ok(())
+        })
+        .await??;
         let mut ids = BTreeSet::new();
         for _ in 0..2 {
             let (id, fix) = tokio::time::timeout(limit, received.recv()).await?.unwrap();
