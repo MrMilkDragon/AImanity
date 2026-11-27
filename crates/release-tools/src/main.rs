@@ -18,7 +18,10 @@ mod macos_factory;
 #[cfg(unix)]
 mod native_services;
 mod phone_apps;
+#[path = "../../../packages/protocol/release_version.rs"]
+mod release_version;
 mod source;
+mod update_feed;
 #[cfg(windows)]
 mod windows_factory;
 #[cfg(unix)]
@@ -43,6 +46,7 @@ fn execute(arguments: Vec<std::ffi::OsString>) -> Result<Option<serde_json::Valu
         #[cfg(unix)]
         "windows-guest-assets" => windows_release::assets::run(rest).map(Some),
         "source" => source::run(rest),
+        "sign-update" => update_feed::sign(rest).map(|()| None),
         #[cfg(any(target_os = "macos", windows))]
         "client-installer" => client_installer::run(rest).map(Some),
         #[cfg(target_os = "linux")]

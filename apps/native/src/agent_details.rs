@@ -26,6 +26,7 @@ pub enum Message {
     AppId(String),
     Secret(String),
     Proxy(String),
+    ApiBase(String),
     Bind(bool),
     CopyPair(String),
     Unbind,
@@ -65,8 +66,9 @@ pub struct Details {
     channel: String,
     app_id: String,
     secret: String,
+    api_base: String,
     proxy: String,
-    channel_drafts: std::collections::HashMap<String, (String, String, String)>,
+    channel_drafts: std::collections::HashMap<String, (String, String, String, String)>,
     qr: Option<image::Handle>,
     voice: wire::VoiceDraft,
     voice_revision: u64,
@@ -90,6 +92,7 @@ impl Details {
             app_id: String::new(),
             secret: String::new(),
             proxy: String::new(),
+            api_base: String::new(),
             channel_drafts: Default::default(),
             qr: None,
             voice: wire::VoiceDraft {
@@ -286,16 +289,19 @@ impl Details {
                         std::mem::take(&mut self.app_id),
                         std::mem::take(&mut self.secret),
                         std::mem::take(&mut self.proxy),
+                        std::mem::take(&mut self.api_base),
                     ),
                 );
                 self.channel = provider;
                 let saved = self.channels.iter().find(|c| c.provider == self.channel);
                 self.app_id = saved.map(|c| c.app_id.clone()).unwrap_or_default();
                 self.proxy = saved.map(|c| c.proxy_url.clone()).unwrap_or_default();
-                if let Some((id, key, proxy)) = self.channel_drafts.remove(&self.channel) {
+                self.api_base = saved.map(|c| c.api_base.clone()).unwrap_or_default();
+                if let Some((id, key, proxy, base)) = self.channel_drafts.remove(&self.channel) {
                     self.app_id = id;
                     self.secret = key;
                     self.proxy = proxy;
+                    self.api_base = base;
                 }
                 self.qr = saved
                     .filter(|c| !c.qr_png.is_empty())
@@ -303,6 +309,7 @@ impl Details {
             }
             Message::AppId(v) => self.app_id = v,
             Message::Secret(v) => self.secret = v,
+            Message::ApiBase(v) => self.api_base = v,
             Message::Proxy(v) => self.proxy = v,
             Message::CopyPair(command) => return iced::clipboard::write(command),
             Message::Bind(reset_session) => {
@@ -320,6 +327,7 @@ impl Details {
                     secret: self.secret.clone(),
                     proxy_url: self.proxy.clone(),
                     reset_session,
+                    api_base: self.api_base.clone(),
                 };
                 return Task::perform(
                     async move { client.rpc("channels/bind", input).await },
@@ -501,11 +509,12 @@ impl Details {
                     if let Some(binding) = binding {
                         body = body.push(
                             text(match binding.status.as_str() {
+                                "connected" if binding.paired => locale.tr("已配对"),
                                 "connected" => locale.tr("已连接"),
                                 "connecting" => locale.tr("连接中"),
                                 "waiting_qr" => locale.tr("等待扫码"),
                                 "failed" => locale.tr("连接失败"),
-                                "unbound" => locale.tr("未连接"),
+                                "unbound" => locale.tr("已断开"),
                                 _ => &binding.status,
                             })
                             .size(12)
@@ -528,16 +537,21 @@ impl Details {
                                 self.channels_loaded && !self.channels_busy,
                             ));
                         }
-                        body = body.push(field(
-                            if self.channel == "telegram" {
-                                "Bot Token"
-                            } else {
-                                "Secret"
-                            },
-                            &self.secret,
-                            Message::Secret,
-                            self.channels_loaded && !self.channels_busy,
-                        ));
+                        let label = if self.channel == "telegram" {
+                            "Bot Token"
+                        } else {
+                            "Secret"
+                        };
+                        body = body.push(
+                            column![
+                                text(label).size(12).style(style::muted_text),
+                                form_input("", &self.secret).secure(true).on_input_maybe(
+                                    (self.channels_loaded && !self.channels_busy)
+                                        .then_some(Message::Secret)
+                                )
+                            ]
+                            .spacing(6),
+                        );
                     }
                     body = body.push(field(
                         locale.tr("代理地址"),
@@ -545,6 +559,14 @@ impl Details {
                         Message::Proxy,
                         self.channels_loaded && !self.channels_busy,
                     ));
+                    if self.channel == "telegram" {
+                        body = body.push(field(
+                            "Bot API URL",
+                            &self.api_base,
+                            Message::ApiBase,
+                            self.channels_loaded && !self.channels_busy,
+                        ));
+                    }
                     if let Some(qr) = &self.qr {
                         body = body.push(image(qr.clone()).width(220).height(220));
                     }

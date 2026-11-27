@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="dev.aimanity.workspace" android:versionCode="6" android:versionName="0.0.6">
+    package="dev.aimanity.workspace" android:versionCode="601" android:versionName="0.0.6.fix1">
     <uses-sdk android:minSdkVersion="35" android:targetSdkVersion="35"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MANAGE_VIRTUAL_MACHINE"/>
     <uses-permission android:name="android.permission.USE_CUSTOM_VIRTUAL_MACHINE"/>
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <queries><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <application android:label="AImanity" android:icon="@drawable/aimanity"

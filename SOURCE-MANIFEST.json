@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "version": "0.0.6",
+  "version": "0.0.6.fix1",
   "license": "Apache-2.0",
   "remote_publication_authorized": true,
   "remote_review_authorized": true,
@@ -58,13 +58,18 @@
     },
     {
       "path": ".github/workflows/client-factory.yml",
-      "size": 15864,
-      "sha256": "cc613281731bfb6b21f90118b13287686e0790276e865e596835f650140a1dae"
+      "size": 15931,
+      "sha256": "055c731d534ef747da4d7d8fff2612726463a681463160880aef251baab822cb"
     },
     {
       "path": ".github/workflows/client.yml",
       "size": 5664,
       "sha256": "36a6ea3181e2ab15459524933c68759e5faf7db31ef3bc1bda4e5a301f91e1f8"
+    },
+    {
+      "path": ".github/workflows/fluorine-release.yml",
+      "size": 3415,
+      "sha256": "d5479cfa637914b8f1ec76fb28d851920b5f1d027d2681203ec532e7599823f8"
     },
     {
       "path": ".github/workflows/linux-backend.yml",
@@ -74,7 +79,7 @@
     {
       "path": ".github/workflows/linux-guest-inputs.yml",
       "size": 2534,
-      "sha256": "02bf8ab58698da6d0a7e32fca0635eaa1b67eee97480b6d22eface9d78667b39"
+      "sha256": "43da7bf64e12219175fa3dc213560d083df931109f92147ed9b78d749fe221d3"
     },
     {
       "path": ".github/workflows/linux-install-check.yml",
@@ -88,13 +93,13 @@
     },
     {
       "path": ".github/workflows/linux-publish.yml",
-      "size": 1670,
-      "sha256": "95ddca07a7d8f269f283f4d6d35a6fac4cd6eb4f34e8883391a6acc53571fc43"
+      "size": 1868,
+      "sha256": "aac32cc8a551cbe93a0d357c9630d568a2c08e483fdd0b3aa0fabe04c303daac"
     },
     {
       "path": ".github/workflows/linux-sign.yml",
-      "size": 3693,
-      "sha256": "9fcc66045ad945a9238699318ad5d69ffce858e156635a9c19fca0284d15c0c5"
+      "size": 3888,
+      "sha256": "5dece7e307652c0d1677142725158798523518fcb64b6440126ed53171e1667f"
     },
     {
       "path": ".github/workflows/source.yml",
@@ -128,8 +133,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 4962,
-      "sha256": "a3ae6cd929f54471b91cf4620db23c9ccffd5a0ae5cdf55a21598f7625b842dd"
+      "size": 5648,
+      "sha256": "47408fb8621d63d71a7c694f180b8d02eb12d386cb930b556fe0e44bf5702a18"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -138,13 +143,13 @@
     },
     {
       "path": "Cargo.lock",
-      "size": 107323,
-      "sha256": "5d0dd577b86d3e3ddc8622a29c9f2f98f52f07bc34ea476c55bb27815377a9dd"
+      "size": 107341,
+      "sha256": "882008025f4a727bffd99f2d4cf1a59c66640ac89b21aedd614b229b12c70b3d"
     },
     {
       "path": "Cargo.toml",
-      "size": 717,
-      "sha256": "a8c80f2e8a7fb0acd95c574dfc669ef8f44e9e665b558a94dc2764d0c22cd1ff"
+      "size": 744,
+      "sha256": "6e28fc9e1aefde868ab886740c22533068ff91ca899de8ab54a63338c5103345"
     },
     {
       "path": "DISCLAIMER.md",
@@ -184,7 +189,7 @@
     {
       "path": "THIRD_PARTY_NOTICES.md",
       "size": 17724,
-      "sha256": "6cc6657ec90de4a7ceeb181ba877f7883233ec3f0879e1de6ca20952838ef4a2"
+      "sha256": "f43ca2cf96a4fce42a1cbb4845b8e5ccdc46f65b3af4f5832d4a75a8ce45ee90"
     },
     {
       "path": "ai-phone",
@@ -193,8 +198,8 @@
     },
     {
       "path": "apps/android-client/AndroidManifest.xml",
-      "size": 1766,
-      "sha256": "f4996ca6a42dfcc0b12b630cb37078fd87394a0e752552f78205c2da1cb821b5"
+      "size": 1855,
+      "sha256": "f878118c9b5656dbed3322ac8ab422df61927d1cd392633094eb1f5ffff5640e"
     },
     {
       "path": "apps/android-client/res/drawable/aimanity.xml",
@@ -313,13 +318,13 @@
     },
     {
       "path": "apps/native/Cargo.lock",
-      "size": 171174,
-      "sha256": "40341cf6d03682f8004b0b5de355d53d7180015ff1a112ea7455d658fe7a307d"
+      "size": 185425,
+      "sha256": "e00b2d5b780d25c4b1b2c956f214d5973140a59dbac06ebcf3a4f69f8a473297"
     },
     {
       "path": "apps/native/Cargo.toml",
-      "size": 4304,
-      "sha256": "8df25205509c1b7755b3f2634a231074a3797d40f86b5ace56133caf9288ed04"
+      "size": 4371,
+      "sha256": "97f1b86e5242f23d5bce11df3b9f193fc0ac48d2429f1cd01e55680ad4eb6edb"
     },
     {
       "path": "apps/native/Info.plist",
@@ -398,8 +403,8 @@
     },
     {
       "path": "apps/native/src/agent_details.rs",
-      "size": 30669,
-      "sha256": "65d452ce7fb5b46bc910ef1e4683764732177e47f1b291133700c98145d88c39"
+      "size": 31790,
+      "sha256": "07ba7c60ab354a83044cddd1609e0060b31926fc8d455ffa8b69f697f948b5e5"
     },
     {
       "path": "apps/native/src/agents.rs",
@@ -409,7 +414,7 @@
     {
       "path": "apps/native/src/android_assets.rs",
       "size": 7976,
-      "sha256": "f2c41afd2c813dc2b3c11c52fcc5fb0c5044d00cb3b523d2b59037c13b404104"
+      "sha256": "eb54c940b7f0316d940697e2b47ad872ea761c18d57cb4837fe0de5ab1a96775"
     },
     {
       "path": "apps/native/src/android_host/profile.rs",
@@ -428,8 +433,8 @@
     },
     {
       "path": "apps/native/src/android_os.rs",
-      "size": 20242,
-      "sha256": "c6c00ef42e886dedd3282be632ed177646c48b2e0ffb4af18cdf5682d6bac677"
+      "size": 23373,
+      "sha256": "809c6099ada55dabb194245f4f0cc1f937d04cd7d190f6e0de6536a326cf5c35"
     },
     {
       "path": "apps/native/src/audio.rs",
@@ -459,7 +464,7 @@
     {
       "path": "apps/native/src/deployment.rs",
       "size": 15324,
-      "sha256": "9a091622224def9fc286735939b39e17c8290c7f32edf4c6dedd8a74d84571d9"
+      "sha256": "72da90c1a3c6658eedc304eea93d4984250ab577e70bdf38c8f5a76d9ff55507"
     },
     {
       "path": "apps/native/src/device_io.rs",
@@ -508,8 +513,8 @@
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 26380,
-      "sha256": "d3a5ebd305b167d59294aa7eb96f739e663a4e251d6c5dcca4fa5667e8a807b1"
+      "size": 27102,
+      "sha256": "eb384825673550771759b3bddd1218b01bb6b93e10f33895c1101d2f900dfca1"
     },
     {
       "path": "apps/native/src/host_desktop_mobile.rs",
@@ -568,8 +573,8 @@
     },
     {
       "path": "apps/native/src/modes/speech/microphone.rs",
-      "size": 11981,
-      "sha256": "af594979c75d9ac2bcdf82815980f6746ff40ed53ad232a1c1d57db1e471837e"
+      "size": 13552,
+      "sha256": "0a9f275e38e6bf7a4120f035b0ffbb5c114a6001d86fd6a2c233025287a70559"
     },
     {
       "path": "apps/native/src/modes/speech/speaker.rs",
@@ -702,24 +707,49 @@
       "sha256": "dd484e6ead029a31a4ee5559f9cb7664056daa52ac1ceedf2bc20ebfcea91c3e"
     },
     {
+      "path": "apps/native/src/update_core.rs",
+      "size": 15306,
+      "sha256": "35211247e9c2e7df3f2065c27978a3f8853576bfb63bf10493c4350a18cb9b77"
+    },
+    {
+      "path": "apps/native/src/update_install/macos.rs",
+      "size": 11237,
+      "sha256": "c740100a28ed5de6e835bc2db56e71b7fd2848314e20032bedd5cbed84d953c5"
+    },
+    {
+      "path": "apps/native/src/update_install/windows.rs",
+      "size": 8314,
+      "sha256": "49a49a5799abb5a935fd8e92faa55357380a363bd69bb390576eaf12d1636c55"
+    },
+    {
+      "path": "apps/native/src/updates.rs",
+      "size": 4818,
+      "sha256": "c0e9f02332da8571e864e2c8fa33ad93ddb5ddba810e5cde9b4134c196f17c89"
+    },
+    {
       "path": "apps/native/src/windows-lifecycle.rs",
       "size": 4582,
       "sha256": "2bb7632202b5a3e1bf78a7ac37f38fd22e3c24e7b2eaefcc8b017838a3cd1109"
     },
     {
       "path": "apps/native/src/workbench.rs",
-      "size": 106219,
-      "sha256": "14ea8494fa860798a660563332083e2eb69fa358ae46577962cce7c8514663b4"
+      "size": 107974,
+      "sha256": "bd75b9092be8a8efc3024fb74b461d2b583a95ea5809780358d4ec9c993f0e78"
+    },
+    {
+      "path": "apps/native/src/workspace/channels.rs",
+      "size": 18109,
+      "sha256": "859dc8257e1b5baf58416ddf38de98142a0c39dc3fa1f58f293fa2eb25c87140"
     },
     {
       "path": "apps/native/src/workspace/conversation.rs",
-      "size": 20524,
-      "sha256": "804c5909768c9bf2774375668078916b3953b3f1ed8a56135b5702a437732462"
+      "size": 21064,
+      "sha256": "56b57bef5de05c6cb137b85b238c8687e73a5633c5f7138634a23959ed829d14"
     },
     {
       "path": "apps/native/src/workspace/device_run.rs",
-      "size": 11545,
-      "sha256": "716c90bdc9271040f3b8c11aa9674d5361443ff4425810d178c2cdf8f0c7f8c7"
+      "size": 12755,
+      "sha256": "62ea0edc2f204bda953ec2f9b12bb8a7c9329e3389a6e040e33270c8c4ea0eaa"
     },
     {
       "path": "apps/native/src/workspace/documents.rs",
@@ -738,8 +768,8 @@
     },
     {
       "path": "apps/native/src/workspace/location.rs",
-      "size": 10676,
-      "sha256": "b640f0f901607ed60d82cfd69c954cc1363361029b41387402aeec1ca0c9062c"
+      "size": 11265,
+      "sha256": "0d1a3e6631080de1bada205f486963020597960f7f1e38b1552e7a1340309cc5"
     },
     {
       "path": "apps/native/src/workspace/modes.rs",
@@ -753,8 +783,8 @@
     },
     {
       "path": "apps/native/src/workspace/owned.rs",
-      "size": 8790,
-      "sha256": "48e8c77ed77b82252bd7583582f0725f4379f6c7429bf6e3d059360c82b53024"
+      "size": 9128,
+      "sha256": "a7412eb8ac08a1f20940f95d860d9db520e717d75a9644c57b8781fb0d8367ed"
     },
     {
       "path": "apps/native/src/workspace/peers.rs",
@@ -768,28 +798,28 @@
     },
     {
       "path": "apps/native/src/workspace/records.rs",
-      "size": 16547,
-      "sha256": "370fcaab390651c7e76ed87e3c9de3f3c6f6109f0c544f63c18e7b12fc91af32"
+      "size": 16542,
+      "sha256": "a4e3e504f15711a421bce942c0ed086c5759488a8cb79ea27c237a8a29a503b4"
     },
     {
       "path": "apps/native/src/workspace/scheduling.rs",
-      "size": 25915,
-      "sha256": "63c0146b35fe144ff3b6170800e20db7671c80662a7f16bddcd2a6defc342422"
+      "size": 26364,
+      "sha256": "5bc58fa7a53bd1cabe835f927a9abb27deb2917f31588363034d2d61fe3b16e9"
     },
     {
       "path": "apps/native/src/workspace/skills.rs",
-      "size": 3672,
-      "sha256": "c353a61c62f3cb03ad2e1921c9bb7d01503b84564e928f9b1b693f023e9a4c34"
+      "size": 7666,
+      "sha256": "7ce8674cb4ff70f448e1bfc36407b575d0074253785ff5a7878191bdc25385fb"
     },
     {
       "path": "apps/native/src/workspace/worker.rs",
-      "size": 25634,
-      "sha256": "7540a4c256de5d53ac4445b6b20e820288afbc736ac8bfbc39f4e89617d94242"
+      "size": 26360,
+      "sha256": "cef347b1959e2d35ed150ce26768cb3fa7e487609a5cba49004834fe3853e399"
     },
     {
       "path": "apps/native/src/workspace.rs",
-      "size": 24756,
-      "sha256": "27de210e1575832353dd8f158f59904da8b7ec954fbcc83a5ee4dfb50f1d1a84"
+      "size": 25564,
+      "sha256": "0f20302361db06d82b6cdc1a6928dc04c006c970985f2a32dfda3a8a7bb08f06"
     },
     {
       "path": "apps/native/tests/installed/guests.rs",
@@ -1887,9 +1917,14 @@
       "sha256": "2247a7db1d5fff88365ae20458891edf0add8233a19bc9abe647ef128ef7c21b"
     },
     {
+      "path": "config/client-update.json",
+      "size": 106,
+      "sha256": "f0e8ed1a9e68b3a89be4096a22467c9a51dba255987f06d088dbabdcc500a51f"
+    },
+    {
       "path": "config/container-host-runtime.json",
       "size": 22184,
-      "sha256": "033432f480ba2f5ac87f7d166205fcb6834ec1942915e175c9d0322b1dddfb0f"
+      "sha256": "5e854d87fe5a615927eb0a759e80f2fd773417953d4e8b9147e257bdf69b6678"
     },
     {
       "path": "config/device-presets.json",
@@ -1923,8 +1958,8 @@
     },
     {
       "path": "config/native-notice-supplements.json",
-      "size": 72539,
-      "sha256": "16613ff201d76a58aeb16595bd479359e2e1b6d40b3766070017b7b8f0b33e42"
+      "size": 74985,
+      "sha256": "0209366b3304dcaf806170f0f941758e72362f47dd634a62f45cda2ff277b071"
     },
     {
       "path": "config/ocr-models.json",
@@ -1943,8 +1978,8 @@
     },
     {
       "path": "config/release-policy.json",
-      "size": 293,
-      "sha256": "4d3e3e0f64753a7b440e9eff829fe7fb6a704b0af6ed3367b0674c04acc45b65"
+      "size": 533,
+      "sha256": "cfacc2f7d7c1d6473de8141b94af28e7cf9e21b145d4a9c3af182ebf357c3bdf"
     },
     {
       "path": "config/rust-runtime-notices.json",
@@ -1959,7 +1994,7 @@
     {
       "path": "config/speech-model.json",
       "size": 559,
-      "sha256": "3710a6c166194e24795d75bffe5f2946238498eca88a926d4e4daa6e2aae1ee9"
+      "sha256": "d0aead071fea0d30c015ec73b0b122b893662723994ef80c889dab1f90f56a29"
     },
     {
       "path": "config/windows-installer.json",
@@ -1993,8 +2028,8 @@
     },
     {
       "path": "crates/api/Cargo.toml",
-      "size": 451,
-      "sha256": "b09d0430ab7d369e7c6f2e26ff4670494abe51fd3d3b461acfb337cd0ea6394b"
+      "size": 474,
+      "sha256": "1153f6a8e8c80754a5b40328e355806ec93bcd934b7e3343c107041ade39d610"
     },
     {
       "path": "crates/api/build.rs",
@@ -2003,8 +2038,8 @@
     },
     {
       "path": "crates/api/src/lib.rs",
-      "size": 983,
-      "sha256": "f1621b1115836bff75fb24875ddaa7ac719d93b79050f8115288a63f57fa5167"
+      "size": 998,
+      "sha256": "c8b3ee973cd322bc9b491db257815b7123dd70edd688a8f14eb92d6352ac2f03"
     },
     {
       "path": "crates/api/src/location_motion.rs",
@@ -2015,6 +2050,11 @@
       "path": "crates/api/src/observations.rs",
       "size": 1352,
       "sha256": "b99eea7a27a32c917be45d21ca6026e61a6cb6ff9f3278e216b7d86be8baf801"
+    },
+    {
+      "path": "crates/api/src/skill.rs",
+      "size": 1253,
+      "sha256": "6ccf1b4423fc6b625b1fab51a0136280fc7e294aa08e471958fbe969d4fa6ffc"
     },
     {
       "path": "crates/api/tests/smoke_protocol.rs",
@@ -2382,44 +2422,14 @@
       "sha256": "dabfc8054454b722bdbb3fd5f4eb99381bcbea6ee0a12fb7ab9f73a0f2858e8f"
     },
     {
-      "path": "crates/assistant/src/channels/feishu.rs",
-      "size": 12425,
-      "sha256": "5b2392847f583433294ced05c18bb50505d93b37f2f2b93d176ba2c2c788ac00"
-    },
-    {
-      "path": "crates/assistant/src/channels/qq.rs",
-      "size": 9657,
-      "sha256": "b3de662b483519185285d8169cf96dfe6dda2341012e10ba0c3e4e9c959275bd"
-    },
-    {
-      "path": "crates/assistant/src/channels/socket.rs",
-      "size": 3055,
-      "sha256": "52522b38f8871bbc32ac601ba7f9df8ec5ab6425996f116aa585e6dae02fc737"
-    },
-    {
       "path": "crates/assistant/src/channels/store.rs",
       "size": 7197,
       "sha256": "d478a38a54300fafe1c9c2d143fca30c867a10a16fbe6311347c69c61af41c7d"
     },
     {
-      "path": "crates/assistant/src/channels/telegram.rs",
-      "size": 7021,
-      "sha256": "a38740d7a73890c98f21ea5a109946e7582407f0e34933eb0da7205b63b572ac"
-    },
-    {
       "path": "crates/assistant/src/channels/transport.rs",
-      "size": 5018,
-      "sha256": "e5fb07bb2279d8c4b4a1fd8ff3485a71d26908a706872f1cfc1472ad65380122"
-    },
-    {
-      "path": "crates/assistant/src/channels/wecom.rs",
-      "size": 7352,
-      "sha256": "8f4c3b5e0cd91d8e10e93b1e5f1f9cbc36825cbd168c315d01f4f6bd18dcca4b"
-    },
-    {
-      "path": "crates/assistant/src/channels/whatsapp.rs",
-      "size": 13769,
-      "sha256": "db5b1e95fbdef19dad40ec995c026e2c51045bbec7f511b31a2ee1e8f18fcb2b"
+      "size": 5961,
+      "sha256": "c77d8021c8fa991122404e9353c2b0141459b0dd40310e4160e254c6b210f9ec"
     },
     {
       "path": "crates/assistant/src/channels/whatsapp_pg/app_sync.rs",
@@ -2453,8 +2463,8 @@
     },
     {
       "path": "crates/assistant/src/channels.rs",
-      "size": 26929,
-      "sha256": "8ee286c372a1b173ba7c46054e3e67bd9c927784f26ff8bccd5f2320af229619"
+      "size": 27271,
+      "sha256": "18cb0cdfd96b7894c1e8569bd0d8f7586a3b6b3d11bb2f096cc47a24ac696b8e"
     },
     {
       "path": "crates/assistant/src/completion_audit.rs",
@@ -2803,8 +2813,8 @@
     },
     {
       "path": "crates/assistant/src/workbench.rs",
-      "size": 56064,
-      "sha256": "65e423969b7b4429a88cebd16d284c5905079b20ffff298c67c21e483dba5d46"
+      "size": 54408,
+      "sha256": "fe51257dfae325a10478172782c72ef36285bba590ff1441afb378c630b24011"
     },
     {
       "path": "crates/assistant/src/worker/action_cue.rs",
@@ -2840,6 +2850,71 @@
       "path": "crates/assistant/tests/device_setup_cli.rs",
       "size": 4641,
       "sha256": "d2d4a68bebda8f3e1e999a2c92fa933e0ab031f3d4b107c2be0a5075aecf13ea"
+    },
+    {
+      "path": "crates/channel-protocol/Cargo.toml",
+      "size": 1050,
+      "sha256": "865c7412992aabea30b19894e9c00bb973ace649b5025b95213082b341e9ef0f"
+    },
+    {
+      "path": "crates/channel-protocol/src/feishu.rs",
+      "size": 12425,
+      "sha256": "5b2392847f583433294ced05c18bb50505d93b37f2f2b93d176ba2c2c788ac00"
+    },
+    {
+      "path": "crates/channel-protocol/src/lib.rs",
+      "size": 2349,
+      "sha256": "b7457e84d749abfe6582ebcad4352fc4bc6d4b5af1b4a842190be03821e95172"
+    },
+    {
+      "path": "crates/channel-protocol/src/linked_device/protocol.rs",
+      "size": 7933,
+      "sha256": "e544f028e3bf8b6193e372e0ae16a6fe847e3399de522181ad5ece6056829b9c"
+    },
+    {
+      "path": "crates/channel-protocol/src/linked_device/signal.rs",
+      "size": 6234,
+      "sha256": "293132d55757036a7bc2538912e77e520b5f9b7a782e969a559212f25ce3d8cb"
+    },
+    {
+      "path": "crates/channel-protocol/src/linked_device/sync.rs",
+      "size": 2395,
+      "sha256": "0e4c4fea5c7d1816f28ee95520fee7bca2039f8b920120ac5037b2c1171a9646"
+    },
+    {
+      "path": "crates/channel-protocol/src/linked_device.rs",
+      "size": 4981,
+      "sha256": "94a636d939756cdfab64d2456779e8dd126c878e7ef5a207097868b11c7c469a"
+    },
+    {
+      "path": "crates/channel-protocol/src/qq.rs",
+      "size": 9657,
+      "sha256": "b3de662b483519185285d8169cf96dfe6dda2341012e10ba0c3e4e9c959275bd"
+    },
+    {
+      "path": "crates/channel-protocol/src/socket.rs",
+      "size": 3055,
+      "sha256": "52522b38f8871bbc32ac601ba7f9df8ec5ab6425996f116aa585e6dae02fc737"
+    },
+    {
+      "path": "crates/channel-protocol/src/telegram.rs",
+      "size": 6831,
+      "sha256": "3f736d3387d5b00761a4501585e38ab27a68dc11863b14e1b1d47121635cf9af"
+    },
+    {
+      "path": "crates/channel-protocol/src/transport.rs",
+      "size": 4992,
+      "sha256": "6377e0065d3a9ffc63fbb33cb67847f5dcc93bb10a430b0b6782b2643d9f97a4"
+    },
+    {
+      "path": "crates/channel-protocol/src/wecom.rs",
+      "size": 7352,
+      "sha256": "8f4c3b5e0cd91d8e10e93b1e5f1f9cbc36825cbd168c315d01f4f6bd18dcca4b"
+    },
+    {
+      "path": "crates/channel-protocol/src/whatsapp.rs",
+      "size": 13122,
+      "sha256": "a222cb6e8674f0ba224f540e5ba7b2f5621315f7cf89fc446041fab09be8a105"
     },
     {
       "path": "crates/device-io/Cargo.toml",
@@ -2983,8 +3058,8 @@
     },
     {
       "path": "crates/guest-runtime/src/screen.rs",
-      "size": 17478,
-      "sha256": "bb4fe6045d0a154475aee714847948a52bac43204482d488307d298bdf3a99fb"
+      "size": 17642,
+      "sha256": "cc492e29d89cd81d4e3dc6dfa0e43dc7dd9c5a5b43cceb0eb82e9171e2588c8a"
     },
     {
       "path": "crates/guest-runtime/src/settings.rs",
@@ -3063,8 +3138,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/input/tests.rs",
-      "size": 22218,
-      "sha256": "ae57f22dfa135984770fe80c4a78a34f9aef6058d096b4681e073c06bbe1afb4"
+      "size": 22176,
+      "sha256": "7bde46510d49807a1b959551ecd91444646b727e60c99f4587cbfb46ebb6dd1b"
     },
     {
       "path": "crates/host-runtime/src/android/input/windows_migration.rs",
@@ -3073,8 +3148,8 @@
     },
     {
       "path": "crates/host-runtime/src/android/input.rs",
-      "size": 13761,
-      "sha256": "2124656d49bb06a95e8d405020c7a46301df565bf3359316f1de5597a7eeafe2"
+      "size": 13597,
+      "sha256": "662e21afa38f255013d6bf98f2d26cacf176dc05c255704fd2bd0c2afbc80a58"
     },
     {
       "path": "crates/host-runtime/src/android/launch.rs",
@@ -3393,8 +3468,8 @@
     },
     {
       "path": "crates/host-runtime/src/unix_initializer.rs",
-      "size": 16597,
-      "sha256": "12ad38bf821f787b2aab830a98b5ad82a1de38a9b06aa19829bef0d4e04b914a"
+      "size": 16599,
+      "sha256": "4b718ce02f2a82229fc11bba108e2478d8d2c098324e3c2af6c25e5591882aad"
     },
     {
       "path": "crates/host-runtime/src/virtual_device.rs",
@@ -3708,8 +3783,8 @@
     },
     {
       "path": "crates/release-tools/src/client_installer/bundle.rs",
-      "size": 12042,
-      "sha256": "e418d6b58d4ff91e9b1b759b56f08cabbc121139c6745ed590510a2daa75f2e2"
+      "size": 12000,
+      "sha256": "e7bf34207eb189f66cb7062d5bbf7264f05b9bd0a806c6dab0837cf7ad9c7852"
     },
     {
       "path": "crates/release-tools/src/client_installer/linux_packages.rs",
@@ -3729,7 +3804,7 @@
     {
       "path": "crates/release-tools/src/client_installer/resources.rs",
       "size": 9878,
-      "sha256": "61d1712d28a6a9e543fe67752b621de1cdb1ab917a4a7aad1270abb9fb3f2470"
+      "sha256": "ebd7ee8de5b0805346deef78a428da4d0cc9872afdce0053b0d64d423db23365"
     },
     {
       "path": "crates/release-tools/src/client_installer.rs",
@@ -3788,8 +3863,8 @@
     },
     {
       "path": "crates/release-tools/src/main.rs",
-      "size": 5700,
-      "sha256": "3b43aa7aaf1cda3423a6876b94e8b872b775bf7eb013470055580967392aced0"
+      "size": 5861,
+      "sha256": "f40540526637530aa60bf24dae6a952f12bf3e2c0da70758b5966933fbfd6125"
     },
     {
       "path": "crates/release-tools/src/native_services.rs",
@@ -3807,6 +3882,11 @@
       "sha256": "419a1f1fd3ff8a716e97f8227a992ed4ff4771de50d5e541ea6026138127d0dc"
     },
     {
+      "path": "crates/release-tools/src/update_feed.rs",
+      "size": 6991,
+      "sha256": "4f4699fb5624975b203e07cae1d113055086a603e22ff38787d190f0d9d17755"
+    },
+    {
       "path": "crates/release-tools/src/windows_factory/guest.rs",
       "size": 6807,
       "sha256": "5447df45a1cf1e13fc364bad19dff9fd7ebb0c213675e6c38475b48e779267bf"
@@ -3818,8 +3898,8 @@
     },
     {
       "path": "crates/release-tools/src/windows_factory.rs",
-      "size": 11766,
-      "sha256": "92f97beffe94abc7b20ecf8e388a5524153e06d334d9d224fe9c816e0e9f4c84"
+      "size": 11861,
+      "sha256": "9f47d3beae6197ef4729fdd5a178bb4d574e3d2dd4b00f74497062a78656204f"
     },
     {
       "path": "crates/release-tools/src/windows_release/assets.rs",
@@ -4267,6 +4347,11 @@
       "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
     },
     {
+      "path": "docs/public/licenses/native/a60eea8175145316-LICENSE-APACHE",
+      "size": 10847,
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+    },
+    {
       "path": "docs/public/licenses/native/a88605a11db5def9-winapi-x86_64-pc-windows-gnu-Cargo.toml.txt",
       "size": 952,
       "sha256": "a88605a11db5def9b6cf73398e83b3edb72228cb43ea935729fac5cd33cec22c"
@@ -4385,6 +4470,11 @@
       "path": "docs/public/licenses/native/fc9086ba4eba4b77-iced-LICENSE",
       "size": 1073,
       "sha256": "fc9086ba4eba4b77e4c603906362742bc3715ffa2c7810c6074fe7780d3a0398"
+    },
+    {
+      "path": "docs/public/licenses/native/fea1d5bf3dd71605-LICENSE-MIT",
+      "size": 1104,
+      "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960"
     },
     {
       "path": "docs/public/licenses/native/ff92bed461f50338-r-efi-AUTHORS",
@@ -4558,8 +4648,8 @@
     },
     {
       "path": "docs/public/model-and-channel-setup.md",
-      "size": 10845,
-      "sha256": "bbfe4959a592c74646cba055d8a9667a8b8f1530f61d323a0521265c6c9514ec"
+      "size": 11233,
+      "sha256": "e131d0a09ad60c97fd8c10d34428201761ad6b3d60fff15969a1806ca74b0469"
     },
     {
       "path": "docs/public/native-client.en.md",
@@ -4648,8 +4738,8 @@
     },
     {
       "path": "docs/public/release-status.md",
-      "size": 8460,
-      "sha256": "6e8a3f6962aaf18e034673bd1f53dfd55deba466b8b57e8ab3f40da897ef0bc9"
+      "size": 9597,
+      "sha256": "830f5eccab389545f3ae921604f57cd0e4c1bf46c0e92a39076378911c526666"
     },
     {
       "path": "docs/public/runtime-bundles.md",
@@ -4838,8 +4928,8 @@
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/channels.proto",
-      "size": 1416,
-      "sha256": "f54175c2d3741e37bc54a3287edbe6e72c58cc5c2f679f1d490265c18c781501"
+      "size": 1463,
+      "sha256": "4c11782b0732f00b997e038d12f227edda5ff0da1a6be73b23b1c8d929105abb"
     },
     {
       "path": "packages/protocol/proto/ai_phone/v1/desktop.proto",
@@ -4910,6 +5000,11 @@
       "path": "packages/protocol/proto/ai_phone/v1/workspace.proto",
       "size": 1624,
       "sha256": "9b0711ecd1588659fb07284a55c4abb64a6a1ae0d0aa27ac2c6e0de094009cdd"
+    },
+    {
+      "path": "packages/protocol/release_version.rs",
+      "size": 1680,
+      "sha256": "4e0c2dbb329318be79829d66ef899d9916a00326081462385b8ba7a60be0f882"
     },
     {
       "path": "packages/protocol/vendor/android-emulator/emulator_controller.proto",
@@ -5019,7 +5114,7 @@
     {
       "path": "scripts/mobile-android-images.sh",
       "size": 2513,
-      "sha256": "e62ee8ae5b7bee35fc0cbaedaaab5c8304eb1169018bc7186ec2a1779d4e994c"
+      "sha256": "df3ed5a3b02e8357d63e85784f44e90b1dc404b925dd83a35ed48e262917f0c1"
     },
     {
       "path": "scripts/mobile-button-row.rs",
@@ -5034,7 +5129,7 @@
     {
       "path": "scripts/mobile-package.sh",
       "size": 5357,
-      "sha256": "2ea5ad7f6854fa083eac6b568194d6b787a05248958c5969f07fece18d6b8ca7"
+      "sha256": "2c623e953c1979db73cc330773c7b50a6dcf118d186b2d8ea3513fb3a256bf2c"
     },
     {
       "path": "scripts/mobile-smoke.sh",

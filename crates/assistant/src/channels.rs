@@ -1,10 +1,16 @@
+#[path = "../../channel-protocol/src/feishu.rs"]
 mod feishu;
+#[path = "../../channel-protocol/src/qq.rs"]
 mod qq;
+#[path = "../../channel-protocol/src/socket.rs"]
 mod socket;
 mod store;
+#[path = "../../channel-protocol/src/telegram.rs"]
 mod telegram;
 mod transport;
+#[path = "../../channel-protocol/src/wecom.rs"]
 mod wecom;
+#[path = "../../channel-protocol/src/whatsapp.rs"]
 mod whatsapp;
 mod whatsapp_pg;
 mod worker;
@@ -141,6 +147,7 @@ impl State {
                     });
                     wire::ChannelBinding {
                         provider: (*provider).into(),
+                        api_base: String::new(),
                         app_id: config
                             .map(|config| config.app_id.clone())
                             .unwrap_or_default(),

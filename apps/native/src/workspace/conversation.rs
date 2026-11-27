@@ -337,10 +337,11 @@ impl Workspace {
         put(&tx, "chat", &head)?;
         tx.commit()?;
         drop(active);
-        self.changed();
-        if resume {
-            self.ready.notify_one()
+        if !resume {
+            self.live.lock().unwrap().take_if(|live| live.run == head.run_id);
         }
+        self.changed();
+        self.ready.notify_one();
         head.messages = vec![m];
         Ok(head)
     }
@@ -365,21 +366,26 @@ impl Workspace {
             return Ok(());
         }
         let started = crate::connection::epoch_ms() as u64;
-        let output = if q.device_id.is_empty() {
-            self.answer(n, &id, &job, token).await
-        } else {
-            match self.peers.active_session(&q.device_id) {
-                Ok(session) => tokio::select! {biased;
-                    _=session.cancelled()=>Err("设备已断开".into()),
-                    result=self.answer(n,&id,&job,token)=>result,
-                },
-                Err(e) => Err(e),
+        let operation = async {
+            if q.device_id.is_empty() {
+                self.answer(n, &id, &job, token).await
+            } else {
+                let session = self.peers.active_session(&q.device_id)?;
+                tokio::select! {
+                    biased;
+                    _ = session.cancelled() => Err("设备已断开".into()),
+                    result = self.answer(n, &id, &job, token) => result,
+                }
             }
         };
-        if token.is_cancelled() {
-            self.live.lock().unwrap().take_if(|live| live.run == id);
-            return Ok(());
-        }
+        let output = tokio::select! {
+            biased;
+            _ = token.cancelled() => {
+                self.live.lock().unwrap().take_if(|live| live.run == id);
+                return Ok(());
+            }
+            result = operation => result,
+        };
         let tx = self.db.begin_write()?;
         if token.is_cancelled() {
             self.live.lock().unwrap().take_if(|live| live.run == id);
@@ -451,6 +457,7 @@ impl Workspace {
         put(&tx, "chat", &head)?;
         tx.commit()?;
         self.live.lock().unwrap().take_if(|live| live.run == id);
+        if job.source == "channel" { self.channels.ready.notify_one(); }
 
         self.changed();
         Ok(())
@@ -470,6 +477,9 @@ impl Workspace {
             .take(if isolated { 1 } else { 80 })
             .map(|r| Ok(wire::ChatMessage::decode(r?.1.value())?))
             .collect::<Result<Vec<_>>>()?;
+        if let Some(scope) = rows.first().and_then(|m|m.run_id.strip_prefix("channel/")).and_then(|id|id.rsplit_once('/')).map(|(scope,_)|format!("channel/{scope}/")) {
+            rows.retain(|m|m.run_id.starts_with(&scope));
+        }
         let mut repeat_input = false;
         if let Some(request) = rows.first() {
             let records = tx.open_table(RECORDS)?;

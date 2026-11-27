@@ -51,6 +51,11 @@ mod surface;
 mod todos;
 mod touch_editor;
 mod uninstall;
+#[path = "../../../packages/protocol/release_version.rs"]
+mod release_version;
+#[path = "update_core.rs"]
+mod client_update;
+mod updates;
 mod workspace;
 use ai_phone_api::wire;
 use connection::{Connection, DeviceInput, Press};
@@ -126,6 +131,7 @@ enum Message {
     ClosedPaneInput,
     Rotate(String),
     MediaKey(String, &'static str),
+    Update(updates::Message),
     Uninstall,
     UninstallPrepared(Result<Option<uninstall::Plan>, String>),
 }
@@ -147,6 +153,7 @@ enum Panel {
     Files,
     Goal,
     Agent,
+    Update,
 }
 #[derive(Clone, PartialEq, Eq)]
 enum ChildPane {
@@ -183,6 +190,7 @@ struct ChildWindow {
 struct App {
     setup: Option<deployment::Setup>,
     host_home: std::path::PathBuf,
+    updates: updates::State,
     uninstall: Option<uninstall::Plan>,
     #[cfg(any(windows, target_os = "linux"))]
     instance_guard: Option<host::InstanceGuard>,
@@ -243,6 +251,7 @@ impl App {
         let mut app = Self {
             setup: None,
             host_home: std::path::PathBuf::new(),
+            updates: updates::State::default(),
             uninstall: None,
             #[cfg(any(windows, target_os = "linux"))]
             instance_guard: host::instance_guard().ok(),
@@ -619,7 +628,7 @@ impl App {
                             self.locale = setup.language;
                             self.modes.set_language(self.locale.code());
                             self.modes
-                                .set_speech_model(setup.resource.join("speech/ggml-tiny-q5_1.bin"));
+                                .set_speech_model(setup.resource.join("speech/ggml-base-q5_1.bin"));
                             self.phase = "正在启动工作区".into();
                             self.started = Instant::now();
                             return Task::perform(Connection::connect(self.root.clone()), |r| {
@@ -646,6 +655,9 @@ impl App {
                         Task::run(client.clone().chat_events(), Message::Chat),
                         Task::run(client.clone().device_events(), Message::DeviceState),
                     ];
+                    if first_connection && !cfg!(debug_assertions) {
+                        tasks.push(updates::check().map(Message::Update));
+                    }
                     #[cfg(target_os = "android")]
                     if first_connection {
                         tasks.push(
@@ -697,6 +709,20 @@ impl App {
                 Err(error) => {
                     self.error = error;
                     self.phase.clear();
+                }
+            },
+            Message::Update(message) => match message {
+                updates::Message::Checked(Ok(offer)) => self.updates.offer = offer,
+                updates::Message::Checked(Err(error)) => eprintln!("Client update: {error}"),
+                updates::Message::Install => return self.updates.install().map(Message::Update),
+                updates::Message::Progress(progress) => self.updates.progress = Some(progress),
+                #[cfg(not(target_os = "android"))]
+                updates::Message::Finished(Ok(())) => return self.update(Message::Quit),
+                #[cfg(target_os = "android")]
+                updates::Message::Finished(Ok(())) => self.updates.progress = None,
+                updates::Message::Finished(Err(error)) => {
+                    self.updates.progress = None;
+                    self.updates.error = error;
                 }
             },
             Message::Uninstall if !self.closing => {
@@ -1556,6 +1582,7 @@ impl App {
             ),
             Panel::Proxy => (420., 480., true),
             Panel::Goal => (650., 364., true),
+            Panel::Update => (360., 400., true),
         };
         let height = if fit {
             self.panel_content_height.min(max_height)
@@ -1590,6 +1617,9 @@ impl App {
         Panel::Files,
         Panel::Agent,
     ];
+    fn nav_panels(&self) -> impl Iterator<Item = Panel> {
+        Self::NAV_PANELS.into_iter().chain(self.updates.offer.is_some().then_some(Panel::Update))
+    }
     fn device_tools(&self, index: usize, id: &str) -> Option<Element<'_, Message>> {
         let device = self.devices.get(index).filter(|d| d.info.id == id)?;
         if !connection::reachable(&device.info)
@@ -1725,10 +1755,7 @@ impl App {
         }
         let [top, gap, height] = style::NAVIGATION;
         let inset = layout::SIDE_INSET;
-        let trailing = Self::NAV_PANELS
-            .iter()
-            .position(|&entry| entry == panel)
-            .map_or(0, |index| Self::NAV_PANELS.len() - index - 1);
+        let trailing = self.nav_panels().skip_while(|p| *p != panel).skip(1).count();
         let width = style::NAV_ICON_WIDTH;
         Rectangle::new(
             iced::Point::new(
@@ -2038,6 +2065,7 @@ impl App {
             Panel::Location => locale.tr("模拟位置"),
             Panel::Proxy => locale.tr("工作台代理"),
             Panel::Goal => "Task & Goal",
+            Panel::Update => locale.tr("系统更新"),
             Panel::Agent => unreachable!(),
         };
         let actions = row![].align_y(iced::Center).spacing(2);
@@ -2093,6 +2121,7 @@ impl App {
                 .map(Message::Location),
             Panel::Proxy => self.proxy.view(locale).map(Message::Proxy),
             Panel::Goal => self.modes.goal_view().map(Message::Modes),
+            Panel::Update => self.updates.view(locale, self.reduced_motion).map(Message::Update),
             Panel::Language => column(locale::Locale::all().map(|l| {
                 let rtl = l.code() == "ar";
                 let glyph = container(
@@ -2288,11 +2317,12 @@ impl App {
         let [nav_top, nav_gap, nav_height] = style::NAVIGATION;
         let inset = layout::SIDE_INSET;
         let mut shared = row![];
-        for panel in Self::NAV_PANELS {
+        for panel in self.nav_panels() {
             let (icon, active) = match panel {
                 Panel::Devices => (Icon::Devices, false),
                 Panel::Language | Panel::Agent => (Icon::Settings, false),
                 Panel::Skills => (Icon::Wrench, false),
+                Panel::Update => (Icon::Download, false),
                 Panel::Location => (Icon::Pin, self.location.enabled()),
                 Panel::Proxy => (Icon::Network, self.proxy.enabled()),
                 Panel::Knowledge => (Icon::Book, false),
@@ -2592,6 +2622,9 @@ fn run_workbench(
             && mode == "--share-device"
         {
             return sharing::window(locale::Locale::parse(&locale.to_string_lossy()));
+        }
+        if let Some(code) = client_update::run(&arguments) {
+            std::process::exit(code);
         }
         #[cfg(unix)]
         if let Some(code) = uninstall::run(&arguments) {

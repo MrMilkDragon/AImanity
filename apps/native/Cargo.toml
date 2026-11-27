@@ -1,6 +1,6 @@
 [package]
 name = "aimanity-native"
-version = "0.0.6"
+version = "0.0.6+fix.1"
 edition = "2024"
 publish = false
 license = "Apache-2.0"
@@ -17,6 +17,7 @@ iced_winit = { path = "vendor/iced_winit" }
 winit = { path = "vendor/winit" }
 
 [dependencies]
+aimanity-channels = {path = "../../crates/channel-protocol"}
 aimanity-workbench-proxy = { path = "../../crates/workbench-proxy" }
 aimanity-device-io = { path = "../../crates/device-io" }
 iced = { version = "=0.14.0", default-features = false, features = ["wgpu", "tokio", "image-without-codecs", "advanced", "advanced-shaping", "svg", "markdown", "canvas", "x11", "wayland"] }

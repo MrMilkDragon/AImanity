@@ -6,6 +6,7 @@ use cpal::{
 };
 use futures_util::{SinkExt, Stream};
 use std::{
+    collections::VecDeque,
     path::PathBuf,
     sync::{
         Arc,
@@ -19,6 +20,10 @@ use tokio::sync::watch;
 const RATE: u32 = 16_000;
 const FRAME: usize = RATE as usize / 50;
 const MIN_VOICE_RMS: f32 = 0.008;
+const METER_RMS: f32 = 0.008;
+const ONSET_FRAMES: usize = 8;
+const PREROLL_FRAMES: usize = 10;
+const END_FRAMES: usize = 75;
 
 pub fn events(
     model: PathBuf,
@@ -130,7 +135,11 @@ fn capture(
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => return Err("麦克风已断开".into()),
         };
-        if let Some(event) = segment.push(frame, rms, &mut decoder)? {
+        if let Some(event) = segment.push(frame, rms, |audio, final_text| {
+            decoder
+                .transcribe(audio, final_text)
+                .map_err(|error| error.to_string())
+        })? {
             events.blocking_send(event).map_err(|e| e.to_string())?;
         }
     }
@@ -144,7 +153,7 @@ type Sender = mpsc::SyncSender<Result<(Frame, f32), String>>;
 fn measure(frame: &Frame, levels: &watch::Sender<MicrophoneLevels>) -> f32 {
     let power: f32 = frame.iter().map(|&sample| f32::from(sample).powi(2)).sum();
     let rms = (power / FRAME as f32).sqrt() / 32768.;
-    let point = if rms <= MIN_VOICE_RMS {
+    let point = if rms <= METER_RMS {
         0
     } else {
         (rms.sqrt() * 255.).round() as u8
@@ -229,11 +238,11 @@ where
 #[derive(Default)]
 struct Segment {
     samples: Vec<i16>,
-    before: Option<Frame>,
+    before: VecDeque<Frame>,
     id: String,
     revision: u32,
     quiet: usize,
-    voice: usize,
+    onset: usize,
     decoded: usize,
     floor: f32,
 }
@@ -242,51 +251,50 @@ impl Segment {
         &mut self,
         frame: Frame,
         level: f32,
-        decoder: &mut LocalSpeech,
+        decode: impl FnOnce(&[i16], bool) -> Result<String, String>,
     ) -> Result<Option<Event>, String> {
         let voiced = level > (self.floor * 3.).max(MIN_VOICE_RMS);
+        if self.id.is_empty() {
+            if self.before.len() == PREROLL_FRAMES {
+                self.before.pop_front();
+            }
+            self.before.push_back(frame);
+            if !voiced {
+                self.floor = self.floor * 0.95 + level * 0.05;
+                self.onset = 0;
+                return Ok(None);
+            }
+            self.onset += 1;
+            if self.onset < ONSET_FRAMES {
+                return Ok(None);
+            }
+            for buffered in self.before.drain(..) {
+                self.samples.extend_from_slice(&buffered);
+            }
+            self.id = uuid::Uuid::now_v7().to_string();
+            return Ok(Some(Event::Speech(self.id.clone())));
+        }
         if voiced {
             self.quiet = 0;
-            self.voice += FRAME;
         } else {
-            self.quiet += FRAME;
-            self.floor = self.floor * 0.95 + level * 0.05;
-        }
-        if self.samples.is_empty() && !voiced {
-            self.before = Some(frame);
-            return Ok(None);
-        }
-        if let Some(before) = self.before.take() {
-            self.samples.extend_from_slice(&before);
+            self.quiet += 1;
         }
         self.samples.extend_from_slice(&frame);
         let rate = RATE as usize;
-        if self.id.is_empty() {
-            if self.voice >= rate / 10 {
-                self.id = uuid::Uuid::now_v7().to_string();
-                return Ok(Some(Event::Speech(self.id.clone())));
-            }
-            if self.quiet >= rate / 5 {
-                self.reset();
-            }
-            return Ok(None);
-        }
-        let final_text = self.quiet >= rate / 2 || self.samples.len() >= rate * 28;
-        let heard = self.samples.len() - self.quiet;
+        let final_text = self.quiet >= END_FRAMES || self.samples.len() >= rate * 28;
+        let heard = self.samples.len() - self.quiet * FRAME;
         let next_draft = if self.decoded == 0 {
             rate * 2 / 5
         } else {
             self.decoded + rate / 2
         };
-        if !final_text && heard < next_draft {
+        if !final_text && (!voiced || heard < next_draft) {
             return Ok(None);
         }
-        let text = decoder
-            .transcribe(
-                &self.samples[..self.samples.len().min(heard + rate * 15 / 100)],
-                final_text,
-            )
-            .map_err(|error| error.to_string())?;
+        let text = decode(
+            &self.samples[..self.samples.len().min(heard + rate * 15 / 100)],
+            final_text,
+        )?;
         self.decoded = heard;
         self.revision += 1;
         let event = Event::Transcript {
@@ -304,7 +312,7 @@ impl Segment {
         self.samples.clear();
         self.id.clear();
         self.revision = 0;
-        self.voice = 0;
+        self.onset = 0;
         self.quiet = 0;
         self.decoded = 0;
     }
@@ -315,13 +323,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ignores_impulses_and_keeps_both_sides_of_a_pause() {
+        let mut segment = Segment::default();
+        let mut input = |sample, level| {
+            segment
+                .push([sample; FRAME], level, |audio, final_text| {
+                    assert!(audio.contains(&1));
+                    assert_eq!(audio.contains(&3), final_text);
+                    Ok("打开文件，改成表格".into())
+                })
+                .unwrap()
+        };
+        for _ in 0..40 {
+            assert!(input(2, 0.12).is_none());
+            assert!(input(1, 0.002).is_none());
+        }
+        for _ in 0..ONSET_FRAMES - 1 {
+            assert!(input(2, 0.04).is_none());
+        }
+        assert!(matches!(input(2, 0.04), Some(Event::Speech(_))));
+        for _ in 0..30 {
+            let _ = input(2, 0.04);
+        }
+        for _ in 0..45 {
+            assert!(input(0, 0.).is_none());
+        }
+        let _ = input(2, 0.04);
+        assert!(input(3, 0.002).is_none());
+        for _ in 1..END_FRAMES - 1 {
+            assert!(input(0, 0.).is_none());
+        }
+        assert!(matches!(
+            input(0, 0.),
+            Some(Event::Transcript {
+                final_text: true,
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn waveform_tracks_input_level_and_stops_redrawing_during_silence() {
         let (levels, mut updates) = watch::channel(MicrophoneLevels::default());
         let silence = [0; FRAME];
         assert_eq!(measure(&silence, &levels), 0.);
         for peak in [120_i16, 180, 250] {
             let room_noise = std::array::from_fn(|i| if i % 2 == 0 { peak } else { -peak });
-            assert!(measure(&room_noise, &levels) < MIN_VOICE_RMS);
+            assert!(measure(&room_noise, &levels) < METER_RMS);
         }
         assert!(!updates.has_changed().unwrap());
         let quiet = std::array::from_fn(|i| if i % 2 == 0 { 1024 } else { -512 });

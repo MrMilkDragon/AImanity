@@ -76,7 +76,7 @@ impl Workspace {
         }
         let skills = self.active_skill_ids()?;
         let mut tools = vec![
-            json!({"type":"function","name":"skill_read","description":"Read an enabled guide when its topic matches the task.","parameters":{"type":"object","properties":{"id":{"type":"string","enum":skills}},"required":["id"]}}),
+            json!({"type":"function","name":"skill_read","description":"Read the requested enabled guide by its exact ID before answering from its contents.","parameters":{"type":"object","properties":{"id":{"type":"string","enum":skills}},"required":["id"]}}),
             json!({"type":"function","name":"search_knowledge","description":"Find documents in this workspace by title or content.","parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}}),
         ];
         let location: wire::LocationState = self.get("location")?;
@@ -141,29 +141,23 @@ impl Workspace {
             add_desktop_actions(&mut tool);
             tools.push(tool);
         }
+        let mut last_rejection = None;
+        let required_tools = std::cell::OnceCell::new();
         loop {
             let started = crate::connection::epoch_ms() as u64;
             let mut timing = Timing::default();
-            let mut body = json!({"input":input,"tools":tools,"reasoning":{"effort":"none"}});
+            let selected = if input_pending {
+                required_tools.get_or_init(|| {
+            let mut choices: Vec<_> = tools.iter().filter(|t| matches!(t["name"].as_str(),
+                Some("device_interact" | "delegate_tasks" | "device_audio_input" | "skill_read" | "host_desktop"))).cloned().collect();
+            choices.push(json!({"type":"function","name":"report_no_input","description":"Explain why no input is appropriate.","parameters":{"type":"object","properties":{"reason":{"type":"string"}},"required":["reason"]}}));
+            choices
+                })
+            } else {
+                &tools
+            };
+            let mut body = json!({"input":input,"tools":selected,"reasoning":{"effort":"none"}});
             if input_pending {
-                let mut choices: Vec<_> = tools
-                    .iter()
-                    .filter(|t| {
-                        matches!(
-                            t["name"].as_str(),
-                            Some(
-                                "device_interact"
-                                    | "delegate_tasks"
-                                    | "device_audio_input"
-                                    | "skill_read"
-                                    | "host_desktop"
-                            )
-                        )
-                    })
-                    .cloned()
-                    .collect();
-                choices.push(json!({"type":"function","name":"report_no_input","description":"End with the actual reason if no device input is appropriate or available for this request.","parameters":{"type":"object","properties":{"reason":{"type":"string"}},"required":["reason"]}}));
-                body["tools"] = json!(choices);
                 body["tool_choice"] = json!("required");
             }
             let out = aimanity_model::request_with_text(
@@ -326,7 +320,7 @@ impl Workspace {
                         }
                         let q: Read = serde_json::from_str(args)?;
                         event.content = q.id.clone();
-                        Value::String(self.read_active_skill(&q.id)?.into())
+                        Value::String(self.read_active_skill(&q.id)?)
                     }
                     "search_knowledge" => {
                         #[derive(Deserialize)]
@@ -381,7 +375,12 @@ impl Workspace {
                         Value::String(event.content.clone())
                     }
                     "device_interact" => {
-                        let data: DesktopInput = serde_json::from_str(args)?;
+                        let mut data: DesktopInput = serde_json::from_str(args)?;
+                        if data.device_id.is_empty()
+                            && let [device] = device_run.devices.as_slice()
+                        {
+                            data.device_id.clone_from(&device.id);
+                        }
                         let device = data.device_id.clone();
                         let needs_input = !matches!(data.kind.as_str(), "observe" | "foreground");
                         let kind = data.kind.clone();
@@ -391,6 +390,17 @@ impl Workspace {
                         if needs_input {
                             input_pending =
                                 event.kind != "device_input" || event.status != "dispatched";
+                        }
+                        if event.status == "not_executed" {
+                            let rejected = (device.clone(), serde_json::from_str::<Value>(args)?);
+                            if last_rejection.as_ref() == Some(&rejected) {
+                                events.push(event);
+                                self.record_tools(n, id, events)?;
+                                return Err("设备连续拒绝了相同的输入，未执行操作".into());
+                            }
+                            last_rejection = Some(rejected);
+                        } else {
+                            last_rejection = None;
                         }
                         if kind != "foreground" && event.status != "not_executed" {
                             retire_image(device_run.images.remove(&device), &mut input);
@@ -490,7 +500,7 @@ impl Workspace {
         Ok(())
     }
 }
-fn tool_event(run: &str, name: &str) -> wire::HarnessEvent {
+pub(super) fn tool_event(run: &str, name: &str) -> wire::HarnessEvent {
     wire::HarnessEvent {
         id: uuid::Uuid::now_v7().to_string(),
         run_id: run.into(),

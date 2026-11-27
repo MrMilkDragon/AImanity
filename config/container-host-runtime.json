@@ -19,10 +19,10 @@
           "sha256": "f38670cd16e15268ab2588c6b788d380fe219de74d6430f91d102c3df1652e87"
         },
         {
-          "file": "libslirp-4.9.1-r0.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/aarch64/libslirp-4.9.1-r0.apk",
-          "size_bytes": 60728,
-          "sha256": "680c0bc3c04d9c1c127b4f960f30fd2f61bd79f0a7a599361c2f3be34e09874b"
+          "file": "libslirp-4.9.7-r0.apk",
+          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/aarch64/libslirp-4.9.7-r0.apk",
+          "size_bytes": 62681,
+          "sha256": "ad78a2a4d036aa4e5fe1e36258b5a9c1bd3f27a9f4be133282f9e041a4ba7d24"
         },
         {
           "file": "slirp4netns-1.3.3-r0.apk",
@@ -31,10 +31,10 @@
           "sha256": "b7b4dff45d25a4cbe820ec5deddb50631bd51c4795d16359acd9db8daa9ec8bd"
         },
         {
-          "file": "zstd-1.5.7-r2.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/zstd-1.5.7-r2.apk",
-          "size_bytes": 124718,
-          "sha256": "0e4d6b9bcb7db12e3fcd580c6226a88884ddfa561ebc7f64285baef5e789b541"
+          "file": "zstd-1.6.0-r1.apk",
+          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/zstd-1.6.0-r1.apk",
+          "size_bytes": 128786,
+          "sha256": "4f1eadcfaa4c63dbb4b5560aa7d3103f624207c6274f2b19530aa1f811e3c130"
         },
         {
           "file": "busybox-1.37.0-r31.apk",
@@ -55,10 +55,10 @@
           "sha256": "6e3a34ed8b40718f9b9291319f7890638156a3d63807284a66d9672d3a8b1d3e"
         },
         {
-          "file": "glib-2.88.1-r1.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/glib-2.88.1-r1.apk",
-          "size_bytes": 1995383,
-          "sha256": "0ae89191a79ea5d5a02515e41f29b62e5e0a0a80fb059804bbbacac2d77cce4e"
+          "file": "glib-2.88.4-r0.apk",
+          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/glib-2.88.4-r0.apk",
+          "size_bytes": 1980396,
+          "sha256": "0605a48319f3cca14b3d026175fd7c41a28c854632cda48fc12d1a1318ab5919"
         },
         {
           "file": "iptables-1.8.13-r0.apk",
@@ -85,10 +85,10 @@
           "sha256": "cf0899d49ded0a6891e3cdf1b37887f2ecd77293afe1d8f3cb8937763c83f183"
         },
         {
-          "file": "libffi-3.5.2-r1.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libffi-3.5.2-r1.apk",
-          "size_bytes": 17799,
-          "sha256": "9a67280b0c7c62db658c2d4d32ed1199903bef859c32dd4245e1a7e35c89ab4b"
+          "file": "libffi-3.8.1-r0.apk",
+          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libffi-3.8.1-r0.apk",
+          "size_bytes": 18807,
+          "sha256": "f6f6de8c25f181e3c96ee9d1120880565d970a8bf5dd06acbcfb9f2df8159963"
         },
         {
           "file": "libintl-1.0-r0.apk",
@@ -229,10 +229,10 @@
           "size_bytes": 15385
         },
         {
-          "file": "libxml2-2.13.9-r2.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libxml2-2.13.9-r2.apk",
-          "sha256": "0a860a26ebdfea491498386fe682130f4c5565e46ee8e0a2281256db2ef1be27",
-          "size_bytes": 496747
+          "file": "libxml2-2.13.9-r5.apk",
+          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libxml2-2.13.9-r5.apk",
+          "sha256": "1b955e97abfb07f24a1d6d4b7699be8f4f55fc180fd1f8191408335c36bf603c",
+          "size_bytes": 497299
         },
         {
           "file": "lz4-libs-1.10.0-r1.apk",
@@ -265,10 +265,10 @@
           "size_bytes": 119423
         },
         {
-          "file": "zstd-libs-1.5.7-r2.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/zstd-libs-1.5.7-r2.apk",
-          "sha256": "2bb5136c89f5b0bbe1554c8915a3b520d5aa63ae2a51d4d821eb81698db5a818",
-          "size_bytes": 365383
+          "file": "zstd-libs-1.6.0-r1.apk",
+          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/zstd-libs-1.6.0-r1.apk",
+          "sha256": "923a9b5fffbc8272ce65b67fa7f768a9e3ea55c395b36030dc11635f29645eae",
+          "size_bytes": 337611
         },
         {
           "file": "brotli-libs-1.2.1-r0.apk",
@@ -337,10 +337,10 @@
           "sha256": "28cb76bb6d11d2a55c3061b5fcb2ab84996412a248b2c9fe52bb710d0a2a84e7"
         },
         {
-          "file": "libexpat-2.10.0-r0.apk",
-          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libexpat-2.10.0-r0.apk",
-          "size_bytes": 63387,
-          "sha256": "99144fe0b1bb9316a3bc30c38707996767806661f4a0456fcf4565ac92e79b0f"
+          "file": "libexpat-2.11.0-r0.apk",
+          "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libexpat-2.11.0-r0.apk",
+          "size_bytes": 65810,
+          "sha256": "cf19455af9c5c9dcd3915294d299f743553855519431bba38577b8c4a23c4373"
         },
         {
           "file": "libgomp-15.2.0-r5.apk",

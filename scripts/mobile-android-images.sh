@@ -56,4 +56,4 @@ jq -n --arg params "$params bootconfig console=hvc0" '{
     done
 )
 cargo run --quiet --locked -p ai-phone-release-tools -- mobile-guest-apps "$PWD" "$guest/apps"
-cp "$src/speech/ggml-tiny-q5_1.bin" "$out/speech/"
+cp "$src/speech/ggml-base-q5_1.bin" "$out/speech/"

@@ -2,7 +2,7 @@ use super::{
     State, socket,
     store::{Config, Result},
     transport::{Context, Payload},
-    whatsapp_pg::PgStore,
+
 };
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt, future::BoxFuture, stream::SplitSink};
@@ -149,30 +149,14 @@ fn qr(code: &str) -> Result<Vec<u8>> {
 impl WhatsApp {
     async fn connected(&self, client: Arc<Client>) -> Result<()> {
         let identity = peer(&client.pn().ok_or("whatsapp_identity_missing")?);
-        let mut store = self.context.state.store.lock().await;
-        if store.vault.configs.iter().any(|(key, config)| {
-            key != &self.context.key
-                && key.ends_with("/whatsapp")
-                && config.identity.as_deref() == Some(identity.as_str())
-        }) {
-            return Err("channel_bot_in_use".into());
-        }
-        let config = store
-            .vault
-            .configs
-            .get_mut(&self.context.key)
-            .filter(|c| c.version == self.context.version)
-            .ok_or("channel_binding_changed")?;
-        config.identity = Some(identity);
-        store.save()?;
-        drop(store);
+        self.context.identify(identity).await?;
         *self.client.write().await = Some(client);
         self.ready.send_replace(true);
         self.context.status("connected", "");
         Ok(())
     }
     async fn run(self: Arc<Self>, config: Config, binding: Uuid) -> Result<()> {
-        let store = PgStore::new(self.context.state.db.clone(), binding);
+        let store = self.context.whatsapp_store(binding)?;
         let client = State::external_client(&config.proxy_url, Duration::from_secs(60))?;
         let qr_owner = self.clone();
         let connected = self.clone();

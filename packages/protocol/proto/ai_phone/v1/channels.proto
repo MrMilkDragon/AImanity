@@ -15,6 +15,7 @@ message ChannelBinding {
   // Private, short-lived linked-device QR. Never log or persist in public evidence.
   bytes qr_png = 10;
   string proxy_url = 11;
+  string api_base = 12;
 }
 message ChannelListResponse { repeated ChannelBinding bindings = 1; }
 message ChannelBindRequest {
@@ -25,6 +26,7 @@ message ChannelBindRequest {
   string agent_id = 5;
   string proxy_url = 6;
   bool reset_session = 7;
+  string api_base = 8;
 }
 message ChannelUnbindRequest { string provider = 1; string agent_id = 2; }
 message ChannelPairRequest { string provider = 1; string agent_id = 2; }

@@ -17,9 +17,17 @@ Fluorine 首次打开为空工作区。可以按需创建虚拟设备，配对�
 | Linux x86_64 (DEB and RPM) | Signed packages installed offline on Debian 12 and Fedora 43. Reopening the same database to the visible conversation controls took 663 ms and 627 ms respectively. Chinese speech synthesis and CJK fonts worked offline. [Screens and installation checks](https://github.com/MrMilkDragon/AImanity/actions/runs/45453161355) | Physical desktop audio and GPU configurations |
 | Android phones and tablets | One universal APK for the Android 15 phone and tablet emulator profiles. The checks cover landscape, hardware and software keyboard input, draft retention on resume and cold reopen. [Signed APK and its acceptance record](https://github.com/MrMilkDragon/AImanity/releases/tag/v0.0.6) | ARM64 AVF guest creation, simultaneous recordings and playback on a physical phone or tablet |
 
-**Workspace features under development.** The Skills window can enable or disable bundled skills. Importing a custom SKILL.md from a file or URL still lacks a native workspace handler. The external messaging channel list, binding, pairing and removal also await their native handlers. Computer and Android device pairing use a separate, working connection.
+### 0.0.6.fix1 · Fluorine hotfix1
 
-**工作区功能进度。** 内置 Skill 的启停和重开保存已经验证。自定义 SKILL.md 的文件和网址导入，以及外部聊天渠道的列表、绑定、配对和解绑，仍需接入原生工作区。电脑和 Android 设备的配对使用独立通道，已有实际连接回执。
+Android input setup retries an interrupted installation after checking the installed package. The Linux guest can present its first frame on an empty desktop. Canceling a run releases the conversation immediately. Location changes are saved before reaching each available device. Offline Copilot uses multilingual Whisper Base and keeps speech on both sides of a short pause.
+
+Android 输入组件安装中断后会核对设备内版本并重试。Linux 空桌面可直接显示首帧。取消任务后，对话即可继续。位置模拟先保存选点，再逐台下发。Copilot 使用内置的多语言 Whisper Base，短暂停顿时保留前后的语音。
+
+The native Skills window imports a local SKILL.md or Markdown URL. Imported guides start disabled. On macOS both import paths, enablement and reopening the same database were exercised through the visible client. An isolated Telegram Bot API delivered a private pairing command, an incoming task, the local model’s reply in the originating chat, and a message queued during shutdown. Public bot accounts and the other providers still need live account coverage.
+
+0.0.6 users install fix1 over the existing app with the same operating-system user. Keep the workspace directory. The original 0.0.6 client has no update listener. Starting with fix1, the workbench checks a signed feed for later patches in the same release series.
+
+在 macOS 原生窗口中实测了 Skill 的文件和网址导入、勾选和重开。隔离 Telegram 服务验证了私聊配对、任务收发，以及客户端关闭期间消息排队、重开后回到原会话。公网账号收发待实测。0.0.6 用户覆盖安装一次，沿用原工作区。后续同系列补丁由 fix1 的客户端内更新入口提供。
 
 ### Response measurements / 响应实测
 

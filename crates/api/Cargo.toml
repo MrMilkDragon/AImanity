@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 prost = "=0.14.4"
+serde_yaml_ng = "0.10"
 
 [build-dependencies]
 prost-build = "=0.14.4"

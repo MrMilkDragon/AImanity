@@ -170,7 +170,7 @@ pub(crate) fn stage(root: &Path, group: &str, cancelled: &dyn Fn() -> bool) -> i
             "android/apps/browser.apk",
         ],
         "linux" => &["linux/avf.json"],
-        "speech" => &["speech/ggml-tiny-q5_1.bin"],
+        "speech" => &["speech/ggml-base-q5_1.bin"],
         _ => return Err(io::Error::other("Unknown offline asset group")),
     };
     for name in required {

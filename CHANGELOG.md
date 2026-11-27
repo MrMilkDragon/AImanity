@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.6 hotfix1 · Fluorine
+
+- Repair an interrupted Android input installation. Display the Linux guest while its desktop is empty. Recover a partially installed Linux runtime in place.
+- Release canceled model and device requests so the next conversation can run. Apply location changes to each available device in the background.
+- Use offline multilingual Whisper Base for Copilot. Keep speech across short pauses and ignore isolated microphone impulses.
+- Import skills from Markdown files and URLs. Pair external chat channels and resume queued messages after reopening.
+- Install the hotfix over 0.0.6 to keep the workspace. The hotfix uses the signed Fluorine update channel.
+
 ## 0.0.6 Fluorine
 
 - Start an empty workspace with embedded storage. Add and disconnect individual guests from Device Manager.

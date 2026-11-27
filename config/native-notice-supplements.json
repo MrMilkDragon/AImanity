@@ -1581,6 +1581,57 @@
           "url": "https://raw.githubusercontent.com/etemesi254/zune-image/fa2c767a01d7d9373911d0bf63e0588553d67e0e/LICENSE.md"
         }
       ]
+    },
+    {
+      "package": "jni@0.22.4",
+      "repository": "https://github.com/jni-rs/jni-rs",
+      "commit": "5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7",
+      "files": [
+        {
+          "file": "docs/public/licenses/native/fea1d5bf3dd71605-LICENSE-MIT",
+          "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+          "url": "https://raw.githubusercontent.com/jni-rs/jni-rs/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-MIT"
+        },
+        {
+          "file": "docs/public/licenses/native/a60eea8175145316-LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "url": "https://raw.githubusercontent.com/jni-rs/jni-rs/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-APACHE"
+        }
+      ]
+    },
+    {
+      "package": "jni-macros@0.22.4",
+      "repository": "https://github.com/jni-rs/jni-rs",
+      "commit": "33045a124105c939d1e2cbdcb5a39e5d868ffa03",
+      "files": [
+        {
+          "file": "docs/public/licenses/native/fea1d5bf3dd71605-LICENSE-MIT",
+          "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+          "url": "https://raw.githubusercontent.com/jni-rs/jni-rs/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-MIT"
+        },
+        {
+          "file": "docs/public/licenses/native/a60eea8175145316-LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "url": "https://raw.githubusercontent.com/jni-rs/jni-rs/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-APACHE"
+        }
+      ]
+    },
+    {
+      "package": "ndk-context@0.1.1",
+      "repository": "https://github.com/rust-windowing/android-ndk-rs",
+      "commit": "10f2ba388fca20f7349996ebae26ccda7a6fda5c",
+      "files": [
+        {
+          "file": "docs/public/licenses/native/508a77d2e7b51d98-LICENSE-MIT",
+          "sha256": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1",
+          "url": "https://raw.githubusercontent.com/rust-mobile/ndk/10f2ba388fca20f7349996ebae26ccda7a6fda5c/LICENSE-MIT"
+        },
+        {
+          "file": "docs/public/licenses/native/c71d239df91726fc-LICENSE-APACHE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+          "url": "https://raw.githubusercontent.com/rust-mobile/ndk/10f2ba388fca20f7349996ebae26ccda7a6fda5c/LICENSE-APACHE"
+        }
+      ]
     }
   ]
 }

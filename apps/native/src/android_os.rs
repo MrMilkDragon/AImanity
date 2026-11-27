@@ -78,6 +78,53 @@ pub(crate) fn open(action: &str, value: &str) -> Result<()> {
         Ok(())
     })
 }
+pub(crate) fn install_update(path: &std::path::Path) -> Result<()> {
+    let can_install = with(|e, a| {
+        let pm = e.call_method(a, "getPackageManager", "()Landroid/content/pm/PackageManager;", &[])?.l()?;
+        e.call_method(pm, "canRequestPackageInstalls", "()Z", &[])?.z()
+    })?;
+    if !can_install {
+        open("android.settings.MANAGE_UNKNOWN_APP_SOURCES", "package:dev.aimanity.workspace")?;
+        return Err("Allow installs from AImanity, then select Install again.".into());
+    }
+    let name = path.file_name().and_then(|n|n.to_str()).ok_or("Missing APK filename")?;
+    let apk_uri = with(|e,a| {
+        let resolver = e.call_method(a,"getContentResolver","()Landroid/content/ContentResolver;",&[])?.l()?;
+        let downloads = e.get_static_field("android/provider/MediaStore$Downloads","EXTERNAL_CONTENT_URI","Landroid/net/Uri;")?.l()?;
+        let values = e.new_object("android/content/ContentValues","()V",&[])?;
+        for (key, value) in [("_display_name", name),("mime_type", "application/vnd.android.package-archive"),("is_pending","1")] {
+            let key=e.new_string(key)?; let value=e.new_string(value)?;
+            e.call_method(&values,"put","(Ljava/lang/String;Ljava/lang/String;)V",&[(&key).into(),(&value).into()])?;
+        }
+        let item=e.call_method(resolver,"insert","(Landroid/net/Uri;Landroid/content/ContentValues;)Landroid/net/Uri;",&[(&downloads).into(),(&values).into()])?.l()?;
+        let text=e.call_method(item,"toString","()Ljava/lang/String;",&[])?.l()?;
+        string(e,text)
+    })?;
+    let copy = File::open(path).map_err(|e|e.to_string()).and_then(|mut source| {
+        std::io::copy(&mut source, &mut uri_file(&apk_uri,"w")?).map_err(|e|e.to_string())
+    });
+    with(|e,a| {
+        let item=uri(e,&apk_uri)?;
+        let resolver=e.call_method(a,"getContentResolver","()Landroid/content/ContentResolver;",&[])?.l()?;
+        let nil=JObject::null();
+        if copy.is_err() {
+            e.call_method(resolver,"delete","(Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I",&[(&item).into(),(&nil).into(),(&nil).into()])?;
+            return Ok(());
+        }
+        let values=e.new_object("android/content/ContentValues","()V",&[])?;
+        let key=e.new_string("is_pending")?; let zero=e.new_string("0")?;
+        e.call_method(&values,"put","(Ljava/lang/String;Ljava/lang/String;)V",&[(&key).into(),(&zero).into()])?;
+        e.call_method(resolver,"update","(Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I",&[(&item).into(),(&values).into(),(&nil).into(),(&nil).into()])?;
+        let request=intent(e,"android.intent.action.VIEW")?;
+        let mime=e.new_string("application/vnd.android.package-archive")?;
+        e.call_method(&request,"setDataAndType","(Landroid/net/Uri;Ljava/lang/String;)Landroid/content/Intent;",&[(&item).into(),(&mime).into()])?;
+        e.call_method(&request,"addFlags","(I)Landroid/content/Intent;",&[JValue::Int(1)])?;
+        e.call_method(a,"startActivity","(Landroid/content/Intent;)V",&[(&request).into()])?;
+        Ok(())
+    })?;
+    copy.map(|_| ())
+}
+
 pub(crate) fn uri_file(value: &str, mode: &str) -> Result<File> {
     let fd = with(|e, a| {
         let resolver = e

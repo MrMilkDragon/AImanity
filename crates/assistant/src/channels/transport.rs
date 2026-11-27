@@ -56,6 +56,28 @@ pub(super) struct Context {
     pub tasks: TaskTracker,
 }
 impl Context {
+    pub fn whatsapp_store(&self,binding: uuid::Uuid) -> Result<super::whatsapp_pg::PgStore> { Ok(super::whatsapp_pg::PgStore::new(self.state.db.clone(), binding)) }
+    pub async fn identify(&self,identity: String)->Result<()> {
+        let mut store = self.state.store.lock().await;
+        if store.vault.configs.iter().any(|(key, config)| {
+            key != &self.key
+                && key.ends_with("/whatsapp")
+                && config.identity.as_deref() == Some(identity.as_str())
+        }) {
+            return Err("channel_bot_in_use".into());
+        }
+        let config = store
+            .vault
+            .configs
+            .get_mut(&self.key)
+            .filter(|c| c.version == self.version)
+            .ok_or("channel_binding_changed")?;
+        config.identity = Some(identity);
+        store.save()?;
+        drop(store);
+        Ok(())
+    }
+    pub fn telegram_api(&self) -> &str { "https://api.telegram.org" }
     pub async fn request(&self, request: reqwest::RequestBuilder) -> Result<reqwest::Response> {
         if self.cancel.is_cancelled() {
             return Err("channel_stopped".into());
