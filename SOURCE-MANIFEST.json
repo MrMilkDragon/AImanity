@@ -67,6 +67,11 @@
       "sha256": "36a6ea3181e2ab15459524933c68759e5faf7db31ef3bc1bda4e5a301f91e1f8"
     },
     {
+      "path": ".github/workflows/fluorine-release.yml",
+      "size": 3415,
+      "sha256": "d5479cfa637914b8f1ec76fb28d851920b5f1d027d2681203ec532e7599823f8"
+    },
+    {
       "path": ".github/workflows/linux-backend.yml",
       "size": 1115,
       "sha256": "ed5c16b5a5919557856a9ba6ac218a4414ad7f220f69a2394df750d51b4c8352"
@@ -1953,8 +1958,8 @@
     },
     {
       "path": "config/native-notice-supplements.json",
-      "size": 72539,
-      "sha256": "16613ff201d76a58aeb16595bd479359e2e1b6d40b3766070017b7b8f0b33e42"
+      "size": 74985,
+      "sha256": "0209366b3304dcaf806170f0f941758e72362f47dd634a62f45cda2ff277b071"
     },
     {
       "path": "config/ocr-models.json",
@@ -2848,8 +2853,8 @@
     },
     {
       "path": "crates/channel-protocol/Cargo.toml",
-      "size": 986,
-      "sha256": "16dce8a8fd81d77ff5dfbb9054836647a820948dfbce250930a287755330f7d1"
+      "size": 1050,
+      "sha256": "865c7412992aabea30b19894e9c00bb973ace649b5025b95213082b341e9ef0f"
     },
     {
       "path": "crates/channel-protocol/src/feishu.rs",
@@ -3878,8 +3883,8 @@
     },
     {
       "path": "crates/release-tools/src/update_feed.rs",
-      "size": 6689,
-      "sha256": "8edd1a8f5311250c83255248d8c574c8a413350b31487ff78ef490e555f64fc0"
+      "size": 6991,
+      "sha256": "4f4699fb5624975b203e07cae1d113055086a603e22ff38787d190f0d9d17755"
     },
     {
       "path": "crates/release-tools/src/windows_factory/guest.rs",
@@ -4342,6 +4347,11 @@
       "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
     },
     {
+      "path": "docs/public/licenses/native/a60eea8175145316-LICENSE-APACHE",
+      "size": 10847,
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+    },
+    {
       "path": "docs/public/licenses/native/a88605a11db5def9-winapi-x86_64-pc-windows-gnu-Cargo.toml.txt",
       "size": 952,
       "sha256": "a88605a11db5def9b6cf73398e83b3edb72228cb43ea935729fac5cd33cec22c"
@@ -4460,6 +4470,11 @@
       "path": "docs/public/licenses/native/fc9086ba4eba4b77-iced-LICENSE",
       "size": 1073,
       "sha256": "fc9086ba4eba4b77e4c603906362742bc3715ffa2c7810c6074fe7780d3a0398"
+    },
+    {
+      "path": "docs/public/licenses/native/fea1d5bf3dd71605-LICENSE-MIT",
+      "size": 1104,
+      "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960"
     },
     {
       "path": "docs/public/licenses/native/ff92bed461f50338-r-efi-AUTHORS",

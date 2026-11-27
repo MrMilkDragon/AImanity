@@ -121,24 +121,20 @@ pub(super) fn sign(arguments: &[OsString]) -> Result<()> {
         release_notes,
     } = serde_json::from_reader(File::open("config/release-policy.json")?)?;
     let output = Path::new(output);
-    if output.file_name().and_then(|name| name.to_str()) != Some(policy.feed_file.as_str()) {
-        return Err(format!("Write the native update feed to {}", policy.feed_file).into());
+    let preparing = key == "--prepare";
+    let expected_name = if preparing {
+        format!("{}.unsigned", policy.feed_file)
+    } else {
+        policy.feed_file
+    };
+    if output.file_name().and_then(|name| name.to_str()) != Some(expected_name.as_str()) {
+        return Err(format!("Write the native update feed to {expected_name}").into());
     }
     if crate::release_version::Version::parse(&version).is_err()
         || release_name.trim().is_empty()
         || release_notes.trim().is_empty()
     {
         return Err("The native update feed requires a release version, name and notes".into());
-    }
-    let pem = std::fs::read(key)?;
-    let (label, der) = pem_rfc7468::decode_vec(&pem)?;
-    if label != "PRIVATE KEY" {
-        return Err("Expected an Ed25519 PKCS#8 private key".into());
-    }
-    let key = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&der)
-        .map_err(|_| "Invalid Ed25519 private key")?;
-    if key.public_key().as_ref() != STANDARD.decode(policy.public_key)? {
-        return Err("Signing key does not match the client update public key".into());
     }
     let macos_arm64 = artifact(
         Path::new(mac),
@@ -177,6 +173,20 @@ pub(super) fn sign(arguments: &[OsString]) -> Result<()> {
         "linux_deb": digest("linux-amd64.deb")?, "linux_rpm": digest("linux-x86_64.rpm")?,
         "android": digest("android-universal.apk")?,
     }))?;
+    if preparing {
+        std::io::Write::write_all(&mut File::create_new(output)?, manifest.as_bytes())?;
+        return Ok(());
+    }
+    let pem = std::fs::read(key)?;
+    let (label, der) = pem_rfc7468::decode_vec(&pem)?;
+    if label != "PRIVATE KEY" {
+        return Err("Expected an Ed25519 PKCS#8 private key".into());
+    }
+    let key = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&der)
+        .map_err(|_| "Invalid Ed25519 private key")?;
+    if key.public_key().as_ref() != STANDARD.decode(policy.public_key)? {
+        return Err("Signing key does not match the client update public key".into());
+    }
     let signature = STANDARD.encode(key.sign(manifest.as_bytes()).as_ref());
     let mut envelope =
         serde_json::to_vec(&json!({ "manifest": manifest, "signature": signature }))?;

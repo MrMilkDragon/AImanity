@@ -1,0 +1,69 @@
+name: Assemble Fluorine release
+on:
+  workflow_dispatch:
+    inputs:
+      macos_run: { description: Signed macOS factory, required: true, type: string }
+      windows_run: { description: Signed Windows factory, required: true, type: string }
+      linux_run: { description: Signed DEB and RPM packages, required: true, type: string }
+      android_run: { description: Signed and checked Android workbench, required: true, type: string }
+permissions:
+  contents: read
+jobs:
+  draft:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MAC_RUN: ${{ inputs.macos_run }}
+      WINDOWS_RUN: ${{ inputs.windows_run }}
+      LINUX_RUN: ${{ inputs.linux_run }}
+      ANDROID_RUN: ${{ inputs.android_run }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Gather signed installers for this commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/installers"
+          fetch_installer() {
+            local run=$1 workflow=$2 artifact=$3
+            [[ $run =~ ^[0-9]+$ ]]
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" |
+              jq -e --arg sha "$GITHUB_SHA" --arg workflow ".github/workflows/$workflow.yml" \
+                '.head_sha == $sha and .path == $workflow and .conclusion == "success"' >/dev/null
+            gh run download "$run" --name "$artifact" --dir "$RUNNER_TEMP/installers"
+          }
+          fetch_installer "$MAC_RUN" client-factory complete-macos-installer
+          fetch_installer "$WINDOWS_RUN" client-factory complete-windows-installer
+          fetch_installer "$LINUX_RUN" linux-sign fluorine-signed-linux
+          fetch_installer "$ANDROID_RUN" android-mobile android-workbench-release-apk
+      - name: Verify receipts and stage a release draft
+        run: |
+          set -euo pipefail
+          version=$(jq -r .version config/release-policy.json)
+          [[ $version =~ ^0\.0\.6\.fix[1-9][0-9]*$ ]]
+          dir="$RUNNER_TEMP/installers"
+          prefix="$dir/AImanity-$version"
+          installers=("$prefix-macos-arm64.dmg" "$prefix-windows-x64-setup.exe" "$prefix-linux-amd64.deb" "$prefix-linux-x86_64.rpm" "$prefix-android-universal.apk")
+          rustup toolchain install 1.96.0 --profile minimal
+          cargo +1.96.0 run --quiet --locked -p ai-phone-release-tools -- sign-update --prepare \
+            "${installers[0]}" "${installers[1]}" "$RUNNER_TEMP/fluorine-stable.json.unsigned"
+          tag="v$version"
+          if gh release view "$tag" --json isDraft,targetCommitish > "$RUNNER_TEMP/release.json"; then
+            jq -e --arg sha "$GITHUB_SHA" '.isDraft and .targetCommitish == $sha' "$RUNNER_TEMP/release.json" >/dev/null
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" --draft --latest=false \
+              --title "$version · Fluorine" --notes "$(jq -r .release_notes config/release-policy.json)"
+          fi
+          gh release upload "$tag" "${installers[@]}" --clobber
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: fluorine-feed-for-offline-signing
+          path: ${{ runner.temp }}/fluorine-stable.json.unsigned
+          if-no-files-found: error
+          retention-days: 7
