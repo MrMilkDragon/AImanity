@@ -513,8 +513,8 @@
     },
     {
       "path": "apps/native/src/host_desktop.rs",
-      "size": 26380,
-      "sha256": "d3a5ebd305b167d59294aa7eb96f739e663a4e251d6c5dcca4fa5667e8a807b1"
+      "size": 27102,
+      "sha256": "eb384825673550771759b3bddd1218b01bb6b93e10f33895c1101d2f900dfca1"
     },
     {
       "path": "apps/native/src/host_desktop_mobile.rs",

@@ -640,6 +640,7 @@ mod tests {
 
         let dir = tempfile::tempdir()?;
         let workspace = Workspace::open(dir.path())?;
+        workspace.run();
         let port = TcpListener::bind(("127.0.0.1", 0))?.local_addr()?.port();
         let invitation = workspace
             .start_pairing(
@@ -684,7 +685,21 @@ mod tests {
             .rpc("location/update", update.encode_to_vec())
             .await?;
         let location = ai_phone_api::wire::LocationState::decode(received.as_slice())?;
-        assert_eq!(location.devices[0].status, "workspace");
+        assert_eq!(location.point, Some(point));
+        let mut delivered = workspace.subscribe();
+        timeout(Duration::from_secs(5), async {
+            loop {
+                let bytes = workspace.rpc("location/state", Vec::new()).await?;
+                let state = ai_phone_api::wire::LocationState::decode(bytes.as_slice())?;
+                let receipt = state.devices.iter().find(|entry| entry.device_id == device.id)
+                    .ok_or("missing location receipt")?;
+                if receipt.status != "pending" {
+                    assert_eq!(receipt.status, "workspace", "{}", receipt.error);
+                    return Result::Ok(());
+                }
+                delivered.changed().await?;
+            }
+        }).await??;
         let drives = workspace
             .file_list(FileLocation {
                 device_id: device.id.clone(),
